@@ -1,0 +1,89 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  password  String
+  role      String   @default("RETAILER")
+  storeName String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products Product[]
+
+  @@map("users")
+}
+
+model Product {
+  id          String  @id @default(cuid())
+  title       String
+  description String?
+  category    String
+  subcategory String?
+
+  color  String
+  colors String @default("[]")
+
+  occasion  String @default("[]")
+  styleTags String @default("[]")
+  material  String?
+  gender    String @default("WOMEN")
+  season    String @default("[]")
+  price     Float
+
+  imageUrl      String?
+  thumbnailUrl  String?
+  modelImageUrl String?
+
+  inStock  Boolean @default(true)
+  isActive Boolean @default(true)
+
+  sku String? @unique
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  recommendationsFrom Recommendation[] @relation("SourceProduct")
+  recommendationsTo   Recommendation[] @relation("TargetProduct")
+
+  @@index([category])
+  @@index([userId])
+  @@index([color])
+  @@map("products")
+}
+
+model Recommendation {
+  id              String @id @default(cuid())
+  sourceProductId String
+  targetProductId String
+
+  matchScore    Float
+  categoryScore Float
+  colorScore    Float
+  occasionScore Float
+  styleScore    Float
+  confidence    Float
+
+  explanation     String
+  explanationTags String @default("[]")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sourceProduct Product @relation("SourceProduct", fields: [sourceProductId], references: [id], onDelete: Cascade)
+  targetProduct Product @relation("TargetProduct", fields: [targetProductId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceProductId, targetProductId])
+  @@index([sourceProductId, matchScore])
+  @@map("recommendations")
+}
