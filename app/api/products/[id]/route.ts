@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth";
 import { deserializeProduct, serializeArray } from "@/lib/serialize";
@@ -48,11 +49,13 @@ export async function PATCH(
     }
 
     // Serialize array fields if present
-    const updateData: Record<string, unknown> = { ...body };
-    if (Array.isArray(body.colors)) updateData.colors = serializeArray(body.colors);
-    if (Array.isArray(body.occasion)) updateData.occasion = serializeArray(body.occasion);
-    if (Array.isArray(body.styleTags)) updateData.styleTags = serializeArray(body.styleTags);
-    if (Array.isArray(body.season)) updateData.season = serializeArray(body.season);
+    const updateData: Prisma.ProductUpdateInput = {
+      ...body,
+      ...(Array.isArray(body.colors)    && { colors:    serializeArray(body.colors) }),
+      ...(Array.isArray(body.occasion)  && { occasion:  serializeArray(body.occasion) }),
+      ...(Array.isArray(body.styleTags) && { styleTags: serializeArray(body.styleTags) }),
+      ...(Array.isArray(body.season)    && { season:    serializeArray(body.season) }),
+    };
 
     const product = await db.product.update({
       where: { id },

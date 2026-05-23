@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth";
 import { serializeArray, deserializeProduct } from "@/lib/serialize";
@@ -16,7 +17,7 @@ export async function GET(req: NextRequest) {
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "24");
 
-    const where: Record<string, unknown> = {
+    const where: Prisma.ProductWhereInput = {
       userId: session.id,
       isActive: true,
     };
