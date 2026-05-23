@@ -1,7 +1,7 @@
-import { readFile, writeFile } from "fs/promises";
+import { readFile } from "fs/promises";
 import { join } from "path";
-import { randomUUID } from "crypto";
 import { db } from "@/lib/db";
+import { cloudinary } from "@/lib/cloudinary";
 
 const GEMINI_MODEL = "nano-banana-pro-preview";
 
@@ -41,31 +41,44 @@ export async function generateModelImage(productId: string): Promise<void> {
     const product = await db.product.findUnique({ where: { id: productId } });
     if (!product?.imageUrl) return;
 
-    // Only handle locally uploaded images
-    if (!product.imageUrl.startsWith("/uploads/")) return;
-
-    // Read the source image from disk
-    const localPath = join(process.cwd(), "public", product.imageUrl);
+    // Read source image — support both Cloudinary URLs and legacy local files
     let imageBuffer: Buffer;
-    try {
-      imageBuffer = await readFile(localPath);
-    } catch {
-      console.error(`[model-image] source file not found: ${localPath}`);
-      return;
+    let mimeTypeHint = "image/jpeg";
+
+    if (product.imageUrl.startsWith("http")) {
+      // Cloudinary or any external URL — fetch directly
+      const fetchRes = await fetch(product.imageUrl);
+      if (!fetchRes.ok) {
+        console.error(`[model-image] failed to fetch image: ${product.imageUrl}`);
+        return;
+      }
+      mimeTypeHint = fetchRes.headers.get("content-type") ?? "image/jpeg";
+      imageBuffer = Buffer.from(await fetchRes.arrayBuffer());
+    } else if (product.imageUrl.startsWith("/uploads/")) {
+      // Legacy local file
+      const localPath = join(process.cwd(), "public", product.imageUrl);
+      try {
+        imageBuffer = await readFile(localPath);
+      } catch {
+        console.error(`[model-image] source file not found: ${localPath}`);
+        return;
+      }
+    } else {
+      return; // unsupported URL format
     }
 
     const base64 = imageBuffer.toString("base64");
-    // Detect mime type from extension
-    const ext = product.imageUrl.split(".").pop()?.toLowerCase() ?? "jpg";
+    // Detect mime type from extension or content-type header
+    const ext = product.imageUrl.split("?")[0].split(".").pop()?.toLowerCase() ?? "jpg";
     const mimeMap: Record<string, string> = {
       jpg: "image/jpeg", jpeg: "image/jpeg",
       png: "image/png", webp: "image/webp", gif: "image/gif",
     };
-    const mimeType = mimeMap[ext] ?? "image/jpeg";
+    const mimeType = mimeMap[ext] ?? mimeTypeHint;
 
     const prompt = buildPrompt(product.category, product.color, product.gender);
 
-    console.log(`[model-image] Calling nano-banana for product ${productId}, image: ${localPath}`);
+    console.log(`[model-image] Calling nano-banana for product ${productId}`);
 
     // Call nano-banana
     const res = await fetch(
@@ -106,13 +119,13 @@ export async function generateModelImage(productId: string): Promise<void> {
       return;
     }
 
-    // Save generated image
-    const outExt = imagePart.inlineData.mimeType === "image/png" ? "png" : "jpg";
-    const filename = `model-${randomUUID()}.${outExt}`;
-    const outPath = join(process.cwd(), "public", "uploads", filename);
-    await writeFile(outPath, Buffer.from(imagePart.inlineData.data, "base64"));
-
-    const modelImageUrl = `/uploads/${filename}`;
+    // Upload generated image to Cloudinary
+    const outMime = imagePart.inlineData.mimeType ?? "image/jpeg";
+    const dataUri = `data:${outMime};base64,${imagePart.inlineData.data}`;
+    const uploaded = await cloudinary.uploader.upload(dataUri, {
+      folder: "product-match/models",
+    });
+    const modelImageUrl = uploaded.secure_url;
 
     // Update product record — use raw SQL to bypass any cached Prisma type mapping
     await db.$executeRaw`UPDATE products SET "modelImageUrl" = ${modelImageUrl}, "updatedAt" = datetime('now') WHERE id = ${productId}`;

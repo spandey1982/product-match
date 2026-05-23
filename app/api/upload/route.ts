@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { writeFile, mkdir } from "fs/promises";
-import { join } from "path";
 import { requireAuth } from "@/lib/auth";
-import { v4 as uuidv4 } from "uuid";
+import { cloudinary } from "@/lib/cloudinary";
 
 export async function POST(req: NextRequest) {
   try {
@@ -23,7 +21,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const maxSize = 5 * 1024 * 1024; // 5MB
+    const maxSize = 5 * 1024 * 1024; // 5 MB
     if (file.size > maxSize) {
       return NextResponse.json(
         { error: "File size must be under 5MB" },
@@ -31,20 +29,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const ext = file.name.split(".").pop() || "jpg";
-    const filename = `${uuidv4()}.${ext}`;
-    const uploadDir = join(process.cwd(), "public", "uploads");
-
-    await mkdir(uploadDir, { recursive: true });
+    // Convert to base64 data URI for Cloudinary upload
     const bytes = await file.arrayBuffer();
-    await writeFile(join(uploadDir, filename), Buffer.from(bytes));
+    const b64 = Buffer.from(bytes).toString("base64");
+    const dataUri = `data:${file.type};base64,${b64}`;
 
-    return NextResponse.json({ url: `/uploads/${filename}` });
+    const result = await cloudinary.uploader.upload(dataUri, {
+      folder: "product-match/products",
+    });
+
+    return NextResponse.json({ url: result.secure_url });
   } catch (err) {
     if ((err as Error).message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    console.error(err);
+    console.error("Upload error:", err);
     return NextResponse.json({ error: "Upload failed" }, { status: 500 });
   }
 }
