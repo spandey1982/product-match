@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Product, Recommendation } from "@/types";
 import { ImageCarousel } from "@/components/product/ImageCarousel";
 import { RecommendationCard } from "@/components/product/RecommendationCard";
@@ -19,6 +20,7 @@ import {
   Package,
   IndianRupee,
   Layers,
+  Trash2,
 } from "lucide-react";
 
 interface Props {
@@ -48,9 +50,25 @@ function MetaChip({
 }
 
 export function ProductDetailView({ product }: Props) {
+  const router = useRouter();
   const [recommendations, setRecommendations] = useState<RecommendationWithProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  async function handleDelete() {
+    if (!confirmDelete) { setConfirmDelete(true); return; }
+    setDeleting(true);
+    try {
+      await fetch(`/api/products/${product.id}`, { method: "DELETE" });
+      router.push("/catalog");
+      router.refresh();
+    } catch {
+      setDeleting(false);
+      setConfirmDelete(false);
+    }
+  }
 
   async function fetchRecommendations(refresh = false) {
     if (refresh) setRefreshing(true);
@@ -82,14 +100,30 @@ export function ProductDetailView({ product }: Props) {
 
   return (
     <div>
-      {/* Back */}
-      <Link
-        href="/catalog"
-        className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 mb-6 transition-colors"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to Catalog
-      </Link>
+      {/* Back + Delete row */}
+      <div className="flex items-center justify-between mb-6">
+        <Link
+          href="/catalog"
+          className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to Catalog
+        </Link>
+
+        <button
+          onClick={handleDelete}
+          disabled={deleting}
+          onBlur={() => setConfirmDelete(false)}
+          className={`inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg transition-all ${
+            confirmDelete
+              ? "bg-red-600 text-white hover:bg-red-700"
+              : "text-gray-400 hover:text-red-500 hover:bg-red-50"
+          }`}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+          {deleting ? "Deleting…" : confirmDelete ? "Confirm delete" : "Delete"}
+        </button>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-8">
         {/* LEFT — Product details */}
