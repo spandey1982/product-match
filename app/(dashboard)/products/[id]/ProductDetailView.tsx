@@ -100,30 +100,14 @@ export function ProductDetailView({ product }: Props) {
 
   return (
     <div>
-      {/* Back + Delete row */}
-      <div className="flex items-center justify-between mb-6">
-        <Link
-          href="/catalog"
-          className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to Catalog
-        </Link>
-
-        <button
-          onClick={handleDelete}
-          disabled={deleting}
-          onBlur={() => setConfirmDelete(false)}
-          className={`inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg transition-all ${
-            confirmDelete
-              ? "bg-red-600 text-white hover:bg-red-700"
-              : "text-gray-400 hover:text-red-500 hover:bg-red-50"
-          }`}
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-          {deleting ? "Deleting…" : confirmDelete ? "Confirm delete" : "Delete"}
-        </button>
-      </div>
+      {/* Back */}
+      <Link
+        href="/catalog"
+        className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 mb-6 transition-colors"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Back to Catalog
+      </Link>
 
       <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-8">
         {/* LEFT — Product details */}
@@ -231,6 +215,23 @@ export function ProductDetailView({ product }: Props) {
                 </div>
               </div>
             )}
+
+            {/* Delete */}
+            <div className="pt-2 border-t border-gray-100">
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                onBlur={() => setConfirmDelete(false)}
+                className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                  confirmDelete
+                    ? "bg-red-600 text-white hover:bg-red-700"
+                    : "text-red-400 hover:text-red-600 hover:bg-red-50"
+                }`}
+              >
+                <Trash2 className="h-4 w-4" />
+                {deleting ? "Deleting…" : confirmDelete ? "Tap again to confirm delete" : "Delete Product"}
+              </button>
+            </div>
           </div>
         </div>
 
