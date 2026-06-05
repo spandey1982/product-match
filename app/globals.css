@@ -52,3 +52,10 @@ html {
 ::-webkit-scrollbar-thumb:hover {
   background: #9ca3af;
 }
+
+/* Virtual Try-On progress bar — animates from 0 → 88% over the expected
+   generation window, giving visual feedback without an indeterminate spinner. */
+@keyframes progress {
+  from { width: 0%; }
+  to   { width: 88%; }
+}

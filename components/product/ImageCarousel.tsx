@@ -8,9 +8,14 @@ interface ImageCarouselProps {
   title: string;
   category: string;
   className?: string;
+  /**
+   * Optional label for each slide shown in the badge overlay.
+   * Falls back to "Product" for index 0 and "On model" for all others.
+   */
+  labels?: string[];
 }
 
-export function ImageCarousel({ images, title, category, className }: ImageCarouselProps) {
+export function ImageCarousel({ images, title, category, className, labels }: ImageCarouselProps) {
   const validImages = images.filter(Boolean) as string[];
   const hasMultiple = validImages.length > 1;
 
@@ -105,7 +110,7 @@ export function ImageCarousel({ images, title, category, className }: ImageCarou
       {/* Label badge */}
       <div className="absolute top-2 left-2 z-10">
         <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-black/30 backdrop-blur-sm text-white">
-          {index === 0 ? "Product" : "On model"}
+          {labels?.[index] ?? (index === 0 ? "Product" : "On model")}
         </span>
       </div>
     </div>

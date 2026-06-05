@@ -6,6 +6,7 @@ import { Product, Recommendation } from "@/types";
 import { ImageCarousel } from "@/components/product/ImageCarousel";
 import { RecommendationCard } from "@/components/product/RecommendationCard";
 import { ShareModelImage } from "@/components/product/ShareModelImage";
+import { TryOnQueueButton } from "@/components/trial-room/TryOnQueueButton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -134,6 +135,9 @@ export function ProductDetailView({ product }: Props) {
           {product.modelImageUrl && (
             <ShareModelImage product={product} />
           )}
+
+          {/* Virtual Try-On — add to session try-on queue */}
+          <TryOnQueueButton product={product} />
 
           {/* Product info card */}
           <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm space-y-5">

@@ -2,28 +2,58 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
-import { Sparkles, Package, Upload, Search, LogOut, ChevronDown, Store } from "lucide-react";
+import {
+  Sparkles,
+  Package,
+  Upload,
+  Search,
+  LogOut,
+  ChevronDown,
+  Store,
+  Camera,
+  Heart,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { useTrialRoom } from "@/components/trial-room/TrialRoomProvider";
 
 interface NavbarProps {
   user: { name: string; email: string; storeName?: string | null };
 }
 
-const navItems = [
-  { href: "/catalog", label: "Catalog", icon: Package },
-  { href: "/upload", label: "Add Product", icon: Upload },
-];
+// ─── Badge chip ───────────────────────────────────────────────────────────────
+
+function NavBadge({ count }: { count: number }) {
+  if (count === 0) return null;
+  return (
+    <span className="ml-0.5 min-w-[16px] h-4 px-1 rounded-full bg-indigo-600 text-white text-[9px] font-bold flex items-center justify-center leading-none">
+      {count > 99 ? "99+" : count}
+    </span>
+  );
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export function Navbar({ user }: NavbarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
+  // Read live counts from session context — zero-cost when trial room is idle
+  const { tryOns, wishlist } = useTrialRoom();
+  const tryOnCount = tryOns.length;
+  const wishlistCount = wishlist.length;
+
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
     router.push("/login");
   }
+
+  const navItems = [
+    { href: "/catalog", label: "Catalog", icon: Package, badge: 0 },
+    { href: "/upload", label: "Add Product", icon: Upload, badge: 0 },
+    { href: "/my-try-ons", label: "My Try-Ons", icon: Camera, badge: tryOnCount },
+    { href: "/wishlist", label: "Wishlist", icon: Heart, badge: wishlistCount },
+  ];
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-gray-100 bg-white/80 backdrop-blur-md">
@@ -39,8 +69,8 @@ export function Navbar({ user }: NavbarProps) {
         </Link>
 
         {/* Nav */}
-        <nav className="flex items-center gap-1">
-          {navItems.map(({ href, label, icon: Icon }) => (
+        <nav className="flex items-center gap-0.5">
+          {navItems.map(({ href, label, icon: Icon, badge }) => (
             <Link
               key={href}
               href={href}
@@ -51,8 +81,9 @@ export function Navbar({ user }: NavbarProps) {
                   : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
               )}
             >
-              <Icon className="h-4 w-4" />
+              <Icon className="h-4 w-4 shrink-0" />
               <span className="hidden sm:block">{label}</span>
+              <NavBadge count={badge} />
             </Link>
           ))}
         </nav>
@@ -98,6 +129,16 @@ export function Navbar({ user }: NavbarProps) {
                     )}
                     <p className="text-xs text-gray-400 truncate">{user.email}</p>
                   </div>
+                  <div className="h-px bg-gray-100 mx-1 my-1" />
+                  {/* Trial Room shortcut */}
+                  <Link
+                    href="/trial-room"
+                    onClick={() => setUserMenuOpen(false)}
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    <Camera className="h-4 w-4 text-indigo-400" />
+                    Virtual Trial Room
+                  </Link>
                   <div className="h-px bg-gray-100 mx-1 my-1" />
                   <button
                     onClick={handleLogout}
