@@ -1,10 +1,107 @@
 "use client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { Check, Loader2, RotateCcw } from "lucide-react";
 import { Product } from "@/types";
 import { formatCurrency } from "@/lib/utils";
 import { ImageCarousel } from "@/components/product/ImageCarousel";
 import { Badge } from "@/components/ui/badge";
 import { Sparkles } from "lucide-react";
+import { useTrialRoom, TRYON_LIMIT } from "@/components/trial-room/TrialRoomProvider";
+import { HangerPlusIcon } from "@/components/icons/HangerPlusIcon";
+import { cn } from "@/lib/utils";
+
+// ─── Try-On quick button ──────────────────────────────────────────────────────
+//
+// Compact circular button placed at the right edge of the product card,
+// overlapping the boundary between the product image and the info strip below.
+// Mirrors TryOnQueueButton's state machine, compressed for catalog grid use.
+
+function TryOnCardButton({ product }: { product: Product }) {
+  const router = useRouter();
+  const { photo, addToQueue, findActiveTryOn, findAnyTryOn, isAtLimit } =
+    useTrialRoom();
+
+  // Products without an imageUrl cannot use the API — hide the button.
+  if (!product.imageUrl) return null;
+
+  const active = findActiveTryOn(product.id); // generating | done
+  const any = findAnyTryOn(product.id);        // any entry incl. failed
+  const isFailed = any?.status === "failed" && !active;
+
+  function handleClick(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!photo) { router.push("/trial-room"); return; }
+    if (active?.status === "generating") return;
+    if (active?.status === "done") { router.push("/my-try-ons"); return; }
+    if (isAtLimit) return;
+    addToQueue(product);
+  }
+
+  // ── Appearance per state ───────────────────────────────────────────────────
+  let icon: React.ReactNode;
+  let classes: string;
+  let label: string;
+  let disabled = false;
+
+  if (!photo) {
+    icon = <HangerPlusIcon size={16} />;
+    classes =
+      "bg-white/90 text-gray-500 shadow-md backdrop-blur-sm hover:bg-white hover:text-indigo-600";
+    label = "Set up Trial Room to try on";
+  } else if (active?.status === "generating") {
+    icon = <Loader2 size={16} className="animate-spin" />;
+    classes = "bg-indigo-500 text-white shadow-md shadow-indigo-300/50";
+    label = "Generating try-on…";
+    disabled = true;
+  } else if (active?.status === "done") {
+    icon = <Check size={16} />;
+    classes =
+      "bg-emerald-500 text-white shadow-md shadow-emerald-300/50 hover:bg-emerald-600";
+    label = "Try-on ready — tap to view";
+  } else if (isAtLimit) {
+    icon = <HangerPlusIcon size={16} />;
+    classes =
+      "bg-white/90 text-gray-300 shadow-md backdrop-blur-sm cursor-not-allowed";
+    label = `Limit reached (${TRYON_LIMIT}/${TRYON_LIMIT}). Remove a try-on first.`;
+    disabled = true;
+  } else if (isFailed) {
+    icon = <RotateCcw size={16} />;
+    classes =
+      "bg-white/90 text-red-500 shadow-md backdrop-blur-sm hover:bg-white";
+    label = "Try-on failed — tap to retry";
+  } else {
+    // Primary "add" state — matches the brand gradient used elsewhere
+    icon = <HangerPlusIcon size={16} />;
+    classes =
+      "bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-md shadow-indigo-300/50 hover:opacity-90";
+    label = "Add for Virtual Try-On";
+  }
+
+  return (
+    <button
+      onClick={handleClick}
+      disabled={disabled}
+      title={label}
+      aria-label={label}
+      className={cn(
+        // 36 × 36 px circle
+        "h-9 w-9 rounded-full",
+        "flex items-center justify-center",
+        "transition-all duration-150 active:scale-90",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1",
+        "disabled:cursor-not-allowed",
+        classes
+      )}
+    >
+      {icon}
+    </button>
+  );
+}
+
+// ─── Product card ─────────────────────────────────────────────────────────────
 
 interface ProductCardProps {
   product: Product;
@@ -14,30 +111,56 @@ export function ProductCard({ product }: ProductCardProps) {
   return (
     <Link href={`/products/${product.id}`} className="group block">
       <div className="rounded-2xl bg-white border border-gray-100 overflow-hidden shadow-sm hover:shadow-md transition-all duration-200 hover:-translate-y-0.5">
-        {/* Image carousel */}
-        <div className="relative aspect-[3/4] overflow-hidden">
-          <ImageCarousel
-            images={[product.imageUrl, product.modelImageUrl]}
-            title={product.title}
-            category={product.category}
-            className="w-full h-full"
-          />
-          {/* Match indicator */}
-          <div className="absolute top-2 right-2 z-10">
-            <div className="flex items-center gap-1 bg-white/90 backdrop-blur-sm rounded-full px-2 py-1 text-xs font-medium text-indigo-600 shadow-sm">
-              <Sparkles className="h-3 w-3" />
-              Match
+
+        {/*
+         * Image area:
+         *  - Outer div: `relative aspect-[3/4]` with NO overflow-hidden.
+         *    This allows the try-on button (bottom-0 translate-y-1/2) to
+         *    protrude downward into the info strip without being clipped.
+         *  - Inner div: `absolute inset-0 overflow-hidden rounded-t-2xl`
+         *    clips the image and overlays to the card's top rounded corners.
+         *  - The card outer div's overflow-hidden still contains everything
+         *    within the full card boundary (button protrudes into the
+         *    info padding zone, not outside the card).
+         */}
+        <div className="relative aspect-[3/4]">
+
+          {/* Image + overlays — clipped to rounded top corners */}
+          <div className="absolute inset-0 overflow-hidden rounded-t-2xl bg-gray-50">
+            <ImageCarousel
+              images={[product.imageUrl, product.modelImageUrl]}
+              title={product.title}
+              category={product.category}
+              className="w-full h-full"
+            />
+
+            {/* Match indicator — top left */}
+            <div className="absolute top-2 left-2 z-10">
+              <div className="flex items-center gap-1 bg-white/90 backdrop-blur-sm rounded-full px-2 py-1 text-xs font-medium text-indigo-600 shadow-sm">
+                <Sparkles className="h-3 w-3" />
+                Match
+              </div>
             </div>
+
+            {!product.inStock && (
+              <div className="absolute inset-0 bg-white/60 flex items-center justify-center z-10">
+                <Badge variant="error">Out of Stock</Badge>
+              </div>
+            )}
           </div>
-          {!product.inStock && (
-            <div className="absolute inset-0 bg-white/60 flex items-center justify-center z-10">
-              <Badge variant="error">Out of Stock</Badge>
-            </div>
-          )}
+
+          {/*
+           * Try-On button — right edge, overlapping image/info boundary.
+           * `bottom-0 translate-y-1/2` centres the button on the boundary line.
+           * `z-20` keeps it above both the image overlays and the info text.
+           */}
+          <div className="absolute right-3 bottom-0 translate-y-1/2 z-20">
+            <TryOnCardButton product={product} />
+          </div>
         </div>
 
-        {/* Info */}
-        <div className="p-4">
+        {/* Info strip — `pt-6` gives the overlapping button room to breathe */}
+        <div className="px-4 pb-4 pt-6">
           <div className="flex items-start justify-between gap-2 mb-2">
             <h3 className="text-sm font-semibold text-gray-900 line-clamp-2 leading-tight group-hover:text-indigo-600 transition-colors">
               {product.title}

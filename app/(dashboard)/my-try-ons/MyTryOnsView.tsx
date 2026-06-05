@@ -12,6 +12,9 @@ import {
   Sparkles,
   Plus,
   Check,
+  UserCircle2,
+  ArrowRightLeft,
+  Lock,
 } from "lucide-react";
 import { useTrialRoom } from "@/components/trial-room/TrialRoomProvider";
 import { TryOnViewer } from "@/components/trial-room/TryOnViewer";
@@ -28,6 +31,120 @@ function timeAgo(ts: number): string {
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
   return `${Math.floor(hrs / 24)}d ago`;
+}
+
+// ─── Customer Profile Panel ───────────────────────────────────────────────────
+
+function CustomerProfile() {
+  const {
+    photoPreviewUrl,
+    tryOns,
+    wishlist,
+    clearAll,
+    isPhotoLocked,
+  } = useTrialRoom();
+
+  const [confirmEnd, setConfirmEnd] = useState(false);
+
+  const doneCount = tryOns.filter((t) => t.status === "done").length;
+  const generatingCount = tryOns.filter((t) => t.status === "generating").length;
+
+  return (
+    <div className="bg-white border border-gray-100 rounded-3xl shadow-sm overflow-hidden">
+      {/* ── Customer photo ── */}
+      <div className="relative bg-gray-100">
+        {photoPreviewUrl ? (
+          /* object-contain so the full photograph is always visible */
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={photoPreviewUrl}
+            alt="Customer"
+            className="w-full object-contain"
+            style={{ maxHeight: "260px" }}
+          />
+        ) : (
+          <div className="flex items-center justify-center h-40">
+            <UserCircle2 className="h-12 w-12 text-gray-300" />
+          </div>
+        )}
+
+        {/* Session status badge */}
+        <div className="absolute top-2 left-2">
+          {isPhotoLocked ? (
+            <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-indigo-600/80 backdrop-blur-sm text-white">
+              <Lock className="h-2.5 w-2.5" />
+              Session active
+            </span>
+          ) : (
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-emerald-600/80 backdrop-blur-sm text-white">
+              Photo ready
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* ── Session info ── */}
+      <div className="p-4 space-y-3">
+        <div className="space-y-1">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+            Trial Room
+          </p>
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-sm font-bold text-gray-900">
+              {tryOns.length} try-on{tryOns.length !== 1 ? "s" : ""}
+            </span>
+            {generatingCount > 0 && (
+              <span className="text-xs text-indigo-500 flex items-center gap-1">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                {generatingCount} generating
+              </span>
+            )}
+          </div>
+          {wishlist.length > 0 && (
+            <Link
+              href="/wishlist"
+              className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+            >
+              {wishlist.length} saved to wishlist →
+            </Link>
+          )}
+          {doneCount > 0 && (
+            <p className="text-xs text-emerald-600 font-medium">
+              {doneCount} ready to view
+            </p>
+          )}
+        </div>
+
+        {/* Divider */}
+        <div className="h-px bg-gray-100" />
+
+        {/* ── Next Customer (end session) ── */}
+        <button
+          onClick={() => {
+            if (!confirmEnd) { setConfirmEnd(true); return; }
+            clearAll();
+            setConfirmEnd(false);
+          }}
+          onBlur={() => setTimeout(() => setConfirmEnd(false), 150)}
+          className={cn(
+            "w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-semibold transition-all",
+            confirmEnd
+              ? "bg-red-600 text-white"
+              : "bg-gray-50 text-gray-700 hover:bg-gray-100"
+          )}
+        >
+          <ArrowRightLeft className="h-3.5 w-3.5" />
+          {confirmEnd ? "Confirm — reset session" : "Next Customer"}
+        </button>
+
+        {confirmEnd && (
+          <p className="text-[10px] text-center text-gray-400 leading-relaxed -mt-1">
+            This will clear all try-ons and the customer photo.
+          </p>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // ─── Try-On Card ──────────────────────────────────────────────────────────────
@@ -64,7 +181,7 @@ function TryOnCard({
                 draggable={false}
               />
             </button>
-            {/* Wishlist button — sits above the image, stops propagation */}
+            {/* Wishlist button */}
             <button
               onClick={(e) => { e.stopPropagation(); addToWishlist(entry.id); }}
               disabled={wishlisted}
@@ -83,7 +200,7 @@ function TryOnCard({
                 )}
               />
             </button>
-            {/* "Tap to expand" hint on mobile */}
+            {/* Expand hint */}
             <div className="absolute bottom-2 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
               <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-black/30 backdrop-blur-sm text-white whitespace-nowrap">
                 Tap to expand
@@ -93,16 +210,11 @@ function TryOnCard({
         ) : entry.status === "generating" ? (
           /* Loading skeleton */
           <div className="w-full h-full flex flex-col items-center justify-center gap-3 p-4">
-            <div className="relative">
-              <Loader2 className="h-8 w-8 text-indigo-400 animate-spin" />
-            </div>
+            <Loader2 className="h-8 w-8 text-indigo-400 animate-spin" />
             <div className="text-center">
               <p className="text-xs font-medium text-gray-600">Generating…</p>
-              <p className="text-[10px] text-gray-400 mt-0.5">
-                Usually 10–20 sec
-              </p>
+              <p className="text-[10px] text-gray-400 mt-0.5">Usually 10–20 sec</p>
             </div>
-            {/* Pulsing placeholder lines */}
             <div className="w-full space-y-1.5 px-2">
               <div className="h-1.5 bg-gray-100 rounded animate-pulse" />
               <div className="h-1.5 bg-gray-100 rounded animate-pulse w-3/4 mx-auto" />
@@ -134,7 +246,6 @@ function TryOnCard({
         <div className="flex items-center justify-between">
           <p className="text-[10px] text-gray-400">{timeAgo(entry.createdAt)}</p>
           <div className="flex items-center gap-1">
-            {/* Wishlist toggle (compact, shown in footer too) */}
             {entry.status === "done" && (
               <button
                 onClick={() => addToWishlist(entry.id)}
@@ -147,14 +258,9 @@ function TryOnCard({
                     : "text-gray-400 hover:text-rose-500 hover:bg-rose-50"
                 )}
               >
-                {wishlisted ? (
-                  <Check className="h-3 w-3" />
-                ) : (
-                  <Heart className="h-3 w-3" />
-                )}
+                {wishlisted ? <Check className="h-3 w-3" /> : <Heart className="h-3 w-3" />}
               </button>
             )}
-            {/* Remove */}
             <button
               onClick={() => removeFromTryOns(entry.id)}
               aria-label="Remove try-on"
@@ -174,19 +280,18 @@ function TryOnCard({
 type FilterTab = "all" | "generating" | "saved";
 
 interface ViewerState {
-  /** Snapshot of completed entries at the time the viewer was opened. */
   entries: TryOnEntry[];
-  /** Index within `entries` of the image that was clicked. */
   index: number;
 }
 
 export function MyTryOnsView() {
-  const { photo, tryOns, wishlist, clearAll } = useTrialRoom();
+  const { photo, tryOns, wishlist } = useTrialRoom();
   const [filter, setFilter] = useState<FilterTab>("all");
-  const [confirmClear, setConfirmClear] = useState(false);
   const [viewer, setViewer] = useState<ViewerState | null>(null);
 
-  // All completed entries — the full set the viewer can navigate through.
+  const generatingCount = tryOns.filter((t) => t.status === "generating").length;
+  const savedCount = wishlist.length;
+
   const doneEntries = tryOns.filter(
     (t): t is TryOnEntry & { resultUrl: string } =>
       t.status === "done" && !!t.resultUrl
@@ -198,11 +303,6 @@ export function MyTryOnsView() {
     setViewer({ entries: [...doneEntries], index: idx });
   }
 
-  const generatingCount = tryOns.filter(
-    (t) => t.status === "generating"
-  ).length;
-  const savedCount = wishlist.length;
-
   const filtered =
     filter === "generating"
       ? tryOns.filter((t) => t.status === "generating")
@@ -210,16 +310,7 @@ export function MyTryOnsView() {
       ? tryOns.filter((t) => wishlist.some((w) => w.tryOnId === t.id))
       : tryOns;
 
-  function handleClearAll() {
-    if (!confirmClear) {
-      setConfirmClear(true);
-      return;
-    }
-    clearAll();
-    setConfirmClear(false);
-  }
-
-  // ── Empty state ────────────────────────────────────────────────────────
+  // ── Empty state ────────────────────────────────────────────────────────────
   if (tryOns.length === 0) {
     return (
       <div className="max-w-2xl mx-auto">
@@ -235,13 +326,11 @@ export function MyTryOnsView() {
 
         <div className="bg-white border border-gray-100 rounded-3xl p-12 text-center shadow-sm">
           <Camera className="h-12 w-12 text-gray-200 mx-auto mb-3" />
-          <p className="text-sm font-medium text-gray-700 mb-1">
-            No try-ons yet
-          </p>
+          <p className="text-sm font-medium text-gray-700 mb-1">No try-ons yet</p>
           <p className="text-xs text-gray-400 max-w-xs mx-auto mb-5">
             {photo
-              ? "Browse your catalog and click ‘Add for Virtual Try-On’ on any product."
-              : "Start by uploading your photo in the Trial Room, then browse the catalog."}
+              ? "Browse your catalog and tap the hanger icon on any product."
+              : "Start by setting up the Trial Room, then browse the catalog."}
           </p>
           <Link
             href={photo ? "/catalog" : "/trial-room"}
@@ -255,11 +344,10 @@ export function MyTryOnsView() {
     );
   }
 
-  // ── Main view ──────────────────────────────────────────────────────────
+  // ── Main view: two-column layout (profile + try-ons) ──────────────────────
   return (
-    <div>
-      {/* Full-screen viewer — rendered outside the grid so it can cover the
-          entire viewport without being clipped by any ancestor overflow. */}
+    <>
+      {/* Full-screen viewer */}
       {viewer && viewer.entries.length > 0 && (
         <TryOnViewer
           entries={viewer.entries}
@@ -267,109 +355,108 @@ export function MyTryOnsView() {
           onClose={() => setViewer(null)}
         />
       )}
-      {/* Header */}
-      <div className="flex items-start justify-between mb-5">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <Sparkles className="h-6 w-6 text-indigo-500" />
-            My Try-Ons
-          </h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {tryOns.length} item{tryOns.length !== 1 ? "s" : ""}
-            {generatingCount > 0 && (
-              <span className="ml-1.5 text-indigo-500">
-                · {generatingCount} generating
-              </span>
-            )}
-          </p>
+
+      <div className="flex flex-col md:flex-row gap-6 items-start">
+
+        {/* ── LEFT: Customer profile panel ── */}
+        <div className="w-full md:w-44 lg:w-52 shrink-0">
+          <CustomerProfile />
         </div>
 
-        <div className="flex items-center gap-2">
-          <Link
-            href="/catalog"
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Add More
-          </Link>
-          <button
-            onClick={handleClearAll}
-            onBlur={() => setConfirmClear(false)}
-            className={cn(
-              "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition-colors",
-              confirmClear
-                ? "bg-red-600 text-white"
-                : "border border-gray-200 text-gray-500 hover:text-red-500 hover:border-red-200 hover:bg-red-50"
-            )}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-            {confirmClear ? "Confirm clear" : "Clear all"}
-          </button>
-        </div>
-      </div>
+        {/* ── RIGHT: Try-ons content ── */}
+        <div className="flex-1 min-w-0">
+          {/* Header */}
+          <div className="flex items-start justify-between mb-5">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                <Sparkles className="h-6 w-6 text-indigo-500" />
+                My Try-Ons
+              </h1>
+              <p className="text-sm text-gray-500 mt-1">
+                {tryOns.length} item{tryOns.length !== 1 ? "s" : ""}
+                {generatingCount > 0 && (
+                  <span className="ml-1.5 text-indigo-500">
+                    · {generatingCount} generating
+                  </span>
+                )}
+              </p>
+            </div>
 
-      {/* Filter tabs */}
-      <div className="flex gap-1 mb-5 p-1 bg-gray-100 rounded-xl w-fit">
-        {(
-          [
-            { key: "all", label: `All (${tryOns.length})` },
-            { key: "generating", label: `Processing (${generatingCount})` },
-            { key: "saved", label: `Saved (${savedCount})` },
-          ] as { key: FilterTab; label: string }[]
-        ).map(({ key, label }) => (
-          <button
-            key={key}
-            onClick={() => setFilter(key)}
-            className={cn(
-              "px-3 py-1.5 rounded-lg text-xs font-medium transition-all",
-              filter === key
-                ? "bg-white text-gray-900 shadow-sm"
-                : "text-gray-500 hover:text-gray-700"
-            )}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {/* Grid */}
-      {filtered.length === 0 ? (
-        <div className="text-center py-12 text-sm text-gray-400">
-          No items in this filter.
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-          {filtered.map((entry) => (
-            <TryOnCard
-              key={entry.id}
-              entry={entry}
-              onOpen={
-                entry.status === "done" ? () => openViewer(entry) : undefined
-              }
-            />
-          ))}
-        </div>
-      )}
-
-      {/* Wishlist CTA */}
-      {wishlist.length > 0 && (
-        <div className="mt-8 p-4 bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-100 rounded-2xl flex items-center justify-between">
-          <div>
-            <p className="text-sm font-semibold text-indigo-800">
-              Wishlist for In-Store Try-On
-            </p>
-            <p className="text-xs text-indigo-600 mt-0.5">
-              {wishlist.length} item{wishlist.length !== 1 ? "s" : ""} saved
-            </p>
+            <Link
+              href="/catalog"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors shrink-0"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Add More
+            </Link>
           </div>
-          <Link
-            href="/wishlist"
-            className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition-colors"
-          >
-            View Wishlist →
-          </Link>
+
+          {/* Filter tabs */}
+          <div className="flex gap-1 mb-5 p-1 bg-gray-100 rounded-xl w-fit">
+            {(
+              [
+                { key: "all", label: `All (${tryOns.length})` },
+                { key: "generating", label: `Processing (${generatingCount})` },
+                { key: "saved", label: `Saved (${savedCount})` },
+              ] as { key: FilterTab; label: string }[]
+            ).map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => setFilter(key)}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-xs font-medium transition-all",
+                  filter === key
+                    ? "bg-white text-gray-900 shadow-sm"
+                    : "text-gray-500 hover:text-gray-700"
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Grid */}
+          {filtered.length === 0 ? (
+            <div className="text-center py-12 text-sm text-gray-400">
+              No items in this filter.
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+              {filtered.map((entry) => (
+                <TryOnCard
+                  key={entry.id}
+                  entry={entry}
+                  onOpen={
+                    entry.status === "done"
+                      ? () => openViewer(entry)
+                      : undefined
+                  }
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Wishlist CTA */}
+          {wishlist.length > 0 && (
+            <div className="mt-8 p-4 bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-100 rounded-2xl flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold text-indigo-800">
+                  Wishlist for In-Store Try-On
+                </p>
+                <p className="text-xs text-indigo-600 mt-0.5">
+                  {wishlist.length} item{wishlist.length !== 1 ? "s" : ""} saved
+                </p>
+              </div>
+              <Link
+                href="/wishlist"
+                className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition-colors"
+              >
+                View Wishlist →
+              </Link>
+            </div>
+          )}
         </div>
-      )}
-    </div>
+      </div>
+    </>
   );
 }

@@ -12,6 +12,11 @@ import React, {
 import { Product } from "@/types";
 import { TryOnEntry, TryOnStatus, WishlistEntry } from "@/lib/trial-room-types";
 
+// ─── Limit ────────────────────────────────────────────────────────────────────
+
+/** Maximum number of non-failed try-ons allowed at the same time. */
+export const TRYON_LIMIT = 5;
+
 // ─── State + context shape ────────────────────────────────────────────────────
 
 interface TrialRoomState {
@@ -46,6 +51,21 @@ export interface TrialRoomContextValue extends TrialRoomState {
    * Returns undefined when no entry exists (or all entries failed).
    */
   findActiveTryOn: (productId: string) => TryOnEntry | undefined;
+  /**
+   * Returns the most recent TryOnEntry for the given product regardless of
+   * status — including failed entries. Useful for showing retry affordance.
+   */
+  findAnyTryOn: (productId: string) => TryOnEntry | undefined;
+  /** Number of non-failed try-ons currently in the session. */
+  activeTryOnCount: number;
+  /** True when activeTryOnCount has reached TRYON_LIMIT. */
+  isAtLimit: boolean;
+  /**
+   * True once the first product has been added to the try-on queue.
+   * When locked, the customer photo cannot be replaced to prevent
+   * inconsistencies with already-generated results.
+   */
+  isPhotoLocked: boolean;
   /** True if the product has a non-failed entry in the queue. */
   isInWishlist: (tryOnId: string) => boolean;
 }
@@ -163,10 +183,15 @@ export function TrialRoomProvider({ children }: { children: React.ReactNode }) {
     if (!photo) return;
 
     // Idempotency: skip if already generating or done for this product
-    const existing = stateRef.current.tryOns.find(
+    const current = stateRef.current.tryOns;
+    const existing = current.find(
       (t) => t.productId === product.id && t.status !== "failed"
     );
     if (existing) return;
+
+    // Enforce the active-try-on limit (failed entries don't count)
+    const activeCount = current.filter((t) => t.status !== "failed").length;
+    if (activeCount >= TRYON_LIMIT) return;
 
     const entry: TryOnEntry = {
       id: crypto.randomUUID(),
@@ -254,6 +279,21 @@ export function TrialRoomProvider({ children }: { children: React.ReactNode }) {
     [state.tryOns]
   );
 
+  const findAnyTryOn = useCallback(
+    (productId: string) =>
+      state.tryOns.find((t) => t.productId === productId),
+    [state.tryOns]
+  );
+
+  const activeTryOnCount = state.tryOns.filter(
+    (t) => t.status !== "failed"
+  ).length;
+
+  const isAtLimit = activeTryOnCount >= TRYON_LIMIT;
+
+  // Photo is locked as soon as the first try-on is queued.
+  const isPhotoLocked = state.tryOns.length > 0;
+
   const isInWishlist = useCallback(
     (tryOnId: string) => state.wishlist.some((w) => w.tryOnId === tryOnId),
     [state.wishlist]
@@ -273,6 +313,10 @@ export function TrialRoomProvider({ children }: { children: React.ReactNode }) {
       removeFromWishlist,
       clearAll,
       findActiveTryOn,
+      findAnyTryOn,
+      activeTryOnCount,
+      isAtLimit,
+      isPhotoLocked,
       isInWishlist,
     }),
     [
@@ -286,6 +330,10 @@ export function TrialRoomProvider({ children }: { children: React.ReactNode }) {
       removeFromWishlist,
       clearAll,
       findActiveTryOn,
+      findAnyTryOn,
+      activeTryOnCount,
+      isAtLimit,
+      isPhotoLocked,
       isInWishlist,
     ]
   );

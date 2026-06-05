@@ -15,6 +15,7 @@ import {
   Eye,
   UserCheck,
   Glasses,
+  Lock,
 } from "lucide-react";
 import { useTrialRoom } from "@/components/trial-room/TrialRoomProvider";
 import { cn } from "@/lib/utils";
@@ -35,7 +36,7 @@ const PHOTO_TIPS = [
 
 export default function TrialRoomPage() {
   const router = useRouter();
-  const { photo, photoPreviewUrl, setPhoto, clearPhoto, tryOns } = useTrialRoom();
+  const { photo, photoPreviewUrl, setPhoto, clearPhoto, tryOns, isPhotoLocked } = useTrialRoom();
 
   const [preview, setPreview] = useState<string | null>(null);
   const [staged, setStaged] = useState<File | null>(null);
@@ -129,18 +130,25 @@ export default function TrialRoomPage() {
         {displayPreview ? (
           /* Preview */
           <div className="space-y-3">
-            <div className="relative rounded-2xl overflow-hidden aspect-[3/4] bg-gray-50 border border-gray-100">
+            <div className="relative rounded-2xl overflow-hidden aspect-[3/4] bg-gray-100 border border-gray-100">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={displayPreview}
                 alt="Your photo"
-                className="w-full h-full object-cover"
+                className="w-full h-full object-contain"
               />
               {isPhotoActive && !staged && (
                 <div className="absolute top-2 left-2">
-                  <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-emerald-600/80 text-white backdrop-blur-sm">
-                    Active photo
-                  </span>
+                  {isPhotoLocked ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-indigo-600/80 backdrop-blur-sm text-white">
+                      <Lock className="h-2.5 w-2.5" />
+                      Session active
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-emerald-600/80 text-white backdrop-blur-sm">
+                      Active photo
+                    </span>
+                  )}
                 </div>
               )}
             </div>
@@ -249,8 +257,9 @@ export default function TrialRoomPage() {
             </Link>
           )}
 
-          {/* Retake / Change */}
-          {displayPreview && (
+          {/* Retake / Change — hidden once session is active to prevent
+               inconsistencies with already-generated try-ons */}
+          {displayPreview && !isPhotoLocked && (
             <button
               onClick={isPhotoActive && !staged ? handleChange : handleRetake}
               className="w-full flex items-center justify-center gap-2 py-2.5 rounded-2xl text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-colors"
@@ -268,6 +277,14 @@ export default function TrialRoomPage() {
                 />
               )}
             </button>
+          )}
+
+          {/* Locked notice */}
+          {isPhotoLocked && isPhotoActive && !staged && (
+            <p className="text-center text-xs text-gray-400 flex items-center justify-center gap-1">
+              <Lock className="h-3 w-3" />
+              Photo locked — try-ons in progress. Use &ldquo;Next Customer&rdquo; to reset.
+            </p>
           )}
         </div>
 

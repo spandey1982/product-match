@@ -3,14 +3,16 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import {
   Search, SlidersHorizontal, Package, Plus, X,
-  Sparkles, Mic, Loader2, MicOff,
+  Sparkles, Mic, Loader2, MicOff, AlertCircle,
 } from "lucide-react";
+import { HangerPlusIcon } from "@/components/icons/HangerPlusIcon";
 import { Product, Pagination } from "@/types";
 import { ProductCard } from "@/components/catalog/ProductCard";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useTrialRoom, TRYON_LIMIT } from "@/components/trial-room/TrialRoomProvider";
 
 const CATEGORIES = [
   "All", "Saree", "Lehenga", "Blouse", "Dupatta", "Kurta",
@@ -35,6 +37,9 @@ export function CatalogView() {
   const [selectedColor, setSelectedColor] = useState("");
   const [selectedGender, setSelectedGender] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
+
+  // ── trial room ─────────────────────────────────────────────────────────────
+  const { photo, isAtLimit, activeTryOnCount } = useTrialRoom();
 
   // ── voice state ────────────────────────────────────────────────────────────
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
@@ -213,12 +218,28 @@ export function CatalogView() {
           )}
         </div>
         <div className="flex-1" />
-        <Link href="/upload">
-          <Button size="md" className="gap-2">
-            <Plus className="h-4 w-4" />
-            Add Product
-          </Button>
-        </Link>
+
+        {/* Trial Room CTA — changes based on session state */}
+        {photo ? (
+          <Link href="/my-try-ons">
+            <Button size="md" variant="secondary" className="relative gap-2">
+              <Sparkles className="h-4 w-4" />
+              Check Try-Ons
+              {activeTryOnCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-indigo-600 text-white text-[9px] font-bold flex items-center justify-center leading-none">
+                  {activeTryOnCount}
+                </span>
+              )}
+            </Button>
+          </Link>
+        ) : (
+          <Link href="/trial-room">
+            <Button size="md" className="gap-2">
+              <HangerPlusIcon size={16} />
+              Set Up Trial Room
+            </Button>
+          </Link>
+        )}
       </div>
 
       {/* Search + mic + filters */}
@@ -431,6 +452,24 @@ export function CatalogView() {
           </div>
         )}
       </div>
+
+      {/* Try-on limit banner */}
+      {isAtLimit && (
+        <div className="flex items-center gap-3 px-4 py-3 mb-4 bg-amber-50 border border-amber-200 rounded-2xl">
+          <AlertCircle className="h-4 w-4 text-amber-500 shrink-0" />
+          <p className="text-sm text-amber-800 flex-1">
+            Try-on limit reached&nbsp;
+            <span className="font-semibold">({activeTryOnCount}/{TRYON_LIMIT})</span>.
+            {" "}Remove a try-on to add more.
+          </p>
+          <Link
+            href="/my-try-ons"
+            className="text-xs font-semibold text-amber-700 underline underline-offset-2 hover:text-amber-900 shrink-0"
+          >
+            Manage Try-Ons
+          </Link>
+        </div>
+      )}
 
       {/* Grid */}
       {loading ? (
