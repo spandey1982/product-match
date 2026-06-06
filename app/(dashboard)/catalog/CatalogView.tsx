@@ -42,8 +42,28 @@ export function CatalogView() {
 
   // ── trial room ─────────────────────────────────────────────────────────────
   const { photo, isAtLimit, activeTryOnCount, clearAll, setupHintActive } = useTrialRoom();
-  const [confirmEmpty, setConfirmEmpty] = useState(false);
+  const [emptyToast, setEmptyToast] = useState(false);
+  const emptyToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [setupModalOpen, setSetupModalOpen] = useState(false);
+
+  function showEmptyToast() {
+    if (emptyToastTimer.current) clearTimeout(emptyToastTimer.current);
+    setEmptyToast(true);
+    emptyToastTimer.current = setTimeout(() => setEmptyToast(false), 5000);
+  }
+
+  function confirmEmptyRoom() {
+    if (emptyToastTimer.current) clearTimeout(emptyToastTimer.current);
+    setEmptyToast(false);
+    clearAll();
+  }
+
+  function dismissEmptyToast() {
+    if (emptyToastTimer.current) clearTimeout(emptyToastTimer.current);
+    setEmptyToast(false);
+  }
+
+  useEffect(() => () => { if (emptyToastTimer.current) clearTimeout(emptyToastTimer.current); }, []);
 
   // ── voice state ────────────────────────────────────────────────────────────
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
@@ -528,24 +548,12 @@ export function CatalogView() {
           {/* Empty Trial Room — only visible once a session is active */}
           {photo && (
             <button
-              onClick={() => {
-                if (!confirmEmpty) { setConfirmEmpty(true); return; }
-                clearAll();
-                setConfirmEmpty(false);
-              }}
-              onBlur={() => setTimeout(() => setConfirmEmpty(false), 150)}
-              className={cn(
-                "flex items-center gap-1.5 h-10 px-3 rounded-xl border text-sm font-medium shadow-sm transition-all bg-white",
-                confirmEmpty
-                  ? "border-red-300 text-red-600 hover:bg-red-50"
-                  : "border-gray-200 text-gray-500 hover:text-red-500 hover:border-red-200 hover:bg-red-50"
-              )}
+              onClick={showEmptyToast}
+              className="flex items-center gap-1.5 h-10 px-3 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-500 shadow-sm hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-all"
               title="Empty Trial Room"
             >
               <Trash2 className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">
-                {confirmEmpty ? "Confirm?" : "Empty Trial Room"}
-              </span>
+              <span className="hidden sm:inline">Empty Trial Room</span>
             </button>
           )}
 
@@ -584,6 +592,28 @@ export function CatalogView() {
           )}
         </div>
       </div>
+
+      {/* Empty Trial Room confirmation toast */}
+      {emptyToast && (
+        <div className="fixed bottom-24 inset-x-0 flex justify-center z-40 px-4 pointer-events-none">
+          <div className="pointer-events-auto flex items-center gap-3 px-4 py-3 bg-gray-900 text-white rounded-2xl shadow-xl animate-in fade-in slide-in-from-bottom-3 duration-200 max-w-sm w-full">
+            <Trash2 className="h-4 w-4 text-red-400 shrink-0" />
+            <p className="flex-1 text-sm font-medium">Clear all try-ons?</p>
+            <button
+              onClick={dismissEmptyToast}
+              className="text-xs font-medium text-gray-400 hover:text-white transition-colors px-2 py-1 rounded-lg hover:bg-white/10"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={confirmEmptyRoom}
+              className="text-xs font-semibold text-red-400 hover:text-red-300 transition-colors px-2 py-1 rounded-lg hover:bg-white/10"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Trial Room setup modal */}
       {setupModalOpen && (
