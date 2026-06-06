@@ -8,6 +8,7 @@ import React, {
   useMemo,
   useRef,
   useState,
+  useEffect,
 } from "react";
 import { Product } from "@/types";
 import { TryOnEntry, TryOnStatus, WishlistEntry } from "@/lib/trial-room-types";
@@ -66,6 +67,13 @@ export interface TrialRoomContextValue extends TrialRoomState {
    * inconsistencies with already-generated results.
    */
   isPhotoLocked: boolean;
+  /**
+   * True for ~3 s after triggerSetupHint() is called. Consumers use this
+   * to visually highlight the "Set Up Trial Room" entry point.
+   */
+  setupHintActive: boolean;
+  /** Call when the user attempts a try-on action without a photo. */
+  triggerSetupHint: () => void;
   /** True if the product has a non-failed entry in the queue. */
   isInWishlist: (tryOnId: string) => boolean;
 }
@@ -93,6 +101,17 @@ const INITIAL_STATE: TrialRoomState = {
 
 export function TrialRoomProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<TrialRoomState>(INITIAL_STATE);
+  const [setupHintActive, setSetupHintActive] = useState(false);
+  const hintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clean up hint timer on unmount
+  useEffect(() => () => { if (hintTimerRef.current) clearTimeout(hintTimerRef.current); }, []);
+
+  const triggerSetupHint = useCallback(() => {
+    if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
+    setSetupHintActive(true);
+    hintTimerRef.current = setTimeout(() => setSetupHintActive(false), 3000);
+  }, []);
 
   // Refs ensure async generation callbacks always read the latest values even
   // when captured in a stale closure. Synced in useLayoutEffect so the update
@@ -317,6 +336,8 @@ export function TrialRoomProvider({ children }: { children: React.ReactNode }) {
       activeTryOnCount,
       isAtLimit,
       isPhotoLocked,
+      setupHintActive,
+      triggerSetupHint,
       isInWishlist,
     }),
     [
@@ -334,6 +355,8 @@ export function TrialRoomProvider({ children }: { children: React.ReactNode }) {
       activeTryOnCount,
       isAtLimit,
       isPhotoLocked,
+      setupHintActive,
+      triggerSetupHint,
       isInWishlist,
     ]
   );

@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { Camera, Check, Loader2, RotateCcw, ExternalLink } from "lucide-react";
+import { Camera, Check, Loader2, RotateCcw, ExternalLink, Info } from "lucide-react";
 import { useTrialRoom } from "@/components/trial-room/TrialRoomProvider";
 import { cn } from "@/lib/utils";
 import type { Product } from "@/types";
@@ -11,30 +12,33 @@ interface Props {
 }
 
 /**
- * Context-aware CTA displayed on the product detail page.
+ * Context-aware CTA on the product detail page.
  *
- * States:
- * - No photo uploaded → prompt to set up the Trial Room
- * - Not yet queued    → "Add for Virtual Try-On"
- * - Generating        → disabled spinner
- * - Done              → success state with link to My Try-Ons
- * - Failed            → retry button
- *
- * Returns null when the product has no imageUrl (try-on requires a product
- * image to be uploaded — matches the existing API guard).
+ * When no photo has been uploaded the button no longer navigates away.
+ * Instead it shows an inline guidance message directing the user to set up
+ * the Trial Room from the catalog, keeping them on the current product page.
  */
 export function TryOnQueueButton({ product }: Props) {
-  const { photo, addToQueue, retryTryOn, findActiveTryOn } = useTrialRoom();
+  const { photo, addToQueue, retryTryOn, findActiveTryOn, triggerSetupHint } =
+    useTrialRoom();
+  const [showHint, setShowHint] = useState(false);
 
   if (!product.imageUrl) return null;
 
   const entry = findActiveTryOn(product.id);
 
-  // ── No photo: prompt to set up trial room ──────────────────────────────
+  // ── No photo: show guidance inline, do not navigate ────────────────────
   if (!photo) {
+    function handleSetupClick() {
+      triggerSetupHint();
+      setShowHint(true);
+      setTimeout(() => setShowHint(false), 4000);
+    }
+
     return (
-      <Link href="/trial-room" className="block">
+      <div className="space-y-2">
         <button
+          onClick={handleSetupClick}
           className={cn(
             "w-full flex items-center justify-center gap-2 py-3 rounded-2xl",
             "text-sm font-semibold",
@@ -45,7 +49,24 @@ export function TryOnQueueButton({ product }: Props) {
           <Camera className="h-4 w-4" />
           Set up Trial Room to try this on
         </button>
-      </Link>
+
+        {showHint && (
+          <div className="flex items-start gap-2.5 p-3 bg-indigo-50 border border-indigo-100 rounded-2xl">
+            <Info className="h-4 w-4 text-indigo-500 shrink-0 mt-0.5" />
+            <p className="text-xs text-indigo-800 leading-relaxed">
+              Go to the{" "}
+              <Link
+                href="/catalog"
+                className="font-semibold underline underline-offset-2 hover:text-indigo-600"
+              >
+                Catalog
+              </Link>{" "}
+              and tap <strong>Set Up Trial Room</strong> to upload a customer
+              photo before adding try-ons.
+            </p>
+          </div>
+        )}
+      </div>
     );
   }
 
@@ -68,9 +89,7 @@ export function TryOnQueueButton({ product }: Props) {
       <div className="flex items-center gap-2">
         <div className="flex-1 flex items-center gap-2 py-2.5 px-4 bg-emerald-50 border border-emerald-200 rounded-2xl">
           <Check className="h-4 w-4 text-emerald-600 shrink-0" />
-          <span className="text-sm font-medium text-emerald-700">
-            Try-on ready
-          </span>
+          <span className="text-sm font-medium text-emerald-700">Try-on ready</span>
         </div>
         <Link
           href="/my-try-ons"
@@ -83,7 +102,7 @@ export function TryOnQueueButton({ product }: Props) {
     );
   }
 
-  // ── Failed: show retry ─────────────────────────────────────────────────
+  // ── Failed ─────────────────────────────────────────────────────────────
   if (entry?.status === "failed") {
     return (
       <div className="space-y-2">

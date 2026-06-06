@@ -3,9 +3,10 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import {
   Search, SlidersHorizontal, Package, Plus, X,
-  Sparkles, Mic, Loader2, MicOff, AlertCircle,
+  Sparkles, Mic, Loader2, MicOff, AlertCircle, Trash2,
 } from "lucide-react";
 import { HangerPlusIcon } from "@/components/icons/HangerPlusIcon";
+import { cn } from "@/lib/utils";
 import { Product, Pagination } from "@/types";
 import { ProductCard } from "@/components/catalog/ProductCard";
 import { Input } from "@/components/ui/input";
@@ -39,7 +40,8 @@ export function CatalogView() {
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   // ── trial room ─────────────────────────────────────────────────────────────
-  const { photo, isAtLimit, activeTryOnCount } = useTrialRoom();
+  const { photo, isAtLimit, activeTryOnCount, clearAll, setupHintActive } = useTrialRoom();
+  const [confirmEmpty, setConfirmEmpty] = useState(false);
 
   // ── voice state ────────────────────────────────────────────────────────────
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
@@ -219,28 +221,75 @@ export function CatalogView() {
         </div>
         <div className="flex-1" />
 
-        {/* Trial Room CTA — changes based on session state */}
-        {photo ? (
-          <Link href="/my-try-ons">
-            <Button size="md" variant="secondary" className="relative gap-2">
-              <Sparkles className="h-4 w-4" />
-              Check Try-Ons
-              {activeTryOnCount > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-indigo-600 text-white text-[9px] font-bold flex items-center justify-center leading-none">
-                  {activeTryOnCount}
+        {/* Trial Room CTAs */}
+        <div className="flex items-center gap-2">
+          {photo ? (
+            <>
+              {/* "Check Try-Ons" — primary session action */}
+              <Link href="/my-try-ons">
+                <Button size="md" variant="secondary" className="relative gap-2">
+                  <Sparkles className="h-4 w-4" />
+                  Check Try-Ons
+                  {activeTryOnCount > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-indigo-600 text-white text-[9px] font-bold flex items-center justify-center leading-none">
+                      {activeTryOnCount}
+                    </span>
+                  )}
+                </Button>
+              </Link>
+
+              {/* "Empty Trial Room" — destructive secondary, placed to the right */}
+              <button
+                onClick={() => {
+                  if (!confirmEmpty) { setConfirmEmpty(true); return; }
+                  clearAll();
+                  setConfirmEmpty(false);
+                }}
+                onBlur={() => setTimeout(() => setConfirmEmpty(false), 150)}
+                className={cn(
+                  "flex items-center gap-1.5 h-10 px-3 rounded-xl border text-sm font-medium transition-all",
+                  confirmEmpty
+                    ? "border-red-300 bg-red-50 text-red-600 hover:bg-red-100"
+                    : "border-gray-200 bg-white text-gray-500 hover:text-red-500 hover:border-red-200 hover:bg-red-50"
+                )}
+                title="Empty Trial Room"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">
+                  {confirmEmpty ? "Confirm?" : "Empty Trial Room"}
                 </span>
-              )}
-            </Button>
-          </Link>
-        ) : (
-          <Link href="/trial-room">
-            <Button size="md" className="gap-2">
-              <HangerPlusIcon size={16} />
-              Set Up Trial Room
-            </Button>
-          </Link>
-        )}
+              </button>
+            </>
+          ) : (
+            /* "Set Up Trial Room" — highlighted when setup hint is active */
+            <Link href="/trial-room">
+              <Button
+                size="md"
+                className={cn(
+                  "gap-2 transition-all duration-300",
+                  setupHintActive &&
+                    "ring-2 ring-offset-2 ring-indigo-400 scale-105"
+                )}
+              >
+                <HangerPlusIcon size={16} />
+                Set Up Trial Room
+              </Button>
+            </Link>
+          )}
+        </div>
       </div>
+
+      {/* Trial Room setup guidance — appears when a try-on action is attempted
+           without a photo. Highlights the "Set Up Trial Room" button above. */}
+      {setupHintActive && !photo && (
+        <div className="flex items-center gap-3 px-4 py-3 mb-2 bg-indigo-50 border border-indigo-200 rounded-2xl">
+          <HangerPlusIcon size={16} className="text-indigo-500 shrink-0" />
+          <p className="text-sm text-indigo-800">
+            <strong>Set up the Trial Room first</strong> — tap{" "}
+            <strong>Set Up Trial Room</strong> above to upload a customer photo.
+          </p>
+        </div>
+      )}
 
       {/* Search + mic + filters */}
       <div className="flex flex-col gap-4 mb-6">

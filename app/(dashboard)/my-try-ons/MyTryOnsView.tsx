@@ -13,7 +13,6 @@ import {
   Plus,
   Check,
   UserCircle2,
-  ArrowRightLeft,
   Lock,
   ImagePlus,
   X,
@@ -45,13 +44,11 @@ function CustomerProfile() {
     photoPreviewUrl,
     tryOns,
     wishlist,
-    clearAll,
     setPhoto,
     clearPhoto,
     isPhotoLocked,
   } = useTrialRoom();
 
-  const [confirmEnd, setConfirmEnd] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const doneCount = tryOns.filter((t) => t.status === "done").length;
@@ -184,33 +181,7 @@ function CustomerProfile() {
           )}
         </div>
 
-        {/* Divider */}
-        <div className="h-px bg-gray-100" />
-
-        {/* Next Customer (end session) */}
-        <button
-          onClick={() => {
-            if (!confirmEnd) { setConfirmEnd(true); return; }
-            clearAll();
-            setConfirmEnd(false);
-          }}
-          onBlur={() => setTimeout(() => setConfirmEnd(false), 150)}
-          className={cn(
-            "w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-semibold transition-all",
-            confirmEnd
-              ? "bg-red-600 text-white"
-              : "bg-gray-50 text-gray-700 hover:bg-gray-100"
-          )}
-        >
-          <ArrowRightLeft className="h-3.5 w-3.5" />
-          {confirmEnd ? "Confirm — reset session" : "Next Customer"}
-        </button>
-
-        {confirmEnd && (
-          <p className="text-[10px] text-center text-gray-400 leading-relaxed -mt-1">
-            This will clear all try-ons and the customer photo.
-          </p>
-        )}
+        {/* Session end is handled by "Empty Trial Room" in the catalog header */}
       </div>
     </div>
   );

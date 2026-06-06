@@ -8,6 +8,7 @@ import { ImageCarousel } from "@/components/product/ImageCarousel";
 import { Badge } from "@/components/ui/badge";
 import { Sparkles } from "lucide-react";
 import { useTrialRoom, TRYON_LIMIT } from "@/components/trial-room/TrialRoomProvider";
+import { useState } from "react";
 import { HangerPlusIcon } from "@/components/icons/HangerPlusIcon";
 import { cn } from "@/lib/utils";
 
@@ -19,8 +20,9 @@ import { cn } from "@/lib/utils";
 
 function TryOnCardButton({ product }: { product: Product }) {
   const router = useRouter();
-  const { photo, addToQueue, findActiveTryOn, findAnyTryOn, isAtLimit } =
+  const { photo, addToQueue, findActiveTryOn, findAnyTryOn, isAtLimit, triggerSetupHint } =
     useTrialRoom();
+  const [hinted, setHinted] = useState(false);
 
   // Products without an imageUrl cannot use the API — hide the button.
   if (!product.imageUrl) return null;
@@ -33,7 +35,13 @@ function TryOnCardButton({ product }: { product: Product }) {
     e.preventDefault();
     e.stopPropagation();
 
-    if (!photo) { router.push("/trial-room"); return; }
+    if (!photo) {
+      // Do not navigate — pulse this button and highlight the catalog header CTA
+      triggerSetupHint();
+      setHinted(true);
+      setTimeout(() => setHinted(false), 1500);
+      return;
+    }
     if (active?.status === "generating") return;
     if (active?.status === "done") { router.push("/my-try-ons"); return; }
     if (isAtLimit) return;
@@ -48,8 +56,10 @@ function TryOnCardButton({ product }: { product: Product }) {
 
   if (!photo) {
     icon = <HangerPlusIcon size={16} />;
-    classes =
-      "bg-white/90 text-gray-500 shadow-md backdrop-blur-sm hover:bg-white hover:text-indigo-600";
+    classes = cn(
+      "bg-white/90 text-gray-500 shadow-md backdrop-blur-sm hover:bg-white hover:text-indigo-600",
+      hinted && "ring-2 ring-indigo-400 ring-offset-1 text-indigo-600 bg-white"
+    );
     label = "Set up Trial Room to try on";
   } else if (active?.status === "generating") {
     icon = <Loader2 size={16} className="animate-spin" />;
