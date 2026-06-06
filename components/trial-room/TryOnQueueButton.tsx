@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Camera, Check, Loader2, RotateCcw, ExternalLink, Info } from "lucide-react";
+import { Check, Loader2, RotateCcw, ExternalLink, Info } from "lucide-react";
+import { HangerPlusIcon } from "@/components/icons/HangerPlusIcon";
 import { useTrialRoom } from "@/components/trial-room/TrialRoomProvider";
 import { cn } from "@/lib/utils";
 import type { Product } from "@/types";
@@ -46,7 +47,7 @@ export function TryOnQueueButton({ product }: Props) {
             "shadow-md shadow-indigo-200/50 hover:opacity-90 active:scale-[0.98] transition-all"
           )}
         >
-          <Camera className="h-4 w-4" />
+          <HangerPlusIcon className="h-4 w-4" />
           Set up Trial Room to try this on
         </button>
 
@@ -136,7 +137,7 @@ export function TryOnQueueButton({ product }: Props) {
         "shadow-md shadow-indigo-200/50 hover:opacity-90 active:scale-[0.98] transition-all"
       )}
     >
-      <Camera className="h-4 w-4" />
+      <HangerPlusIcon className="h-4 w-4" />
       Add for Virtual Try-On
     </button>
   );

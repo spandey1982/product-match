@@ -2,7 +2,6 @@
 
 import { useRef, useState } from "react";
 import {
-  Camera,
   Upload,
   Check,
   AlertCircle,
@@ -15,6 +14,7 @@ import {
   Glasses,
   Lock,
 } from "lucide-react";
+import { HangerPlusIcon } from "@/components/icons/HangerPlusIcon";
 import Link from "next/link";
 import { useTrialRoom } from "@/components/trial-room/TrialRoomProvider";
 import { cn } from "@/lib/utils";
@@ -104,7 +104,7 @@ export function TrialRoomSetupContent({ onComplete, onCancel }: Props) {
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <Camera className="h-6 w-6 text-indigo-500" />
+          <HangerPlusIcon className="h-6 w-6 text-indigo-500" />
           Virtual Trial Room
         </h1>
         <p className="text-sm text-gray-500 mt-1">
