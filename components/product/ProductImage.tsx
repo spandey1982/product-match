@@ -81,7 +81,7 @@ export function ProductImage({
     <img
       src={src}
       alt={title}
-      className={cn("object-cover", className)}
+      className={cn("object-contain", className)}
       onError={() => setError(true)}
     />
   );

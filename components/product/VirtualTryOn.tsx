@@ -4,7 +4,6 @@ import { useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { downloadImage } from "@/lib/share-image";
 import {
-  Camera,
   Loader2,
   AlertCircle,
   Download,
@@ -13,6 +12,7 @@ import {
   ShieldCheck,
   X,
 } from "lucide-react";
+import { HangerPlusIcon } from "@/components/icons/HangerPlusIcon";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -150,7 +150,7 @@ export function VirtualTryOn({ productId, onResult, onClear }: Props) {
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
-            <Camera className="h-4 w-4 text-indigo-500" />
+            <HangerPlusIcon className="h-4 w-4 text-indigo-500" />
             Virtual Try-On
           </h3>
           <p className="text-xs text-gray-400 mt-0.5">
@@ -185,7 +185,7 @@ export function VirtualTryOn({ productId, onResult, onClear }: Props) {
           onDragOver={(e) => e.preventDefault()}
         >
           <div className="h-12 w-12 rounded-2xl bg-indigo-50 flex items-center justify-center">
-            <Camera className="h-6 w-6 text-indigo-400" />
+            <HangerPlusIcon className="h-6 w-6 text-indigo-400" />
           </div>
           <div className="text-center">
             <p className="text-sm font-medium text-gray-700">
@@ -254,7 +254,7 @@ export function VirtualTryOn({ productId, onResult, onClear }: Props) {
               "hover:opacity-90 active:scale-[0.98] transition-all"
             )}
           >
-            <Camera className="h-4 w-4" />
+            <HangerPlusIcon className="h-4 w-4" />
             Generate Try-On
           </button>
         </div>

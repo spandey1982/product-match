@@ -22,7 +22,9 @@ import {
   IndianRupee,
   Layers,
   Trash2,
+  Expand,
 } from "lucide-react";
+import { ProductImageViewer } from "@/components/product/ProductImageViewer";
 
 interface Props {
   product: Product;
@@ -57,6 +59,10 @@ export function ProductDetailView({ product }: Props) {
   const [refreshing, setRefreshing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+
+  const productImages = [product.imageUrl, product.modelImageUrl].filter(Boolean) as string[];
+  const imageLabels = productImages.map((_, i) => (i === 0 ? "Product" : "On model"));
 
   async function handleDelete() {
     if (!confirmDelete) { setConfirmDelete(true); return; }
@@ -101,6 +107,16 @@ export function ProductDetailView({ product }: Props) {
 
   return (
     <div>
+      {/* Full-screen product image viewer */}
+      {viewerIndex !== null && productImages.length > 0 && (
+        <ProductImageViewer
+          images={productImages}
+          labels={imageLabels}
+          initialIndex={viewerIndex}
+          onClose={() => setViewerIndex(null)}
+        />
+      )}
+
       {/* Back */}
       <Link
         href="/catalog"
@@ -113,14 +129,23 @@ export function ProductDetailView({ product }: Props) {
       <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-8">
         {/* LEFT — Product details */}
         <div className="space-y-6">
-          {/* Image */}
-          <div className="relative rounded-3xl overflow-hidden aspect-[3/4] bg-gray-50 shadow-sm border border-gray-100">
+          {/* Image — click to open full-screen viewer */}
+          <div
+            className="relative rounded-3xl overflow-hidden aspect-[3/4] bg-gray-50 shadow-sm border border-gray-100 cursor-zoom-in group"
+            onClick={() => setViewerIndex(0)}
+          >
             <ImageCarousel
               images={[product.imageUrl, product.modelImageUrl]}
               title={product.title}
               category={product.category}
               className="w-full h-full"
             />
+            {/* Expand hint — appears on hover */}
+            <div className="absolute top-3 right-3 z-30 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+              <div className="h-7 w-7 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center text-white">
+                <Expand className="h-3.5 w-3.5" />
+              </div>
+            </div>
             <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/40 to-transparent p-4 z-20 pointer-events-none">
               <div className="flex items-center gap-2">
                 <Badge variant="purple" className="bg-white/90 text-indigo-700 backdrop-blur-sm">

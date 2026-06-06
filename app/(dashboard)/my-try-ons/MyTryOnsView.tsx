@@ -3,7 +3,6 @@
 import { useRef, useState } from "react";
 import Link from "next/link";
 import {
-  Camera,
   Loader2,
   Heart,
   Trash2,
@@ -18,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { useTrialRoom } from "@/components/trial-room/TrialRoomProvider";
+import { HangerPlusIcon } from "@/components/icons/HangerPlusIcon";
 import { TryOnViewer } from "@/components/trial-room/TryOnViewer";
 import { cn } from "@/lib/utils";
 import type { TryOnEntry } from "@/lib/trial-room-types";
@@ -356,7 +356,7 @@ export function MyTryOnsView() {
           </p>
         </div>
         <div className="bg-white border border-gray-100 rounded-3xl p-12 text-center shadow-sm">
-          <Camera className="h-12 w-12 text-gray-200 mx-auto mb-3" />
+          <HangerPlusIcon className="h-12 w-12 text-gray-200 mx-auto mb-3" />
           <p className="text-sm font-medium text-gray-700 mb-1">No customer photo yet</p>
           <p className="text-xs text-gray-400 max-w-xs mx-auto mb-5">
             Set up the Trial Room by uploading a customer photograph, then browse the catalog to begin.
@@ -423,7 +423,7 @@ export function MyTryOnsView() {
           {/* No try-ons yet — prompt within the right column */}
           {tryOns.length === 0 ? (
             <div className="bg-white border border-gray-100 rounded-3xl p-10 text-center shadow-sm">
-              <Camera className="h-10 w-10 text-gray-200 mx-auto mb-3" />
+              <HangerPlusIcon className="h-10 w-10 text-gray-200 mx-auto mb-3" />
               <p className="text-sm font-medium text-gray-700 mb-1">No try-ons yet</p>
               <p className="text-xs text-gray-400 max-w-xs mx-auto mb-5">
                 Tap the hanger icon on any product in the catalog to add it for try-on.
