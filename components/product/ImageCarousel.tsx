@@ -72,7 +72,7 @@ export function ImageCarousel({ images, title, category, className, labels }: Im
 
       {/* Prev / Next arrows — visible on hover desktop */}
       <button
-        onClick={(e) => { e.preventDefault(); prev(); }}
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); prev(); }}
         className="absolute left-1.5 top-1/2 -translate-y-1/2 h-6 w-6 rounded-full bg-white/80 backdrop-blur-sm shadow flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10 text-gray-700 hover:bg-white"
         aria-label="Previous image"
       >
@@ -81,7 +81,7 @@ export function ImageCarousel({ images, title, category, className, labels }: Im
         </svg>
       </button>
       <button
-        onClick={(e) => { e.preventDefault(); next(); }}
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); next(); }}
         className="absolute right-1.5 top-1/2 -translate-y-1/2 h-6 w-6 rounded-full bg-white/80 backdrop-blur-sm shadow flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10 text-gray-700 hover:bg-white"
         aria-label="Next image"
       >
@@ -95,7 +95,7 @@ export function ImageCarousel({ images, title, category, className, labels }: Im
         {validImages.map((_, i) => (
           <button
             key={i}
-            onClick={(e) => { e.preventDefault(); setIndex(i); }}
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIndex(i); }}
             className={cn(
               "rounded-full transition-all duration-200",
               i === index
