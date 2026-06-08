@@ -18,16 +18,22 @@ import { TryOnEntry, TryOnStatus, WishlistEntry } from "@/lib/trial-room-types";
 /** Maximum number of non-failed try-ons allowed at the same time. */
 export const TRYON_LIMIT = 5;
 
+// ─── Storage key ─────────────────────────────────────────────────────────────
+
+const STORAGE_KEY = "trial-room-v1";
+
 // ─── State + context shape ────────────────────────────────────────────────────
 
 interface TrialRoomState {
   photo: File | null;
   photoPreviewUrl: string | null;
+  /** Data-URL copy of the photo used for localStorage persistence. */
+  photoDataUrl: string | null;
   tryOns: TryOnEntry[];
   wishlist: WishlistEntry[];
 }
 
-export interface TrialRoomContextValue extends TrialRoomState {
+export interface TrialRoomContextValue extends Omit<TrialRoomState, "photoDataUrl"> {
   /** Set the active user photo. Creates a blob preview URL. */
   setPhoto: (file: File) => void;
   /** Clear the active user photo and its preview URL. */
@@ -88,24 +94,104 @@ export function useTrialRoom(): TrialRoomContextValue {
   return ctx;
 }
 
-// ─── Initial state ────────────────────────────────────────────────────────────
+// ─── Persistence helpers ──────────────────────────────────────────────────────
 
-const INITIAL_STATE: TrialRoomState = {
-  photo: null,
-  photoPreviewUrl: null,
-  tryOns: [],
-  wishlist: [],
-};
+/** Convert a data-URL string back into a File object. */
+function dataUrlToFile(dataUrl: string, filename: string): File {
+  const [header, data] = dataUrl.split(",");
+  const mime = header.match(/:(.*?);/)?.[1] ?? "image/jpeg";
+  const binary = atob(data);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new File([bytes], filename, { type: mime });
+}
+
+/** Read localStorage and reconstruct initial state. Safe to call during SSR. */
+function loadPersistedState(): TrialRoomState {
+  const INITIAL: TrialRoomState = {
+    photo: null,
+    photoPreviewUrl: null,
+    photoDataUrl: null,
+    tryOns: [],
+    wishlist: [],
+  };
+
+  if (typeof window === "undefined") return INITIAL;
+
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return INITIAL;
+
+    const { photoDataUrl, tryOns, wishlist } = JSON.parse(raw) as {
+      photoDataUrl?: string | null;
+      tryOns?: TryOnEntry[];
+      wishlist?: WishlistEntry[];
+    };
+
+    // Any entry that was mid-generation when the page was closed can never
+    // complete now — downgrade it to "failed" so the user can retry.
+    const restoredTryOns = (tryOns ?? []).map((t) =>
+      t.status === "generating"
+        ? {
+            ...t,
+            status: "failed" as TryOnStatus,
+            errorMessage: "Session was interrupted. Please retry.",
+          }
+        : t
+    );
+
+    let photo: File | null = null;
+    let photoPreviewUrl: string | null = null;
+
+    if (photoDataUrl) {
+      // Data URLs are valid img src values — no blob needed for display.
+      photoPreviewUrl = photoDataUrl;
+      // Reconstruct the File so addToQueue / retryTryOn can still use it.
+      photo = dataUrlToFile(photoDataUrl, "customer-photo.jpg");
+    }
+
+    return {
+      photo,
+      photoPreviewUrl,
+      photoDataUrl: photoDataUrl ?? null,
+      tryOns: restoredTryOns,
+      wishlist: wishlist ?? [],
+    };
+  } catch {
+    return INITIAL;
+  }
+}
+
+/** Write the serialisable slice to localStorage. Silently swallows quota errors. */
+function persistState(
+  photoDataUrl: string | null,
+  tryOns: TryOnEntry[],
+  wishlist: WishlistEntry[]
+) {
+  try {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ photoDataUrl, tryOns, wishlist })
+    );
+  } catch {
+    // Storage quota exceeded — non-fatal
+  }
+}
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function TrialRoomProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<TrialRoomState>(INITIAL_STATE);
+  const [state, setState] = useState<TrialRoomState>(loadPersistedState);
   const [setupHintActive, setSetupHintActive] = useState(false);
   const hintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Clean up hint timer on unmount
   useEffect(() => () => { if (hintTimerRef.current) clearTimeout(hintTimerRef.current); }, []);
+
+  // ── Persist state to localStorage whenever the relevant slices change ──────
+  useEffect(() => {
+    persistState(state.photoDataUrl, state.tryOns, state.wishlist);
+  }, [state.photoDataUrl, state.tryOns, state.wishlist]);
 
   const triggerSetupHint = useCallback(() => {
     if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
@@ -127,20 +213,30 @@ export function TrialRoomProvider({ children }: { children: React.ReactNode }) {
   // ── Photo ──────────────────────────────────────────────────────────────────
 
   const setPhoto = useCallback((file: File) => {
+    // Immediately update the preview with a fast blob URL
     setState((prev) => {
-      if (prev.photoPreviewUrl) URL.revokeObjectURL(prev.photoPreviewUrl);
+      if (prev.photoPreviewUrl?.startsWith("blob:")) URL.revokeObjectURL(prev.photoPreviewUrl);
       return {
         ...prev,
         photo: file,
         photoPreviewUrl: URL.createObjectURL(file),
+        photoDataUrl: null, // populated async below
       };
     });
+
+    // Async: convert to data URL for persistence
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = (e.target?.result as string) ?? null;
+      setState((prev) => ({ ...prev, photoDataUrl: dataUrl }));
+    };
+    reader.readAsDataURL(file);
   }, []);
 
   const clearPhoto = useCallback(() => {
     setState((prev) => {
-      if (prev.photoPreviewUrl) URL.revokeObjectURL(prev.photoPreviewUrl);
-      return { ...prev, photo: null, photoPreviewUrl: null };
+      if (prev.photoPreviewUrl?.startsWith("blob:")) URL.revokeObjectURL(prev.photoPreviewUrl);
+      return { ...prev, photo: null, photoPreviewUrl: null, photoDataUrl: null };
     });
   }, []);
 
@@ -281,14 +377,17 @@ export function TrialRoomProvider({ children }: { children: React.ReactNode }) {
     }));
   }, []);
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
+  // ── Clear all — also wipes localStorage ───────────────────────────────────
 
   const clearAll = useCallback(() => {
     setState((prev) => {
-      if (prev.photoPreviewUrl) URL.revokeObjectURL(prev.photoPreviewUrl);
-      return INITIAL_STATE;
+      if (prev.photoPreviewUrl?.startsWith("blob:")) URL.revokeObjectURL(prev.photoPreviewUrl);
+      return { photo: null, photoPreviewUrl: null, photoDataUrl: null, tryOns: [], wishlist: [] };
     });
+    try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
   }, []);
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
 
   const findActiveTryOn = useCallback(
     (productId: string) =>
@@ -322,7 +421,10 @@ export function TrialRoomProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<TrialRoomContextValue>(
     () => ({
-      ...state,
+      photo: state.photo,
+      photoPreviewUrl: state.photoPreviewUrl,
+      tryOns: state.tryOns,
+      wishlist: state.wishlist,
       setPhoto,
       clearPhoto,
       addToQueue,
