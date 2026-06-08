@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Check, Loader2, RotateCcw, ExternalLink, Info } from "lucide-react";
+import { Check, Loader2, RotateCcw, ExternalLink } from "lucide-react";
 import { HangerPlusIcon } from "@/components/icons/HangerPlusIcon";
+import { TrialRoomSetupModal } from "@/components/trial-room/TrialRoomSetupModal";
 import { useTrialRoom } from "@/components/trial-room/TrialRoomProvider";
 import { cn } from "@/lib/utils";
 import type { Product } from "@/types";
@@ -15,31 +16,24 @@ interface Props {
 /**
  * Context-aware CTA on the product detail page.
  *
- * When no photo has been uploaded the button no longer navigates away.
- * Instead it shows an inline guidance message directing the user to set up
- * the Trial Room from the catalog, keeping them on the current product page.
+ * When no photo has been uploaded the button opens the Trial Room setup
+ * modal in-place so the user never has to leave the product page.
+ * After uploading a photo they can immediately add the product for try-on.
  */
 export function TryOnQueueButton({ product }: Props) {
-  const { photo, addToQueue, retryTryOn, findActiveTryOn, triggerSetupHint } =
-    useTrialRoom();
-  const [showHint, setShowHint] = useState(false);
+  const { photo, addToQueue, retryTryOn, findActiveTryOn } = useTrialRoom();
+  const [setupModalOpen, setSetupModalOpen] = useState(false);
 
   if (!product.imageUrl) return null;
 
   const entry = findActiveTryOn(product.id);
 
-  // ── No photo: show guidance inline, do not navigate ────────────────────
+  // ── No photo: open setup modal inline ─────────────────────────────────────
   if (!photo) {
-    function handleSetupClick() {
-      triggerSetupHint();
-      setShowHint(true);
-      setTimeout(() => setShowHint(false), 4000);
-    }
-
     return (
-      <div className="space-y-2">
+      <>
         <button
-          onClick={handleSetupClick}
+          onClick={() => setSetupModalOpen(true)}
           className={cn(
             "w-full flex items-center justify-center gap-2 py-3 rounded-2xl",
             "text-sm font-semibold",
@@ -51,27 +45,14 @@ export function TryOnQueueButton({ product }: Props) {
           Set up Trial Room to try this on
         </button>
 
-        {showHint && (
-          <div className="flex items-start gap-2.5 p-3 bg-indigo-50 border border-indigo-100 rounded-2xl">
-            <Info className="h-4 w-4 text-indigo-500 shrink-0 mt-0.5" />
-            <p className="text-xs text-indigo-800 leading-relaxed">
-              Go to the{" "}
-              <Link
-                href="/catalog"
-                className="font-semibold underline underline-offset-2 hover:text-indigo-600"
-              >
-                Catalog
-              </Link>{" "}
-              and tap <strong>Set Up Trial Room</strong> to upload a customer
-              photo before adding try-ons.
-            </p>
-          </div>
+        {setupModalOpen && (
+          <TrialRoomSetupModal onClose={() => setSetupModalOpen(false)} />
         )}
-      </div>
+      </>
     );
   }
 
-  // ── Generating ─────────────────────────────────────────────────────────
+  // ── Generating ─────────────────────────────────────────────────────────────
   if (entry?.status === "generating") {
     return (
       <button
@@ -84,7 +65,7 @@ export function TryOnQueueButton({ product }: Props) {
     );
   }
 
-  // ── Done ────────────────────────────────────────────────────────────────
+  // ── Done ────────────────────────────────────────────────────────────────────
   if (entry?.status === "done") {
     return (
       <div className="flex items-center gap-2">
@@ -103,7 +84,7 @@ export function TryOnQueueButton({ product }: Props) {
     );
   }
 
-  // ── Failed ─────────────────────────────────────────────────────────────
+  // ── Failed ──────────────────────────────────────────────────────────────────
   if (entry?.status === "failed") {
     return (
       <div className="space-y-2">
@@ -126,7 +107,7 @@ export function TryOnQueueButton({ product }: Props) {
     );
   }
 
-  // ── Default: add to queue ──────────────────────────────────────────────
+  // ── Default: add to queue ───────────────────────────────────────────────────
   return (
     <button
       onClick={() => addToQueue(product)}
