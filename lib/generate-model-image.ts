@@ -2,8 +2,10 @@ import { readFile } from "fs/promises";
 import { join } from "path";
 import { db } from "@/lib/db";
 import { cloudinary } from "@/lib/cloudinary";
+import { getImageDimensions, fmtBytes } from "@/lib/image-utils";
+import { appendResearchLog, type ImageMeta } from "@/lib/research-log";
 
-const GEMINI_MODEL = "nano-banana-pro-preview";
+const GEMINI_MODEL = "gemini-3.1-flash-image";
 
 /** Build a prompt tailored to the product category and gender */
 function buildPrompt(category: string, color: string, gender: string): string {
@@ -27,9 +29,9 @@ function buildPrompt(category: string, color: string, gender: string): string {
 }
 
 /**
- * Generates a model image for a product using nano-banana-pro-preview.
- * Reads the product image from public/uploads, sends it to Gemini,
- * saves the result, and updates the product record.
+ * Generates a model image for a product using Gemini image generation.
+ * Reads the product image from Cloudinary or public/uploads, sends it to
+ * Gemini, saves the result, and updates the product record.
  * Fire-and-forget safe — all errors are caught internally.
  */
 export async function generateModelImage(productId: string): Promise<void> {
@@ -37,16 +39,14 @@ export async function generateModelImage(productId: string): Promise<void> {
   if (!apiKey || apiKey === "your-gemini-api-key-here") return;
 
   try {
-    // Fetch product
     const product = await db.product.findUnique({ where: { id: productId } });
     if (!product?.imageUrl) return;
 
-    // Read source image — support both Cloudinary URLs and legacy local files
+    // ── Read source image ─────────────────────────────────────────────────
     let imageBuffer: Buffer;
     let mimeTypeHint = "image/jpeg";
 
     if (product.imageUrl.startsWith("http")) {
-      // Cloudinary or any external URL — fetch directly
       const fetchRes = await fetch(product.imageUrl);
       if (!fetchRes.ok) {
         console.error(`[model-image] failed to fetch image: ${product.imageUrl}`);
@@ -55,7 +55,6 @@ export async function generateModelImage(productId: string): Promise<void> {
       mimeTypeHint = fetchRes.headers.get("content-type") ?? "image/jpeg";
       imageBuffer = Buffer.from(await fetchRes.arrayBuffer());
     } else if (product.imageUrl.startsWith("/uploads/")) {
-      // Legacy local file
       const localPath = join(process.cwd(), "public", product.imageUrl);
       try {
         imageBuffer = await readFile(localPath);
@@ -64,11 +63,9 @@ export async function generateModelImage(productId: string): Promise<void> {
         return;
       }
     } else {
-      return; // unsupported URL format
+      return;
     }
 
-    const base64 = imageBuffer.toString("base64");
-    // Detect mime type from extension or content-type header
     const ext = product.imageUrl.split("?")[0].split(".").pop()?.toLowerCase() ?? "jpg";
     const mimeMap: Record<string, string> = {
       jpg: "image/jpeg", jpeg: "image/jpeg",
@@ -76,11 +73,18 @@ export async function generateModelImage(productId: string): Promise<void> {
     };
     const mimeType = mimeMap[ext] ?? mimeTypeHint;
 
+    // ── Log input image metadata ──────────────────────────────────────────
+    const inputDims = getImageDimensions(imageBuffer, mimeType);
+    console.log(`[model-image] ── Input image ───────────────────────────────`);
+    console.log(`[model-image] Product image: ${fmtBytes(imageBuffer.length)}  mime=${mimeType}  ${inputDims ? `${inputDims.width}×${inputDims.height}px` : "dims=unknown"}`);
+    console.log(`[model-image] Product: ${product.title} (${product.category} · ${product.color})`);
+    console.log(`[model-image] Calling Gemini model: ${GEMINI_MODEL}`);
+
     const prompt = buildPrompt(product.category, product.color, product.gender);
+    const base64 = imageBuffer.toString("base64");
 
-    console.log(`[model-image] Calling nano-banana for product ${productId}`);
+    const t0 = Date.now();
 
-    // Call nano-banana
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
       {
@@ -100,16 +104,37 @@ export async function generateModelImage(productId: string): Promise<void> {
       }
     );
 
-    console.log(`[model-image] Gemini responded: ${res.status}`);
+    const generationMs = Date.now() - t0;
+    console.log(`[model-image] Gemini responded: ${res.status}  (${generationMs} ms)`);
+
     if (!res.ok) {
       const err = await res.text();
       console.error(`[model-image] Gemini error ${res.status}:`, err.slice(0, 200));
       return;
     }
 
-    const data = await res.json();
+    const data = await res.json() as {
+      candidates?: Array<{
+        content?: { parts?: Array<{ inlineData?: { mimeType: string; data: string } }> };
+        finishReason?: string;
+      }>;
+      usageMetadata?: {
+        promptTokenCount?: number;
+        candidatesTokenCount?: number;
+        totalTokenCount?: number;
+      };
+    };
+
+    // ── Log token usage ───────────────────────────────────────────────────
+    const usage = data.usageMetadata;
+    const tokenInput  = usage?.promptTokenCount     ?? null;
+    const tokenOutput = usage?.candidatesTokenCount ?? null;
+    const tokenTotal  = usage?.totalTokenCount      ?? null;
+    console.log(`[model-image] Tokens — input: ${tokenInput ?? "n/a"}  output: ${tokenOutput ?? "n/a"}  total: ${tokenTotal ?? "n/a"}`);
+
     const parts = data.candidates?.[0]?.content?.parts ?? [];
-    console.log(`[model-image] Parts received: ${parts.length}, finish: ${data.candidates?.[0]?.finishReason}`);
+    console.log(`[model-image] Parts received: ${parts.length}  finish: ${data.candidates?.[0]?.finishReason}`);
+
     const imagePart = parts.find(
       (p: { inlineData?: { mimeType: string; data: string } }) => p.inlineData?.data
     );
@@ -119,18 +144,70 @@ export async function generateModelImage(productId: string): Promise<void> {
       return;
     }
 
-    // Upload generated image to Cloudinary
-    const outMime = imagePart.inlineData.mimeType ?? "image/jpeg";
-    const dataUri = `data:${outMime};base64,${imagePart.inlineData.data}`;
+    // ── Log output image metadata ─────────────────────────────────────────
+    const outMime = imagePart.inlineData!.mimeType ?? "image/jpeg";
+    const outBuffer = Buffer.from(imagePart.inlineData!.data, "base64");
+    const outDims = getImageDimensions(outBuffer, outMime);
+
+    console.log(`[model-image] ── Output image ──────────────────────────────`);
+    console.log(`[model-image] Size: ${fmtBytes(outBuffer.length)}  mime=${outMime}  ${outDims ? `${outDims.width}×${outDims.height}px` : "dims=unknown"}`);
+
+    // ── Upload to Cloudinary ──────────────────────────────────────────────
+    const dataUri = `data:${outMime};base64,${imagePart.inlineData!.data}`;
     const uploaded = await cloudinary.uploader.upload(dataUri, {
       folder: "product-match/models",
+      tags: [
+        `product:${productId}`,
+        `category:${product.category}`,
+        `color:${product.color}`,
+      ],
+      context: {
+        product_id:    productId,
+        product_title: product.title,
+        category:      product.category,
+        color:         product.color,
+        generated_at:  new Date().toISOString(),
+      },
     });
     const modelImageUrl = uploaded.secure_url;
 
-    // Update product record — use raw SQL to bypass any cached Prisma type mapping
     await db.$executeRaw`UPDATE products SET "modelImageUrl" = ${modelImageUrl}, "updatedAt" = datetime('now') WHERE id = ${productId}`;
 
-    console.log(`[model-image] Generated for product ${productId}: ${modelImageUrl}`);
+    console.log(`[model-image] Uploaded: ${modelImageUrl}`);
+
+    // ── Write research log ────────────────────────────────────────────────
+    const inputImageMeta: ImageMeta = {
+      label:     "product-image",
+      mime:      mimeType,
+      sizeBytes: imageBuffer.length,
+      widthPx:   inputDims?.width ?? null,
+      heightPx:  inputDims?.height ?? null,
+    };
+    const outputImageMeta: ImageMeta = {
+      label:     "model-output",
+      mime:      outMime,
+      sizeBytes: outBuffer.length,
+      widthPx:   outDims?.width ?? null,
+      heightPx:  outDims?.height ?? null,
+    };
+
+    await appendResearchLog({
+      timestamp:       new Date().toISOString(),
+      type:            "model",
+      productId,
+      productTitle:    product.title,
+      productCategory: product.category,
+      productColor:    product.color,
+      userId:          "system",
+      outputUrl:       modelImageUrl,
+      generationMs,
+      inputImages:     [inputImageMeta],
+      outputImage:     outputImageMeta,
+      tokens:
+        tokenInput !== null && tokenOutput !== null && tokenTotal !== null
+          ? { input: tokenInput, output: tokenOutput, total: tokenTotal }
+          : null,
+    });
   } catch (err) {
     console.error("[model-image] Unexpected error:", err);
   }

@@ -1,10 +1,12 @@
 import { readFile } from "fs/promises";
 import { join } from "path";
 import { cloudinary } from "@/lib/cloudinary";
+import { getImageDimensions, fmtBytes } from "@/lib/image-utils";
+import { appendResearchLog, type ImageMeta } from "@/lib/research-log";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const GEMINI_MODEL = "nano-banana-pro-preview";
+const GEMINI_MODEL = "gemini-3.1-flash-image";
 
 export const TRYON_ALLOWED_MIME_TYPES = [
   "image/jpeg",
@@ -77,8 +79,12 @@ export interface TryOnInput {
   userPhotoMimeType: TryOnMimeType;
   productCategory: string;
   productColor: string;
-  /** Used only as a Cloudinary tag for organisational purposes. */
+  /** Used for Cloudinary tags and research log. */
   productId: string;
+  /** Optional — enriches the research log. */
+  productTitle?: string;
+  /** Optional — enriches the research log. */
+  userId?: string;
 }
 
 export interface TryOnResult {
@@ -112,6 +118,8 @@ export async function generateTryOn(input: TryOnInput): Promise<TryOnResult> {
     productCategory,
     productColor,
     productId,
+    productTitle = productId,
+    userId = "unknown",
   } = input;
 
   // ── Fetch product image — mirrors generate-model-image.ts strategy ──────
@@ -119,7 +127,6 @@ export async function generateTryOn(input: TryOnInput): Promise<TryOnResult> {
   let productMimeHint = "image/jpeg";
 
   if (productImageUrl.startsWith("http")) {
-    // Cloudinary or other external URL
     const productRes = await fetch(productImageUrl);
     if (!productRes.ok) {
       throw new Error(
@@ -129,7 +136,6 @@ export async function generateTryOn(input: TryOnInput): Promise<TryOnResult> {
     productMimeHint = productRes.headers.get("content-type") ?? "image/jpeg";
     productBuffer = Buffer.from(await productRes.arrayBuffer());
   } else if (productImageUrl.startsWith("/uploads/")) {
-    // Legacy local file stored in public/uploads/
     const localPath = join(process.cwd(), "public", productImageUrl);
     try {
       productBuffer = await readFile(localPath);
@@ -140,7 +146,6 @@ export async function generateTryOn(input: TryOnInput): Promise<TryOnResult> {
     throw new Error(`Unsupported product image URL format: ${productImageUrl}`);
   }
 
-  // Infer MIME type from file extension, fall back to Content-Type or jpeg
   const ext = productImageUrl.split("?")[0].split(".").pop()?.toLowerCase() ?? "jpg";
   const mimeMap: Record<string, string> = {
     jpg: "image/jpeg",
@@ -150,12 +155,23 @@ export async function generateTryOn(input: TryOnInput): Promise<TryOnResult> {
   };
   const productMime = mimeMap[ext] ?? productMimeHint;
 
+  // ── Log input image metadata ─────────────────────────────────────────────
+  const userDims = getImageDimensions(userPhotoBuffer, userPhotoMimeType);
+  const productDims = getImageDimensions(productBuffer, productMime);
+
+  console.log(`[tryon] ── Input images ──────────────────────────────────────`);
+  console.log(`[tryon] User photo   : ${fmtBytes(userPhotoBuffer.length)}  mime=${userPhotoMimeType}  ${userDims ? `${userDims.width}×${userDims.height}px` : "dims=unknown"}`);
+  console.log(`[tryon] Product image: ${fmtBytes(productBuffer.length)}  mime=${productMime}  ${productDims ? `${productDims.width}×${productDims.height}px` : "dims=unknown"}`);
+  console.log(`[tryon] Product: ${productTitle} (${productCategory} · ${productColor})`);
+  console.log(`[tryon] Calling Gemini model: ${GEMINI_MODEL}`);
+
   // ── Build request ────────────────────────────────────────────────────────
   const prompt = buildTryOnPrompt(productCategory, productColor);
   const userBase64 = userPhotoBuffer.toString("base64");
   const productBase64 = productBuffer.toString("base64");
 
-  // Part order matters: [person photo] → [garment photo] → [text instruction]
+  const t0 = Date.now();
+
   const geminiRes = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
     {
@@ -178,6 +194,9 @@ export async function generateTryOn(input: TryOnInput): Promise<TryOnResult> {
     }
   );
 
+  const generationMs = Date.now() - t0;
+  console.log(`[tryon] Gemini responded: ${geminiRes.status}  (${generationMs} ms)`);
+
   if (!geminiRes.ok) {
     const body = await geminiRes.text();
     throw new Error(
@@ -185,13 +204,25 @@ export async function generateTryOn(input: TryOnInput): Promise<TryOnResult> {
     );
   }
 
-  // ── Extract generated image ──────────────────────────────────────────────
+  // ── Parse response ───────────────────────────────────────────────────────
   const data = await geminiRes.json() as {
     candidates?: Array<{
       content?: { parts?: Array<{ inlineData?: { mimeType: string; data: string } }> };
       finishReason?: string;
     }>;
+    usageMetadata?: {
+      promptTokenCount?: number;
+      candidatesTokenCount?: number;
+      totalTokenCount?: number;
+    };
   };
+
+  // ── Log token usage ──────────────────────────────────────────────────────
+  const usage = data.usageMetadata;
+  const tokenInput  = usage?.promptTokenCount     ?? null;
+  const tokenOutput = usage?.candidatesTokenCount ?? null;
+  const tokenTotal  = usage?.totalTokenCount      ?? null;
+  console.log(`[tryon] Tokens — input: ${tokenInput ?? "n/a"}  output: ${tokenOutput ?? "n/a"}  total: ${tokenTotal ?? "n/a"}`);
 
   const parts = data.candidates?.[0]?.content?.parts ?? [];
   const imagePart = parts.find((p) => p.inlineData?.data);
@@ -203,14 +234,75 @@ export async function generateTryOn(input: TryOnInput): Promise<TryOnResult> {
     );
   }
 
-  // ── Upload result to Cloudinary ──────────────────────────────────────────
-  // The user's photo is discarded here — only the output is persisted.
+  // ── Log output image metadata ────────────────────────────────────────────
   const outMime = imagePart.inlineData.mimeType ?? "image/jpeg";
+  const outBuffer = Buffer.from(imagePart.inlineData.data, "base64");
+  const outDims = getImageDimensions(outBuffer, outMime);
+
+  console.log(`[tryon] ── Output image ─────────────────────────────────────`);
+  console.log(`[tryon] Size: ${fmtBytes(outBuffer.length)}  mime=${outMime}  ${outDims ? `${outDims.width}×${outDims.height}px` : "dims=unknown"}`);
+
+  // ── Upload result to Cloudinary ──────────────────────────────────────────
   const dataUri = `data:${outMime};base64,${imagePart.inlineData.data}`;
 
   const uploaded = await cloudinary.uploader.upload(dataUri, {
     folder: "product-match/tryon",
-    tags: [`product:${productId}`],
+    tags: [
+      `product:${productId}`,
+      `category:${productCategory}`,
+      `color:${productColor}`,
+      `user:${userId}`,
+    ],
+    context: {
+      product_id:    productId,
+      product_title: productTitle,
+      category:      productCategory,
+      color:         productColor,
+      generated_at:  new Date().toISOString(),
+    },
+  });
+
+  console.log(`[tryon] Uploaded to Cloudinary: ${uploaded.secure_url}`);
+
+  // ── Write research log ───────────────────────────────────────────────────
+  const userImageMeta: ImageMeta = {
+    label:      "user-photo",
+    mime:       userPhotoMimeType,
+    sizeBytes:  userPhotoBuffer.length,
+    widthPx:    userDims?.width ?? null,
+    heightPx:   userDims?.height ?? null,
+  };
+  const productImageMeta: ImageMeta = {
+    label:      "product-image",
+    mime:       productMime,
+    sizeBytes:  productBuffer.length,
+    widthPx:    productDims?.width ?? null,
+    heightPx:   productDims?.height ?? null,
+  };
+  const outputImageMeta: ImageMeta = {
+    label:      "tryon-output",
+    mime:       outMime,
+    sizeBytes:  outBuffer.length,
+    widthPx:    outDims?.width ?? null,
+    heightPx:   outDims?.height ?? null,
+  };
+
+  await appendResearchLog({
+    timestamp:       new Date().toISOString(),
+    type:            "tryon",
+    productId,
+    productTitle,
+    productCategory,
+    productColor,
+    userId,
+    outputUrl:       uploaded.secure_url,
+    generationMs,
+    inputImages:     [userImageMeta, productImageMeta],
+    outputImage:     outputImageMeta,
+    tokens:
+      tokenInput !== null && tokenOutput !== null && tokenTotal !== null
+        ? { input: tokenInput, output: tokenOutput, total: tokenTotal }
+        : null,
   });
 
   return { url: uploaded.secure_url };

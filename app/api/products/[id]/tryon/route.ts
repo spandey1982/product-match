@@ -145,6 +145,8 @@ export async function POST(
       productCategory: product.category,
       productColor: product.color,
       productId: product.id,
+      productTitle: product.title,
+      userId: session.id,
     });
 
     return NextResponse.json({ tryOnUrl: result.url });
