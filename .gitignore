@@ -33,6 +33,10 @@ gen-lang-client-*.json
 # research logs (generated at runtime, never committed)
 /logs/
 
+# local API test artifacts (contain session cookies)
+cookies.txt
+login.json
+
 # debug
 npm-debug.log*
 yarn-debug.log*

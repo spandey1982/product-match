@@ -32,7 +32,7 @@ interface VertexConfig {
  */
 export function getVertexConfig(): VertexConfig | null {
   const projectId = process.env.GOOGLE_CLOUD_PROJECT;
-  const location = process.env.GOOGLE_CLOUD_LOCATION || "us-central1";
+  const location = process.env.GOOGLE_CLOUD_LOCATION || 'us-central1';
   if (!projectId) return null;
   return { projectId, location };
 }

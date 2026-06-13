@@ -30,7 +30,7 @@ all existing functionality without them.
    (billing must be enabled — Virtual Try-On is billed per generated image,
    see the Vertex AI / Imagen pricing page).
 2. **Enable the Vertex AI API**: Console → APIs & Services → Library →
-   "Agent Platform API" → Enable.
+   "aiplatform.googleapis.com" → Enable.
 3. **Create a service account**: IAM & Admin → Service Accounts → Create
    (e.g. `product-match-vto`). Grant role **Vertex AI User**
    (`roles/aiplatform.user`).
@@ -87,3 +87,49 @@ appended to `logs/tryon-research.jsonl` with `"type": "tryon-vertex"`.
 1. Instant: set `ENABLE_VERTEX_TRYON="false"` (or remove it) and restart —
    the route returns 503, everything else is already unchanged.
 2. Full: revert the feature commit. No database or schema changes exist.
+
+## Credentials: local development vs deployment
+
+The code uses `new GoogleAuth({ scopes })` with no hardcoded credential, so it
+resolves Application Default Credentials (ADC) automatically and works with
+**every** mechanism below — no code change needed to switch between them. Only
+*how the credential is supplied* changes per environment.
+
+| Environment | Credential mechanism | How |
+|---|---|---|
+| **Local dev** | User ADC | `gcloud auth application-default login` + `gcloud auth application-default set-quota-project <project>`. Leave `GOOGLE_APPLICATION_CREDENTIALS` empty. |
+| **GCP (Cloud Run / GKE / GCE)** | Attached service account (keyless) | Deploy with a runtime SA that has `roles/aiplatform.user`. Nothing to configure in `.env`. Sidesteps any "disable SA key creation" org policy. |
+| **Railway / Vercel / non-GCP** | SA key file, or Workload Identity Federation | Point `GOOGLE_APPLICATION_CREDENTIALS` at a key file, or use WIF. Requires a project where SA-key creation is permitted. |
+
+**Important:** `gcloud auth application-default login` is a **local-only** mechanism.
+The ADC file it writes lives on the developer's machine and is tied to a personal
+Google account — it does **not** exist on a deploy server. A deployed instance
+must use one of the other two rows. Until production credentials are configured,
+keep `ENABLE_VERTEX_TRYON="false"` in that environment so the route returns a
+clean 503 and nothing else is affected.
+
+**Railway note:** Railway can't easily mount a key *file*. Passing the SA key as
+an inline JSON env var requires a small additive change (parse the JSON and pass
+it as `credentials` to `GoogleAuth`). Not implemented yet — add when deploying.
+
+**Project note:** Vertex and Gemini do not need to share a project. Gemini uses
+its API key on its AI Studio (`gen-lang-client-*`) project; Vertex uses
+`GOOGLE_CLOUD_PROJECT` + ADC on a standard GCP project. AI Studio
+(`gen-lang-client-*`) projects cannot serve Vertex publisher-model `predict`
+calls — use a standard project for Vertex.
+
+## Troubleshooting
+
+**403 `Permission 'aiplatform.endpoints.predict' denied … (or it may not exist)`**
+- The identity (SA or user) lacks a Vertex predict role. Grant **Vertex AI User**
+  (`roles/aiplatform.user`) or **Vertex AI Administrator** (`roles/aiplatform.admin`).
+  Note "AI Platform Admin" (`roles/ml.admin`) is the *legacy* product and does
+  **not** grant `aiplatform.*` permissions.
+- If even a known model (e.g. `gemini-2.0-flash-001`) returns the same 403, the
+  problem is project-wide, not model-specific — most often an AI Studio
+  (`gen-lang-client-*`) project that cannot do Vertex. Switch to a standard project.
+- Confirm `GOOGLE_CLOUD_PROJECT` is the same project where the API is enabled,
+  the role is granted, and billing is active.
+
+**429 `RESOURCE_EXHAUSTED` / "prepayment credits are depleted"** — billing balance,
+not permissions. This affects the Gemini provider; top up the billing account.
