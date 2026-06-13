@@ -153,6 +153,13 @@ Recommendation query params: `?limit=8&refresh=true`
 DATABASE_URL="file:./prisma/dev.db"
 JWT_SECRET="your-secret-minimum-32-chars"
 NEXT_PUBLIC_APP_URL="http://localhost:3000"
+
+# Optional — Vertex AI Virtual Try-On (second provider, off by default)
+# See docs/VERTEX_TRYON_SETUP.md
+ENABLE_VERTEX_TRYON="false"
+GOOGLE_CLOUD_PROJECT=""
+GOOGLE_CLOUD_LOCATION="us-central1"
+GOOGLE_APPLICATION_CREDENTIALS=""
 ```
 
 ## npm Scripts

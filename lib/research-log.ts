@@ -23,7 +23,7 @@ export interface ImageMeta {
 
 export interface ResearchLogEntry {
   timestamp: string;           // ISO 8601
-  type: "tryon" | "model";
+  type: "tryon" | "model" | "tryon-vertex";
   productId: string;
   productTitle: string;
   productCategory: string;

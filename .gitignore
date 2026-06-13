@@ -24,6 +24,12 @@
 .DS_Store
 *.pem
 
+# Google Cloud service account keys (never commit credentials)
+service-account*.json
+*-service-account.json
+gcp-credentials*.json
+gen-lang-client-*.json
+
 # research logs (generated at runtime, never committed)
 /logs/
 
