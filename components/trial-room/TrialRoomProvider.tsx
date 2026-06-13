@@ -106,21 +106,27 @@ function dataUrlToFile(dataUrl: string, filename: string): File {
   return new File([bytes], filename, { type: mime });
 }
 
-/** Read localStorage and reconstruct initial state. Safe to call during SSR. */
-function loadPersistedState(): TrialRoomState {
-  const INITIAL: TrialRoomState = {
-    photo: null,
-    photoPreviewUrl: null,
-    photoDataUrl: null,
-    tryOns: [],
-    wishlist: [],
-  };
+/** Empty state — used for SSR and the first client render so the two match. */
+const INITIAL_STATE: TrialRoomState = {
+  photo: null,
+  photoPreviewUrl: null,
+  photoDataUrl: null,
+  tryOns: [],
+  wishlist: [],
+};
 
-  if (typeof window === "undefined") return INITIAL;
+/**
+ * Read localStorage and reconstruct state. Must NOT be used as the initial
+ * useState value: it would diverge between server (empty) and client
+ * (persisted), causing a hydration mismatch. Call it from an effect after
+ * mount instead.
+ */
+function loadPersistedState(): TrialRoomState {
+  if (typeof window === "undefined") return INITIAL_STATE;
 
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return INITIAL;
+    if (!raw) return INITIAL_STATE;
 
     const { photoDataUrl, tryOns, wishlist } = JSON.parse(raw) as {
       photoDataUrl?: string | null;
@@ -158,7 +164,7 @@ function loadPersistedState(): TrialRoomState {
       wishlist: wishlist ?? [],
     };
   } catch {
-    return INITIAL;
+    return INITIAL_STATE;
   }
 }
 
@@ -181,17 +187,35 @@ function persistState(
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function TrialRoomProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<TrialRoomState>(loadPersistedState);
+  // Start from deterministic empty state so the server render and the first
+  // client render match (avoids hydration mismatch). The persisted state is
+  // loaded from localStorage after mount in the effect below.
+  const [state, setState] = useState<TrialRoomState>(INITIAL_STATE);
+  const [hydrated, setHydrated] = useState(false);
   const [setupHintActive, setSetupHintActive] = useState(false);
   const hintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Hydrate from localStorage once, after the first client render ──────────
+  // localStorage is browser-only, so it cannot be read during render without
+  // diverging from the server HTML. A one-time mount sync from an external
+  // store is the intended use of setState-in-effect; the lint rule can't
+  // distinguish it from a render-loop, so it's disabled for this line only.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time hydration from localStorage (browser-only store)
+    setState(loadPersistedState());
+    setHydrated(true);
+  }, []);
 
   // Clean up hint timer on unmount
   useEffect(() => () => { if (hintTimerRef.current) clearTimeout(hintTimerRef.current); }, []);
 
   // ── Persist state to localStorage whenever the relevant slices change ──────
+  // Guarded on `hydrated` so the initial empty state can't overwrite persisted
+  // data before it has been loaded.
   useEffect(() => {
+    if (!hydrated) return;
     persistState(state.photoDataUrl, state.tryOns, state.wishlist);
-  }, [state.photoDataUrl, state.tryOns, state.wishlist]);
+  }, [hydrated, state.photoDataUrl, state.tryOns, state.wishlist]);
 
   const triggerSetupHint = useCallback(() => {
     if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
