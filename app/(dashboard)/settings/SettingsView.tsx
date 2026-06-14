@@ -4,33 +4,47 @@ import { useState } from "react";
 import { Sparkles, Check, Loader2, AlertCircle, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type ProviderId = "gemini" | "vertex";
+type Mode = "gemini" | "vertex" | "auto";
 
 interface ProviderOption {
-  id: ProviderId;
+  id: "gemini" | "vertex";
   label: string;
   enabled: boolean;
 }
 
 interface Props {
-  current: ProviderId;
+  current: Mode;
   providers: ProviderOption[];
 }
 
-const DESCRIPTIONS: Record<ProviderId, string> = {
+const DESCRIPTIONS: Record<Mode, string> = {
+  auto:
+    "Automatically pick the best provider per product category (e.g. structured wear via Vertex, complex drapes like sarees via Gemini). Falls back to Gemini when a category's provider isn't available.",
   gemini:
     "Google Gemini image model. The default provider — always available when the Gemini API key is configured.",
   vertex:
     "Google Cloud Vertex AI Virtual Try-On (virtual-try-on-001). Requires Vertex to be enabled and credentials configured.",
 };
 
+interface ModeOption {
+  id: Mode;
+  label: string;
+  enabled: boolean;
+}
+
 export function SettingsView({ current, providers }: Props) {
-  const [selected, setSelected] = useState<ProviderId>(current);
-  const [saving, setSaving] = useState<ProviderId | null>(null);
+  const [selected, setSelected] = useState<Mode>(current);
+  const [saving, setSaving] = useState<Mode | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
-  async function choose(id: ProviderId) {
+  // "Auto" first, then each concrete provider. Auto is always selectable.
+  const options: ModeOption[] = [
+    { id: "auto", label: "Automatic", enabled: true },
+    ...providers,
+  ];
+
+  async function choose(id: Mode) {
     if (id === selected || saving) return;
     setError(null);
     setSaved(false);
@@ -46,13 +60,18 @@ export function SettingsView({ current, providers }: Props) {
         setError(data.error || "Could not update the provider. Please try again.");
         return;
       }
-      setSelected(data.provider as ProviderId);
+      setSelected(data.provider as Mode);
       setSaved(true);
     } catch {
       setError("Network error. Please try again.");
     } finally {
       setSaving(null);
     }
+  }
+
+  function savedLabel(mode: Mode): string {
+    if (mode === "auto") return "the best provider per category";
+    return mode === "vertex" ? "Vertex AI" : "Gemini";
   }
 
   return (
@@ -75,7 +94,7 @@ export function SettingsView({ current, providers }: Props) {
         </p>
 
         <div className="space-y-3">
-          {providers.map((p) => {
+          {options.map((p) => {
             const isSelected = selected === p.id;
             const isSaving = saving === p.id;
             const disabled = !p.enabled;
@@ -145,7 +164,7 @@ export function SettingsView({ current, providers }: Props) {
         {saved && !error && (
           <p className="mt-3 text-xs text-green-600 flex items-center gap-1">
             <Check className="h-3.5 w-3.5 shrink-0" />
-            Saved. New try-ons will use {selected === "vertex" ? "Vertex AI" : "Gemini"}.
+            Saved. New try-ons will use {savedLabel(selected)}.
           </p>
         )}
       </section>

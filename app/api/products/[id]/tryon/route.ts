@@ -83,7 +83,9 @@ export async function POST(
     // Reads the store's chosen provider (default Gemini) and falls back to
     // Gemini if the choice is unavailable, so a stale selection can't break
     // try-on. When the choice is Gemini, this is identical to prior behavior.
-    const provider = await getActiveTryOnProvider(session.id);
+    const provider = await getActiveTryOnProvider(session.id, {
+      category: product.category,
+    });
 
     if (!provider.isEnabled()) {
       return NextResponse.json(

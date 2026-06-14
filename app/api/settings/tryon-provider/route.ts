@@ -5,12 +5,8 @@ import {
   getTryOnProvider,
   listTryOnProviders,
   DEFAULT_TRYON_PROVIDER_ID,
-  type TryOnProviderId,
 } from "@/lib/providers";
-
-function isProviderId(value: unknown): value is TryOnProviderId {
-  return value === "gemini" || value === "vertex";
-}
+import { isTryOnMode } from "@/lib/providers/active";
 
 /** Shape returned to the settings UI: every provider plus whether it's usable. */
 function availableProviders() {
@@ -29,7 +25,7 @@ export async function GET() {
       where: { id: session.id },
       select: { tryOnProvider: true },
     });
-    const provider = isProviderId(user?.tryOnProvider)
+    const provider = isTryOnMode(user?.tryOnProvider)
       ? user.tryOnProvider
       : DEFAULT_TRYON_PROVIDER_ID;
 
@@ -50,15 +46,16 @@ export async function PATCH(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const provider = (body as { provider?: unknown }).provider;
 
-    if (!isProviderId(provider)) {
+    if (!isTryOnMode(provider)) {
       return NextResponse.json(
-        { error: "Invalid provider. Must be 'gemini' or 'vertex'." },
+        { error: "Invalid provider. Must be 'gemini', 'vertex', or 'auto'." },
         { status: 400 }
       );
     }
 
-    // Don't let an admin select a provider that isn't actually usable here.
-    if (!getTryOnProvider(provider).isEnabled()) {
+    // "auto" is always selectable (it resolves to an enabled provider at
+    // request time). A specific provider must actually be usable here.
+    if (provider !== "auto" && !getTryOnProvider(provider).isEnabled()) {
       return NextResponse.json(
         { error: "That provider is not available in this environment." },
         { status: 422 }

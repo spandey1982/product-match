@@ -4,7 +4,7 @@ export type User = {
   name: string;
   role: string;
   storeName?: string | null;
-  tryOnProvider?: "gemini" | "vertex";
+  tryOnProvider?: "gemini" | "vertex" | "auto";
 };
 
 export type Product = {

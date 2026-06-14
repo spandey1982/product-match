@@ -1,11 +1,8 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
-import {
-  listTryOnProviders,
-  DEFAULT_TRYON_PROVIDER_ID,
-  type TryOnProviderId,
-} from "@/lib/providers";
+import { listTryOnProviders, DEFAULT_TRYON_PROVIDER_ID } from "@/lib/providers";
+import { isTryOnMode, type TryOnMode } from "@/lib/providers/active";
 import { SettingsView } from "./SettingsView";
 
 export const metadata = { title: "Settings — ProductMatch" };
@@ -19,10 +16,9 @@ export default async function SettingsPage() {
     select: { tryOnProvider: true },
   });
 
-  const current: TryOnProviderId =
-    user?.tryOnProvider === "gemini" || user?.tryOnProvider === "vertex"
-      ? user.tryOnProvider
-      : DEFAULT_TRYON_PROVIDER_ID;
+  const current: TryOnMode = isTryOnMode(user?.tryOnProvider)
+    ? user.tryOnProvider
+    : DEFAULT_TRYON_PROVIDER_ID;
 
   const providers = listTryOnProviders().map((p) => ({
     id: p.id,
