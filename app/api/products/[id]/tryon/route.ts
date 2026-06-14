@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { TRYON_ALLOWED_MIME_TYPES, type TryOnMimeType } from "@/lib/tryon";
-import { getTryOnProvider } from "@/lib/providers";
+import { getActiveTryOnProvider } from "@/lib/providers/active";
 
 // ─── In-memory rate limiter ───────────────────────────────────────────────────
 // Module-level Map is per-process. Resets on server restart.
@@ -79,9 +79,13 @@ export async function POST(
       );
     }
 
-    // ── AI service availability check ──────────────────────────────────────
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey || apiKey === "your-gemini-api-key-here") {
+    // ── Resolve the active provider for this retailer ──────────────────────
+    // Reads the store's chosen provider (default Gemini) and falls back to
+    // Gemini if the choice is unavailable, so a stale selection can't break
+    // try-on. When the choice is Gemini, this is identical to prior behavior.
+    const provider = await getActiveTryOnProvider(session.id);
+
+    if (!provider.isEnabled()) {
       return NextResponse.json(
         { error: "Virtual try-on is not available — the AI service is not configured." },
         { status: 503 }
@@ -139,7 +143,7 @@ export async function POST(
     }
 
     // ── Generate try-on ────────────────────────────────────────────────────
-    const result = await getTryOnProvider("gemini").generateTryOn({
+    const result = await provider.generateTryOn({
       productImageUrl: product.imageUrl,
       userPhotoBuffer: buffer,
       userPhotoMimeType: actualMime as TryOnMimeType,

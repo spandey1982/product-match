@@ -13,6 +13,12 @@ model User {
   password  String
   role      String   @default("RETAILER")
   storeName String?
+
+  // Active try-on provider for this retailer's store ("gemini" | "vertex").
+  // Defaults to Gemini — matches prior hardcoded behavior. Resolved at
+  // request time with a graceful fallback to Gemini if the choice is disabled.
+  tryOnProvider String @default("gemini")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
