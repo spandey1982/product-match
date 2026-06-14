@@ -11,6 +11,7 @@ import {
   ChevronDown,
   Store,
   Heart,
+  Settings,
 } from "lucide-react";
 import { HangerPlusIcon } from "@/components/icons/HangerPlusIcon";
 import { cn } from "@/lib/utils";
@@ -138,6 +139,14 @@ export function Navbar({ user }: NavbarProps) {
                   >
                     <HangerPlusIcon className="h-4 w-4 text-indigo-400" />
                     Virtual Trial Room
+                  </Link>
+                  <Link
+                    href="/settings"
+                    onClick={() => setUserMenuOpen(false)}
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    <Settings className="h-4 w-4 text-gray-400" />
+                    Settings
                   </Link>
                   <div className="h-px bg-gray-100 mx-1 my-1" />
                   <button

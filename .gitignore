@@ -24,8 +24,18 @@
 .DS_Store
 *.pem
 
+# Google Cloud service account keys (never commit credentials)
+service-account*.json
+*-service-account.json
+gcp-credentials*.json
+vertex-ai-vto-*.json
+
 # research logs (generated at runtime, never committed)
 /logs/
+
+# local API test artifacts (contain session cookies)
+cookies.txt
+login.json
 
 # debug
 npm-debug.log*

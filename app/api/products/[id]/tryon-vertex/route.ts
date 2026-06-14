@@ -2,12 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { TRYON_ALLOWED_MIME_TYPES, type TryOnMimeType } from "@/lib/tryon";
-import { getActiveTryOnProvider } from "@/lib/providers/active";
+import { isVertexTryOnEnabled, getVertexConfig } from "@/lib/tryon-vertex";
+import { getTryOnProvider } from "@/lib/providers";
 
 // ─── In-memory rate limiter ───────────────────────────────────────────────────
-// Module-level Map is per-process. Resets on server restart.
-// Sufficient for single-instance Railway deployment. Replace with Redis if the
-// deployment becomes multi-instance.
+// Intentionally separate from the Gemini try-on limiter so the two providers
+// have independent budgets. Same semantics: per-process, resets on restart.
+// (Validation helpers are duplicated from the Gemini route on purpose — the
+// existing route must stay untouched in this task; consolidation belongs to
+// the provider abstraction layer planned as Task 2.)
 const rateLimitStore = new Map<string, number[]>();
 const RATE_LIMIT_MAX = 5;
 const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
@@ -24,8 +27,6 @@ function consumeRateLimit(userId: string): boolean {
 }
 
 // ─── Magic-byte MIME detection ────────────────────────────────────────────────
-// Validates that file bytes actually match the declared type.
-// Prevents malicious uploads that disguise non-images as JPEG/PNG/WebP.
 function detectMimeFromBytes(buf: Buffer): string | null {
   // JPEG: FF D8 FF
   if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
@@ -45,7 +46,6 @@ function detectMimeFromBytes(buf: Buffer): string | null {
   return null;
 }
 
-// ─── Allowed types set for fast lookup ───────────────────────────────────────
 const ALLOWED_MIME_SET = new Set<string>(TRYON_ALLOWED_MIME_TYPES);
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
 
@@ -59,6 +59,24 @@ export async function POST(
     // ── Authentication ─────────────────────────────────────────────────────
     const session = await requireAuth();
     const { id } = await params;
+
+    // ── Feature flag + configuration check ─────────────────────────────────
+    // Checked before any work: when the flag is off or Google Cloud is not
+    // configured, this route degrades to a clean 503 and nothing else in the
+    // application is affected.
+    if (!isVertexTryOnEnabled()) {
+      return NextResponse.json(
+        { error: "Vertex AI try-on is not enabled." },
+        { status: 503 }
+      );
+    }
+
+    if (!getVertexConfig()) {
+      return NextResponse.json(
+        { error: "Vertex AI try-on is not configured — Google Cloud project settings are missing." },
+        { status: 503 }
+      );
+    }
 
     // ── Product ownership check ────────────────────────────────────────────
     const product = await db.product.findFirst({
@@ -76,21 +94,6 @@ export async function POST(
       return NextResponse.json(
         { error: "This product has no image. Upload a product image before using try-on." },
         { status: 422 }
-      );
-    }
-
-    // ── Resolve the active provider for this retailer ──────────────────────
-    // Reads the store's chosen provider (default Gemini) and falls back to
-    // Gemini if the choice is unavailable, so a stale selection can't break
-    // try-on. When the choice is Gemini, this is identical to prior behavior.
-    const provider = await getActiveTryOnProvider(session.id, {
-      category: product.category,
-    });
-
-    if (!provider.isEnabled()) {
-      return NextResponse.json(
-        { error: "Virtual try-on is not available — the AI service is not configured." },
-        { status: 503 }
       );
     }
 
@@ -144,8 +147,8 @@ export async function POST(
       );
     }
 
-    // ── Generate try-on ────────────────────────────────────────────────────
-    const result = await provider.generateTryOn({
+    // ── Generate try-on via Vertex AI ──────────────────────────────────────
+    const result = await getTryOnProvider("vertex").generateTryOn({
       productImageUrl: product.imageUrl,
       userPhotoBuffer: buffer,
       userPhotoMimeType: actualMime as TryOnMimeType,
@@ -156,12 +159,23 @@ export async function POST(
       userId: session.id,
     });
 
-    return NextResponse.json({ tryOnUrl: result.url });
+    return NextResponse.json({ tryOnUrl: result.url, provider: "vertex" });
   } catch (err) {
     const message = (err as Error).message ?? "";
 
     if (message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Credential / token problems are configuration issues, not user errors
+    if (
+      message.includes("access token") ||
+      message.includes("Could not load the default credentials")
+    ) {
+      return NextResponse.json(
+        { error: "Vertex AI try-on is not configured — Google Cloud credentials are missing or invalid." },
+        { status: 503 }
+      );
     }
 
     // Surface content-policy refusals with a friendlier message
@@ -175,10 +189,10 @@ export async function POST(
       );
     }
 
-    console.error("[tryon] Unexpected error:", err);
+    console.error("[tryon-vertex] Unexpected error:", err);
     return NextResponse.json(
       { error: "Try-on generation failed. Please try again." },
-      { status: 500 }
+      { status: 502 }
     );
   }
 }
