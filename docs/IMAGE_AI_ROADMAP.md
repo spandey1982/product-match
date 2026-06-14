@@ -72,6 +72,7 @@ Capability-aware fallback at every layer: a selected/ routed provider that isn't
 - Gemini (API key) and Vertex (GCP project) can live on **different projects**; they share nothing.
 - **Stale Prisma client gotcha:** after a schema change, the dev server caches the old client → `PrismaClientValidationError`. Fix: `npx prisma generate` → restart `npm run dev` (clear `.next` if it persists).
 - **Stale dev build gotcha:** long-lived browser tab + restarted dev server → 404s / `Unexpected token '<' … DOCTYPE` (RSC fetch gets HTML). Fix: clear `.next`, restart, hard-refresh.
+- **Windows lockfile vs Linux `npm ci` gotcha:** `npm install` on Windows strips Linux-only optional nodes (`@emnapi/*`, transitive deps of `@napi-rs/wasm-runtime`) from `package-lock.json`, so Railway's `npm ci` fails ("package.json and package-lock.json … not in sync"). **Permanent fix:** deploy with `npm install` instead of `npm ci` — `nixpacks.toml` sets this, or Railway dashboard → Settings → Build → Custom Install Command → `npm install`. Do not rely on hand-patching the lockfile (re-stripped on the next Windows `npm install`). Alternatively, generate/commit the lockfile on Linux/WSL.
 - Vertex VTO is image-only (no text prompt / metadata). It is **strong on structured/western apparel and shoes, weak on complex Indian drapes** (folded saree/lehenga/dupatta). Gemini's prompt-based approach handles drapes better. This drives auto-routing (§7, Task 4).
 
 ## 7. Roadmap
