@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { generateTryOn, TRYON_ALLOWED_MIME_TYPES, type TryOnMimeType } from "@/lib/tryon";
+import { TRYON_ALLOWED_MIME_TYPES, type TryOnMimeType } from "@/lib/tryon";
+import { getTryOnProvider } from "@/lib/providers";
 
 // ─── In-memory rate limiter ───────────────────────────────────────────────────
 // Module-level Map is per-process. Resets on server restart.
@@ -138,7 +139,7 @@ export async function POST(
     }
 
     // ── Generate try-on ────────────────────────────────────────────────────
-    const result = await generateTryOn({
+    const result = await getTryOnProvider("gemini").generateTryOn({
       productImageUrl: product.imageUrl,
       userPhotoBuffer: buffer,
       userPhotoMimeType: actualMime as TryOnMimeType,

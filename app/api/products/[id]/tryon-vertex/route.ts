@@ -2,11 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { TRYON_ALLOWED_MIME_TYPES, type TryOnMimeType } from "@/lib/tryon";
-import {
-  generateTryOnVertex,
-  isVertexTryOnEnabled,
-  getVertexConfig,
-} from "@/lib/tryon-vertex";
+import { isVertexTryOnEnabled, getVertexConfig } from "@/lib/tryon-vertex";
+import { getTryOnProvider } from "@/lib/providers";
 
 // ─── In-memory rate limiter ───────────────────────────────────────────────────
 // Intentionally separate from the Gemini try-on limiter so the two providers
@@ -151,7 +148,7 @@ export async function POST(
     }
 
     // ── Generate try-on via Vertex AI ──────────────────────────────────────
-    const result = await generateTryOnVertex({
+    const result = await getTryOnProvider("vertex").generateTryOn({
       productImageUrl: product.imageUrl,
       userPhotoBuffer: buffer,
       userPhotoMimeType: actualMime as TryOnMimeType,
