@@ -68,7 +68,7 @@ Capability-aware fallback at every layer: a selected/ routed provider that isn't
 ## 6. Decisions log (constraints learned the hard way)
 
 - **AI Studio `gen-lang-client-*` projects cannot run Vertex predict** (even `gemini-2.0-flash` 403s there). Vertex needs a **standard GCP project** with Vertex AI API enabled, billing active, and the identity holding `roles/aiplatform.user` (NOT "AI Platform Admin" = legacy `roles/ml.admin`).
-- **Auth is ADC-based** (no hardcoded key). Works with: user ADC (local), SA key file, attached SA (Cloud Run, keyless), WIF. `gcloud auth application-default login` is **local-only** — deploys need a key/WIF. Railway can't mount a key file → will need an inline-JSON-env `GoogleAuth({ credentials })` tweak (small, additive) at deploy time.
+- **Auth is ADC-based** (no hardcoded key). Works with: user ADC (local), SA key file (`GOOGLE_APPLICATION_CREDENTIALS`), inline base64 key (`GOOGLE_APPLICATION_CREDENTIALS_JSON`, for Railway/Vercel — **implemented**), attached SA (Cloud Run, keyless), WIF. `gcloud auth application-default login` is **local-only**.
 - Gemini (API key) and Vertex (GCP project) can live on **different projects**; they share nothing.
 - **Stale Prisma client gotcha:** after a schema change, the dev server caches the old client → `PrismaClientValidationError`. Fix: `npx prisma generate` → restart `npm run dev` (clear `.next` if it persists).
 - **Stale dev build gotcha:** long-lived browser tab + restarted dev server → 404s / `Unexpected token '<' … DOCTYPE` (RSC fetch gets HTML). Fix: clear `.next`, restart, hard-refresh.
@@ -91,9 +91,25 @@ Capability-aware fallback at every layer: a selected/ routed provider that isn't
 | jewellery, handbag, clutch | Gemini |
 | (unmapped) | Gemini (fallback) |
 
-### Next
-- **Task 5** — Customer-facing provider selection. A shopper can override the
-  resolved provider. Plugs in *above* auto-routing in `getActiveTryOnProvider`.
+### Descoped
+- **Task 5** — Customer-facing provider selection. **Dropped (2026-06-15).**
+  Decision: provider/quality is a *retailer* choice, not an end-shopper toggle
+  (B2B tool serving customers through retailers). Tasks 3 + 4 already give the
+  retailer full control (force a provider, or Auto-by-category). The
+  `getActiveTryOnProvider` resolver still has room for a customer layer if this
+  is ever revisited, but it is not planned.
+
+### Deployment auth (Railway target)
+Railway is non-GCP, so Vertex needs a credential the server can use headlessly:
+- **Keyless (WIF):** ideal but Railway isn't a first-class GCP OIDC provider — impractical.
+- **SA key via inline env var (implemented):** set `GOOGLE_APPLICATION_CREDENTIALS_JSON`
+  to the base64 of a JSON key; `buildAuth()` in `lib/tryon-vertex.ts` decodes it and
+  passes `GoogleAuth({ credentials })`. Needs a key from a project that (a) can run
+  Vertex and (b) *allows* key creation — a fresh **standard** project under an
+  account/org without `iam.disableServiceAccountKeyCreation`. (Working setup:
+  project `vertex-ai-vto`, SA `vertex-vto-sa`, `roles/aiplatform.user`.)
+- **Vertex is never a deploy blocker:** ship with `ENABLE_VERTEX_TRYON=false`
+  (Gemini-only) and enable Vertex later with env vars only, no code redeploy.
 
 ## 8. Future implementation notes (planned, NOT yet built)
 
@@ -127,8 +143,9 @@ without rework.
 **Env vars** (see `docs/VERTEX_TRYON_SETUP.md` for full setup):
 ```
 ENABLE_VERTEX_TRYON, GOOGLE_CLOUD_PROJECT, GOOGLE_CLOUD_LOCATION,
-GOOGLE_APPLICATION_CREDENTIALS   # empty → ADC; Vertex provider only
-GEMINI_API_KEY                   # Gemini provider + model-gen (separate project)
+GOOGLE_APPLICATION_CREDENTIALS        # local: SA key file path (empty → ADC)
+GOOGLE_APPLICATION_CREDENTIALS_JSON   # deploy: SA key as base64 JSON (Railway/Vercel)
+GEMINI_API_KEY                        # Gemini provider + model-gen (separate project)
 ```
 Validation each task: `npx tsc --noEmit` + `npm run lint` + manual flows.
 Schema changes: `npx prisma generate` then restart dev server.

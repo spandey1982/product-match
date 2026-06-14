@@ -159,7 +159,8 @@ NEXT_PUBLIC_APP_URL="http://localhost:3000"
 ENABLE_VERTEX_TRYON="false"
 GOOGLE_CLOUD_PROJECT=""
 GOOGLE_CLOUD_LOCATION="us-central1"
-GOOGLE_APPLICATION_CREDENTIALS=""
+GOOGLE_APPLICATION_CREDENTIALS=""       # local: path to SA key file
+GOOGLE_APPLICATION_CREDENTIALS_JSON=""  # deploy (Railway/Vercel): SA key as base64 JSON
 ```
 
 ## npm Scripts

@@ -39,15 +39,45 @@ export function getVertexConfig(): VertexConfig | null {
 
 // ─── Authentication ───────────────────────────────────────────────────────────
 
-// Lazily initialized so that a missing GOOGLE_APPLICATION_CREDENTIALS file can
-// never break module load (and therefore can never affect any other route).
+// Lazily initialized so that missing credentials can never break module load
+// (and therefore can never affect any other route).
 let auth: GoogleAuth | null = null;
+
+const VERTEX_SCOPES = ["https://www.googleapis.com/auth/cloud-platform"];
+
+/**
+ * Build the GoogleAuth client. Credential resolution order:
+ *   1. GOOGLE_APPLICATION_CREDENTIALS_JSON — a service-account key supplied
+ *      inline as raw JSON or base64-encoded JSON. For hosts that can't mount a
+ *      key file (e.g. Railway, Vercel).
+ *   2. Default ADC — a GOOGLE_APPLICATION_CREDENTIALS file path, gcloud user
+ *      ADC (local), or an attached service account (Cloud Run/GCE).
+ *
+ * When the inline var is unset, behavior is identical to before (pure ADC).
+ * A malformed inline value throws a clear error (caught by the route).
+ */
+function buildAuth(): GoogleAuth {
+  const inline = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON?.trim();
+  if (inline) {
+    let credentials;
+    try {
+      const json = inline.startsWith("{")
+        ? inline
+        : Buffer.from(inline, "base64").toString("utf8");
+      credentials = JSON.parse(json);
+    } catch {
+      throw new Error(
+        "Failed to parse GOOGLE_APPLICATION_CREDENTIALS_JSON (expected raw JSON or base64-encoded JSON)"
+      );
+    }
+    return new GoogleAuth({ credentials, scopes: VERTEX_SCOPES });
+  }
+  return new GoogleAuth({ scopes: VERTEX_SCOPES });
+}
 
 async function getAccessToken(): Promise<string> {
   if (!auth) {
-    auth = new GoogleAuth({
-      scopes: ["https://www.googleapis.com/auth/cloud-platform"],
-    });
+    auth = buildAuth();
   }
   const token = await auth.getAccessToken();
   if (!token) {
