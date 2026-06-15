@@ -4,7 +4,7 @@
 > and model-image-generation work. If a chat is lost, point Claude here first.
 > Update it whenever a decision is made or a task lands.
 >
-> Last updated: 2026-06-14
+> Last updated: 2026-06-16
 
 ---
 
@@ -43,8 +43,10 @@ prompt/RAG engine arrives. Keep them separate.
 - Routes: `app/api/products/[id]/tryon` (resolves active provider) and `.../tryon-vertex` (explicit/testing). Both go through the factory.
 - UI: trial-room components + catalog/product try-on buttons → POST `/tryon`.
 
-**Model-gen** (untouched by the provider work)
-- `lib/generate-model-image.ts` — `generateModelImage(productId)`, Gemini `nano-banana-pro-preview`. Writes `products.modelImageUrl`. Triggered from upload flow + `app/api/products/[id]/generate-model-image`.
+**Model-gen** (now objective-driven — see §11)
+- `lib/generate-model-image.ts` — legacy `generateModelImage(productId)` (Gemini `gemini-3.1-flash-image`, single image → `products.modelImageUrl`) is preserved as the default/flag-off path. The Gemini call + source-image loader are now exported (`runGeminiImageGen`, `fetchProductImageBuffer`) and reused by the model-gen engine.
+- `lib/model-gen/` — the objective-based **Model Generation engine** (§11). Intent-keyed, NOT a provider abstraction.
+- Triggered from upload flow + `app/api/products/[id]/generate-model-image` (now accepts `{ objective, modelType }`).
 
 **Shared**
 - `lib/research-log.ts` → `logs/tryon-research.jsonl` — append-only log of every generation (inputs/outputs/timings/provider). **This is the seed corpus for the future learning loop.** Extend, never replace.
@@ -82,6 +84,7 @@ Capability-aware fallback at every layer: a selected/ routed provider that isn't
 - **Task 2** — Try-on provider abstraction (`lib/providers/`). ✅
 - **Task 3** — Per-retailer admin provider selector (`User.tryOnProvider`, `/settings`). ✅
 - **Task 4** — Automatic provider selection: opt-in **"Auto"** mode + deterministic category→provider rules (`auto-routing.ts`), capability-aware fallback, decision logging. ✅ *(see table below)*
+- **Task 6** — **AI Generation Settings** (model-gen objectives). Outcome-first model generation: retailer picks an objective; the system resolves provider + reference + prompts internally. Reference-model library, category-aware reference + prompt sets, `ProductImage` gallery. Feature-flagged `ENABLE_AI_GEN_SETTINGS`. ✅ *(full design in §11)*
 
 **Task 4 routing table (current defaults — Gemini for drape, Vertex for structured):**
 | Category | Provider |
@@ -147,7 +150,11 @@ ENABLE_VERTEX_TRYON, GOOGLE_CLOUD_PROJECT, GOOGLE_CLOUD_LOCATION,
 GOOGLE_APPLICATION_CREDENTIALS        # local: SA key file path (empty → ADC)
 GOOGLE_APPLICATION_CREDENTIALS_JSON   # deploy: SA key as base64 JSON (Railway/Vercel)
 GEMINI_API_KEY                        # Gemini provider + model-gen (separate project)
+ENABLE_AI_GEN_SETTINGS                # model-gen objectives UI + routing (off → legacy single image)
 ```
+Quick Listing uses Vertex VTO with the reference model as the person, so it
+benefits from the same `ENABLE_VERTEX_TRYON` + GCP config above; without it,
+Quick Listing transparently falls back to the Gemini path.
 Validation each task: `npx tsc --noEmit` + `npm run lint` + manual flows.
 Schema changes: `npx prisma generate` then restart dev server.
 
@@ -161,8 +168,79 @@ Schema changes: `npx prisma generate` then restart dev server.
 | Auto category routing | `lib/providers/auto-routing.ts` |
 | Gemini try-on impl | `lib/tryon.ts` |
 | Vertex try-on impl | `lib/tryon-vertex.ts` |
-| Model-image gen impl | `lib/generate-model-image.ts` |
+| Model-image gen impl (legacy + shared Gemini core) | `lib/generate-model-image.ts` |
+| Model-gen engine (objectives) | `lib/model-gen/engine.ts` |
+| Objectives / reference library / category selection / prompt sets | `lib/model-gen/{objectives,reference-models,reference-selection,prompt-sets}.ts` |
+| Model-gen strategies | `lib/model-gen/strategies/{quick-listing,catalogue}.ts` |
+| AI-gen settings (storage accessor + API) | `lib/model-gen/settings.ts`, `app/api/settings/ai-generation/route.ts` |
+| Reference assets | `public/reference-models/` (see its README) |
 | Try-on routes | `app/api/products/[id]/{tryon,tryon-vertex}/route.ts` |
 | Admin provider setting | `app/api/settings/tryon-provider/route.ts`, `app/(dashboard)/settings/` |
 | Research log (learning seed) | `lib/research-log.ts`, `logs/tryon-research.jsonl` |
 | Setup guide | `docs/VERTEX_TRYON_SETUP.md` |
+
+## 11. AI Generation Settings (model-gen objectives)
+
+**Principle.** Retailers choose an **outcome (objective)**, never a provider. The
+system resolves provider, reference asset, prompts and strategy internally.
+Provider names (Gemini/Vertex) and model IDs stay implementation details. Model
+generation and try-on remain separate axes (§3).
+
+**Objectives** (`lib/model-gen/objectives.ts`):
+| Objective (retailer sees) | Strategy | Internal backend |
+|---|---|---|
+| **Quick Listing** | single | Vertex VTO( reference-model = person, product = garment ) → 1 image; **Gemini fallback** |
+| **Catalogue & Social** | multi | Gemini prompt-based, one image per category view |
+
+Quick Listing reconciles the §3 constraint that Vertex can't model-gen from
+scratch: the **reference-model library supplies the person image** Vertex needs.
+
+**Reference Model library** (`reference-models.ts`): visible types Woman/Man/Girl/Boy,
+hidden variants `basic/saree/lehenga/kurti/western`. Assets are **bundled static**
+files in `public/reference-models/` read server-side (zero network hop, free,
+version-controlled, deterministic); thumbnails served over HTTP. Missing asset →
+graceful degradation (no-reference Gemini; Vertex→Gemini). Category→variant in
+`reference-selection.ts`; category→view set + prompt composition in `prompt-sets.ts`.
+
+**Resolution / fallback** (`engine.ts` → `generateModelImages`): explicit request
+→ retailer stored defaults (`User.aiGenSettings`) → strategy. Capability-aware
+fallback at every step, like try-on. Feature flag `ENABLE_AI_GEN_SETTINGS`
+(off → legacy single-image path; route + UI unchanged).
+
+**Storage (decisions):**
+- `User.aiGenSettings String?` (nullable JSON) — `{ defaultModelType, defaultObjective }`.
+  One column avoids migration churn as the surface grows; read via `settings.ts`.
+- `ProductImage` table (`product_images`) — multi-view gallery, one row per view
+  (`url, view, objective, isPrimary`, cascade-deleted). `Product.modelImageUrl`
+  **kept** as the legacy/primary single output (Quick Listing + primary catalogue
+  view write it) so all existing UI is unchanged.
+
+**Settings surface placement:** the chooser (objective + store model) lives in the
+**product-creation/generation workflow** (upload flow), **not** the try-on
+`/settings` screen. The existing try-on `/settings` still names providers
+(predates the no-provider-names rule) — re-skinning it to outcome language is a
+separate future task (do not conflate).
+
+**Try-on improvement research (recommendation only — not built):** today try-on
+uses only `product.imageUrl`. Highest-payoff additive wins, in order: (1) pass the
+generated **on-model image** (`modelImageUrl`) as the garment reference for
+drape-heavy categories; (2) feed catalogue **metadata** (material/occasion/
+subcategory) into the Gemini try-on prompt (Vertex is image-only); (3) multi-
+reference (front+back) once catalogue multi-view exists. Schedule separately.
+
+### Future extensibility (recorded here as chosen alternatives)
+- **Reference asset hosting → Cloudinary.** v1 is bundled-static for speed/cost/
+  determinism. Cloudinary-hosting (CDN, transforms, consistent with product/model
+  images) is the natural next step when the asset set grows or needs CMS-style
+  management — store URLs in the same config map; the loader gains a URL fetch
+  branch alongside the filesystem read.
+- **Per-retailer custom reference models.** Let retailers upload their own house
+  model(s) into a DB-backed library (a `ReferenceModel` table keyed by user +
+  variant), surfaced in the store-model picker. Additive to the current static set.
+- **Category-specific prompt sets → admin-configurable / RAG.** `prompt-sets.ts` is
+  data-shaped; promote to per-retailer config, then RAG-driven prompts seeded by
+  the research log (§8).
+- **Model-gen research-log labels.** Quick Listing currently reuses
+  `generateTryOnVertex` (logs as `tryon-vertex`, Cloudinary `tryon-vertex/`). When
+  the learning loop matures, add a dedicated `model-vertex` log type + folder so
+  model-gen and try-on corpora are cleanly separable.
