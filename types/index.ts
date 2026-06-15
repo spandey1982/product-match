@@ -5,6 +5,19 @@ export type User = {
   role: string;
   storeName?: string | null;
   tryOnProvider?: "gemini" | "vertex" | "auto";
+  /** AI Generation preferences as a JSON string. See lib/model-gen/settings.ts. */
+  aiGenSettings?: string | null;
+};
+
+/** An AI-generated catalogue/model image for a product (multi-view gallery). */
+export type ProductImage = {
+  id: string;
+  productId: string;
+  url: string;
+  view: string;       // "front" | "back" | "pallu" | "border" | "blouse" | "fabric" | ...
+  objective: string;  // "quick_listing" | "catalogue"
+  isPrimary: boolean;
+  createdAt: string;
 };
 
 export type Product = {
