@@ -28,89 +28,138 @@ function buildPrompt(category: string, color: string, gender: string): string {
   return `Full body fashion photograph of ${subject} wearing this ${color} ${category}. The garment is clearly visible and styled naturally. ${setting}.`;
 }
 
+const MIME_BY_EXT: Record<string, string> = {
+  jpg: "image/jpeg", jpeg: "image/jpeg",
+  png: "image/png", webp: "image/webp", gif: "image/gif",
+};
+
+export interface SourceImage {
+  buffer: Buffer;
+  mime: string;
+}
+
 /**
- * Generates a model image for a product using Gemini image generation.
- * Reads the product image from Cloudinary or public/uploads, sends it to
- * Gemini, saves the result, and updates the product record.
- * Fire-and-forget safe — all errors are caught internally.
+ * Fetch a product image (Cloudinary/http URL or a local /uploads/ path) as a
+ * Buffer plus its MIME type. Returns null on any failure — model-image
+ * generation is fire-and-forget, so callers skip rather than throw.
+ *
+ * Exported so the model-gen engine (lib/model-gen) can reuse the exact same
+ * source-loading strategy instead of duplicating it.
  */
-export async function generateModelImage(productId: string): Promise<void> {
+export async function fetchProductImageBuffer(
+  imageUrl: string
+): Promise<SourceImage | null> {
+  let buffer: Buffer;
+  let mimeHint = "image/jpeg";
+
+  if (imageUrl.startsWith("http")) {
+    const res = await fetch(imageUrl);
+    if (!res.ok) {
+      console.error(`[model-image] failed to fetch image: ${imageUrl}`);
+      return null;
+    }
+    mimeHint = res.headers.get("content-type") ?? "image/jpeg";
+    buffer = Buffer.from(await res.arrayBuffer());
+  } else if (imageUrl.startsWith("/uploads/")) {
+    const localPath = join(process.cwd(), "public", imageUrl);
+    try {
+      buffer = await readFile(localPath);
+    } catch {
+      console.error(`[model-image] source file not found: ${localPath}`);
+      return null;
+    }
+  } else {
+    return null;
+  }
+
+  const ext = imageUrl.split("?")[0].split(".").pop()?.toLowerCase() ?? "jpg";
+  const mime = MIME_BY_EXT[ext] ?? mimeHint;
+  return { buffer, mime };
+}
+
+export interface GeminiImageGenInput {
+  productId: string;
+  productTitle: string;
+  productCategory: string;
+  productColor: string;
+  /** The product garment image bytes. */
+  productBuffer: Buffer;
+  productMime: string;
+  /**
+   * Optional reference-model image (the "person"). When present it is sent as
+   * the first image part so Gemini dresses that model — improving draping
+   * consistency. When absent, behavior is identical to the original flow.
+   */
+  referenceBuffer?: Buffer | null;
+  referenceMime?: string | null;
+  /** Fully-composed text prompt. */
+  prompt: string;
+  /** Cloudinary folder. Defaults to the legacy "product-match/models". */
+  folder?: string;
+  /** View label for tags/logging (e.g. "front", "back"). Defaults to "model". */
+  view?: string;
+}
+
+/**
+ * Run a single Gemini image generation and upload the result to Cloudinary.
+ *
+ * This is the shared core behind both the legacy single-image flow
+ * (generateModelImage) and the model-gen catalogue/quick-listing strategies.
+ * It performs NO database writes — the caller decides what to persist — and
+ * never throws (model-image generation is a nice-to-have). Returns the uploaded
+ * URL, or null on any failure.
+ */
+export async function runGeminiImageGen(
+  input: GeminiImageGenInput
+): Promise<{ url: string } | null> {
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || apiKey === "your-gemini-api-key-here") return;
+  if (!apiKey || apiKey === "your-gemini-api-key-here") return null;
+
+  const {
+    productId, productTitle, productCategory, productColor,
+    productBuffer, productMime, referenceBuffer, referenceMime,
+    prompt, folder = "product-match/models", view = "model",
+  } = input;
 
   try {
-    const product = await db.product.findUnique({ where: { id: productId } });
-    if (!product?.imageUrl) return;
+    const hasReference = Boolean(referenceBuffer && referenceMime);
 
-    // ── Read source image ─────────────────────────────────────────────────
-    let imageBuffer: Buffer;
-    let mimeTypeHint = "image/jpeg";
-
-    if (product.imageUrl.startsWith("http")) {
-      const fetchRes = await fetch(product.imageUrl);
-      if (!fetchRes.ok) {
-        console.error(`[model-image] failed to fetch image: ${product.imageUrl}`);
-        return;
-      }
-      mimeTypeHint = fetchRes.headers.get("content-type") ?? "image/jpeg";
-      imageBuffer = Buffer.from(await fetchRes.arrayBuffer());
-    } else if (product.imageUrl.startsWith("/uploads/")) {
-      const localPath = join(process.cwd(), "public", product.imageUrl);
-      try {
-        imageBuffer = await readFile(localPath);
-      } catch {
-        console.error(`[model-image] source file not found: ${localPath}`);
-        return;
-      }
-    } else {
-      return;
+    // Image parts: reference model first (if any), then the product garment.
+    const parts: Array<Record<string, unknown>> = [];
+    if (hasReference) {
+      parts.push({
+        inline_data: { mime_type: referenceMime, data: referenceBuffer!.toString("base64") },
+      });
     }
+    parts.push({
+      inline_data: { mime_type: productMime, data: productBuffer.toString("base64") },
+    });
+    parts.push({ text: prompt });
 
-    const ext = product.imageUrl.split("?")[0].split(".").pop()?.toLowerCase() ?? "jpg";
-    const mimeMap: Record<string, string> = {
-      jpg: "image/jpeg", jpeg: "image/jpeg",
-      png: "image/png", webp: "image/webp", gif: "image/gif",
-    };
-    const mimeType = mimeMap[ext] ?? mimeTypeHint;
-
-    // ── Log input image metadata ──────────────────────────────────────────
-    const inputDims = getImageDimensions(imageBuffer, mimeType);
-    console.log(`[model-image] ── Input image ───────────────────────────────`);
-    console.log(`[model-image] Product image: ${fmtBytes(imageBuffer.length)}  mime=${mimeType}  ${inputDims ? `${inputDims.width}×${inputDims.height}px` : "dims=unknown"}`);
-    console.log(`[model-image] Product: ${product.title} (${product.category} · ${product.color})`);
-    console.log(`[model-image] Calling Gemini model: ${GEMINI_MODEL}`);
-
-    const prompt = buildPrompt(product.category, product.color, product.gender);
-    const base64 = imageBuffer.toString("base64");
+    const inputDims = getImageDimensions(productBuffer, productMime);
+    console.log(`[model-image] ── Gemini gen (${view}) ────────────────────────`);
+    console.log(`[model-image] Product: ${productTitle} (${productCategory} · ${productColor})  reference=${hasReference}`);
+    console.log(`[model-image] Product image: ${fmtBytes(productBuffer.length)}  mime=${productMime}  ${inputDims ? `${inputDims.width}×${inputDims.height}px` : "dims=unknown"}`);
 
     const t0 = Date.now();
-
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          contents: [{
-            parts: [
-              { inline_data: { mime_type: mimeType, data: base64 } },
-              { text: prompt },
-            ],
-          }],
-          generationConfig: {
-            responseModalities: ["IMAGE"],
-          },
+          contents: [{ parts }],
+          generationConfig: { responseModalities: ["IMAGE"] },
         }),
       }
     );
-
     const generationMs = Date.now() - t0;
     console.log(`[model-image] Gemini responded: ${res.status}  (${generationMs} ms)`);
 
     if (!res.ok) {
       const err = await res.text();
       console.error(`[model-image] Gemini error ${res.status}:`, err.slice(0, 200));
-      return;
+      return null;
     }
 
     const data = await res.json() as {
@@ -125,89 +174,121 @@ export async function generateModelImage(productId: string): Promise<void> {
       };
     };
 
-    // ── Log token usage ───────────────────────────────────────────────────
     const usage = data.usageMetadata;
     const tokenInput  = usage?.promptTokenCount     ?? null;
     const tokenOutput = usage?.candidatesTokenCount ?? null;
     const tokenTotal  = usage?.totalTokenCount      ?? null;
-    console.log(`[model-image] Tokens — input: ${tokenInput ?? "n/a"}  output: ${tokenOutput ?? "n/a"}  total: ${tokenTotal ?? "n/a"}`);
 
-    const parts = data.candidates?.[0]?.content?.parts ?? [];
-    console.log(`[model-image] Parts received: ${parts.length}  finish: ${data.candidates?.[0]?.finishReason}`);
-
-    const imagePart = parts.find(
+    const responseParts = data.candidates?.[0]?.content?.parts ?? [];
+    const imagePart = responseParts.find(
       (p: { inlineData?: { mimeType: string; data: string } }) => p.inlineData?.data
     );
-
     if (!imagePart) {
-      console.error("[model-image] No image in Gemini response");
-      return;
+      console.error(`[model-image] No image in Gemini response (finish: ${data.candidates?.[0]?.finishReason})`);
+      return null;
     }
 
-    // ── Log output image metadata ─────────────────────────────────────────
     const outMime = imagePart.inlineData!.mimeType ?? "image/jpeg";
     const outBuffer = Buffer.from(imagePart.inlineData!.data, "base64");
     const outDims = getImageDimensions(outBuffer, outMime);
+    console.log(`[model-image] Output: ${fmtBytes(outBuffer.length)}  mime=${outMime}  ${outDims ? `${outDims.width}×${outDims.height}px` : "dims=unknown"}`);
 
-    console.log(`[model-image] ── Output image ──────────────────────────────`);
-    console.log(`[model-image] Size: ${fmtBytes(outBuffer.length)}  mime=${outMime}  ${outDims ? `${outDims.width}×${outDims.height}px` : "dims=unknown"}`);
-
-    // ── Upload to Cloudinary ──────────────────────────────────────────────
     const dataUri = `data:${outMime};base64,${imagePart.inlineData!.data}`;
     const uploaded = await cloudinary.uploader.upload(dataUri, {
-      folder: "product-match/models",
+      folder,
       tags: [
         `product:${productId}`,
-        `category:${product.category}`,
-        `color:${product.color}`,
+        `category:${productCategory}`,
+        `color:${productColor}`,
+        `view:${view}`,
       ],
       context: {
         product_id:    productId,
-        product_title: product.title,
-        category:      product.category,
-        color:         product.color,
+        product_title: productTitle,
+        category:      productCategory,
+        color:         productColor,
+        view,
         generated_at:  new Date().toISOString(),
       },
     });
-    const modelImageUrl = uploaded.secure_url;
+    console.log(`[model-image] Uploaded: ${uploaded.secure_url}`);
 
-    await db.$executeRaw`UPDATE products SET "modelImageUrl" = ${modelImageUrl}, "updatedAt" = datetime('now') WHERE id = ${productId}`;
-
-    console.log(`[model-image] Uploaded: ${modelImageUrl}`);
-
-    // ── Write research log ────────────────────────────────────────────────
-    const inputImageMeta: ImageMeta = {
-      label:     "product-image",
-      mime:      mimeType,
-      sizeBytes: imageBuffer.length,
-      widthPx:   inputDims?.width ?? null,
-      heightPx:  inputDims?.height ?? null,
-    };
-    const outputImageMeta: ImageMeta = {
-      label:     "model-output",
-      mime:      outMime,
-      sizeBytes: outBuffer.length,
-      widthPx:   outDims?.width ?? null,
-      heightPx:  outDims?.height ?? null,
-    };
+    // ── Research log (seed corpus for the future learning loop) ─────────────
+    const inputImages: ImageMeta[] = [];
+    if (hasReference) {
+      const refDims = getImageDimensions(referenceBuffer!, referenceMime!);
+      inputImages.push({
+        label: "reference-model", mime: referenceMime!,
+        sizeBytes: referenceBuffer!.length,
+        widthPx: refDims?.width ?? null, heightPx: refDims?.height ?? null,
+      });
+    }
+    inputImages.push({
+      label: "product-image", mime: productMime, sizeBytes: productBuffer.length,
+      widthPx: inputDims?.width ?? null, heightPx: inputDims?.height ?? null,
+    });
 
     await appendResearchLog({
       timestamp:       new Date().toISOString(),
       type:            "model",
       productId,
-      productTitle:    product.title,
-      productCategory: product.category,
-      productColor:    product.color,
+      productTitle,
+      productCategory,
+      productColor,
       userId:          "system",
-      outputUrl:       modelImageUrl,
+      outputUrl:       uploaded.secure_url,
       generationMs,
-      inputImages:     [inputImageMeta],
-      outputImage:     outputImageMeta,
+      inputImages,
+      outputImage: {
+        label: "model-output", mime: outMime, sizeBytes: outBuffer.length,
+        widthPx: outDims?.width ?? null, heightPx: outDims?.height ?? null,
+      },
       tokens:
         tokenInput !== null && tokenOutput !== null && tokenTotal !== null
           ? { input: tokenInput, output: tokenOutput, total: tokenTotal }
           : null,
     });
+
+    return { url: uploaded.secure_url };
+  } catch (err) {
+    console.error("[model-image] Gemini gen error:", err);
+    return null;
+  }
+}
+
+/**
+ * Generates a model image for a product using Gemini image generation.
+ * Reads the product image from Cloudinary or public/uploads, sends it to
+ * Gemini, saves the result, and updates the product record.
+ *
+ * This is the original single-image flow — unchanged in behavior. The richer
+ * objective-based generation lives in lib/model-gen and reuses the helpers
+ * above. Fire-and-forget safe — all errors are caught internally.
+ */
+export async function generateModelImage(productId: string): Promise<void> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey || apiKey === "your-gemini-api-key-here") return;
+
+  try {
+    const product = await db.product.findUnique({ where: { id: productId } });
+    if (!product?.imageUrl) return;
+
+    const source = await fetchProductImageBuffer(product.imageUrl);
+    if (!source) return;
+
+    const prompt = buildPrompt(product.category, product.color, product.gender);
+    const result = await runGeminiImageGen({
+      productId,
+      productTitle:    product.title,
+      productCategory: product.category,
+      productColor:    product.color,
+      productBuffer:   source.buffer,
+      productMime:     source.mime,
+      prompt,
+    });
+    if (!result) return;
+
+    await db.$executeRaw`UPDATE products SET "modelImageUrl" = ${result.url}, "updatedAt" = datetime('now') WHERE id = ${productId}`;
   } catch (err) {
     console.error("[model-image] Unexpected error:", err);
   }
