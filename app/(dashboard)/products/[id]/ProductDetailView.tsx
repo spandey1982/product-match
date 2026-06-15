@@ -26,11 +26,25 @@ import {
 } from "lucide-react";
 import { ProductImageViewer } from "@/components/product/ProductImageViewer";
 
+interface GeneratedImage {
+  url: string;
+  view: string;
+}
+
 interface Props {
   product: Product;
+  generatedImages?: GeneratedImage[];
 }
 
 type RecommendationWithProduct = Recommendation & { product: Product };
+
+/** "pallu" → "Pallu", "front" → "Front" — a friendly label for a view id. */
+function prettyView(view: string): string {
+  return view
+    .split(/[-_]/)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
 
 function MetaChip({
   icon: Icon,
@@ -52,7 +66,7 @@ function MetaChip({
   );
 }
 
-export function ProductDetailView({ product }: Props) {
+export function ProductDetailView({ product, generatedImages = [] }: Props) {
   const router = useRouter();
   const [recommendations, setRecommendations] = useState<RecommendationWithProduct[]>([]);
   const [loading, setLoading] = useState(true);
@@ -61,8 +75,21 @@ export function ProductDetailView({ product }: Props) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
 
-  const productImages = [product.imageUrl, product.modelImageUrl].filter(Boolean) as string[];
-  const imageLabels = productImages.map((_, i) => (i === 0 ? "Product" : "On model"));
+  // On-model images: prefer the multi-view catalogue gallery; otherwise fall
+  // back to the single legacy modelImageUrl so existing products are unchanged.
+  const onModel: GeneratedImage[] =
+    generatedImages.length > 0
+      ? generatedImages
+      : product.modelImageUrl
+      ? [{ url: product.modelImageUrl, view: "on-model" }]
+      : [];
+
+  const productImages = [product.imageUrl, ...onModel.map((g) => g.url)].filter(
+    Boolean
+  ) as string[];
+  const imageLabels = productImages.map((_, i) =>
+    i === 0 ? "Product" : onModel[i - 1]?.view === "on-model" ? "On model" : prettyView(onModel[i - 1].view)
+  );
 
   async function handleDelete() {
     if (!confirmDelete) { setConfirmDelete(true); return; }
@@ -135,7 +162,7 @@ export function ProductDetailView({ product }: Props) {
             onClick={() => setViewerIndex(0)}
           >
             <ImageCarousel
-              images={[product.imageUrl, product.modelImageUrl]}
+              images={productImages}
               title={product.title}
               category={product.category}
               className="w-full h-full"

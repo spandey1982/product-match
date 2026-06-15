@@ -33,5 +33,13 @@ export default async function ProductDetailPage({ params }: Props) {
     raw as unknown as Record<string, unknown>
   ) as unknown as Product;
 
-  return <ProductDetailView product={product} />;
+  // Multi-view catalogue gallery (additive — empty for products generated with
+  // the legacy single-image flow, where modelImageUrl still drives the carousel).
+  const generatedImages = await db.productImage.findMany({
+    where: { productId: id },
+    orderBy: { createdAt: "asc" },
+    select: { url: true, view: true },
+  });
+
+  return <ProductDetailView product={product} generatedImages={generatedImages} />;
 }

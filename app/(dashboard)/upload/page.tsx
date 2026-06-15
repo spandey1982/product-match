@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Upload, X, ArrowLeft, ImagePlus, Sparkles, Check, Wand2 } from "lucide-react";
@@ -41,6 +41,15 @@ const MATERIALS = [
   "Satin", "Polyester", "Organza", "Khadi", "Wool", "Gold",
 ];
 
+interface AiGenObjective { id: string; label: string; description: string; }
+interface AiGenModelType { id: string; label: string; thumbnailUrl: string; }
+interface AiGenConfig {
+  enabled: boolean;
+  objectives: AiGenObjective[];
+  modelTypes: AiGenModelType[];
+  settings: { defaultModelType: string; defaultObjective: string };
+}
+
 export default function UploadPage() {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -51,6 +60,13 @@ export default function UploadPage() {
   const [extracting, setExtracting] = useState(false);
   const [extractError, setExtractError] = useState("");
   const [generateModel, setGenerateModel] = useState(false);
+
+  // AI Generation options (objective + store model). Fetched once; the chooser
+  // only renders when the feature flag is on. Provider names never appear here.
+  const [aiGen, setAiGen] = useState<AiGenConfig | null>(null);
+  const [objective, setObjective] = useState<string>("");
+  const [modelType, setModelType] = useState<string>("");
+
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -71,6 +87,20 @@ export default function UploadPage() {
   const [selectedOccasions, setSelectedOccasions] = useState<string[]>([]);
   const [selectedStyles, setSelectedStyles] = useState<string[]>([]);
   const [selectedSeasons, setSelectedSeasons] = useState<string[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/settings/ai-generation")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: AiGenConfig | null) => {
+        if (!active || !data) return;
+        setAiGen(data);
+        setObjective(data.settings.defaultObjective);
+        setModelType(data.settings.defaultModelType);
+      })
+      .catch(() => {/* chooser stays hidden; legacy toggle still works */});
+    return () => { active = false; };
+  }, []);
 
   async function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -205,10 +235,19 @@ export default function UploadPage() {
 
       setSuccess(true);
 
-      // Kick off model image generation only if the toggle is on
+      // Kick off model image generation only if the toggle is on. When the AI
+      // Generation feature is enabled we pass the chosen objective + store model;
+      // otherwise the body is empty and the route runs the legacy single image.
       if (generateModel && imageUrl) {
+        const genBody =
+          aiGen?.enabled && objective
+            ? JSON.stringify({ objective, modelType })
+            : undefined;
         fetch(`/api/products/${data.product.id}/generate-model-image`, {
           method: "POST",
+          ...(genBody
+            ? { headers: { "Content-Type": "application/json" }, body: genBody }
+            : {}),
         }).catch(() => {/* silent — model image is a nice-to-have */});
       }
 
@@ -328,7 +367,7 @@ export default function UploadPage() {
             <div>
               <p className="text-sm font-medium text-gray-900">Generate model image</p>
               <p className="text-xs text-gray-400 mt-0.5">
-                AI places product on a model via Gemini · adds ~10s &amp; API cost
+                AI places your product on a model · adds time &amp; generation cost
               </p>
             </div>
             <button
@@ -347,6 +386,65 @@ export default function UploadPage() {
               />
             </button>
           </div>
+
+          {/* AI Generation chooser — outcome-first; no provider names shown.
+              Only when generation is on AND the feature flag is enabled. */}
+          {generateModel && aiGen?.enabled && (
+            <div className="mt-4 pt-4 border-t border-gray-100 space-y-4">
+              {/* Objective */}
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-2">What do you need?</p>
+                <div className="grid gap-2">
+                  {aiGen.objectives.map((o) => {
+                    const active = objective === o.id;
+                    return (
+                      <button
+                        key={o.id}
+                        type="button"
+                        onClick={() => setObjective(o.id)}
+                        aria-pressed={active}
+                        className={`text-left rounded-2xl border p-3 transition-all ${
+                          active
+                            ? "border-indigo-300 bg-indigo-50/60 ring-1 ring-indigo-200"
+                            : "border-gray-100 bg-white hover:border-gray-200"
+                        }`}
+                      >
+                        <span className="text-sm font-semibold text-gray-900">{o.label}</span>
+                        <span className="block text-xs text-gray-500 mt-0.5 leading-relaxed">
+                          {o.description}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Store model */}
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-2">Store model</p>
+                <div className="flex flex-wrap gap-2">
+                  {aiGen.modelTypes.map((m) => {
+                    const active = modelType === m.id;
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => setModelType(m.id)}
+                        aria-pressed={active}
+                        className={`rounded-full border px-4 py-1.5 text-sm font-medium transition-all ${
+                          active
+                            ? "border-indigo-300 bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200"
+                            : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
+                        }`}
+                      >
+                        {m.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* AI extraction status */}
