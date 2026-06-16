@@ -18,14 +18,26 @@ import {
   type GenerationObjective,
 } from "./objectives";
 
+/** Where the brand watermark sits on generated model images. */
+export type BrandingPosition = "top-left" | "top-right";
+
+export function isBrandingPosition(v: unknown): v is BrandingPosition {
+  return v === "top-left" || v === "top-right";
+}
+
 export interface AiGenSettings {
   defaultModelType: ModelType;
   defaultObjective: GenerationObjective;
+  /** Overlay the store logo (or name) on generated model images. */
+  brandingEnabled: boolean;
+  brandingPosition: BrandingPosition;
 }
 
 export const DEFAULT_AI_GEN_SETTINGS: AiGenSettings = {
   defaultModelType: DEFAULT_MODEL_TYPE,
   defaultObjective: DEFAULT_OBJECTIVE,
+  brandingEnabled: true,
+  brandingPosition: "top-right",
 };
 
 /** Parse raw aiGenSettings JSON into a fully-populated, validated object. */
@@ -40,6 +52,13 @@ export function parseAiGenSettings(raw: string | null | undefined): AiGenSetting
       defaultObjective: isGenerationObjective(parsed.defaultObjective)
         ? parsed.defaultObjective
         : DEFAULT_OBJECTIVE,
+      brandingEnabled:
+        typeof parsed.brandingEnabled === "boolean"
+          ? parsed.brandingEnabled
+          : DEFAULT_AI_GEN_SETTINGS.brandingEnabled,
+      brandingPosition: isBrandingPosition(parsed.brandingPosition)
+        ? parsed.brandingPosition
+        : DEFAULT_AI_GEN_SETTINGS.brandingPosition,
     };
   } catch {
     return { ...DEFAULT_AI_GEN_SETTINGS };

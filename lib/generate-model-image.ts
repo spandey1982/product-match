@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { cloudinary } from "@/lib/cloudinary";
 import { getImageDimensions, fmtBytes } from "@/lib/image-utils";
 import { appendResearchLog, type ImageMeta } from "@/lib/research-log";
+import { getBrandingConfig, applyBranding } from "@/lib/model-gen/branding";
 
 const GEMINI_MODEL = "gemini-3.1-flash-image";
 
@@ -288,7 +289,12 @@ export async function generateModelImage(productId: string): Promise<void> {
     });
     if (!result) return;
 
-    await db.$executeRaw`UPDATE products SET "modelImageUrl" = ${result.url}, "updatedAt" = datetime('now') WHERE id = ${productId}`;
+    // Apply store branding (logo/name) so the legacy single-image path matches
+    // the objective-based flow. No-op when branding is disabled or unset.
+    const branding = await getBrandingConfig(product.userId);
+    const finalUrl = applyBranding(result.url, branding);
+
+    await db.$executeRaw`UPDATE products SET "modelImageUrl" = ${finalUrl}, "updatedAt" = datetime('now') WHERE id = ${productId}`;
   } catch (err) {
     console.error("[model-image] Unexpected error:", err);
   }

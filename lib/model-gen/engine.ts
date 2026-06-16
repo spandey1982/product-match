@@ -17,6 +17,7 @@ import {
 } from "./objectives";
 import { DEFAULT_MODEL_TYPE, type ModelType } from "./reference-models";
 import { getAiGenSettings } from "./settings";
+import { getBrandingConfig, applyBranding } from "./branding";
 import { persistGeneratedImages, type GeneratedImage } from "./persist";
 import { runQuickListingStrategy } from "./strategies/quick-listing";
 import { runCatalogueStrategy, type StrategyProduct } from "./strategies/catalogue";
@@ -73,11 +74,19 @@ export async function generateModelImages(
       ? await runQuickListingStrategy({ product: strategyProduct, modelType })
       : await runCatalogueStrategy({ product: strategyProduct, modelType });
 
-  if (images.length > 0) {
-    await persistGeneratedImages(product.id, images, objective);
+  // Brand each image (store logo, or store name) before persisting, so the
+  // branded URL flows to display, share and download. No-op when disabled.
+  const branding = await getBrandingConfig(input.userId);
+  const branded: GeneratedImage[] = images.map((img) => ({
+    ...img,
+    url: applyBranding(img.url, branding),
+  }));
+
+  if (branded.length > 0) {
+    await persistGeneratedImages(product.id, branded, objective);
   }
 
-  return { objective, modelType, images };
+  return { objective, modelType, images: branded };
 }
 
 export { DEFAULT_OBJECTIVE, DEFAULT_MODEL_TYPE };
