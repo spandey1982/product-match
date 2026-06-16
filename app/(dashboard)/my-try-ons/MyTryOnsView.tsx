@@ -202,70 +202,70 @@ function TryOnCard({
   const wishlisted = isInWishlist(entry.id);
 
   return (
-    <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm group">
-      <div className="relative aspect-[3/4] bg-gray-50">
-        {entry.status === "done" && entry.resultUrl ? (
-          <>
-            <button
-              onClick={onOpen}
-              className="block w-full h-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-inset"
-              aria-label={`View full-screen try-on for ${entry.product.title}`}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={entry.resultUrl}
-                alt={`Try-on for ${entry.product.title}`}
-                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
-                draggable={false}
-              />
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); addToWishlist(entry.id); }}
-              disabled={wishlisted}
-              aria-label={wishlisted ? "Saved to wishlist" : "Save to wishlist"}
-              className={cn(
-                "absolute top-2 right-2 h-7 w-7 rounded-full flex items-center justify-center transition-all z-10",
-                wishlisted
-                  ? "bg-rose-500 shadow-md"
-                  : "bg-white/80 backdrop-blur-sm shadow hover:bg-white opacity-0 group-hover:opacity-100"
-              )}
-            >
-              <Heart className={cn("h-3.5 w-3.5", wishlisted ? "text-white fill-white" : "text-gray-600")} />
-            </button>
-            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-              <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-black/30 backdrop-blur-sm text-white whitespace-nowrap">
-                Tap to expand
-              </span>
-            </div>
-          </>
-        ) : entry.status === "generating" ? (
-          <div className="w-full h-full flex flex-col items-center justify-center gap-3 p-4">
-            <Loader2 className="h-8 w-8 text-indigo-400 animate-spin" />
-            <div className="text-center">
-              <p className="text-xs font-medium text-gray-600">Generating…</p>
-              <p className="text-[10px] text-gray-400 mt-0.5">Usually 10–20 sec</p>
-            </div>
-            <div className="w-full space-y-1.5 px-2">
-              <div className="h-1.5 bg-gray-100 rounded animate-pulse" />
-              <div className="h-1.5 bg-gray-100 rounded animate-pulse w-3/4 mx-auto" />
-            </div>
+    <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm group mb-3 break-inside-avoid">
+      {entry.status === "done" && entry.resultUrl ? (
+        // Natural aspect ratio — the card hugs the image so it is shown in full
+        // (no object-cover crop). Tap opens the full-screen viewer.
+        <div className="relative bg-gray-50">
+          <button
+            onClick={onOpen}
+            className="block w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-inset"
+            aria-label={`View full-screen try-on for ${entry.product.title}`}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={entry.resultUrl}
+              alt={`Try-on for ${entry.product.title}`}
+              className="block w-full h-auto transition-transform duration-300 group-hover:scale-[1.02]"
+              draggable={false}
+            />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); addToWishlist(entry.id); }}
+            disabled={wishlisted}
+            aria-label={wishlisted ? "Saved to wishlist" : "Save to wishlist"}
+            className={cn(
+              "absolute top-2 right-2 h-7 w-7 rounded-full flex items-center justify-center transition-all z-10",
+              wishlisted
+                ? "bg-rose-500 shadow-md"
+                : "bg-white/80 backdrop-blur-sm shadow hover:bg-white opacity-0 group-hover:opacity-100"
+            )}
+          >
+            <Heart className={cn("h-3.5 w-3.5", wishlisted ? "text-white fill-white" : "text-gray-600")} />
+          </button>
+          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+            <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-black/30 backdrop-blur-sm text-white whitespace-nowrap">
+              Tap to expand
+            </span>
           </div>
-        ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center gap-3 p-4">
-            <AlertCircle className="h-8 w-8 text-red-300" />
-            <p className="text-xs text-center text-gray-500 leading-relaxed">
-              {entry.errorMessage ?? "Generation failed"}
-            </p>
-            <button
-              onClick={() => retryTryOn(entry.id)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 text-indigo-700 text-xs font-medium hover:bg-indigo-100 transition-colors"
-            >
-              <RotateCcw className="h-3 w-3" />
-              Retry
-            </button>
+        </div>
+      ) : entry.status === "generating" ? (
+        <div className="aspect-[3/4] bg-gray-50 flex flex-col items-center justify-center gap-3 p-4">
+          <Loader2 className="h-8 w-8 text-indigo-400 animate-spin" />
+          <div className="text-center">
+            <p className="text-xs font-medium text-gray-600">Generating…</p>
+            <p className="text-[10px] text-gray-400 mt-0.5">Usually 10–20 sec</p>
           </div>
-        )}
-      </div>
+          <div className="w-full space-y-1.5 px-2">
+            <div className="h-1.5 bg-gray-100 rounded animate-pulse" />
+            <div className="h-1.5 bg-gray-100 rounded animate-pulse w-3/4 mx-auto" />
+          </div>
+        </div>
+      ) : (
+        <div className="aspect-[3/4] bg-gray-50 flex flex-col items-center justify-center gap-3 p-4">
+          <AlertCircle className="h-8 w-8 text-red-300" />
+          <p className="text-xs text-center text-gray-500 leading-relaxed">
+            {entry.errorMessage ?? "Generation failed"}
+          </p>
+          <button
+            onClick={() => retryTryOn(entry.id)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 text-indigo-700 text-xs font-medium hover:bg-indigo-100 transition-colors"
+          >
+            <RotateCcw className="h-3 w-3" />
+            Retry
+          </button>
+        </div>
+      )}
 
       <div className="p-2.5 space-y-1.5">
         <p className="text-xs font-medium text-gray-800 truncate leading-tight">
@@ -468,7 +468,9 @@ export function MyTryOnsView() {
                   No items in this filter.
                 </div>
               ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                // Masonry: cards keep their image's natural height and pack
+                // without cropping or row gaps across every screen size.
+                <div className="columns-2 sm:columns-3 xl:columns-4 gap-3">
                   {filtered.map((entry) => (
                     <TryOnCard
                       key={entry.id}
