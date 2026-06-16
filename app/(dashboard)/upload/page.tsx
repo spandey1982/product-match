@@ -293,7 +293,8 @@ export default function UploadPage() {
       // Kick off model image generation only if the toggle is on. When the AI
       // Generation feature is enabled we pass the chosen objective + store model;
       // otherwise the body is empty and the route runs the legacy single image.
-      if (generateModel && imageUrl) {
+      const willGenerate = Boolean(generateModel && imageUrl);
+      if (willGenerate) {
         const genBody =
           aiGen?.enabled && objective
             ? JSON.stringify({ objective, modelType })
@@ -306,7 +307,10 @@ export default function UploadPage() {
         }).catch(() => {/* silent — model image is a nice-to-have */});
       }
 
-      setTimeout(() => router.push(`/products/${data.product.id}`), 1200);
+      // Signal the detail page to poll for the model image so it appears the
+      // moment generation finishes — no manual refresh needed.
+      const dest = `/products/${data.product.id}${willGenerate ? "?generating=1" : ""}`;
+      setTimeout(() => router.push(dest), 1200);
     } catch {
       setError("Something went wrong. Please try again.");
     } finally {

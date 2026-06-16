@@ -23,6 +23,7 @@ import {
   Layers,
   Trash2,
   Expand,
+  Loader2,
 } from "lucide-react";
 import { ProductImageViewer } from "@/components/product/ProductImageViewer";
 
@@ -34,6 +35,8 @@ interface GeneratedImage {
 interface Props {
   product: Product;
   generatedImages?: GeneratedImage[];
+  /** True when arriving right after requesting model-image generation. */
+  initialGenerating?: boolean;
 }
 
 type RecommendationWithProduct = Recommendation & { product: Product };
@@ -66,7 +69,11 @@ function MetaChip({
   );
 }
 
-export function ProductDetailView({ product, generatedImages = [] }: Props) {
+export function ProductDetailView({
+  product,
+  generatedImages = [],
+  initialGenerating = false,
+}: Props) {
   const router = useRouter();
   const [recommendations, setRecommendations] = useState<RecommendationWithProduct[]>([]);
   const [loading, setLoading] = useState(true);
@@ -75,14 +82,22 @@ export function ProductDetailView({ product, generatedImages = [] }: Props) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
 
+  // Live model-image state — seeded from the server, updated by polling so a
+  // freshly generated image appears without a manual refresh.
+  const [genImages, setGenImages] = useState<GeneratedImage[]>(generatedImages);
+  const [modelUrl, setModelUrl] = useState<string | null>(product.modelImageUrl ?? null);
+
   // On-model images: prefer the multi-view catalogue gallery; otherwise fall
   // back to the single legacy modelImageUrl so existing products are unchanged.
   const onModel: GeneratedImage[] =
-    generatedImages.length > 0
-      ? generatedImages
-      : product.modelImageUrl
-      ? [{ url: product.modelImageUrl, view: "on-model" }]
+    genImages.length > 0
+      ? genImages
+      : modelUrl
+      ? [{ url: modelUrl, view: "on-model" }]
       : [];
+
+  const hasModelImage = onModel.length > 0;
+  const [generating, setGenerating] = useState(initialGenerating && !hasModelImage);
 
   const productImages = [product.imageUrl, ...onModel.map((g) => g.url)].filter(
     Boolean
@@ -132,6 +147,46 @@ export function ProductDetailView({ product, generatedImages = [] }: Props) {
     fetchRecommendations();
   }, [product.id]);
 
+  // Poll for the generated model image so it appears the moment it's ready,
+  // without the user needing to refresh. Stops on success or after ~90s.
+  useEffect(() => {
+    if (!generating) return;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+    let attempts = 0;
+    const MAX_ATTEMPTS = 30; // 30 × 3s ≈ 90s
+
+    async function poll() {
+      attempts += 1;
+      try {
+        const res = await fetch(`/api/products/${product.id}/model-status`);
+        if (res.ok) {
+          const data = (await res.json()) as {
+            modelImageUrl: string | null;
+            generatedImages: GeneratedImage[];
+          };
+          const ready = data.generatedImages?.length > 0 || !!data.modelImageUrl;
+          if (active && ready) {
+            setGenImages(data.generatedImages ?? []);
+            setModelUrl(data.modelImageUrl ?? null);
+            setGenerating(false);
+            router.refresh(); // resync server-rendered data
+            return;
+          }
+        }
+      } catch {
+        // transient — keep polling
+      }
+      if (active) {
+        if (attempts >= MAX_ATTEMPTS) setGenerating(false);
+        else timer = setTimeout(poll, 3000);
+      }
+    }
+
+    timer = setTimeout(poll, 3000);
+    return () => { active = false; clearTimeout(timer); };
+  }, [generating, product.id, router]);
+
   return (
     <div>
       {/* Full-screen product image viewer */}
@@ -167,6 +222,13 @@ export function ProductDetailView({ product, generatedImages = [] }: Props) {
               category={product.category}
               className="w-full h-full"
             />
+            {/* Live generation indicator — clears itself when the image lands */}
+            {generating && (
+              <div className="absolute inset-x-0 top-0 z-30 flex items-center justify-center gap-2 bg-indigo-600/90 backdrop-blur-sm text-white text-xs font-medium py-2 px-3 pointer-events-none">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Generating model image… appears here automatically
+              </div>
+            )}
             {/* Expand hint — appears on hover */}
             <div className="absolute top-3 right-3 z-30 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
               <div className="h-7 w-7 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center text-white">
