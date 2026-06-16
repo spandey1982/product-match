@@ -16,6 +16,7 @@ import {
   type GenerationObjective,
 } from "./objectives";
 import { DEFAULT_MODEL_TYPE, type ModelType } from "./reference-models";
+import { resolveModelType } from "./model-selection";
 import { getAiGenSettings } from "./settings";
 import { getBrandingConfig, applyBranding } from "./branding";
 import { persistGeneratedImages, type GeneratedImage } from "./persist";
@@ -54,7 +55,11 @@ export async function generateModelImages(
 
   const settings = await getAiGenSettings(input.userId);
   const objective = input.objective ?? settings.defaultObjective;
-  const modelType = input.modelType ?? settings.defaultModelType;
+  // No explicit model type → auto-select from the product (category + gender),
+  // falling back to the store default only when the product gives no signal.
+  const modelType =
+    input.modelType ??
+    resolveModelType(product?.category, product?.gender, settings.defaultModelType);
 
   if (!product?.imageUrl) {
     return { objective, modelType, images: [] };

@@ -71,7 +71,9 @@ export default function UploadPage() {
   // only renders when the feature flag is on. Provider names never appear here.
   const [aiGen, setAiGen] = useState<AiGenConfig | null>(null);
   const [objective, setObjective] = useState<string>("");
-  const [modelType, setModelType] = useState<string>("");
+  // "auto" = pick the model from the product (category + gender). The concrete
+  // types are manual overrides.
+  const [modelType, setModelType] = useState<string>("auto");
 
   // Store branding for generated images (persisted immediately on change).
   const [brandingEnabled, setBrandingEnabled] = useState(true);
@@ -109,7 +111,7 @@ export default function UploadPage() {
         if (!active || !data) return;
         setAiGen(data);
         setObjective(data.settings.defaultObjective);
-        setModelType(data.settings.defaultModelType);
+        // Leave modelType on "auto" — the system picks per product by default.
         setBrandingEnabled(data.settings.brandingEnabled);
         setBrandingPosition(data.settings.brandingPosition);
         setLogoUrl(data.logoUrl);
@@ -297,7 +299,11 @@ export default function UploadPage() {
       if (willGenerate) {
         const genBody =
           aiGen?.enabled && objective
-            ? JSON.stringify({ objective, modelType })
+            ? JSON.stringify({
+                objective,
+                // Omit when "auto" so the engine selects the model per product.
+                ...(modelType && modelType !== "auto" ? { modelType } : {}),
+              })
             : undefined;
         fetch(`/api/products/${data.product.id}/generate-model-image`, {
           method: "POST",
@@ -480,9 +486,9 @@ export default function UploadPage() {
 
               {/* Store model */}
               <div>
-                <p className="text-xs font-medium text-gray-500 mb-2">Store model</p>
+                <p className="text-xs font-medium text-gray-500 mb-2">Model</p>
                 <div className="flex flex-wrap gap-2">
-                  {aiGen.modelTypes.map((m) => {
+                  {[{ id: "auto", label: "Auto" }, ...aiGen.modelTypes].map((m) => {
                     const active = modelType === m.id;
                     return (
                       <button
@@ -501,6 +507,9 @@ export default function UploadPage() {
                     );
                   })}
                 </div>
+                <p className="text-[11px] text-gray-400 mt-1.5">
+                  Auto picks the model from the product&apos;s category &amp; gender. Choose one to override.
+                </p>
               </div>
 
               {/* Image branding — store-level; applies to all generated images */}

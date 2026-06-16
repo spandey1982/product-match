@@ -171,6 +171,7 @@ Schema changes: `npx prisma generate` then restart dev server.
 | Model-image gen impl (legacy + shared Gemini core) | `lib/generate-model-image.ts` |
 | Model-gen engine (objectives) | `lib/model-gen/engine.ts` |
 | Objectives / reference library / category selection / prompt sets | `lib/model-gen/{objectives,reference-models,reference-selection,prompt-sets}.ts` |
+| Auto model-type selection (gender/age) | `lib/model-gen/model-selection.ts` |
 | Model-gen strategies | `lib/model-gen/strategies/{quick-listing,catalogue}.ts` |
 | AI-gen settings (storage accessor + API) | `lib/model-gen/settings.ts`, `app/api/settings/ai-generation/route.ts` |
 | Store branding overlay | `lib/model-gen/branding.ts` |
@@ -202,8 +203,24 @@ scratch: the **reference-model library supplies the person image** Vertex needs.
 hidden variants `basic/saree/lehenga/kurti/western`. Assets are **bundled static**
 files in `public/reference-models/` read server-side (zero network hop, free,
 version-controlled, deterministic); thumbnails served over HTTP. Missing asset →
-graceful degradation (no-reference Gemini; Vertex→Gemini). Category→variant in
-`reference-selection.ts`; category→view set + prompt composition in `prompt-sets.ts`.
+graceful degradation (no-reference Gemini; Vertex→Gemini).
+
+A reference is resolved on two independent axes:
+- **type** (woman/man/girl/boy) — auto-selected per product in `model-selection.ts`
+  from sex (female-only categories like saree/lehenga/kurti/skirt override the
+  gender field; else `Product.gender`) and age (GIRLS/BOYS = kid). Falls back to
+  the store default only when the product gives no signal (e.g. a unisex
+  accessory). The upload UI defaults to **Auto**; a concrete type is an override.
+- **variant** (basic/saree/lehenga/…) — by category in `reference-selection.ts`.
+
+Together they resolve a file like `woman-saree`. A variant asset must be the
+**same base model wearing that garment, draped** (see the reference-models
+README) — that draped person image is what guides Vertex (no prompt). Catalogue
+view set + prompt composition live in `prompt-sets.ts`.
+
+*Future:* several models per type with a per-type default; age inferred from
+category too (e.g. "kids lehenga"). `model-selection.ts` is the single place
+both grow.
 
 **Resolution / fallback** (`engine.ts` → `generateModelImages`): explicit request
 → retailer stored defaults (`User.aiGenSettings`) → strategy. Capability-aware
