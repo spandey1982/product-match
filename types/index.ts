@@ -7,6 +7,8 @@ export type User = {
   tryOnProvider?: "gemini" | "vertex" | "auto";
   /** AI Generation preferences as a JSON string. See lib/model-gen/settings.ts. */
   aiGenSettings?: string | null;
+  /** Cloudinary public_id of the store logo overlaid on generated images. */
+  logoPublicId?: string | null;
 };
 
 /** An AI-generated catalogue/model image for a product (multi-view gallery). */

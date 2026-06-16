@@ -20,11 +20,16 @@ model User {
   tryOnProvider String @default("gemini")
 
   // AI Generation (model-image) preferences as JSON, e.g.
-  // { "defaultModelType": "woman", "defaultObjective": "catalogue" }.
+  // { "defaultModelType": "woman", "defaultObjective": "catalogue",
+  //   "brandingEnabled": true, "brandingPosition": "top-right" }.
   // Nullable → existing rows are unaffected. A single column keeps the growing
   // settings surface migration-free (see docs/IMAGE_AI_ROADMAP.md §8). Read via
   // the typed accessor in lib/model-gen/settings.ts — never parsed inline.
   aiGenSettings String?
+
+  // Cloudinary public_id of the store logo, overlaid on generated model images
+  // when present (else the store name is used). Nullable → no logo by default.
+  logoPublicId String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
