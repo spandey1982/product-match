@@ -25,12 +25,20 @@ const OUT_DIR = join(process.cwd(), "public", "reference-models");
 type ModelType = "woman" | "man" | "girl" | "boy";
 type Variant = "basic" | "saree" | "lehenga" | "kurti" | "western";
 
-/** Which {type}-{variant} files to produce (mirrors the README manifest). */
+/**
+ * Which {type}-{variant} files to produce (mirrors the README manifest).
+ *
+ * IMPORTANT: a variant is the SAME base model already *wearing that garment
+ * type, properly draped* (e.g. woman-saree = the woman-basic model in a draped
+ * saree) — NOT a new model and NOT plain clothing. Vertex takes no prompt, so a
+ * garment-draped person image is what tells it how to place the product. The
+ * `basic` model wears minimal neutral clothing. man/boy use `basic` only.
+ */
 const MANIFEST: Record<ModelType, Variant[]> = {
   woman: ["basic", "saree", "lehenga", "kurti", "western"],
-  man:   ["basic", "western"],
+  man:   ["basic"],
   girl:  ["basic", "saree", "lehenga", "kurti"],
-  boy:   ["basic", "western"],
+  boy:   ["basic"],
 };
 
 const EXT_BY_MIME: Record<string, string> = {

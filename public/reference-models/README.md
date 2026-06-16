@@ -13,21 +13,40 @@ over HTTP for UI thumbnails.
 
 - **type** (visible to retailers): `woman` · `man` · `girl` · `boy`
 - **variant** (internal, category-driven): `basic` · `saree` · `lehenga` · `kurti` · `western`
-- **ext**: `webp` (preferred) · `png` · `jpg`
+- **ext**: `webp` · `png` · `jpg`
+
+### What a variant actually is (important)
+
+A variant is the **same base model already wearing that garment type, properly
+draped** — NOT a new model and NOT plain clothing:
+
+- `woman-basic` — the base model in minimal neutral clothing.
+- `woman-saree` — *that same woman* wearing a well-draped saree.
+- `woman-lehenga` — the same woman in a lehenga; `woman-kurti` — in a kurti; etc.
+
+Why: when a product is categorised (e.g. `saree`), the app feeds the matching
+**draped** model as the person image. Vertex takes no prompt, so a saree-draped
+person image is what tells it how the new saree product should sit. Gemini gets
+the same model plus a metadata prompt. A plain model for a saree gives Vertex no
+drape cue — which is the whole point of having variants.
 
 The loader tries the requested variant, then falls back to `basic`, then to
 "no reference" (graceful degradation — generation never breaks if a file is
-missing). So at minimum supply the `*-basic` images; add drape-specific variants
-to improve quality.
+missing). At minimum supply the `*-basic` images; the draped variants are what
+lift quality for those categories.
 
 ## Expected files
 
-| | basic | saree | lehenga | kurti | western |
-|---|---|---|---|---|---|
-| woman | `woman-basic` | `woman-saree` | `woman-lehenga` | `woman-kurti` | `woman-western` |
-| man   | `man-basic`   | — | — | — | `man-western` |
-| girl  | `girl-basic`  | `girl-saree` | `girl-lehenga` | `girl-kurti` | — |
-| boy   | `boy-basic`   | — | — | — | `boy-western` |
+| | basic | saree | lehenga | kurti |
+|---|---|---|---|---|
+| woman | `woman-basic` | `woman-saree` | `woman-lehenga` | `woman-kurti` |
+| man   | `man-basic`   | — | — | — |
+| girl  | `girl-basic`  | `girl-saree` | `girl-lehenga` | `girl-kurti` |
+| boy   | `boy-basic`   | — | — | — |
+
+man/boy use `basic` only — it covers their range (including western). `western`
+remains a valid variant for woman if you want a dedicated western-wear model;
+otherwise western products fall back to `*-basic`.
 
 `*-basic` thumbnails (referenced by `MODEL_TYPES` in `reference-models.ts`) are
 also shown in the store-model picker, so keep them clean front-facing shots.
@@ -35,7 +54,8 @@ also shown in the store-model picker, so keep them clean front-facing shots.
 ## Guidance
 
 - Full-body, neutral/light background, even lighting, relaxed front pose.
-- Consistent framing across variants of the same model (improves consistency).
+- **Same identity + framing across a model's variants** (same woman, same crop,
+  just different garment) — this is what keeps generations consistent.
 - Recommended ~1024px on the long edge; keep files reasonably small.
 - No text/watermarks.
 
