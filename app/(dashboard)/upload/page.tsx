@@ -47,7 +47,13 @@ interface AiGenConfig {
   enabled: boolean;
   objectives: AiGenObjective[];
   modelTypes: AiGenModelType[];
-  settings: { defaultModelType: string; defaultObjective: string };
+  logoUrl: string | null;
+  settings: {
+    defaultModelType: string;
+    defaultObjective: string;
+    brandingEnabled: boolean;
+    brandingPosition: "top-left" | "top-right";
+  };
 }
 
 export default function UploadPage() {
@@ -66,6 +72,13 @@ export default function UploadPage() {
   const [aiGen, setAiGen] = useState<AiGenConfig | null>(null);
   const [objective, setObjective] = useState<string>("");
   const [modelType, setModelType] = useState<string>("");
+
+  // Store branding for generated images (persisted immediately on change).
+  const [brandingEnabled, setBrandingEnabled] = useState(true);
+  const [brandingPosition, setBrandingPosition] = useState<"top-left" | "top-right">("top-right");
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [logoBusy, setLogoBusy] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
 
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -97,10 +110,52 @@ export default function UploadPage() {
         setAiGen(data);
         setObjective(data.settings.defaultObjective);
         setModelType(data.settings.defaultModelType);
+        setBrandingEnabled(data.settings.brandingEnabled);
+        setBrandingPosition(data.settings.brandingPosition);
+        setLogoUrl(data.logoUrl);
       })
       .catch(() => {/* chooser stays hidden; legacy toggle still works */});
     return () => { active = false; };
   }, []);
+
+  // Persist a branding setting change immediately (fire-and-forget).
+  function patchBranding(patch: { brandingEnabled?: boolean; brandingPosition?: string }) {
+    fetch("/api/settings/ai-generation", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    }).catch(() => {/* non-fatal */});
+  }
+
+  async function handleLogoFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLogoBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append("logo", file);
+      const res = await fetch("/api/settings/logo", { method: "POST", body: fd });
+      const data = await res.json();
+      if (res.ok) setLogoUrl(data.logoUrl);
+    } catch {
+      /* non-fatal */
+    } finally {
+      setLogoBusy(false);
+      if (logoInputRef.current) logoInputRef.current.value = "";
+    }
+  }
+
+  async function removeLogo() {
+    setLogoBusy(true);
+    try {
+      await fetch("/api/settings/logo", { method: "DELETE" });
+      setLogoUrl(null);
+    } catch {
+      /* non-fatal */
+    } finally {
+      setLogoBusy(false);
+    }
+  }
 
   async function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -442,6 +497,101 @@ export default function UploadPage() {
                     );
                   })}
                 </div>
+              </div>
+
+              {/* Image branding — store-level; applies to all generated images */}
+              <div>
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-medium text-gray-500">Image branding</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !brandingEnabled;
+                      setBrandingEnabled(next);
+                      patchBranding({ brandingEnabled: next });
+                    }}
+                    role="switch"
+                    aria-checked={brandingEnabled}
+                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                      brandingEnabled ? "bg-indigo-600" : "bg-gray-200"
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition ${
+                        brandingEnabled ? "translate-x-4" : "translate-x-0"
+                      }`}
+                    />
+                  </button>
+                </div>
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  Adds your logo to generated images — falls back to your store name if no logo is set.
+                </p>
+
+                {brandingEnabled && (
+                  <div className="mt-3 space-y-3">
+                    {/* Logo upload / preview */}
+                    <div className="flex items-center gap-3">
+                      <div className="h-12 w-12 shrink-0 rounded-xl border border-gray-100 bg-gray-50 overflow-hidden flex items-center justify-center">
+                        {logoUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={logoUrl} alt="Store logo" className="h-full w-full object-contain" />
+                        ) : (
+                          <ImagePlus className="h-5 w-5 text-gray-300" />
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          disabled={logoBusy}
+                          onClick={() => logoInputRef.current?.click()}
+                          className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:border-gray-300 disabled:opacity-50"
+                        >
+                          {logoBusy ? "Working…" : logoUrl ? "Replace logo" : "Upload logo"}
+                        </button>
+                        {logoUrl && (
+                          <button
+                            type="button"
+                            disabled={logoBusy}
+                            onClick={removeLogo}
+                            className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-red-600 hover:border-red-200 disabled:opacity-50"
+                          >
+                            Remove
+                          </button>
+                        )}
+                        <input
+                          ref={logoInputRef}
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp"
+                          className="hidden"
+                          onChange={handleLogoFile}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Position */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-gray-400">Position</span>
+                      {(["top-left", "top-right"] as const).map((pos) => (
+                        <button
+                          key={pos}
+                          type="button"
+                          onClick={() => {
+                            setBrandingPosition(pos);
+                            patchBranding({ brandingPosition: pos });
+                          }}
+                          aria-pressed={brandingPosition === pos}
+                          className={`rounded-full border px-3 py-1 text-xs font-medium transition-all ${
+                            brandingPosition === pos
+                              ? "border-indigo-300 bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200"
+                              : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
+                          }`}
+                        >
+                          {pos === "top-left" ? "Top left" : "Top right"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}

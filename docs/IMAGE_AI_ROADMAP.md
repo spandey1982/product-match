@@ -173,6 +173,9 @@ Schema changes: `npx prisma generate` then restart dev server.
 | Objectives / reference library / category selection / prompt sets | `lib/model-gen/{objectives,reference-models,reference-selection,prompt-sets}.ts` |
 | Model-gen strategies | `lib/model-gen/strategies/{quick-listing,catalogue}.ts` |
 | AI-gen settings (storage accessor + API) | `lib/model-gen/settings.ts`, `app/api/settings/ai-generation/route.ts` |
+| Store branding overlay | `lib/model-gen/branding.ts` |
+| Logo upload/delete | `app/api/settings/logo/route.ts` (`User.logoPublicId`) |
+| Reference-model generator (offline team tool) | `scripts/generate-reference-models.ts` (`npm run gen:reference-models`) |
 | Reference assets | `public/reference-models/` (see its README) |
 | Try-on routes | `app/api/products/[id]/{tryon,tryon-vertex}/route.ts` |
 | Admin provider setting | `app/api/settings/tryon-provider/route.ts`, `app/(dashboard)/settings/` |
@@ -215,7 +218,19 @@ fallback at every step, like try-on. Feature flag `ENABLE_AI_GEN_SETTINGS`
   **kept** as the legacy/primary single output (Quick Listing + primary catalogue
   view write it) so all existing UI is unchanged.
 
-**Settings surface placement:** the chooser (objective + store model) lives in the
+**Store branding on generated images** (`lib/model-gen/branding.ts`): generated
+model images carry the store **logo** (Cloudinary image overlay) or, when no logo
+is uploaded, the **store name** (text overlay). Applied as a non-destructive
+Cloudinary transformation spliced into the delivery URL at the persist boundary,
+so it covers both backends (Gemini catalogue + Vertex quick-listing) and the
+legacy single-image path, and flows automatically to display/share/download — the
+shared try-on upload path is untouched. Stored on `User.logoPublicId` (+ logo
+upload/delete at `/api/settings/logo`); on/off + position (`top-left`/`top-right`,
+default `top-right`) live in `aiGenSettings` (`brandingEnabled`, `brandingPosition`).
+No-op when disabled or when there's no logo and no store name.
+
+**Settings surface placement:** the chooser (objective + store model + branding)
+lives in the
 **product-creation/generation workflow** (upload flow), **not** the try-on
 `/settings` screen. The existing try-on `/settings` still names providers
 (predates the no-provider-names rule) — re-skinning it to outcome language is a
