@@ -3,6 +3,7 @@ import { requireAuth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { TRYON_ALLOWED_MIME_TYPES, type TryOnMimeType } from "@/lib/tryon";
 import { getActiveTryOnProvider } from "@/lib/providers/active";
+import { normalizeTryOnUrl } from "@/lib/image-normalize";
 
 // ─── In-memory rate limiter ───────────────────────────────────────────────────
 // Module-level Map is per-process. Resets on server restart.
@@ -156,7 +157,7 @@ export async function POST(
       userId: session.id,
     });
 
-    return NextResponse.json({ tryOnUrl: result.url });
+    return NextResponse.json({ tryOnUrl: normalizeTryOnUrl(result.url) });
   } catch (err) {
     const message = (err as Error).message ?? "";
 
