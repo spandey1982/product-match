@@ -29,6 +29,7 @@ service-account*.json
 *-service-account.json
 gcp-credentials*.json
 vertex-ai-vto-*.json
+gen-lang-client-*.json
 
 # research logs (generated at runtime, never committed)
 /logs/

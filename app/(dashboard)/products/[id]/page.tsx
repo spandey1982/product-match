@@ -7,6 +7,7 @@ import type { Product } from "@/types";
 
 interface Props {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ generating?: string }>;
 }
 
 export async function generateMetadata({ params }: Props) {
@@ -18,8 +19,9 @@ export async function generateMetadata({ params }: Props) {
   return { title: `${product?.title || "Product"} — ProductMatch` };
 }
 
-export default async function ProductDetailPage({ params }: Props) {
+export default async function ProductDetailPage({ params, searchParams }: Props) {
   const { id } = await params;
+  const { generating } = await searchParams;
   const session = await getSession();
   if (!session) notFound();
 
@@ -33,5 +35,19 @@ export default async function ProductDetailPage({ params }: Props) {
     raw as unknown as Record<string, unknown>
   ) as unknown as Product;
 
-  return <ProductDetailView product={product} />;
+  // Multi-view catalogue gallery (additive — empty for products generated with
+  // the legacy single-image flow, where modelImageUrl still drives the carousel).
+  const generatedImages = await db.productImage.findMany({
+    where: { productId: id },
+    orderBy: { createdAt: "asc" },
+    select: { url: true, view: true },
+  });
+
+  return (
+    <ProductDetailView
+      product={product}
+      generatedImages={generatedImages}
+      initialGenerating={generating === "1"}
+    />
+  );
 }
