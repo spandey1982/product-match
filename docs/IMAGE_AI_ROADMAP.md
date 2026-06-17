@@ -249,9 +249,11 @@ No-op when disabled or when there's no logo and no store name.
 **Settings surface placement:** the chooser (objective + store model + branding)
 lives in the
 **product-creation/generation workflow** (upload flow), **not** the try-on
-`/settings` screen. The existing try-on `/settings` still names providers
-(predates the no-provider-names rule) — re-skinning it to outcome language is a
-separate future task (do not conflate).
+`/settings` screen. The try-on `/settings` screen has been re-skinned to
+purpose-led, provider-free language too — "Automatic" (Recommended), "Natural
+Drape" (Gemini, best for draped ethnic wear), "Sharp Fit" (Vertex, best for
+structured/western + footwear). The underlying ids/storage (`auto/gemini/vertex`,
+`User.tryOnProvider`) are unchanged; only the labels/descriptions changed.
 
 **Try-on improvement research (recommendation only — not built):** today try-on
 uses only `product.imageUrl`. Highest-payoff additive wins, in order: (1) pass the

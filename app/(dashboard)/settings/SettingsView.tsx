@@ -17,13 +17,21 @@ interface Props {
   providers: ProviderOption[];
 }
 
+// Friendly, non-technical labels — the headline effect of each choice. The
+// underlying ids ("auto"/"gemini"/"vertex") are unchanged and stay internal.
+const MODE_LABELS: Record<Mode, string> = {
+  auto: "Automatic",
+  gemini: "Natural Drape",
+  vertex: "Sharp Fit",
+};
+
 const DESCRIPTIONS: Record<Mode, string> = {
   auto:
-    "Automatically pick the best provider per product category (e.g. structured wear via Vertex, complex drapes like sarees via Gemini). Falls back to Gemini when a category's provider isn't available.",
+    "Picks the best look for each product automatically — flowing ethnic wear and structured outfits each get the technique that suits them. Best choice for most stores.",
   gemini:
-    "Google Gemini image model. The default provider — always available when the Gemini API key is configured.",
+    "Best for sarees, lehengas, dupattas and other draped, flowing wear — recreates folds and draping the most realistically. Works for every product.",
   vertex:
-    "Google Cloud Vertex AI Virtual Try-On (virtual-try-on-001). Requires Vertex to be enabled and credentials configured.",
+    "Best for stitched, structured and western outfits and footwear — gives clean, true-to-fit results on tailored pieces.",
 };
 
 interface ModeOption {
@@ -70,8 +78,8 @@ export function SettingsView({ current, providers }: Props) {
   }
 
   function savedLabel(mode: Mode): string {
-    if (mode === "auto") return "the best provider per category";
-    return mode === "vertex" ? "Vertex AI" : "Gemini";
+    if (mode === "auto") return "the best look for each product";
+    return `the ${MODE_LABELS[mode]} style`;
   }
 
   return (
@@ -85,12 +93,12 @@ export function SettingsView({ current, providers }: Props) {
         <div className="flex items-center gap-2 mb-1">
           <Sparkles className="h-4 w-4 text-indigo-500" />
           <h2 className="text-sm font-semibold text-gray-900">
-            Virtual Try-On Provider
+            Try-On Style
           </h2>
         </div>
         <p className="text-xs text-gray-500 mb-4">
-          The AI engine used when shoppers try on your products. Gemini is the
-          default; other providers appear here once configured.
+          How virtual try-ons are created for your store. Automatic suits most
+          stores; pick a specific style to always use it instead.
         </p>
 
         <div className="space-y-3">
@@ -132,17 +140,22 @@ export function SettingsView({ current, providers }: Props) {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-semibold text-gray-900">
-                      {p.label}
+                      {MODE_LABELS[p.id]}
                     </span>
                     {isSelected && (
                       <span className="text-[10px] font-medium uppercase tracking-wide text-indigo-600">
                         Active
                       </span>
                     )}
+                    {p.id === "auto" && !isSelected && (
+                      <span className="text-[10px] font-medium uppercase tracking-wide text-emerald-600">
+                        Recommended
+                      </span>
+                    )}
                     {disabled && (
                       <span className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-gray-400">
                         <Lock className="h-3 w-3" />
-                        Not configured
+                        Unavailable
                       </span>
                     )}
                   </div>
