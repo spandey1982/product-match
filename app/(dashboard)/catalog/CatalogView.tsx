@@ -229,7 +229,9 @@ export function CatalogView() {
 
   // ── render ─────────────────────────────────────────────────────────────────
   return (
-    <div>
+    // Bottom padding so the last row / pagination clears the floating Trial
+    // Room button (fixed bottom-right) — critical on narrow mobile layouts.
+    <div className="pb-28 md:pb-8">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-8">
         <div>

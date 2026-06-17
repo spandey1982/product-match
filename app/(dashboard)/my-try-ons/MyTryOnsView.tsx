@@ -202,21 +202,22 @@ function TryOnCard({
   const wishlisted = isInWishlist(entry.id);
 
   return (
-    <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm group mb-3 break-inside-avoid">
+    <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm group">
       {entry.status === "done" && entry.resultUrl ? (
-        // Natural aspect ratio — the card hugs the image so it is shown in full
-        // (no object-cover crop). Tap opens the full-screen viewer.
-        <div className="relative bg-gray-50">
+        // Uniform 3:4 box. Results are normalized to 3:4 at generation, so they
+        // fill exactly; object-contain guarantees nothing is ever cropped (and
+        // any non-normalized legacy image is shown whole, letterboxed).
+        <div className="relative aspect-[3/4] bg-gray-50">
           <button
             onClick={onOpen}
-            className="block w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-inset"
+            className="block w-full h-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-inset"
             aria-label={`View full-screen try-on for ${entry.product.title}`}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={entry.resultUrl}
               alt={`Try-on for ${entry.product.title}`}
-              className="block w-full h-auto transition-transform duration-300 group-hover:scale-[1.02]"
+              className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-[1.02]"
               draggable={false}
             />
           </button>
@@ -468,9 +469,9 @@ export function MyTryOnsView() {
                   No items in this filter.
                 </div>
               ) : (
-                // Masonry: cards keep their image's natural height and pack
-                // without cropping or row gaps across every screen size.
-                <div className="columns-2 sm:columns-3 xl:columns-4 gap-3">
+                // Uniform grid — every card is the same 3:4 size (results are
+                // normalized to 3:4 at generation), shown in full without crop.
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                   {filtered.map((entry) => (
                     <TryOnCard
                       key={entry.id}

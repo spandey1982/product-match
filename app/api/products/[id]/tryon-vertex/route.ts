@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { TRYON_ALLOWED_MIME_TYPES, type TryOnMimeType } from "@/lib/tryon";
 import { isVertexTryOnEnabled, getVertexConfig } from "@/lib/tryon-vertex";
 import { getTryOnProvider } from "@/lib/providers";
+import { normalizeTryOnUrl } from "@/lib/image-normalize";
 
 // ─── In-memory rate limiter ───────────────────────────────────────────────────
 // Intentionally separate from the Gemini try-on limiter so the two providers
@@ -159,7 +160,7 @@ export async function POST(
       userId: session.id,
     });
 
-    return NextResponse.json({ tryOnUrl: result.url, provider: "vertex" });
+    return NextResponse.json({ tryOnUrl: normalizeTryOnUrl(result.url), provider: "vertex" });
   } catch (err) {
     const message = (err as Error).message ?? "";
 
