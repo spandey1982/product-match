@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Mentis AI — AI Commerce Infrastructure for Fashion Retail",
+  title: "Mentis — AI Commerce Infrastructure for Fashion Retail",
   description:
     "Turn any fashion catalog into an AI-powered shopping experience. AI Cataloging, Fashion Studio, Virtual Try-On, Smart Matching, and In-Store Kiosk — one platform for fashion retailers.",
 };

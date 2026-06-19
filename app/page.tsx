@@ -759,7 +759,7 @@ function Footer() {
               <div style={{ width: 28, height: 28, borderRadius: 7, background: "linear-gradient(135deg,#7c6aff,#a78bfa)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <Sparkles size={13} color="#fff" />
               </div>
-              <span style={{ fontWeight: 800, color: "#fff", fontSize: 16 }}>Mentis<span style={{ color: "#7c6aff", fontWeight: 400, fontSize: 12, marginLeft: 3 }}>AI</span></span>
+              <span style={{ fontWeight: 800, color: "#fff", fontSize: 16 }}>Mentis</span>
             </div>
             <p style={{ fontSize: 12, color: "#444", lineHeight: 1.6 }}>AI Commerce Infrastructure for Fashion Retail</p>
             <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
@@ -780,7 +780,7 @@ function Footer() {
           ))}
         </div>
         <div style={{ borderTop: "1px solid #111", paddingTop: 24, display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
-          <span style={{ fontSize: 11, color: "#333" }}>© 2025 Mentis AI. All rights reserved. Made for Indian fashion retail.</span>
+          <span style={{ fontSize: 11, color: "#333" }}>© 2025 Mentis. All rights reserved. Made for Indian fashion retail.</span>
           <span style={{ fontSize: 11, color: "#333" }}>🇮🇳 Built in India · Data stored in India</span>
         </div>
       </div>
