@@ -16,6 +16,10 @@ export const metadata: Metadata = {
   title: "Mentis — AI Commerce Infrastructure for Fashion Retail",
   description:
     "Turn any fashion catalog into an AI-powered shopping experience. AI Cataloging, Fashion Studio, Virtual Try-On, Smart Matching, and In-Store Kiosk — one platform for fashion retailers.",
+  icons: {
+    icon: "/icon.svg",
+    shortcut: "/icon.svg",
+  },
 };
 
 export default function RootLayout({
