@@ -702,7 +702,7 @@ function FAQ() {
                   <ChevronDown size={16} color="#555" style={{ flexShrink: 0, transform: open === i ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.25s" }} />
                 </button>
                 {open === i && (
-                  <div style={{ fontSize: 13, color: "#666", lineHeight: 1.7, paddingBottom: 18, paddingLeft: 0, borderLeft: "3px solid #3a2aaa", paddingLeft: 14 }}>
+                  <div style={{ fontSize: 13, color: "#666", lineHeight: 1.7, paddingBottom: 18, paddingLeft: 14, borderLeft: "3px solid #3a2aaa" }}>
                     {faq.a}
                   </div>
                 )}
