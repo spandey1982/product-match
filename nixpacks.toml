@@ -13,3 +13,9 @@
 # Install Command → `npm install`.
 [phases.install]
 cmds = ["npm install --no-audit --no-fund"]
+
+[phases.build]
+cmds = ["npm run build"]
+
+[start]
+cmd = "npm run db:deploy && npm run start"
