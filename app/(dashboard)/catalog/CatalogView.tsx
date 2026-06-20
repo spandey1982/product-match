@@ -109,6 +109,7 @@ export function CatalogView() {
   );
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional data fetch on mount / filter change
     if (!searchQuery) fetchProducts();
   }, [fetchProducts, searchQuery]);
 

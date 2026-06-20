@@ -144,6 +144,7 @@ export function ProductDetailView({
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional one-shot recommendations fetch on product change
     fetchRecommendations();
   }, [product.id]);
 

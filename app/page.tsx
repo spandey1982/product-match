@@ -475,9 +475,33 @@ function UseCases() {
 }
 
 // ─── ROI ──────────────────────────────────────────────────────────────────────
+type RoiStat = {
+  value: number;
+  prefix?: string;
+  suffix?: string;
+  label: string;
+  raw?: string;
+};
+
+/** One animated ROI stat. Own component so useCountUp runs at the top level of a
+ *  component (not inside a map callback — rules-of-hooks). */
+function StatCell({ stat, inView, delay }: { stat: RoiStat; inView: boolean; delay: number }) {
+  const count = useCountUp(stat.value, 1600, inView);
+  return (
+    <FadeIn delay={delay}>
+      <div style={{ background: "#0d0d0d", border: "1px solid #1a1a1a", borderRadius: 12, padding: 24, textAlign: "center" }}>
+        <div style={{ fontSize: 36, fontWeight: 900, color: "#fff", lineHeight: 1, letterSpacing: "-0.03em" }}>
+          {stat.raw ? stat.raw : `${stat.prefix ?? ""}${count}${stat.suffix}`}
+        </div>
+        <div style={{ fontSize: 11, color: "#555", marginTop: 8, lineHeight: 1.5 }}>{stat.label}</div>
+      </div>
+    </FadeIn>
+  );
+}
+
 function ROI() {
   const { ref, inView } = useInView();
-  const stats = [
+  const stats: RoiStat[] = [
     { value: 5, prefix: "₹", suffix: "L+", label: "Saved per season on photoshoot costs" },
     { value: 92, suffix: "%", label: "Faster catalog launch time" },
     { value: 40, suffix: "%", label: "Increase in average order value" },
@@ -502,19 +526,9 @@ function ROI() {
         </FadeIn>
 
         <div ref={ref} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(160px,1fr))", gap: 14 }}>
-          {stats.map((s, i) => {
-            const count = useCountUp(s.value, 1600, inView);
-            return (
-              <FadeIn key={s.label} delay={i * 60}>
-                <div style={{ background: "#0d0d0d", border: "1px solid #1a1a1a", borderRadius: 12, padding: 24, textAlign: "center" }}>
-                  <div style={{ fontSize: 36, fontWeight: 900, color: "#fff", lineHeight: 1, letterSpacing: "-0.03em" }}>
-                    {s.raw ? s.raw : `${s.prefix ?? ""}${count}${s.suffix}`}
-                  </div>
-                  <div style={{ fontSize: 11, color: "#555", marginTop: 8, lineHeight: 1.5 }}>{s.label}</div>
-                </div>
-              </FadeIn>
-            );
-          })}
+          {stats.map((s, i) => (
+            <StatCell key={s.label} stat={s} inView={inView} delay={i * 60} />
+          ))}
         </div>
 
         <FadeIn delay={200}>
