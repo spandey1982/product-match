@@ -26,6 +26,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { ProductImageViewer } from "@/components/product/ProductImageViewer";
+import { LookBuilder } from "@/components/look-builder/LookBuilder";
 
 interface GeneratedImage {
   url: string;
@@ -354,8 +355,12 @@ export function ProductDetailView({
           </div>
         </div>
 
-        {/* RIGHT — Recommendations */}
-        <div>
+        {/* RIGHT — Look builder + recommendations */}
+        <div className="space-y-8">
+          {/* Complete the Look — system-driven slots, AI-ranked candidates */}
+          <LookBuilder product={product} />
+
+          <div>
           <div className="flex items-center justify-between mb-5">
             <div>
               <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
@@ -420,6 +425,7 @@ export function ProductDetailView({
               Ranked by weighted compatibility score · Category 40% · Color 30% · Occasion 20% · Style 10%
             </p>
           )}
+          </div>
         </div>
       </div>
     </div>
