@@ -1,16 +1,4 @@
 # Railway / Nixpacks build configuration.
-#
-# Use `npm install` instead of the default `npm ci` during deploy.
-#
-# Why: package-lock.json is generated on Windows, which omits Linux-only
-# optional dependency nodes (e.g. @emnapi/core, @emnapi/runtime — transitive
-# deps of @napi-rs/wasm-runtime). `npm ci` is strict and fails on that drift
-# ("package.json and package-lock.json … not in sync"), whereas `npm install`
-# resolves the full tree correctly on Linux and tolerates the gap.
-#
-# If the service uses Railway's newer "Railpack" builder (which ignores this
-# file), set the same command in the dashboard: Settings → Build → Custom
-# Install Command → `npm install`.
 [phases.install]
 cmds = ["npm install --no-audit --no-fund"]
 
@@ -18,4 +6,4 @@ cmds = ["npm install --no-audit --no-fund"]
 cmds = ["npm run build"]
 
 [start]
-cmd = "npm run db:deploy && npm run start"
+cmd = "npm run db:deploy && npm run db:seed && npm run start"

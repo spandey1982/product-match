@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
 }
 
 model User {
@@ -14,22 +14,9 @@ model User {
   role      String   @default("RETAILER")
   storeName String?
 
-  // Active try-on provider for this retailer's store ("gemini" | "vertex").
-  // Defaults to Gemini — matches prior hardcoded behavior. Resolved at
-  // request time with a graceful fallback to Gemini if the choice is disabled.
   tryOnProvider String @default("gemini")
-
-  // AI Generation (model-image) preferences as JSON, e.g.
-  // { "defaultModelType": "woman", "defaultObjective": "catalogue",
-  //   "brandingEnabled": true, "brandingPosition": "top-right" }.
-  // Nullable → existing rows are unaffected. A single column keeps the growing
-  // settings surface migration-free (see docs/IMAGE_AI_ROADMAP.md §8). Read via
-  // the typed accessor in lib/model-gen/settings.ts — never parsed inline.
   aiGenSettings String?
-
-  // Cloudinary public_id of the store logo, overlaid on generated model images
-  // when present (else the store name is used). Nullable → no logo by default.
-  logoPublicId String?
+  logoPublicId  String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -82,21 +69,13 @@ model Product {
   @@map("products")
 }
 
-// AI-generated catalogue/model images for a product. Additive: the single
-// Product.modelImageUrl column stays as the legacy/primary output (Quick Listing
-// writes it); this table holds the multi-view catalogue gallery (front, back,
-// pallu, border, ...). One row per generated view so individual images can be
-// regenerated, deleted, or shared independently.
 model ProductImage {
   id        String  @id @default(cuid())
   productId String
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   url       String
-  // The catalogue view this image represents: "front" | "back" | "pallu" |
-  // "border" | "blouse" | "fabric" | ... (see lib/model-gen/prompt-sets.ts).
   view      String
-  // The generation objective that produced it: "quick_listing" | "catalogue".
   objective String
   isPrimary Boolean @default(false)
 

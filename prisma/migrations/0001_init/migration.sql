@@ -1,6 +1,6 @@
 -- CreateTable
 CREATE TABLE "users" (
-    "id" TEXT NOT NULL,
+    "id" TEXT NOT NULL PRIMARY KEY,
     "email" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "password" TEXT NOT NULL,
@@ -9,15 +9,13 @@ CREATE TABLE "users" (
     "tryOnProvider" TEXT NOT NULL DEFAULT 'gemini',
     "aiGenSettings" TEXT,
     "logoPublicId" TEXT,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "users_pkey" PRIMARY KEY ("id")
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
 );
 
 -- CreateTable
 CREATE TABLE "products" (
-    "id" TEXT NOT NULL,
+    "id" TEXT NOT NULL PRIMARY KEY,
     "title" TEXT NOT NULL,
     "description" TEXT,
     "category" TEXT NOT NULL,
@@ -29,7 +27,7 @@ CREATE TABLE "products" (
     "material" TEXT,
     "gender" TEXT NOT NULL DEFAULT 'WOMEN',
     "season" TEXT NOT NULL DEFAULT '[]',
-    "price" DOUBLE PRECISION NOT NULL,
+    "price" REAL NOT NULL,
     "imageUrl" TEXT,
     "thumbnailUrl" TEXT,
     "modelImageUrl" TEXT,
@@ -37,42 +35,40 @@ CREATE TABLE "products" (
     "isActive" BOOLEAN NOT NULL DEFAULT true,
     "sku" TEXT,
     "userId" TEXT NOT NULL,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "products_pkey" PRIMARY KEY ("id")
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "products_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "product_images" (
-    "id" TEXT NOT NULL,
+    "id" TEXT NOT NULL PRIMARY KEY,
     "productId" TEXT NOT NULL,
     "url" TEXT NOT NULL,
     "view" TEXT NOT NULL,
     "objective" TEXT NOT NULL,
     "isPrimary" BOOLEAN NOT NULL DEFAULT false,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "product_images_pkey" PRIMARY KEY ("id")
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "product_images_productId_fkey" FOREIGN KEY ("productId") REFERENCES "products" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "recommendations" (
-    "id" TEXT NOT NULL,
+    "id" TEXT NOT NULL PRIMARY KEY,
     "sourceProductId" TEXT NOT NULL,
     "targetProductId" TEXT NOT NULL,
-    "matchScore" DOUBLE PRECISION NOT NULL,
-    "categoryScore" DOUBLE PRECISION NOT NULL,
-    "colorScore" DOUBLE PRECISION NOT NULL,
-    "occasionScore" DOUBLE PRECISION NOT NULL,
-    "styleScore" DOUBLE PRECISION NOT NULL,
-    "confidence" DOUBLE PRECISION NOT NULL,
+    "matchScore" REAL NOT NULL,
+    "categoryScore" REAL NOT NULL,
+    "colorScore" REAL NOT NULL,
+    "occasionScore" REAL NOT NULL,
+    "styleScore" REAL NOT NULL,
+    "confidence" REAL NOT NULL,
     "explanation" TEXT NOT NULL,
     "explanationTags" TEXT NOT NULL DEFAULT '[]',
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "recommendations_pkey" PRIMARY KEY ("id")
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "recommendations_sourceProductId_fkey" FOREIGN KEY ("sourceProductId") REFERENCES "products" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "recommendations_targetProductId_fkey" FOREIGN KEY ("targetProductId") REFERENCES "products" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateIndex
@@ -98,15 +94,3 @@ CREATE UNIQUE INDEX "recommendations_sourceProductId_targetProductId_key" ON "re
 
 -- CreateIndex
 CREATE INDEX "recommendations_sourceProductId_matchScore_idx" ON "recommendations"("sourceProductId", "matchScore");
-
--- AddForeignKey
-ALTER TABLE "products" ADD CONSTRAINT "products_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "product_images" ADD CONSTRAINT "product_images_productId_fkey" FOREIGN KEY ("productId") REFERENCES "products"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "recommendations" ADD CONSTRAINT "recommendations_sourceProductId_fkey" FOREIGN KEY ("sourceProductId") REFERENCES "products"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "recommendations" ADD CONSTRAINT "recommendations_targetProductId_fkey" FOREIGN KEY ("targetProductId") REFERENCES "products"("id") ON DELETE CASCADE ON UPDATE CASCADE;
