@@ -15,12 +15,8 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTrialRoom, TRYON_LIMIT } from "@/components/trial-room/TrialRoomProvider";
 import { TrialRoomSetupModal } from "@/components/trial-room/TrialRoomSetupModal";
+import { CATEGORY_FILTERS as CATEGORIES } from "@/lib/categories";
 
-const CATEGORIES = [
-  "All", "Saree", "Lehenga", "Blouse", "Dupatta", "Kurta",
-  "Anarkali", "Sharara", "Palazzo", "Jewellery", "Footwear", "Clutch", "Handbag",
-  "Shirt",
-];
 
 const OCCASIONS = ["Wedding", "Festive", "Bridal", "Party", "Casual", "Formal"];
 

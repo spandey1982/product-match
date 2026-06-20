@@ -8,13 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-
-const CATEGORIES = [
-  "Saree", "Lehenga", "Blouse", "Dupatta", "Kurta",
-  "Salwar", "Anarkali", "Sharara", "Palazzo",
-  "Jewellery", "Footwear", "Clutch", "Handbag",
-  "Suit", "Tie", "Shirt", "Other",
-];
+import { PRODUCT_CATEGORIES as CATEGORIES } from "@/lib/categories";
 
 const OCCASIONS = [
   "Wedding", "Bridal", "Festive", "Party", "Casual",
