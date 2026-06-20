@@ -33,6 +33,8 @@ export type Product = {
   occasion: string[];
   styleTags: string[];
   material?: string | null;
+  /** Dominant visual pattern (solid/printed/floral/…). Drives look + model selection. */
+  pattern?: string | null;
   gender: string;
   season: string[];
   price: number;

@@ -83,6 +83,7 @@ export async function generateModelImages(
           category: product.category,
           occasion: parseArray(product.occasion),
           styleTags: parseArray(product.styleTags),
+          pattern: product.pattern,
         })
       : undefined;
 

@@ -39,6 +39,7 @@ model Product {
   occasion  String @default("[]")
   styleTags String @default("[]")
   material  String?
+  pattern   String?
   gender    String @default("WOMEN")
   season    String @default("[]")
   price     Float

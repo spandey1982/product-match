@@ -112,33 +112,49 @@ function includesAny(arr: string[], ...vals: string[]): boolean {
   return vals.some((v) => arr.includes(v));
 }
 
+/** Dressy/festive patterns that lift a garment's perceived formality. */
+const DRESSY_PATTERN = /embroider|embellish|sequin|zardozi|brocade|embroidered/;
+
+/** Garment formality, low → high. A general signal reused by ranking + model pick. */
+export type Formality =
+  | "casual"
+  | "smart_casual"
+  | "business_casual"
+  | "semi_formal"
+  | "formal";
+
 /**
- * Pick the best adult-male reference model for a product by formality/occasion.
- * Pure and deterministic. Always returns one of MAN_MODELS' file basenames.
+ * Derive a garment's formality from the structured signals on a product:
+ * category, occasion, styleTags and pattern. Pure and deterministic. This is the
+ * single place formality is inferred — the look ranker and the man-model picker
+ * both build on it. (Color is intentionally not a formality driver.)
  */
-export function selectManModelFile(p: {
+export function deriveFormality(p: {
   category?: string | null;
   occasion?: string[] | null;
   styleTags?: string[] | null;
-}): string {
+  pattern?: string | null;
+}): Formality {
   const cat = p.category?.trim().toLowerCase() ?? "";
   const occ = (p.occasion ?? []).map((o) => o.toLowerCase());
   const styles = (p.styleTags ?? []).map((s) => s.toLowerCase());
+  const pattern = (p.pattern ?? "").toLowerCase();
 
   // Formal / business — sharp tailored look.
   if (
     FORMAL_MAN_CATEGORIES.has(cat) ||
     includesAny(occ, "formal", "office", "interview", "business")
   ) {
-    return "male-base-2";
+    return "formal";
   }
 
-  // Dressy occasions (wedding/party/festive) — semi-formal, warmer styling.
+  // Dressy occasions / ornate patterns — semi-formal, warmer styling.
   if (
     includesAny(occ, "wedding", "party", "festive", "anniversary", "religious", "traditional") ||
-    includesAny(styles, "royal", "festive", "traditional")
+    includesAny(styles, "royal", "festive", "traditional") ||
+    DRESSY_PATTERN.test(pattern)
   ) {
-    return "male-base-4";
+    return "semi_formal";
   }
 
   // Explicitly casual.
@@ -147,14 +163,36 @@ export function selectManModelFile(p: {
     includesAny(occ, "casual") ||
     includesAny(styles, "boho", "minimalist")
   ) {
-    return "male-base-3";
+    return "casual";
   }
 
   // Business-casual default for shirts/polos/trousers.
   if (BUSINESS_CASUAL_CATEGORIES.has(cat)) {
-    return "male-base-5";
+    return "business_casual";
   }
 
   // No formality signal — neutral smart-casual.
-  return DEFAULT_MAN_MODEL_FILE;
+  return "smart_casual";
+}
+
+/** Formality → the male model styled at that level. */
+const FORMALITY_TO_MAN_MODEL: Record<Formality, string> = {
+  formal: "male-base-2",
+  semi_formal: "male-base-4",
+  business_casual: "male-base-5",
+  casual: "male-base-3",
+  smart_casual: DEFAULT_MAN_MODEL_FILE, // male-base-1
+};
+
+/**
+ * Pick the best adult-male reference model for a product. Pure and
+ * deterministic. Always returns one of MAN_MODELS' file basenames.
+ */
+export function selectManModelFile(p: {
+  category?: string | null;
+  occasion?: string[] | null;
+  styleTags?: string[] | null;
+  pattern?: string | null;
+}): string {
+  return FORMALITY_TO_MAN_MODEL[deriveFormality(p)];
 }

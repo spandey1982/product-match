@@ -40,6 +40,10 @@ const MATERIALS = [
   "Banarasi", "Kanjeevaram", "Linen", "Crepe", "Net",
   "Satin", "Polyester", "Organza", "Khadi", "Wool", "Gold",
 ];
+const PATTERNS = [
+  "Solid", "Printed", "Floral", "Striped", "Checked",
+  "Embroidered", "Embellished", "Colour-blocked",
+];
 
 interface AiGenObjective { id: string; label: string; description: string; }
 interface AiGenModelType { id: string; label: string; thumbnailUrl: string; }
@@ -94,6 +98,7 @@ export default function UploadPage() {
     subcategory: "",
     color: "",
     material: "",
+    pattern: "",
     gender: "WOMEN",
     price: "",
     sku: "",
@@ -194,6 +199,7 @@ export default function UploadPage() {
         subcategory: p.subcategory || prev.subcategory,
         color:       p.color       || prev.color,
         material:    p.material    || prev.material,
+        pattern:     p.pattern     || prev.pattern,
         gender:      p.gender      || prev.gender,
         price:       p.price       ? String(p.price) : prev.price,
       }));
@@ -722,6 +728,13 @@ export default function UploadPage() {
               onChange={(e) => setForm({ ...form, material: e.target.value })}
               options={MATERIALS.map((m) => ({ value: m, label: m }))}
               placeholder="Select material"
+            />
+            <Select
+              label="Pattern"
+              value={form.pattern}
+              onChange={(e) => setForm({ ...form, pattern: e.target.value })}
+              options={PATTERNS.map((p) => ({ value: p, label: p }))}
+              placeholder="Select pattern"
             />
             <Select
               label="Gender"
