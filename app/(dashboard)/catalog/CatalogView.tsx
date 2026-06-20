@@ -19,6 +19,7 @@ import { TrialRoomSetupModal } from "@/components/trial-room/TrialRoomSetupModal
 const CATEGORIES = [
   "All", "Saree", "Lehenga", "Blouse", "Dupatta", "Kurta",
   "Anarkali", "Sharara", "Palazzo", "Jewellery", "Footwear", "Clutch", "Handbag",
+  "Shirt",
 ];
 
 const OCCASIONS = ["Wedding", "Festive", "Bridal", "Party", "Casual", "Formal"];

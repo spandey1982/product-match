@@ -13,7 +13,7 @@ const CATEGORIES = [
   "Saree", "Lehenga", "Blouse", "Dupatta", "Kurta",
   "Salwar", "Anarkali", "Sharara", "Palazzo",
   "Jewellery", "Footwear", "Clutch", "Handbag",
-  "Suit", "Tie", "Other",
+  "Suit", "Tie", "Shirt", "Other",
 ];
 
 const OCCASIONS = [

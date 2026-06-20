@@ -71,6 +71,15 @@ const CATEGORY_COMPATIBILITY: Record<string, Record<string, CategoryPair>> = {
     cufflinks: { score: 0.75, label: "Polished detail" },
     watch: { score: 0.7, label: "Power dressing" },
   },
+  shirt: {
+    tie: { score: 0.9, label: "Formal coordination" },
+    suit: { score: 0.85, label: "Business ensemble" },
+    trousers: { score: 0.85, label: "Smart casual pairing" },
+    jeans: { score: 0.75, label: "Casual pairing" },
+    belt: { score: 0.7, label: "Formal detail" },
+    footwear: { score: 0.7, label: "Complete outfit" },
+    watch: { score: 0.65, label: "Styled accessory" },
+  },
   tie: {
     suit: { score: 1.0, label: "Classic business pairing" },
     shirt: { score: 0.9, label: "Formal coordination" },
