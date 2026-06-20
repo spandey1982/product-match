@@ -40,13 +40,33 @@ lift quality for those categories.
 | | basic | saree | lehenga | kurti |
 |---|---|---|---|---|
 | woman | `woman-basic` | `woman-saree` | `woman-lehenga` | `woman-kurti` |
-| man   | `man-basic`   | — | — | — |
 | girl  | `girl-basic`  | `girl-saree` | `girl-lehenga` | `girl-kurti` |
 | boy   | `boy-basic`   | — | — | — |
 
-man/boy use `basic` only — it covers their range (including western). `western`
+girl/boy use `basic` only — it covers their range (including western). `western`
 remains a valid variant for woman if you want a dedicated western-wear model;
 otherwise western products fall back to `*-basic`.
+
+### Adult men — model pool (not the variant convention)
+
+Men have no draped variants (a man never wears a saree). Instead the **adult
+man** type carries a small **pool** of full-body models, each styled at a
+different formality, and the system **auto-selects** the closest one to the
+garment — there is no manual picker.
+
+```
+male-base-1.png   white sweater + chinos      — relaxed smart-casual (default)
+male-base-2.png   black shirt + trousers      — formal / business
+male-base-3.png   navy tee + chinos           — casual
+male-base-4.png   beige polo + trousers       — semi-formal / festive
+male-base-5.png   grey polo + charcoal pants  — business-casual
+```
+
+Selection logic lives in `lib/model-gen/model-selection.ts` (`MAN_MODELS`,
+`selectManModelFile`). v1 selects on **category + occasion + styleTags**; color /
+pattern / design are folded in there once those fields exist on `Product`. To add
+or swap a male model, drop a `male-base-{n}.png` in here and register it in
+`MAN_MODELS`. `male-base-1.png` doubles as the store-model picker thumbnail.
 
 `*-basic` thumbnails (referenced by `MODEL_TYPES` in `reference-models.ts`) are
 also shown in the store-model picker, so keep them clean front-facing shots.

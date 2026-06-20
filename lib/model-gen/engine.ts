@@ -16,7 +16,8 @@ import {
   type GenerationObjective,
 } from "./objectives";
 import { DEFAULT_MODEL_TYPE, type ModelType } from "./reference-models";
-import { resolveModelType } from "./model-selection";
+import { resolveModelType, selectManModelFile } from "./model-selection";
+import { parseArray } from "@/lib/serialize";
 import { getAiGenSettings } from "./settings";
 import { getBrandingConfig, applyBranding } from "./branding";
 import { persistGeneratedImages, type GeneratedImage } from "./persist";
@@ -74,10 +75,21 @@ export async function generateModelImages(
     imageUrl: product.imageUrl,
   };
 
+  // Men auto-select from the male model pool by formality/occasion; other model
+  // types use the single house model via the variant convention.
+  const referenceFile =
+    modelType === "man"
+      ? selectManModelFile({
+          category: product.category,
+          occasion: parseArray(product.occasion),
+          styleTags: parseArray(product.styleTags),
+        })
+      : undefined;
+
   const { images } =
     objective === "quick_listing"
-      ? await runQuickListingStrategy({ product: strategyProduct, modelType })
-      : await runCatalogueStrategy({ product: strategyProduct, modelType });
+      ? await runQuickListingStrategy({ product: strategyProduct, modelType, referenceFile })
+      : await runCatalogueStrategy({ product: strategyProduct, modelType, referenceFile });
 
   // Brand each image (store logo, or store name) before persisting, so the
   // branded URL flows to display, share and download. No-op when disabled.

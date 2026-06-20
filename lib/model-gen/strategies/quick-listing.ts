@@ -27,11 +27,15 @@ import type { StrategyProduct } from "./catalogue";
 export async function runQuickListingStrategy(opts: {
   product: StrategyProduct;
   modelType: ModelType;
+  /** Auto-selected reference asset basename (e.g. a man model). Optional. */
+  referenceFile?: string;
 }): Promise<{ images: GeneratedImage[]; usedFallback: boolean }> {
-  const { product, modelType } = opts;
+  const { product, modelType, referenceFile } = opts;
 
   const variant = resolveReferenceVariant(product.category);
-  const reference = await loadReferenceImage(modelType, variant);
+  const reference = await loadReferenceImage(modelType, variant, {
+    explicitFileBase: referenceFile,
+  });
 
   const vertexReady =
     isVertexTryOnEnabled() && getVertexConfig() !== null && reference !== null;

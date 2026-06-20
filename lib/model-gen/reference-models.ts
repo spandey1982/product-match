@@ -30,7 +30,7 @@ export interface ModelTypeOption {
 /** Visible store-model options. Extend here to add future model types. */
 export const MODEL_TYPES: ModelTypeOption[] = [
   { id: "woman", label: "Woman", thumbnailUrl: "/reference-models/woman-basic.jpg" },
-  { id: "man",   label: "Man",   thumbnailUrl: "/reference-models/man-basic.jpg" },
+  { id: "man",   label: "Man",   thumbnailUrl: "/reference-models/male-base-1.png" },
   { id: "girl",  label: "Girl",  thumbnailUrl: "/reference-models/girl-basic.jpg" },
   { id: "boy",   label: "Boy",   thumbnailUrl: "/reference-models/boy-basic.jpg" },
 ];
@@ -59,11 +59,33 @@ export interface ReferenceImage {
  * Load a reference-model asset for (modelType, variant). Falls back from the
  * requested variant to "basic", then returns null if neither exists yet.
  * Never throws.
+ *
+ * `opts.explicitFileBase` bypasses the {type}-{variant} convention and loads a
+ * specific asset by basename (e.g. an auto-selected man model like
+ * "male-base-2"). Men have no draped variants, so their selection happens by
+ * file rather than along the variant axis — see selectManModelFile in
+ * model-selection.ts. If the explicit file is missing, resolution falls through
+ * to the normal convention so degradation stays graceful.
  */
 export async function loadReferenceImage(
   modelType: ModelType,
-  variant: ModelVariant
+  variant: ModelVariant,
+  opts?: { explicitFileBase?: string }
 ): Promise<ReferenceImage | null> {
+  if (opts?.explicitFileBase) {
+    for (const ext of REF_EXTS) {
+      const p = join(REF_DIR, `${opts.explicitFileBase}.${ext}`);
+      try {
+        await access(p);
+        const buffer = await readFile(p);
+        return { buffer, mime: EXT_MIME[ext], modelType, variant: "basic" };
+      } catch {
+        // try next extension
+      }
+    }
+    // explicit asset missing — fall through to the variant convention
+  }
+
   const candidates: ModelVariant[] =
     variant === "basic" ? ["basic"] : [variant, "basic"];
 

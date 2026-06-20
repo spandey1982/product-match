@@ -25,14 +25,18 @@ export interface StrategyProduct {
 export async function runCatalogueStrategy(opts: {
   product: StrategyProduct;
   modelType: ModelType;
+  /** Auto-selected reference asset basename (e.g. a man model). Optional. */
+  referenceFile?: string;
 }): Promise<{ images: GeneratedImage[] }> {
-  const { product, modelType } = opts;
+  const { product, modelType, referenceFile } = opts;
 
   const source = await fetchProductImageBuffer(product.imageUrl);
   if (!source) return { images: [] };
 
   const variant = resolveReferenceVariant(product.category);
-  const reference = await loadReferenceImage(modelType, variant); // null is fine
+  const reference = await loadReferenceImage(modelType, variant, {
+    explicitFileBase: referenceFile,
+  }); // null is fine
 
   const views = resolvePromptSet(product.category);
   const images: GeneratedImage[] = [];

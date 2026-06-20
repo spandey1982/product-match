@@ -65,3 +65,96 @@ export function resolveModelType(
   if (female) return kid ? "girl" : "woman";
   return kid ? "boy" : "man";
 }
+
+// ─── Man model pool (automatic selection) ─────────────────────────────────────
+//
+// Unlike womenswear, men have no draped reference variants (a man never wears a
+// saree). Instead the library carries several adult-male models, each styled at
+// a different formality, and the system AUTO-SELECTS the closest one to the
+// garment — no manual picker. Files live at
+// public/reference-models/male-base-{n}.png.
+//
+// v1 selects on the signals that exist today: category, occasion and styleTags
+// (a formality proxy). Color / pattern / design — the remaining signals the
+// product owner wants to factor in — are NOT yet structured on Product; this is
+// the single place to fold them in once those fields land (see the look-builder
+// metadata work). The mapping below is data-shaped, like reference-selection.ts,
+// so it can later be promoted to config or learned from the research log.
+
+/** Curated adult-male models, ordered, each tagged with the look it is styled in. */
+export const MAN_MODELS = [
+  { file: "male-base-1", note: "white sweater + chinos — relaxed smart-casual" },
+  { file: "male-base-2", note: "black shirt + tailored trousers — formal/business" },
+  { file: "male-base-3", note: "navy tee + chinos — casual" },
+  { file: "male-base-4", note: "beige polo + trousers + loafers — semi-formal/festive" },
+  { file: "male-base-5", note: "grey polo + charcoal trousers — business-casual" },
+] as const;
+
+/** Neutral smart-casual default when the product gives no formality signal. */
+export const DEFAULT_MAN_MODEL_FILE = "male-base-1";
+
+/** Categories that are inherently formal menswear. */
+const FORMAL_MAN_CATEGORIES = new Set<string>([
+  "suit", "tie", "blazer", "tuxedo", "sherwani", "pocket_square", "cufflinks",
+]);
+
+/** Categories that read as explicitly casual. */
+const CASUAL_MAN_CATEGORIES = new Set<string>([
+  "t-shirt", "tshirt", "tee", "jeans", "shorts", "hoodie", "sweatshirt",
+]);
+
+/** Business-casual default categories (shirts/polos/trousers). */
+const BUSINESS_CASUAL_CATEGORIES = new Set<string>([
+  "shirt", "polo", "trouser", "trousers", "chinos",
+]);
+
+function includesAny(arr: string[], ...vals: string[]): boolean {
+  return vals.some((v) => arr.includes(v));
+}
+
+/**
+ * Pick the best adult-male reference model for a product by formality/occasion.
+ * Pure and deterministic. Always returns one of MAN_MODELS' file basenames.
+ */
+export function selectManModelFile(p: {
+  category?: string | null;
+  occasion?: string[] | null;
+  styleTags?: string[] | null;
+}): string {
+  const cat = p.category?.trim().toLowerCase() ?? "";
+  const occ = (p.occasion ?? []).map((o) => o.toLowerCase());
+  const styles = (p.styleTags ?? []).map((s) => s.toLowerCase());
+
+  // Formal / business — sharp tailored look.
+  if (
+    FORMAL_MAN_CATEGORIES.has(cat) ||
+    includesAny(occ, "formal", "office", "interview", "business")
+  ) {
+    return "male-base-2";
+  }
+
+  // Dressy occasions (wedding/party/festive) — semi-formal, warmer styling.
+  if (
+    includesAny(occ, "wedding", "party", "festive", "anniversary", "religious", "traditional") ||
+    includesAny(styles, "royal", "festive", "traditional")
+  ) {
+    return "male-base-4";
+  }
+
+  // Explicitly casual.
+  if (
+    CASUAL_MAN_CATEGORIES.has(cat) ||
+    includesAny(occ, "casual") ||
+    includesAny(styles, "boho", "minimalist")
+  ) {
+    return "male-base-3";
+  }
+
+  // Business-casual default for shirts/polos/trousers.
+  if (BUSINESS_CASUAL_CATEGORIES.has(cat)) {
+    return "male-base-5";
+  }
+
+  // No formality signal — neutral smart-casual.
+  return DEFAULT_MAN_MODEL_FILE;
+}
