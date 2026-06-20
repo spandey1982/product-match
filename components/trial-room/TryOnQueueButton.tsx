@@ -21,7 +21,7 @@ interface Props {
  * After uploading a photo they can immediately add the product for try-on.
  */
 export function TryOnQueueButton({ product }: Props) {
-  const { photo, addToQueue, retryTryOn, findActiveTryOn } = useTrialRoom();
+  const { photo, addToQueue, retryTryOn, findActiveTryOn, isAtLimit } = useTrialRoom();
   const [setupModalOpen, setSetupModalOpen] = useState(false);
 
   if (!product.imageUrl) return null;
@@ -103,6 +103,25 @@ export function TryOnQueueButton({ product }: Props) {
         {entry.errorMessage && (
           <p className="text-xs text-red-500 text-center">{entry.errorMessage}</p>
         )}
+      </div>
+    );
+  }
+
+  // ── At limit: can't add more ────────────────────────────────────────────────
+  if (isAtLimit) {
+    return (
+      <div className="space-y-2">
+        <div className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-medium bg-amber-50 border border-amber-200 text-amber-700">
+          <HangerPlusIcon className="h-4 w-4" />
+          Try-on limit reached (5/5)
+        </div>
+        <Link
+          href="/my-try-ons"
+          className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-2xl text-sm font-semibold text-indigo-600 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 transition-colors"
+        >
+          Manage Try-Ons to free up a slot
+          <ExternalLink className="h-3.5 w-3.5" />
+        </Link>
       </div>
     );
   }

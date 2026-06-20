@@ -44,7 +44,8 @@ function TryOnCardButton({ product }: { product: Product }) {
     }
     if (active?.status === "generating") return;
     if (active?.status === "done") { router.push("/my-try-ons"); return; }
-    if (isAtLimit) return;
+    if (active) { router.push("/my-try-ons"); return; } // queued — go view it
+    if (isAtLimit) { router.push("/my-try-ons"); return; } // limit hit — manage slot
     addToQueue(product);
   }
 
@@ -74,9 +75,8 @@ function TryOnCardButton({ product }: { product: Product }) {
   } else if (isAtLimit) {
     icon = <HangerPlusIcon size={16} />;
     classes =
-      "bg-white/90 text-gray-300 shadow-md backdrop-blur-sm cursor-not-allowed";
-    label = `Limit reached (${TRYON_LIMIT}/${TRYON_LIMIT}). Remove a try-on first.`;
-    disabled = true;
+      "bg-amber-50 text-amber-500 shadow-md border border-amber-200 hover:bg-amber-100";
+    label = `Try-on limit reached — tap to manage`;
   } else if (isFailed) {
     icon = <RotateCcw size={16} />;
     classes =
