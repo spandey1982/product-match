@@ -26,11 +26,17 @@ export function normalizeCategory(c: string | null | undefined): string {
 const TEMPLATES: LookTemplate[] = [
   // ── Menswear ───────────────────────────────────────────────────────────────
   {
+    // "Suit" covers both western suits and ethnic menswear (sherwani / Nehru
+    // jacket), so the slots span both: shirt/tie/belt (western) and
+    // dupatta/jewellery (ethnic). Empty slots simply show an "add this" prompt.
     anchor: "suit",
     label: "Suit",
     slots: [
-      { id: "shirt", label: "Shirt", categories: ["shirt"], required: true, max: 1 },
-      { id: "footwear", label: "Shoes", categories: ["footwear"], required: true, max: 1 },
+      { id: "footwear", label: "Footwear", categories: ["footwear"], required: true, max: 1 },
+      { id: "bottom", label: "Trousers", categories: ["trousers", "trouser"], required: false, max: 1 },
+      { id: "shirt", label: "Shirt", categories: ["shirt"], required: false, max: 1 },
+      { id: "dupatta", label: "Stole / Dupatta", categories: ["dupatta"], required: false, max: 1 },
+      { id: "jewellery", label: "Jewellery", categories: ["jewellery"], required: false, max: 1 },
       { id: "tie", label: "Tie", categories: ["tie"], required: false, max: 1 },
       { id: "belt", label: "Belt", categories: ["belt"], required: false, max: 1 },
     ],

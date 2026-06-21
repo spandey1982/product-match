@@ -242,11 +242,11 @@ export function LookBuilder({
     );
   }
 
-  // No template for this category, or every slot is empty → render nothing so
-  // the page is unchanged for products that can't anchor a look.
+  // No template for this category → render nothing (the product can't anchor a
+  // look). When a template exists we always show the slot structure, even if some
+  // slots have no catalog matches yet — empty slots become an "add this" prompt,
+  // which is useful merchandising guidance for the retailer.
   if (!data?.hasTemplate) return null;
-  const anySlotFilled = data.slots.some((s) => s.candidates.length > 0);
-  if (!anySlotFilled) return null;
 
   const slots = (
     <div className="space-y-5">
