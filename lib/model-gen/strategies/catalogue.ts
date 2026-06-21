@@ -1,16 +1,17 @@
 /**
  * Catalogue / Social strategy — multiple catalogue-ready images.
  *
- * Internal backend: Gemini (prompt-based), which handles complex Indian drapes
- * and multi-view prompting well. For each view in the category's prompt set we
- * run one Gemini generation, seeded with the category-appropriate reference
- * model when a curated asset exists. Pure: returns the generated URLs and does
- * NOT write to the database — the engine persists.
+ * Generates two BASE model shots (Front Full, Back Full) via Gemini, each seeded
+ * with the matching front/back reference model, then DERIVES category-specific
+ * close-ups by cropping configured regions of those base shots (crop-templates).
+ * This yields the per-category sets (saree 5, lehenga 4, others 3) with only two
+ * generation calls. Pure: returns URLs; the engine persists.
  */
 import { fetchProductImageBuffer, runGeminiImageGen } from "@/lib/generate-model-image";
 import { resolvePromptSet, buildViewPrompt } from "../prompt-sets";
 import { resolveReferenceVariant } from "../reference-selection";
 import { loadReferenceImage, type ModelType } from "../reference-models";
+import { resolveCloseUps, buildCropUrl } from "../crop-templates";
 import type { GeneratedImage } from "../persist";
 
 export interface StrategyProduct {
@@ -37,12 +38,17 @@ export async function runCatalogueStrategy(opts: {
   const frontRef = await loadReferenceImage(modelType, variant, { profile: "front" });
   const backRef = await loadReferenceImage(modelType, variant, { profile: "back" });
 
-  const views = resolvePromptSet(product.category);
+  // Base shots: the Front + Back full views from the category's prompt set.
+  const baseViews = resolvePromptSet(product.category).filter(
+    (v) => v.id === "front" || v.id === "back"
+  );
+
   const images: GeneratedImage[] = [];
+  const baseUrls: Partial<Record<"front" | "back", string>> = {};
 
   // Sequential: keeps within Gemini rate limits and orders results by view.
-  for (const view of views) {
-    const isBack = view.id === "back" || view.id.startsWith("back");
+  for (const view of baseViews) {
+    const isBack = view.id === "back";
     const reference = isBack ? backRef : frontRef;
 
     const prompt = buildViewPrompt({
@@ -67,7 +73,17 @@ export async function runCatalogueStrategy(opts: {
       view: view.id,
     });
 
-    if (result) images.push({ url: result.url, view: view.id });
+    if (result) {
+      images.push({ url: result.url, view: view.id });
+      baseUrls[view.id as "front" | "back"] = result.url;
+    }
+  }
+
+  // Derive category close-ups by cropping the matching base shot (no blind crop).
+  for (const closeUp of resolveCloseUps(product.category)) {
+    const base = baseUrls[closeUp.from];
+    if (!base) continue; // base shot failed → skip its close-ups
+    images.push({ url: buildCropUrl(base, closeUp.region), view: closeUp.id });
   }
 
   return { images };

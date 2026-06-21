@@ -172,6 +172,9 @@ Schema changes: `npx prisma generate` then restart dev server.
 | Model-gen engine (objectives) | `lib/model-gen/engine.ts` |
 | Objectives / reference library / category selection / prompt sets | `lib/model-gen/{objectives,reference-models,reference-selection,prompt-sets}.ts` |
 | Auto model-type selection (gender/age) | `lib/model-gen/model-selection.ts` |
+| Shared metadata service (provider-agnostic) | `lib/metadata/analyze.ts` (`Product.pattern`) |
+| Crop-template system (catalogue close-ups) | `lib/model-gen/crop-templates.ts` |
+| Front/back reference profiles | `lib/model-gen/reference-models.ts` (`loadReferenceImage(..., {profile})`) |
 | Model-gen strategies | `lib/model-gen/strategies/{quick-listing,catalogue}.ts` |
 | AI-gen settings (storage accessor + API) | `lib/model-gen/settings.ts`, `app/api/settings/ai-generation/route.ts` |
 | Store branding overlay | `lib/model-gen/branding.ts` |
