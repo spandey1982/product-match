@@ -18,6 +18,7 @@ import {
 import { DEFAULT_MODEL_TYPE, type ModelType } from "./reference-models";
 import { resolveModelType } from "./model-selection";
 import { getAiGenSettings } from "./settings";
+import { resolveAutoProvider } from "@/lib/providers/auto-routing";
 import { getBrandingConfig, applyBranding } from "./branding";
 import { persistGeneratedImages, type GeneratedImage } from "./persist";
 import { runQuickListingStrategy } from "./strategies/quick-listing";
@@ -74,10 +75,22 @@ export async function generateModelImages(
     imageUrl: product.imageUrl,
   };
 
+  // Catalogue backend: explicit setting, or category-routed when "auto"
+  // (drape→Natural Drape/Gemini, structured→Sharp Fit/Vertex). The strategy
+  // applies per-view capability fallback to Gemini if Vertex is unavailable.
+  const catalogueProvider =
+    settings.catalogueProvider === "auto"
+      ? resolveAutoProvider({ category: product.category })
+      : settings.catalogueProvider;
+
   const { images } =
     objective === "quick_listing"
       ? await runQuickListingStrategy({ product: strategyProduct, modelType })
-      : await runCatalogueStrategy({ product: strategyProduct, modelType });
+      : await runCatalogueStrategy({
+          product: strategyProduct,
+          modelType,
+          provider: catalogueProvider,
+        });
 
   // Brand each image (store logo, or store name) before persisting, so the
   // branded URL flows to display, share and download. No-op when disabled.

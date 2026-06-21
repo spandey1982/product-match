@@ -53,13 +53,22 @@ interface AiGenConfig {
   objectives: AiGenObjective[];
   modelTypes: AiGenModelType[];
   logoUrl: string | null;
+  vertexAvailable: boolean;
   settings: {
     defaultModelType: string;
     defaultObjective: string;
     brandingEnabled: boolean;
     brandingPosition: "top-left" | "top-right";
+    catalogueProvider: "auto" | "gemini" | "vertex";
   };
 }
+
+// Provider-free, purpose-led labels (shared with the try-on settings screen).
+const CATALOGUE_STYLES: { id: "auto" | "gemini" | "vertex"; label: string }[] = [
+  { id: "auto", label: "Automatic" },
+  { id: "gemini", label: "Natural Drape" },
+  { id: "vertex", label: "Sharp Fit" },
+];
 
 export default function UploadPage() {
   const router = useRouter();
@@ -83,6 +92,7 @@ export default function UploadPage() {
   // Store branding for generated images (persisted immediately on change).
   const [brandingEnabled, setBrandingEnabled] = useState(true);
   const [brandingPosition, setBrandingPosition] = useState<"top-left" | "top-right">("top-right");
+  const [catalogueProvider, setCatalogueProvider] = useState<"auto" | "gemini" | "vertex">("auto");
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [logoBusy, setLogoBusy] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -120,6 +130,7 @@ export default function UploadPage() {
         // Leave modelType on "auto" — the system picks per product by default.
         setBrandingEnabled(data.settings.brandingEnabled);
         setBrandingPosition(data.settings.brandingPosition);
+        setCatalogueProvider(data.settings.catalogueProvider);
         setLogoUrl(data.logoUrl);
       })
       .catch(() => {/* chooser stays hidden; legacy toggle still works */});
@@ -127,7 +138,11 @@ export default function UploadPage() {
   }, []);
 
   // Persist a branding setting change immediately (fire-and-forget).
-  function patchBranding(patch: { brandingEnabled?: boolean; brandingPosition?: string }) {
+  function patchBranding(patch: {
+    brandingEnabled?: boolean;
+    brandingPosition?: string;
+    catalogueProvider?: string;
+  }) {
     fetch("/api/settings/ai-generation", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -490,6 +505,42 @@ export default function UploadPage() {
                   })}
                 </div>
               </div>
+
+              {/* Catalogue style — only for the Catalogue objective. Store-level
+                  setting; persisted immediately. Provider names never shown. */}
+              {objective === "catalogue" && (
+                <div>
+                  <p className="text-xs font-medium text-gray-500 mb-2">Catalogue style</p>
+                  <div className="flex flex-wrap gap-2">
+                    {CATALOGUE_STYLES.map((s) => {
+                      const active = catalogueProvider === s.id;
+                      const disabled = s.id === "vertex" && !aiGen.vertexAvailable;
+                      return (
+                        <button
+                          key={s.id}
+                          type="button"
+                          disabled={disabled}
+                          onClick={() => {
+                            setCatalogueProvider(s.id);
+                            patchBranding({ catalogueProvider: s.id });
+                          }}
+                          aria-pressed={active}
+                          className={`rounded-full border px-4 py-1.5 text-sm font-medium transition-all ${
+                            active
+                              ? "border-indigo-300 bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200"
+                              : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
+                          } ${disabled ? "opacity-40 cursor-not-allowed" : ""}`}
+                        >
+                          {s.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[11px] text-gray-400 mt-1.5">
+                    Automatic picks the best style per category. Choose one to override.
+                  </p>
+                </div>
+              )}
 
               {/* Store model */}
               <div>

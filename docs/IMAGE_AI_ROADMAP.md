@@ -230,6 +230,16 @@ both grow.
 fallback at every step, like try-on. Feature flag `ENABLE_AI_GEN_SETTINGS`
 (off → legacy single-image path; route + UI unchanged).
 
+**Catalogue provider (independent of try-on).** `aiGenSettings.catalogueProvider`
+= Automatic | Natural Drape (Gemini) | Sharp Fit (Vertex). **Automatic is
+category-routed, NOT all-Vertex** — it reuses `resolveAutoProvider` (drape→Gemini,
+structured→Vertex), the deliberate choice for an ethnic-first catalogue. The
+catalogue strategy generates each base shot via the chosen backend (Vertex = VTO
+with the front/back reference as the person; Gemini = prompt + reference) with
+per-view capability fallback to Gemini when Vertex is unavailable or a profile
+reference is missing. Quick Listing keeps its Vertex-then-Gemini behaviour. The
+try-on provider (`User.tryOnProvider`) is a separate axis, unchanged.
+
 **Storage (decisions):**
 - `User.aiGenSettings String?` (nullable JSON) — `{ defaultModelType, defaultObjective }`.
   One column avoids migration churn as the surface grows; read via `settings.ts`.
