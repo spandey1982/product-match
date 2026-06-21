@@ -32,13 +32,19 @@ export async function runCatalogueStrategy(opts: {
   if (!source) return { images: [] };
 
   const variant = resolveReferenceVariant(product.category);
-  const reference = await loadReferenceImage(modelType, variant); // null is fine
+  // Load front + back reference profiles once; each gracefully falls back to the
+  // legacy single image, then to the basic model, then to null.
+  const frontRef = await loadReferenceImage(modelType, variant, { profile: "front" });
+  const backRef = await loadReferenceImage(modelType, variant, { profile: "back" });
 
   const views = resolvePromptSet(product.category);
   const images: GeneratedImage[] = [];
 
   // Sequential: keeps within Gemini rate limits and orders results by view.
   for (const view of views) {
+    const isBack = view.id === "back" || view.id.startsWith("back");
+    const reference = isBack ? backRef : frontRef;
+
     const prompt = buildViewPrompt({
       category: product.category,
       color: product.color,

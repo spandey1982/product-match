@@ -31,7 +31,8 @@ export async function runQuickListingStrategy(opts: {
   const { product, modelType } = opts;
 
   const variant = resolveReferenceVariant(product.category);
-  const reference = await loadReferenceImage(modelType, variant);
+  // Quick Listing is a single front-facing shot → use the front reference.
+  const reference = await loadReferenceImage(modelType, variant, { profile: "front" });
 
   const vertexReady =
     isVertexTryOnEnabled() && getVertexConfig() !== null && reference !== null;
