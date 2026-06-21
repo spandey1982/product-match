@@ -13,7 +13,7 @@ export const PRODUCT_CATEGORIES = [
   "Saree", "Lehenga", "Blouse", "Dupatta", "Kurta",
   "Salwar", "Anarkali", "Sharara", "Palazzo",
   "Jewellery", "Footwear", "Clutch", "Handbag",
-  "Suit", "Tie", "Shirt", "Trousers", "Belt", "Blazer",
+  "Suit", "Sherwani", "Tie", "Shirt", "Trousers", "Belt", "Blazer",
   "Other",
 ] as const;
 

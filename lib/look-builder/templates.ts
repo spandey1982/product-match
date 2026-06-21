@@ -26,19 +26,35 @@ export function normalizeCategory(c: string | null | undefined): string {
 const TEMPLATES: LookTemplate[] = [
   // ── Menswear ───────────────────────────────────────────────────────────────
   {
-    // "Suit" covers both western suits and ethnic menswear (sherwani / Nehru
-    // jacket), so the slots span both: shirt/tie/belt (western) and
-    // dupatta/jewellery (ethnic). Empty slots simply show an "add this" prompt.
+    // Western suit — the trousers come WITH the suit, so there is no trouser slot.
     anchor: "suit",
     label: "Suit",
     slots: [
-      { id: "footwear", label: "Footwear", categories: ["footwear"], required: true, max: 1 },
-      { id: "bottom", label: "Trousers", categories: ["trousers", "trouser"], required: false, max: 1 },
-      { id: "shirt", label: "Shirt", categories: ["shirt"], required: false, max: 1 },
+      { id: "shirt", label: "Shirt", categories: ["shirt"], required: true, max: 1 },
+      { id: "footwear", label: "Shoes", categories: ["footwear"], required: false, max: 1 },
+      { id: "tie", label: "Tie", categories: ["tie"], required: false, max: 1 },
+    ],
+  },
+  {
+    // Ethnic menswear (sherwani / Nehru jacket) — worn as-is over its own bottom,
+    // so no shirt or trouser. Pairs with footwear, a stole, and jewellery.
+    anchor: "sherwani",
+    label: "Sherwani",
+    slots: [
+      { id: "footwear", label: "Shoes", categories: ["footwear"], required: true, max: 1 },
       { id: "dupatta", label: "Stole / Dupatta", categories: ["dupatta"], required: false, max: 1 },
       { id: "jewellery", label: "Jewellery", categories: ["jewellery"], required: false, max: 1 },
+    ],
+  },
+  {
+    // Blazer — unlike a full suit, the trouser is a separate coordinating piece.
+    anchor: "blazer",
+    label: "Blazer",
+    slots: [
+      { id: "shirt", label: "Shirt", categories: ["shirt"], required: true, max: 1 },
+      { id: "bottom", label: "Trousers", categories: ["trousers", "trouser"], required: false, max: 1 },
+      { id: "footwear", label: "Shoes", categories: ["footwear"], required: false, max: 1 },
       { id: "tie", label: "Tie", categories: ["tie"], required: false, max: 1 },
-      { id: "belt", label: "Belt", categories: ["belt"], required: false, max: 1 },
     ],
   },
   {

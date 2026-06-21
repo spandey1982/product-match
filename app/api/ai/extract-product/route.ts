@@ -4,7 +4,7 @@ import { requireAuth } from "@/lib/auth";
 const GEMINI_MODEL = "gemini-2.5-flash-lite";
 
 const EXTRACTION_PROMPT = `Indian ethnic fashion product image. Return raw JSON only, no markdown:
-{"title":"","description":"2-3 sentences","category":"Saree|Lehenga|Blouse|Dupatta|Kurta|Salwar|Anarkali|Sharara|Palazzo|Jewellery|Footwear|Clutch|Handbag|Suit|Tie|Shirt|Trousers|Belt|Blazer|Other","subcategory":"or empty string","color":"primary color","material":"Silk|Cotton|Chiffon|Georgette|Velvet|Banarasi|Kanjeevaram|Linen|Crepe|Net|Satin|Polyester|Organza|Khadi|Wool|Gold|best guess","pattern":"Solid|Printed|Floral|Striped|Checked|Embroidered|Embellished|Colour-blocked|best guess","gender":"WOMEN|MEN|UNISEX|GIRLS|BOYS","occasion":[],"styleTags":[],"season":[],"price":0}
+{"title":"","description":"2-3 sentences","category":"Saree|Lehenga|Blouse|Dupatta|Kurta|Salwar|Anarkali|Sharara|Palazzo|Jewellery|Footwear|Clutch|Handbag|Suit|Sherwani|Tie|Shirt|Trousers|Belt|Blazer|Other","subcategory":"or empty string","color":"primary color","material":"Silk|Cotton|Chiffon|Georgette|Velvet|Banarasi|Kanjeevaram|Linen|Crepe|Net|Satin|Polyester|Organza|Khadi|Wool|Gold|best guess","pattern":"Solid|Printed|Floral|Striped|Checked|Embroidered|Embellished|Colour-blocked|best guess","gender":"WOMEN|MEN|UNISEX|GIRLS|BOYS","occasion":[],"styleTags":[],"season":[],"price":0}
 occasion options: Wedding Bridal Festive Party Casual Formal Office Traditional Religious Anniversary
 styleTags options: Ethnic Boho Minimalist Traditional Contemporary Fusion Royal Bridal Casual Festive
 season options: Spring Summer Autumn Winter All Season
