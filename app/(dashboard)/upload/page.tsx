@@ -66,8 +66,8 @@ interface AiGenConfig {
 // Provider-free, purpose-led labels (shared with the try-on settings screen).
 const CATALOGUE_STYLES: { id: "auto" | "gemini" | "vertex"; label: string }[] = [
   { id: "auto", label: "Automatic" },
-  { id: "gemini", label: "Natural Drape" },
-  { id: "vertex", label: "Sharp Fit" },
+  { id: "gemini", label: "Premium" },
+  { id: "vertex", label: "Economy" },
 ];
 
 export default function UploadPage() {
@@ -499,7 +499,7 @@ export default function UploadPage() {
               <div className="min-w-0">
                 <p className="text-sm font-medium text-gray-900">Back image <span className="text-gray-400 font-normal">(optional)</span></p>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  Improves back-view generation — uses the real back instead of guessing.
+                  Improves back-view generation.
                 </p>
               </div>
             </div>
