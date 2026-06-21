@@ -40,6 +40,11 @@ const MATERIALS = [
   "Banarasi", "Kanjeevaram", "Linen", "Crepe", "Net",
   "Satin", "Polyester", "Organza", "Khadi", "Wool", "Gold",
 ];
+const PATTERNS = [
+  "Solid", "Floral", "Paisley", "Geometric", "Striped", "Checked",
+  "Polka", "Embroidered", "Printed", "Woven", "Zari", "Bandhani",
+  "Block Print", "Abstract",
+];
 
 interface AiGenObjective { id: string; label: string; description: string; }
 interface AiGenModelType { id: string; label: string; thumbnailUrl: string; }
@@ -94,6 +99,7 @@ export default function UploadPage() {
     subcategory: "",
     color: "",
     material: "",
+    pattern: "",
     gender: "WOMEN",
     price: "",
     sku: "",
@@ -194,6 +200,7 @@ export default function UploadPage() {
         subcategory: p.subcategory || prev.subcategory,
         color:       p.color       || prev.color,
         material:    p.material    || prev.material,
+        pattern:     p.pattern     || prev.pattern,
         gender:      p.gender      || prev.gender,
         price:       p.price       ? String(p.price) : prev.price,
       }));
@@ -728,6 +735,16 @@ export default function UploadPage() {
               value={form.gender}
               onChange={(e) => setForm({ ...form, gender: e.target.value })}
               options={GENDERS}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Select
+              label="Pattern / Print"
+              value={form.pattern}
+              onChange={(e) => setForm({ ...form, pattern: e.target.value })}
+              options={PATTERNS.map((p) => ({ value: p, label: p }))}
+              placeholder="Select pattern"
             />
           </div>
 

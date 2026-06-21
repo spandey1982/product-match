@@ -39,6 +39,10 @@ model Product {
   occasion  String @default("[]")
   styleTags String @default("[]")
   material  String?
+  // Visual pattern/print (e.g. Floral, Paisley, Zari, Solid). Extracted by the
+  // shared metadata service (lib/metadata) and reused by generation + future
+  // recommendation/stylist systems. Nullable → existing rows unaffected.
+  pattern   String?
   gender    String @default("WOMEN")
   season    String @default("[]")
   price     Float
