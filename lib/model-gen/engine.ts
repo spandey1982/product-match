@@ -18,8 +18,11 @@ import {
 import { DEFAULT_MODEL_TYPE, type ModelType } from "./reference-models";
 import { resolveModelType } from "./model-selection";
 import { getAiGenSettings } from "./settings";
+import { resolveAutoProvider } from "@/lib/providers/auto-routing";
 import { getBrandingConfig, applyBranding } from "./branding";
 import { persistGeneratedImages, type GeneratedImage } from "./persist";
+import { recordGenerations } from "./generation-record";
+import { maybeReviewGenerations } from "./ai-review";
 import { runQuickListingStrategy } from "./strategies/quick-listing";
 import { runCatalogueStrategy, type StrategyProduct } from "./strategies/catalogue";
 
@@ -72,12 +75,25 @@ export async function generateModelImages(
     color: product.color,
     gender: product.gender,
     imageUrl: product.imageUrl,
+    backImageUrl: product.backImageUrl,
   };
+
+  // Catalogue backend: explicit setting, or category-routed when "auto"
+  // (drape→Natural Drape/Gemini, structured→Sharp Fit/Vertex). The strategy
+  // applies per-view capability fallback to Gemini if Vertex is unavailable.
+  const catalogueProvider =
+    settings.catalogueProvider === "auto"
+      ? resolveAutoProvider({ category: product.category })
+      : settings.catalogueProvider;
 
   const { images } =
     objective === "quick_listing"
       ? await runQuickListingStrategy({ product: strategyProduct, modelType })
-      : await runCatalogueStrategy({ product: strategyProduct, modelType });
+      : await runCatalogueStrategy({
+          product: strategyProduct,
+          modelType,
+          provider: catalogueProvider,
+        });
 
   // Brand each image (store logo, or store name) before persisting, so the
   // branded URL flows to display, share and download. No-op when disabled.
@@ -89,6 +105,17 @@ export async function generateModelImages(
 
   if (branded.length > 0) {
     await persistGeneratedImages(product.id, branded, objective);
+    // Record perf/quality rows (non-fatal) for analytics + scoring.
+    const records = await recordGenerations({
+      productId: product.id,
+      userId: input.userId,
+      category: product.category,
+      objective,
+      defaultProvider: objective === "quick_listing" ? "vertex" : catalogueProvider,
+      images: branded,
+    });
+    // Fire-and-forget AI review (flag- + sample-gated); never blocks the response.
+    maybeReviewGenerations(records, { productImageUrl: product.imageUrl });
   }
 
   return { objective, modelType, images: branded };

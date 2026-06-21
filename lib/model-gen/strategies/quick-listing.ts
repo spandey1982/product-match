@@ -31,7 +31,8 @@ export async function runQuickListingStrategy(opts: {
   const { product, modelType } = opts;
 
   const variant = resolveReferenceVariant(product.category);
-  const reference = await loadReferenceImage(modelType, variant);
+  // Quick Listing is a single front-facing shot → use the front reference.
+  const reference = await loadReferenceImage(modelType, variant, { profile: "front" });
 
   const vertexReady =
     isVertexTryOnEnabled() && getVertexConfig() !== null && reference !== null;
@@ -49,7 +50,7 @@ export async function runQuickListingStrategy(opts: {
         productTitle: product.title,
         userId: "model-gen",
       });
-      return { images: [{ url: result.url, view: "front" }], usedFallback: false };
+      return { images: [{ url: result.url, view: "front", provider: "vertex" }], usedFallback: false };
     } catch (err) {
       console.error(
         "[model-gen] quick-listing Vertex failed — falling back to Gemini:",
@@ -87,7 +88,7 @@ export async function runQuickListingStrategy(opts: {
   });
 
   return {
-    images: result ? [{ url: result.url, view: "front" }] : [],
+    images: result ? [{ url: result.url, view: "front", provider: "gemini" }] : [],
     usedFallback: true,
   };
 }

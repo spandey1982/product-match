@@ -25,12 +25,24 @@ export function isBrandingPosition(v: unknown): v is BrandingPosition {
   return v === "top-left" || v === "top-right";
 }
 
+/**
+ * Catalogue generation backend — independent of the try-on provider.
+ * "auto" routes by category (drape→Natural Drape, structured→Sharp Fit).
+ */
+export type CatalogueProvider = "auto" | "gemini" | "vertex";
+
+export function isCatalogueProvider(v: unknown): v is CatalogueProvider {
+  return v === "auto" || v === "gemini" || v === "vertex";
+}
+
 export interface AiGenSettings {
   defaultModelType: ModelType;
   defaultObjective: GenerationObjective;
   /** Overlay the store logo (or name) on generated model images. */
   brandingEnabled: boolean;
   brandingPosition: BrandingPosition;
+  /** Backend for the Catalogue & Social objective (independent of try-on). */
+  catalogueProvider: CatalogueProvider;
 }
 
 export const DEFAULT_AI_GEN_SETTINGS: AiGenSettings = {
@@ -38,6 +50,7 @@ export const DEFAULT_AI_GEN_SETTINGS: AiGenSettings = {
   defaultObjective: DEFAULT_OBJECTIVE,
   brandingEnabled: true,
   brandingPosition: "top-right",
+  catalogueProvider: "auto",
 };
 
 /** Parse raw aiGenSettings JSON into a fully-populated, validated object. */
@@ -59,6 +72,9 @@ export function parseAiGenSettings(raw: string | null | undefined): AiGenSetting
       brandingPosition: isBrandingPosition(parsed.brandingPosition)
         ? parsed.brandingPosition
         : DEFAULT_AI_GEN_SETTINGS.brandingPosition,
+      catalogueProvider: isCatalogueProvider(parsed.catalogueProvider)
+        ? parsed.catalogueProvider
+        : DEFAULT_AI_GEN_SETTINGS.catalogueProvider,
     };
   } catch {
     return { ...DEFAULT_AI_GEN_SETTINGS };

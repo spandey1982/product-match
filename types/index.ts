@@ -33,10 +33,12 @@ export type Product = {
   occasion: string[];
   styleTags: string[];
   material?: string | null;
+  pattern?: string | null;
   gender: string;
   season: string[];
   price: number;
   imageUrl?: string | null;
+  backImageUrl?: string | null;
   thumbnailUrl?: string | null;
   modelImageUrl?: string | null;
   inStock: boolean;

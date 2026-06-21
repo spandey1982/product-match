@@ -151,6 +151,9 @@ GOOGLE_APPLICATION_CREDENTIALS        # local: SA key file path (empty → ADC)
 GOOGLE_APPLICATION_CREDENTIALS_JSON   # deploy: SA key as base64 JSON (Railway/Vercel)
 GEMINI_API_KEY                        # Gemini provider + model-gen (separate project)
 ENABLE_AI_GEN_SETTINGS                # model-gen objectives UI + routing (off → legacy single image)
+ENABLE_AI_REVIEW                      # async AI quality scoring of generated images (off → no scoring)
+AI_REVIEW_SAMPLE_RATE                 # 0–1 fraction of base shots to review (default 1)
+ADMIN_EMAILS                          # comma-separated allowlist for the internal review panel
 ```
 Quick Listing uses Vertex VTO with the reference model as the person, so it
 benefits from the same `ENABLE_VERTEX_TRYON` + GCP config above; without it,
@@ -172,6 +175,12 @@ Schema changes: `npx prisma generate` then restart dev server.
 | Model-gen engine (objectives) | `lib/model-gen/engine.ts` |
 | Objectives / reference library / category selection / prompt sets | `lib/model-gen/{objectives,reference-models,reference-selection,prompt-sets}.ts` |
 | Auto model-type selection (gender/age) | `lib/model-gen/model-selection.ts` |
+| Shared metadata service (provider-agnostic) | `lib/metadata/analyze.ts` (`Product.pattern`) |
+| Crop-template system (catalogue close-ups) | `lib/model-gen/crop-templates.ts` |
+| Front/back reference profiles | `lib/model-gen/reference-models.ts` (`loadReferenceImage(..., {profile})`) |
+| Generation perf/quality records | `GenerationRecord` table, `lib/model-gen/generation-record.ts` |
+| Automated AI review (quality scoring) | `lib/model-gen/ai-review.ts` (`ENABLE_AI_REVIEW`) |
+| Manual review panel (internal, admin) | `app/(dashboard)/admin/review/`, `app/api/admin/review/route.ts` (`ADMIN_EMAILS`) |
 | Model-gen strategies | `lib/model-gen/strategies/{quick-listing,catalogue}.ts` |
 | AI-gen settings (storage accessor + API) | `lib/model-gen/settings.ts`, `app/api/settings/ai-generation/route.ts` |
 | Store branding overlay | `lib/model-gen/branding.ts` |
@@ -227,6 +236,16 @@ both grow.
 fallback at every step, like try-on. Feature flag `ENABLE_AI_GEN_SETTINGS`
 (off → legacy single-image path; route + UI unchanged).
 
+**Catalogue provider (independent of try-on).** `aiGenSettings.catalogueProvider`
+= Automatic | Natural Drape (Gemini) | Sharp Fit (Vertex). **Automatic is
+category-routed, NOT all-Vertex** — it reuses `resolveAutoProvider` (drape→Gemini,
+structured→Vertex), the deliberate choice for an ethnic-first catalogue. The
+catalogue strategy generates each base shot via the chosen backend (Vertex = VTO
+with the front/back reference as the person; Gemini = prompt + reference) with
+per-view capability fallback to Gemini when Vertex is unavailable or a profile
+reference is missing. Quick Listing keeps its Vertex-then-Gemini behaviour. The
+try-on provider (`User.tryOnProvider`) is a separate axis, unchanged.
+
 **Storage (decisions):**
 - `User.aiGenSettings String?` (nullable JSON) — `{ defaultModelType, defaultObjective }`.
   One column avoids migration churn as the surface grows; read via `settings.ts`.
@@ -254,6 +273,29 @@ purpose-led, provider-free language too — "Automatic" (Recommended), "Natural
 Drape" (Gemini, best for draped ethnic wear), "Sharp Fit" (Vertex, best for
 structured/western + footwear). The underlying ids/storage (`auto/gemini/vertex`,
 `User.tryOnProvider`) are unchanged; only the labels/descriptions changed.
+
+**Generation performance tracking (Phase E, done).** Every objective-based
+generation writes one `GenerationRecord` per image — `provider, category,
+objective, view, outputUrl, createdAt` (+ nullable `generationMs`/`tokensTotal`
+and AI/manual score columns). Standalone table (no FK to Product) so records are
+durable analytics snapshots. Each image is tagged with the backend that produced
+it (close-ups inherit their base shot's provider). Non-blocking/non-fatal. This
+is the queryable store that AI review (Phase F) and manual review (Phase G)
+scores attach to, and that data-driven catalogue Auto routing will read.
+
+**Manual review panel (Phase G, done).** Internal-only `/admin/review` (under the
+dashboard, **not linked anywhere**) gated by `isAdmin` (role `ADMIN` or the
+`ADMIN_EMAILS` allowlist). Reuses the `GenerationRecord` manual columns — a 1–5
+rating per image alongside the AI scores; no new table. Non-admins get a 404.
+Future Auto routing can blend AI + manual averages per category×provider.
+
+**Optional back product image (Phase H, done).** `Product.backImageUrl` (nullable,
+migration `0004`) — an optional second image uploaded in the product form. The
+current flow is unchanged when it's absent. When present, the catalogue **back**
+base shot is generated from the real back image (Gemini: back image as the
+product; Vertex: back image as the garment) instead of the model inventing the
+back — meaningfully more precise for kurtis, blouses, etc. Front views and Quick
+Listing are unaffected.
 
 **Try-on improvement research (recommendation only — not built):** today try-on
 uses only `product.imageUrl`. Highest-payoff additive wins, in order: (1) pass the

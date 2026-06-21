@@ -40,6 +40,11 @@ const MATERIALS = [
   "Banarasi", "Kanjeevaram", "Linen", "Crepe", "Net",
   "Satin", "Polyester", "Organza", "Khadi", "Wool", "Gold",
 ];
+const PATTERNS = [
+  "Solid", "Floral", "Paisley", "Geometric", "Striped", "Checked",
+  "Polka", "Embroidered", "Printed", "Woven", "Zari", "Bandhani",
+  "Block Print", "Abstract",
+];
 
 interface AiGenObjective { id: string; label: string; description: string; }
 interface AiGenModelType { id: string; label: string; thumbnailUrl: string; }
@@ -48,13 +53,22 @@ interface AiGenConfig {
   objectives: AiGenObjective[];
   modelTypes: AiGenModelType[];
   logoUrl: string | null;
+  vertexAvailable: boolean;
   settings: {
     defaultModelType: string;
     defaultObjective: string;
     brandingEnabled: boolean;
     brandingPosition: "top-left" | "top-right";
+    catalogueProvider: "auto" | "gemini" | "vertex";
   };
 }
+
+// Provider-free, purpose-led labels (shared with the try-on settings screen).
+const CATALOGUE_STYLES: { id: "auto" | "gemini" | "vertex"; label: string }[] = [
+  { id: "auto", label: "Automatic" },
+  { id: "gemini", label: "Premium" },
+  { id: "vertex", label: "Economy" },
+];
 
 export default function UploadPage() {
   const router = useRouter();
@@ -63,6 +77,10 @@ export default function UploadPage() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageUrlInput, setImageUrlInput] = useState("");
+  // Optional back-of-product image — improves back-profile generation only.
+  const backFileRef = useRef<HTMLInputElement>(null);
+  const [backImageFile, setBackImageFile] = useState<File | null>(null);
+  const [backImagePreview, setBackImagePreview] = useState<string | null>(null);
   const [extracting, setExtracting] = useState(false);
   const [extractError, setExtractError] = useState("");
   const [generateModel, setGenerateModel] = useState(false);
@@ -78,6 +96,7 @@ export default function UploadPage() {
   // Store branding for generated images (persisted immediately on change).
   const [brandingEnabled, setBrandingEnabled] = useState(true);
   const [brandingPosition, setBrandingPosition] = useState<"top-left" | "top-right">("top-right");
+  const [catalogueProvider, setCatalogueProvider] = useState<"auto" | "gemini" | "vertex">("auto");
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [logoBusy, setLogoBusy] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -94,6 +113,7 @@ export default function UploadPage() {
     subcategory: "",
     color: "",
     material: "",
+    pattern: "",
     gender: "WOMEN",
     price: "",
     sku: "",
@@ -114,6 +134,7 @@ export default function UploadPage() {
         // Leave modelType on "auto" — the system picks per product by default.
         setBrandingEnabled(data.settings.brandingEnabled);
         setBrandingPosition(data.settings.brandingPosition);
+        setCatalogueProvider(data.settings.catalogueProvider);
         setLogoUrl(data.logoUrl);
       })
       .catch(() => {/* chooser stays hidden; legacy toggle still works */});
@@ -121,7 +142,11 @@ export default function UploadPage() {
   }, []);
 
   // Persist a branding setting change immediately (fire-and-forget).
-  function patchBranding(patch: { brandingEnabled?: boolean; brandingPosition?: string }) {
+  function patchBranding(patch: {
+    brandingEnabled?: boolean;
+    brandingPosition?: string;
+    catalogueProvider?: string;
+  }) {
     fetch("/api/settings/ai-generation", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -194,6 +219,7 @@ export default function UploadPage() {
         subcategory: p.subcategory || prev.subcategory,
         color:       p.color       || prev.color,
         material:    p.material    || prev.material,
+        pattern:     p.pattern     || prev.pattern,
         gender:      p.gender      || prev.gender,
         price:       p.price       ? String(p.price) : prev.price,
       }));
@@ -240,6 +266,20 @@ export default function UploadPage() {
     setter(arr.includes(item) ? arr.filter((i) => i !== item) : [...arr, item]);
   }
 
+  async function handleBackImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBackImagePreview(URL.createObjectURL(file));
+    const resized = await resizeImage(file);
+    setBackImageFile(resized);
+  }
+
+  function clearBackImage() {
+    setBackImageFile(null);
+    setBackImagePreview(null);
+    if (backFileRef.current) backFileRef.current.value = "";
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -270,6 +310,18 @@ export default function UploadPage() {
         }
       }
 
+      // Optional back image — best-effort; never blocks product creation.
+      let backImageUrl: string | undefined;
+      if (backImageFile) {
+        try {
+          const bfd = new FormData();
+          bfd.append("file", backImageFile);
+          const backRes = await fetch("/api/upload", { method: "POST", body: bfd });
+          const backData = await backRes.json();
+          if (backRes.ok) backImageUrl = backData.url;
+        } catch {/* optional — ignore back-image upload failure */}
+      }
+
       const res = await fetch("/api/products", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -281,6 +333,7 @@ export default function UploadPage() {
           styleTags: selectedStyles,
           season: selectedSeasons,
           imageUrl,
+          backImageUrl,
         }),
       });
 
@@ -427,6 +480,56 @@ export default function UploadPage() {
             />
           )}
 
+          {/* Optional back image — subtle enhancement; the flow works without it.
+              Improves back-profile catalogue generation when provided. */}
+          <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
+            <div className="flex items-center gap-3 min-w-0">
+              {backImagePreview ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={backImagePreview}
+                  alt="Back of product"
+                  className="h-10 w-10 rounded-lg object-cover border border-gray-100 shrink-0"
+                />
+              ) : (
+                <div className="h-10 w-10 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center shrink-0">
+                  <ImagePlus className="h-4 w-4 text-gray-300" />
+                </div>
+              )}
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-gray-900">Back image <span className="text-gray-400 font-normal">(optional)</span></p>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Improves back-view generation.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => backFileRef.current?.click()}
+                className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:border-gray-300"
+              >
+                {backImagePreview ? "Replace" : "Add"}
+              </button>
+              {backImagePreview && (
+                <button
+                  type="button"
+                  onClick={clearBackImage}
+                  className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-red-600 hover:border-red-200"
+                >
+                  Remove
+                </button>
+              )}
+              <input
+                ref={backFileRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                onChange={handleBackImageSelect}
+              />
+            </div>
+          </div>
+
           {/* Generate model image toggle — inside image card so it's immediately visible */}
           <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
             <div>
@@ -483,6 +586,42 @@ export default function UploadPage() {
                   })}
                 </div>
               </div>
+
+              {/* Catalogue style — only for the Catalogue objective. Store-level
+                  setting; persisted immediately. Provider names never shown. */}
+              {objective === "catalogue" && (
+                <div>
+                  <p className="text-xs font-medium text-gray-500 mb-2">Catalogue style</p>
+                  <div className="flex flex-wrap gap-2">
+                    {CATALOGUE_STYLES.map((s) => {
+                      const active = catalogueProvider === s.id;
+                      const disabled = s.id === "vertex" && !aiGen.vertexAvailable;
+                      return (
+                        <button
+                          key={s.id}
+                          type="button"
+                          disabled={disabled}
+                          onClick={() => {
+                            setCatalogueProvider(s.id);
+                            patchBranding({ catalogueProvider: s.id });
+                          }}
+                          aria-pressed={active}
+                          className={`rounded-full border px-4 py-1.5 text-sm font-medium transition-all ${
+                            active
+                              ? "border-indigo-300 bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200"
+                              : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
+                          } ${disabled ? "opacity-40 cursor-not-allowed" : ""}`}
+                        >
+                          {s.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[11px] text-gray-400 mt-1.5">
+                    Automatic picks the best style per category. Choose one to override.
+                  </p>
+                </div>
+              )}
 
               {/* Store model */}
               <div>
@@ -728,6 +867,16 @@ export default function UploadPage() {
               value={form.gender}
               onChange={(e) => setForm({ ...form, gender: e.target.value })}
               options={GENDERS}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Select
+              label="Pattern / Print"
+              value={form.pattern}
+              onChange={(e) => setForm({ ...form, pattern: e.target.value })}
+              options={PATTERNS.map((p) => ({ value: p, label: p }))}
+              placeholder="Select pattern"
             />
           </div>
 

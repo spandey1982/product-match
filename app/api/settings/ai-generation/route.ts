@@ -6,11 +6,13 @@ import {
   getAiGenSettings,
   serializeAiGenSettings,
   isBrandingPosition,
+  isCatalogueProvider,
   type AiGenSettings,
 } from "@/lib/model-gen/settings";
 import { isAiGenObjectivesEnabled } from "@/lib/model-gen/engine";
 import { listObjectives, isGenerationObjective } from "@/lib/model-gen/objectives";
 import { MODEL_TYPES, isModelType } from "@/lib/model-gen/reference-models";
+import { isVertexTryOnEnabled, getVertexConfig } from "@/lib/tryon-vertex";
 
 /** Resolve the store logo's delivery URL from its public_id, if uploaded. */
 async function logoUrl(userId: string): Promise<string | null> {
@@ -32,6 +34,8 @@ function options() {
       description: o.description,
     })),
     modelTypes: MODEL_TYPES,
+    // Whether "Sharp Fit" (Vertex) is usable; "Natural Drape"/"Automatic" always are.
+    vertexAvailable: isVertexTryOnEnabled() && getVertexConfig() !== null,
   };
 }
 
@@ -63,6 +67,7 @@ export async function PATCH(req: NextRequest) {
     const rawObjective = (body as { defaultObjective?: unknown }).defaultObjective;
     const rawBrandingEnabled = (body as { brandingEnabled?: unknown }).brandingEnabled;
     const rawBrandingPosition = (body as { brandingPosition?: unknown }).brandingPosition;
+    const rawCatalogueProvider = (body as { catalogueProvider?: unknown }).catalogueProvider;
 
     if (rawModelType !== undefined && !isModelType(rawModelType)) {
       return NextResponse.json(
@@ -88,6 +93,12 @@ export async function PATCH(req: NextRequest) {
         { status: 400 }
       );
     }
+    if (rawCatalogueProvider !== undefined && !isCatalogueProvider(rawCatalogueProvider)) {
+      return NextResponse.json(
+        { error: "Invalid catalogue style." },
+        { status: 400 }
+      );
+    }
 
     // Merge onto the current (defaulted) settings so a partial update is safe.
     const current = await getAiGenSettings(session.id);
@@ -96,6 +107,7 @@ export async function PATCH(req: NextRequest) {
       defaultObjective: isGenerationObjective(rawObjective) ? rawObjective : current.defaultObjective,
       brandingEnabled: typeof rawBrandingEnabled === "boolean" ? rawBrandingEnabled : current.brandingEnabled,
       brandingPosition: isBrandingPosition(rawBrandingPosition) ? rawBrandingPosition : current.brandingPosition,
+      catalogueProvider: isCatalogueProvider(rawCatalogueProvider) ? rawCatalogueProvider : current.catalogueProvider,
     };
 
     await db.user.update({
