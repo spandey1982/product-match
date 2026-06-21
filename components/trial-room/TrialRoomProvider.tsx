@@ -11,7 +11,14 @@ import React, {
   useEffect,
 } from "react";
 import { Product } from "@/types";
-import { TryOnEntry, TryOnStatus, WishlistEntry } from "@/lib/trial-room-types";
+import {
+  TryOnEntry,
+  TryOnStatus,
+  WishlistEntry,
+  LookSession,
+  SavedLook,
+  lookCurrentImage,
+} from "@/lib/trial-room-types";
 
 // ─── Limit ────────────────────────────────────────────────────────────────────
 
@@ -31,6 +38,10 @@ interface TrialRoomState {
   photoDataUrl: string | null;
   tryOns: TryOnEntry[];
   wishlist: WishlistEntry[];
+  /** The look currently being built (nested try-on), or null. */
+  lookSession: LookSession | null;
+  /** Completed looks saved for comparison. */
+  savedLooks: SavedLook[];
 }
 
 export interface TrialRoomContextValue extends Omit<TrialRoomState, "photoDataUrl"> {
@@ -82,6 +93,24 @@ export interface TrialRoomContextValue extends Omit<TrialRoomState, "photoDataUr
   triggerSetupHint: () => void;
   /** True if the product has a non-failed entry in the queue. */
   isInWishlist: (tryOnId: string) => boolean;
+
+  // ── Look building (nested try-on) ────────────────────────────────────────
+  /** Start a look from a completed try-on (its garment becomes the anchor). */
+  startLook: (tryOnId: string) => void;
+  /** Layer a product onto the current look via nested try-on. No-op if no session. */
+  addToLook: (product: Product) => void;
+  /** Remove the most recently added look item (and its composite). */
+  removeLastLookItem: () => void;
+  /** Discard the in-progress look without saving. */
+  cancelLook: () => void;
+  /** Save the current look (products + final composite) for comparison. */
+  saveLook: () => void;
+  /** Remove a saved look. */
+  removeSavedLook: (savedLookId: string) => void;
+  /** The current composite image of the in-progress look, or null. */
+  currentLookImage: string | null;
+  /** True while a look item is generating. */
+  isAddingToLook: boolean;
 }
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -113,6 +142,8 @@ const INITIAL_STATE: TrialRoomState = {
   photoDataUrl: null,
   tryOns: [],
   wishlist: [],
+  lookSession: null,
+  savedLooks: [],
 };
 
 /**
@@ -128,11 +159,14 @@ function loadPersistedState(): TrialRoomState {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return INITIAL_STATE;
 
-    const { photoDataUrl, tryOns, wishlist } = JSON.parse(raw) as {
-      photoDataUrl?: string | null;
-      tryOns?: TryOnEntry[];
-      wishlist?: WishlistEntry[];
-    };
+    const { photoDataUrl, tryOns, wishlist, lookSession, savedLooks } =
+      JSON.parse(raw) as {
+        photoDataUrl?: string | null;
+        tryOns?: TryOnEntry[];
+        wishlist?: WishlistEntry[];
+        lookSession?: LookSession | null;
+        savedLooks?: SavedLook[];
+      };
 
     // Any entry that was mid-generation when the page was closed can never
     // complete now — downgrade it to "failed" so the user can retry.
@@ -145,6 +179,13 @@ function loadPersistedState(): TrialRoomState {
           }
         : t
     );
+
+    // A look mid-generation can't resume — reset to idle so the user can re-add.
+    const restoredLook: LookSession | null = lookSession
+      ? lookSession.status === "adding"
+        ? { ...lookSession, status: "idle", errorMessage: undefined }
+        : lookSession
+      : null;
 
     let photo: File | null = null;
     let photoPreviewUrl: string | null = null;
@@ -162,6 +203,8 @@ function loadPersistedState(): TrialRoomState {
       photoDataUrl: photoDataUrl ?? null,
       tryOns: restoredTryOns,
       wishlist: wishlist ?? [],
+      lookSession: restoredLook,
+      savedLooks: savedLooks ?? [],
     };
   } catch {
     return INITIAL_STATE;
@@ -172,12 +215,14 @@ function loadPersistedState(): TrialRoomState {
 function persistState(
   photoDataUrl: string | null,
   tryOns: TryOnEntry[],
-  wishlist: WishlistEntry[]
+  wishlist: WishlistEntry[],
+  lookSession: LookSession | null,
+  savedLooks: SavedLook[]
 ) {
   try {
     localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ photoDataUrl, tryOns, wishlist })
+      JSON.stringify({ photoDataUrl, tryOns, wishlist, lookSession, savedLooks })
     );
   } catch {
     // Storage quota exceeded — non-fatal
@@ -214,8 +259,21 @@ export function TrialRoomProvider({ children }: { children: React.ReactNode }) {
   // data before it has been loaded.
   useEffect(() => {
     if (!hydrated) return;
-    persistState(state.photoDataUrl, state.tryOns, state.wishlist);
-  }, [hydrated, state.photoDataUrl, state.tryOns, state.wishlist]);
+    persistState(
+      state.photoDataUrl,
+      state.tryOns,
+      state.wishlist,
+      state.lookSession,
+      state.savedLooks
+    );
+  }, [
+    hydrated,
+    state.photoDataUrl,
+    state.tryOns,
+    state.wishlist,
+    state.lookSession,
+    state.savedLooks,
+  ]);
 
   const triggerSetupHint = useCallback(() => {
     if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
@@ -401,12 +459,143 @@ export function TrialRoomProvider({ children }: { children: React.ReactNode }) {
     }));
   }, []);
 
+  // ── Look building (nested try-on) ──────────────────────────────────────────
+
+  // Fetch an existing composite (a prior try-on result URL) and re-submit it as
+  // the "person" so the next garment is layered onto it. Reuses the unchanged
+  // /tryon route — the route treats whatever photo it receives as the person.
+  async function runLookGeneration(
+    baseImageUrl: string,
+    productId: string
+  ): Promise<string> {
+    const res = await fetch(baseImageUrl);
+    if (!res.ok) throw new Error("Could not load the current look image.");
+    const blob = await res.blob();
+    const mime =
+      blob.type && blob.type.startsWith("image/") ? blob.type : "image/jpeg";
+    const ext = mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : "jpg";
+    const file = new File([blob], `look-base.${ext}`, { type: mime });
+
+    const fd = new FormData();
+    fd.append("photo", file);
+    const genRes = await fetch(`/api/products/${productId}/tryon`, {
+      method: "POST",
+      body: fd,
+    });
+    const data: { tryOnUrl?: string; error?: string } = await genRes.json();
+    if (data.tryOnUrl) return data.tryOnUrl;
+    throw new Error(data.error ?? "Generation failed. Please try again.");
+  }
+
+  const startLook = useCallback((tryOnId: string) => {
+    const entry = stateRef.current.tryOns.find(
+      (t) => t.id === tryOnId && t.status === "done" && t.resultUrl
+    );
+    if (!entry?.resultUrl) return;
+    const session: LookSession = {
+      id: crypto.randomUUID(),
+      baseTryOnId: entry.id,
+      anchorProduct: entry.product,
+      baseImageUrl: entry.resultUrl,
+      items: [],
+      status: "idle",
+      createdAt: Date.now(),
+    };
+    setState((prev) => ({ ...prev, lookSession: session }));
+  }, []);
+
+  const addToLook = useCallback((product: Product) => {
+    const session = stateRef.current.lookSession;
+    if (!session || session.status === "adding") return;
+    if (session.items.some((it) => it.product.id === product.id)) return;
+
+    const base = lookCurrentImage(session);
+    setState((prev) =>
+      prev.lookSession
+        ? { ...prev, lookSession: { ...prev.lookSession, status: "adding", errorMessage: undefined } }
+        : prev
+    );
+
+    runLookGeneration(base, product.id)
+      .then((resultUrl) => {
+        setState((prev) => {
+          if (!prev.lookSession || prev.lookSession.id !== session.id) return prev;
+          return {
+            ...prev,
+            lookSession: {
+              ...prev.lookSession,
+              items: [...prev.lookSession.items, { product, resultUrl }],
+              status: "idle",
+            },
+          };
+        });
+      })
+      .catch((err: Error) => {
+        setState((prev) => {
+          if (!prev.lookSession || prev.lookSession.id !== session.id) return prev;
+          return {
+            ...prev,
+            lookSession: { ...prev.lookSession, status: "error", errorMessage: err.message },
+          };
+        });
+      });
+  }, []);
+
+  const removeLastLookItem = useCallback(() => {
+    setState((prev) =>
+      prev.lookSession && prev.lookSession.items.length > 0
+        ? {
+            ...prev,
+            lookSession: {
+              ...prev.lookSession,
+              items: prev.lookSession.items.slice(0, -1),
+              status: "idle",
+              errorMessage: undefined,
+            },
+          }
+        : prev
+    );
+  }, []);
+
+  const cancelLook = useCallback(() => {
+    setState((prev) => ({ ...prev, lookSession: null }));
+  }, []);
+
+  const saveLook = useCallback(() => {
+    setState((prev) => {
+      const s = prev.lookSession;
+      if (!s) return prev;
+      const saved: SavedLook = {
+        id: crypto.randomUUID(),
+        products: [s.anchorProduct, ...s.items.map((it) => it.product)],
+        finalImageUrl: lookCurrentImage(s),
+        createdAt: Date.now(),
+      };
+      return { ...prev, savedLooks: [saved, ...prev.savedLooks] };
+    });
+  }, []);
+
+  const removeSavedLook = useCallback((savedLookId: string) => {
+    setState((prev) => ({
+      ...prev,
+      savedLooks: prev.savedLooks.filter((l) => l.id !== savedLookId),
+    }));
+  }, []);
+
   // ── Clear all — also wipes localStorage ───────────────────────────────────
 
   const clearAll = useCallback(() => {
     setState((prev) => {
       if (prev.photoPreviewUrl?.startsWith("blob:")) URL.revokeObjectURL(prev.photoPreviewUrl);
-      return { photo: null, photoPreviewUrl: null, photoDataUrl: null, tryOns: [], wishlist: [] };
+      return {
+        photo: null,
+        photoPreviewUrl: null,
+        photoDataUrl: null,
+        tryOns: [],
+        wishlist: [],
+        lookSession: null,
+        savedLooks: [],
+      };
     });
     try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
   }, []);
@@ -441,6 +630,11 @@ export function TrialRoomProvider({ children }: { children: React.ReactNode }) {
     [state.wishlist]
   );
 
+  const currentLookImage = state.lookSession
+    ? lookCurrentImage(state.lookSession)
+    : null;
+  const isAddingToLook = state.lookSession?.status === "adding";
+
   // ── Context value (memoised to avoid cascading re-renders) ─────────────────
 
   const value = useMemo<TrialRoomContextValue>(
@@ -465,6 +659,16 @@ export function TrialRoomProvider({ children }: { children: React.ReactNode }) {
       setupHintActive,
       triggerSetupHint,
       isInWishlist,
+      lookSession: state.lookSession,
+      savedLooks: state.savedLooks,
+      startLook,
+      addToLook,
+      removeLastLookItem,
+      cancelLook,
+      saveLook,
+      removeSavedLook,
+      currentLookImage,
+      isAddingToLook,
     }),
     [
       state,
@@ -484,6 +688,14 @@ export function TrialRoomProvider({ children }: { children: React.ReactNode }) {
       setupHintActive,
       triggerSetupHint,
       isInWishlist,
+      startLook,
+      addToLook,
+      removeLastLookItem,
+      cancelLook,
+      saveLook,
+      removeSavedLook,
+      currentLookImage,
+      isAddingToLook,
     ]
   );
 
