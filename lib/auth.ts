@@ -70,6 +70,30 @@ export async function requireAuth(): Promise<SessionUser> {
   return session;
 }
 
+/**
+ * Internal-admin check for the manual review panel (Phase G). True when the
+ * user's role is ADMIN, or their email is in the ADMIN_EMAILS allowlist
+ * (comma-separated) — the env allowlist keeps this maintenance-free with no
+ * role-assignment UI. Invisible to retailers/customers.
+ */
+export function isAdmin(session: SessionUser | null): boolean {
+  if (!session) return false;
+  if (session.role === "ADMIN") return true;
+  const allow = (process.env.ADMIN_EMAILS ?? "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  return allow.includes(session.email.toLowerCase());
+}
+
+export async function requireAdmin(): Promise<SessionUser> {
+  const session = await requireAuth();
+  if (!isAdmin(session)) {
+    throw new Error("Forbidden");
+  }
+  return session;
+}
+
 export async function getUserById(id: string) {
   return db.user.findUnique({
     where: { id },

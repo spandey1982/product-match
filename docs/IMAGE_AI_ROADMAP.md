@@ -153,6 +153,7 @@ GEMINI_API_KEY                        # Gemini provider + model-gen (separate pr
 ENABLE_AI_GEN_SETTINGS                # model-gen objectives UI + routing (off → legacy single image)
 ENABLE_AI_REVIEW                      # async AI quality scoring of generated images (off → no scoring)
 AI_REVIEW_SAMPLE_RATE                 # 0–1 fraction of base shots to review (default 1)
+ADMIN_EMAILS                          # comma-separated allowlist for the internal review panel
 ```
 Quick Listing uses Vertex VTO with the reference model as the person, so it
 benefits from the same `ENABLE_VERTEX_TRYON` + GCP config above; without it,
@@ -179,6 +180,7 @@ Schema changes: `npx prisma generate` then restart dev server.
 | Front/back reference profiles | `lib/model-gen/reference-models.ts` (`loadReferenceImage(..., {profile})`) |
 | Generation perf/quality records | `GenerationRecord` table, `lib/model-gen/generation-record.ts` |
 | Automated AI review (quality scoring) | `lib/model-gen/ai-review.ts` (`ENABLE_AI_REVIEW`) |
+| Manual review panel (internal, admin) | `app/(dashboard)/admin/review/`, `app/api/admin/review/route.ts` (`ADMIN_EMAILS`) |
 | Model-gen strategies | `lib/model-gen/strategies/{quick-listing,catalogue}.ts` |
 | AI-gen settings (storage accessor + API) | `lib/model-gen/settings.ts`, `app/api/settings/ai-generation/route.ts` |
 | Store branding overlay | `lib/model-gen/branding.ts` |
@@ -280,6 +282,12 @@ durable analytics snapshots. Each image is tagged with the backend that produced
 it (close-ups inherit their base shot's provider). Non-blocking/non-fatal. This
 is the queryable store that AI review (Phase F) and manual review (Phase G)
 scores attach to, and that data-driven catalogue Auto routing will read.
+
+**Manual review panel (Phase G, done).** Internal-only `/admin/review` (under the
+dashboard, **not linked anywhere**) gated by `isAdmin` (role `ADMIN` or the
+`ADMIN_EMAILS` allowlist). Reuses the `GenerationRecord` manual columns — a 1–5
+rating per image alongside the AI scores; no new table. Non-admins get a 404.
+Future Auto routing can blend AI + manual averages per category×provider.
 
 **Try-on improvement research (recommendation only — not built):** today try-on
 uses only `product.imageUrl`. Highest-payoff additive wins, in order: (1) pass the
