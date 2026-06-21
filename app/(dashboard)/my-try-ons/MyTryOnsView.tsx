@@ -19,6 +19,8 @@ import {
 import { useTrialRoom } from "@/components/trial-room/TrialRoomProvider";
 import { HangerPlusIcon } from "@/components/icons/HangerPlusIcon";
 import { TryOnViewer } from "@/components/trial-room/TryOnViewer";
+import { LookStudio } from "@/components/look-builder/LookStudio";
+import { Layers } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { TryOnEntry } from "@/lib/trial-room-types";
 
@@ -196,7 +198,7 @@ function TryOnCard({
   entry: TryOnEntry;
   onOpen?: () => void;
 }) {
-  const { retryTryOn, removeFromTryOns, addToWishlist, isInWishlist } =
+  const { retryTryOn, removeFromTryOns, addToWishlist, isInWishlist, startLook } =
     useTrialRoom();
 
   const wishlisted = isInWishlist(entry.id);
@@ -272,6 +274,18 @@ function TryOnCard({
         <p className="text-xs font-medium text-gray-800 truncate leading-tight">
           {entry.product.title}
         </p>
+
+        {/* Build a look on this try-on (nested try-on) */}
+        {entry.status === "done" && entry.resultUrl && (
+          <button
+            onClick={() => startLook(entry.id)}
+            className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 text-[11px] font-semibold hover:bg-indigo-100 transition-colors"
+          >
+            <Layers className="h-3 w-3" />
+            Build a Look
+          </button>
+        )}
+
         <div className="flex items-center justify-between">
           <p className="text-[10px] text-gray-400">{timeAgo(entry.createdAt)}</p>
           <div className="flex items-center gap-1">
@@ -381,6 +395,9 @@ export function MyTryOnsView() {
   // if no products have been added yet).
   return (
     <>
+      {/* Look Studio (nested try-on) — overlays when a look is in progress */}
+      <LookStudio />
+
       {/* Full-screen viewer */}
       {viewer && viewer.entries.length > 0 && (
         <TryOnViewer

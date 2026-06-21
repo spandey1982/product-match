@@ -8,10 +8,12 @@ import {
   ShoppingBag,
   Plus,
   Printer,
+  Layers,
 } from "lucide-react";
 import { useTrialRoom } from "@/components/trial-room/TrialRoomProvider";
+import { ProductImage } from "@/components/product/ProductImage";
 import { cn } from "@/lib/utils";
-import type { WishlistEntry } from "@/lib/trial-room-types";
+import type { WishlistEntry, SavedLook } from "@/lib/trial-room-types";
 
 // ─── Wishlist Card ────────────────────────────────────────────────────────────
 
@@ -163,16 +165,72 @@ function InStoreModal({
   );
 }
 
+// ─── Saved Look Card ──────────────────────────────────────────────────────────
+
+function SavedLookCard({ look }: { look: SavedLook }) {
+  const { removeSavedLook } = useTrialRoom();
+  const anchor = look.products[0];
+
+  return (
+    <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm group">
+      <div className="relative aspect-[3/4] bg-gray-50">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={look.finalImageUrl}
+          alt={anchor ? `${anchor.title} look` : "Saved look"}
+          className="w-full h-full object-contain"
+        />
+        <button
+          onClick={() => removeSavedLook(look.id)}
+          aria-label="Remove look"
+          className="absolute top-2 right-2 h-7 w-7 rounded-full bg-white/80 backdrop-blur-sm shadow flex items-center justify-center text-gray-600 hover:text-red-500 hover:bg-white opacity-0 group-hover:opacity-100 transition-all"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+        <div className="absolute bottom-2 left-2 inline-flex items-center gap-1 bg-black/40 backdrop-blur-sm rounded-full px-2 py-0.5 text-white text-[10px] font-medium">
+          <Layers className="h-2.5 w-2.5" />
+          {look.products.length} pieces
+        </div>
+      </div>
+      <div className="p-2.5">
+        <p className="text-xs font-semibold text-gray-800 truncate">
+          {anchor ? `${anchor.title} look` : "Complete look"}
+        </p>
+        <p className="text-[11px] text-gray-500 capitalize truncate">
+          {look.products.map((p) => p.category).join(" · ")}
+        </p>
+        {/* Piece thumbnails */}
+        <div className="flex gap-1 mt-2">
+          {look.products.slice(0, 5).map((p, i) => (
+            <div
+              key={`${p.id}-${i}`}
+              className="w-7 h-8 rounded-md overflow-hidden border border-gray-200 bg-gray-50 shrink-0"
+              title={p.title}
+            >
+              <ProductImage
+                src={p.imageUrl}
+                title={p.title}
+                category={p.category}
+                className="w-full h-full"
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Page view ────────────────────────────────────────────────────────────────
 
 import { useState } from "react";
 
 export function WishlistView() {
-  const { wishlist } = useTrialRoom();
+  const { wishlist, savedLooks } = useTrialRoom();
   const [showInStore, setShowInStore] = useState(false);
 
-  // ── Empty state ────────────────────────────────────────────────────────
-  if (wishlist.length === 0) {
+  // ── Empty state (no saved looks AND no saved items) ─────────────────────
+  if (wishlist.length === 0 && savedLooks.length === 0) {
     return (
       <div className="max-w-lg mx-auto">
         <div className="mb-6">
@@ -224,7 +282,12 @@ export function WishlistView() {
               Wishlist
             </h1>
             <p className="text-sm text-gray-500 mt-1">
-              {wishlist.length} item{wishlist.length !== 1 ? "s" : ""} saved
+              {savedLooks.length > 0 &&
+                `${savedLooks.length} look${savedLooks.length !== 1 ? "s" : ""}`}
+              {savedLooks.length > 0 && wishlist.length > 0 && " · "}
+              {wishlist.length > 0 &&
+                `${wishlist.length} item${wishlist.length !== 1 ? "s" : ""}`}
+              {" saved"}
             </p>
           </div>
           <Link
@@ -236,14 +299,36 @@ export function WishlistView() {
           </Link>
         </div>
 
-        {/* List */}
-        <div className="space-y-2">
-          {wishlist.map((entry) => (
-            <WishlistCard key={entry.id} entry={entry} />
-          ))}
-        </div>
+        {/* Saved Looks — compare complete looks side by side */}
+        {savedLooks.length > 0 && (
+          <div className="mb-7">
+            <div className="flex items-center gap-2 mb-3">
+              <Layers className="h-4 w-4 text-indigo-500" />
+              <h2 className="text-sm font-bold text-gray-900">Saved Looks</h2>
+              <span className="text-xs text-gray-400">— compare your complete looks</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {savedLooks.map((look) => (
+                <SavedLookCard key={look.id} look={look} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Individual saved items */}
+        {wishlist.length > 0 && (
+          <>
+            <h2 className="text-sm font-bold text-gray-900 mb-3">Saved Items</h2>
+            <div className="space-y-2">
+              {wishlist.map((entry) => (
+                <WishlistCard key={entry.id} entry={entry} />
+              ))}
+            </div>
+          </>
+        )}
 
         {/* In-store CTA */}
+        {wishlist.length > 0 && (
         <div className="mt-6 space-y-3">
           <button
             onClick={() => setShowInStore(true)}
@@ -261,6 +346,7 @@ export function WishlistView() {
             Show this list to store staff to locate your selected items.
           </p>
         </div>
+        )}
       </div>
     </>
   );

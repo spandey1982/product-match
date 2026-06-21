@@ -34,12 +34,32 @@ interface LookResponse {
 
 // ─── Candidate card (compact, horizontal-scroll) ──────────────────────────────
 
-function CandidateCard({ candidate }: { candidate: LookCandidate }) {
+function CandidateCard({
+  candidate,
+  onAddToLook,
+}: {
+  candidate: LookCandidate;
+  /** When set, the card's CTA layers the product onto the active look instead of
+   *  starting an independent try-on. */
+  onAddToLook?: (product: Product) => void;
+}) {
   const { product, matchScore } = candidate;
-  const { photo, addToQueue, findActiveTryOn, isAtLimit, triggerSetupHint } =
-    useTrialRoom();
+  const {
+    photo,
+    addToQueue,
+    findActiveTryOn,
+    isAtLimit,
+    triggerSetupHint,
+    lookSession,
+    isAddingToLook,
+  } = useTrialRoom();
   const entry = findActiveTryOn(product.id);
   const matchPct = Math.round(matchScore * 100);
+
+  const inLook =
+    !!lookSession &&
+    (lookSession.anchorProduct.id === product.id ||
+      lookSession.items.some((it) => it.product.id === product.id));
 
   function handleAdd(e: React.MouseEvent) {
     e.preventDefault();
@@ -49,6 +69,12 @@ function CandidateCard({ candidate }: { candidate: LookCandidate }) {
       return;
     }
     addToQueue(product);
+  }
+
+  function handleAddToLook(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    onAddToLook?.(product);
   }
 
   return (
@@ -80,8 +106,28 @@ function CandidateCard({ candidate }: { candidate: LookCandidate }) {
             {formatCurrency(product.price)}
           </p>
 
+          {/* Look mode: layer onto the current look */}
+          {product.imageUrl && onAddToLook ? (
+            inLook ? (
+              <div className="mt-2 flex items-center justify-center gap-1 py-1.5 rounded-lg bg-emerald-50 text-emerald-600 text-[11px] font-medium">
+                <Check className="h-3 w-3" />
+                In look
+              </div>
+            ) : (
+              <button
+                onClick={handleAddToLook}
+                disabled={isAddingToLook}
+                className="mt-2 w-full flex items-center justify-center gap-1 py-1.5 rounded-lg bg-indigo-600 text-white text-[11px] font-semibold hover:bg-indigo-700 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <HangerPlusIcon className="h-3 w-3" />
+                {isAddingToLook ? "Adding…" : "Add to look"}
+              </button>
+            )
+          ) : null}
+
           {/* Try-on add — reuses the session trial-room flow */}
           {product.imageUrl &&
+            !onAddToLook &&
             (entry?.status === "generating" ? (
               <div className="mt-2 flex items-center justify-center gap-1 py-1.5 rounded-lg bg-indigo-50 text-indigo-400 text-[11px] font-medium">
                 <Loader2 className="h-3 w-3 animate-spin" />
@@ -110,7 +156,13 @@ function CandidateCard({ candidate }: { candidate: LookCandidate }) {
 
 // ─── Slot row ─────────────────────────────────────────────────────────────────
 
-function SlotRow({ slot }: { slot: LookSlot }) {
+function SlotRow({
+  slot,
+  onAddToLook,
+}: {
+  slot: LookSlot;
+  onAddToLook?: (product: Product) => void;
+}) {
   return (
     <div>
       <div className="flex items-center gap-2 mb-2">
@@ -129,7 +181,11 @@ function SlotRow({ slot }: { slot: LookSlot }) {
       ) : (
         <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
           {slot.candidates.map((c) => (
-            <CandidateCard key={c.product.id} candidate={c} />
+            <CandidateCard
+              key={c.product.id}
+              candidate={c}
+              onAddToLook={onAddToLook}
+            />
           ))}
         </div>
       )}
@@ -139,7 +195,17 @@ function SlotRow({ slot }: { slot: LookSlot }) {
 
 // ─── Look Builder ─────────────────────────────────────────────────────────────
 
-export function LookBuilder({ product }: { product: Product }) {
+export function LookBuilder({
+  product,
+  onAddToLook,
+  compact = false,
+}: {
+  product: Product;
+  /** When set, candidate CTAs layer onto the active look (Look Studio mode). */
+  onAddToLook?: (product: Product) => void;
+  /** Drop the outer card chrome (used inside the Look Studio). */
+  compact?: boolean;
+}) {
   const [data, setData] = useState<LookResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -182,6 +248,17 @@ export function LookBuilder({ product }: { product: Product }) {
   const anySlotFilled = data.slots.some((s) => s.candidates.length > 0);
   if (!anySlotFilled) return null;
 
+  const slots = (
+    <div className="space-y-5">
+      {data.slots.map((slot) => (
+        <SlotRow key={slot.id} slot={slot} onAddToLook={onAddToLook} />
+      ))}
+    </div>
+  );
+
+  // Compact (Look Studio): just the slot rows, no outer card/header.
+  if (compact) return slots;
+
   return (
     <div className="bg-white border border-gray-100 rounded-3xl p-5 shadow-sm">
       <div className="flex items-center gap-2 mb-1">
@@ -193,11 +270,7 @@ export function LookBuilder({ product }: { product: Product }) {
         ranked for this product.
       </p>
 
-      <div className="space-y-5">
-        {data.slots.map((slot) => (
-          <SlotRow key={slot.id} slot={slot} />
-        ))}
-      </div>
+      {slots}
     </div>
   );
 }
