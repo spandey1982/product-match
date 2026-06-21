@@ -11,6 +11,13 @@ import { db } from "@/lib/db";
 import type { GenerationObjective } from "./objectives";
 import type { GeneratedImage } from "./persist";
 
+/** A persisted generation record — enough to attach a review to it. */
+export interface RecordedGeneration {
+  id: string;
+  outputUrl: string;
+  view: string;
+}
+
 export async function recordGenerations(params: {
   productId: string;
   userId: string;
@@ -19,21 +26,28 @@ export async function recordGenerations(params: {
   /** Provider to record when an image isn't individually tagged. */
   defaultProvider: string;
   images: GeneratedImage[];
-}): Promise<void> {
-  if (params.images.length === 0) return;
+}): Promise<RecordedGeneration[]> {
+  if (params.images.length === 0) return [];
+  const created: RecordedGeneration[] = [];
   try {
-    await db.generationRecord.createMany({
-      data: params.images.map((img) => ({
-        productId: params.productId,
-        userId: params.userId,
-        provider: img.provider ?? params.defaultProvider,
-        category: params.category,
-        objective: params.objective,
-        view: img.view,
-        outputUrl: img.url,
-      })),
-    });
+    // Create individually (not createMany) so we get ids back to attach reviews.
+    for (const img of params.images) {
+      const rec = await db.generationRecord.create({
+        data: {
+          productId: params.productId,
+          userId: params.userId,
+          provider: img.provider ?? params.defaultProvider,
+          category: params.category,
+          objective: params.objective,
+          view: img.view,
+          outputUrl: img.url,
+        },
+        select: { id: true, outputUrl: true, view: true },
+      });
+      created.push(rec);
+    }
   } catch (err) {
     console.error("[generation-record] failed to record:", err);
   }
+  return created;
 }

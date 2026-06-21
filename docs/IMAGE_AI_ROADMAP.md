@@ -151,6 +151,8 @@ GOOGLE_APPLICATION_CREDENTIALS        # local: SA key file path (empty → ADC)
 GOOGLE_APPLICATION_CREDENTIALS_JSON   # deploy: SA key as base64 JSON (Railway/Vercel)
 GEMINI_API_KEY                        # Gemini provider + model-gen (separate project)
 ENABLE_AI_GEN_SETTINGS                # model-gen objectives UI + routing (off → legacy single image)
+ENABLE_AI_REVIEW                      # async AI quality scoring of generated images (off → no scoring)
+AI_REVIEW_SAMPLE_RATE                 # 0–1 fraction of base shots to review (default 1)
 ```
 Quick Listing uses Vertex VTO with the reference model as the person, so it
 benefits from the same `ENABLE_VERTEX_TRYON` + GCP config above; without it,
@@ -176,6 +178,7 @@ Schema changes: `npx prisma generate` then restart dev server.
 | Crop-template system (catalogue close-ups) | `lib/model-gen/crop-templates.ts` |
 | Front/back reference profiles | `lib/model-gen/reference-models.ts` (`loadReferenceImage(..., {profile})`) |
 | Generation perf/quality records | `GenerationRecord` table, `lib/model-gen/generation-record.ts` |
+| Automated AI review (quality scoring) | `lib/model-gen/ai-review.ts` (`ENABLE_AI_REVIEW`) |
 | Model-gen strategies | `lib/model-gen/strategies/{quick-listing,catalogue}.ts` |
 | AI-gen settings (storage accessor + API) | `lib/model-gen/settings.ts`, `app/api/settings/ai-generation/route.ts` |
 | Store branding overlay | `lib/model-gen/branding.ts` |
