@@ -12,7 +12,16 @@
  * `pattern`); generation reads those columns, so analysis is not re-run.
  */
 
+import { recordAiUsage } from "@/lib/ai-usage/record";
+
 const ANALYZER_MODEL = "gemini-2.5-flash-lite";
+
+/** Cost-attribution context for metadata extraction. All fields optional. */
+export interface AnalyzeContext {
+  storeId?: string | null;
+  userId?: string | null;
+  productId?: string | null;
+}
 
 export interface ProductMetadata {
   title: string;
@@ -47,12 +56,25 @@ price: integer INR estimate based on quality. Arrays may be empty. Use "Other" f
  */
 export async function analyzeProductImage(
   buffer: Buffer,
-  mimeType: string
+  mimeType: string,
+  context: AnalyzeContext = {}
 ): Promise<MetadataResult> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || apiKey === "your-gemini-api-key-here") {
     return { ok: false, status: 503, error: "Metadata analysis is not configured." };
   }
+
+  const t0 = Date.now();
+  const usageBase = {
+    provider: "gemini",
+    model: ANALYZER_MODEL,
+    feature: "metadata_extract",
+    requestBytes: buffer.length,
+    imageInputs: 1,
+    storeId: context.storeId ?? null,
+    userId: context.userId ?? null,
+    productId: context.productId ?? null,
+  } as const;
 
   let res: Response;
   try {
@@ -75,10 +97,22 @@ export async function analyzeProductImage(
       }
     );
   } catch {
+    void recordAiUsage({
+      ...usageBase,
+      durationMs: Date.now() - t0,
+      status: "error",
+      errorMessage: "Could not reach the analysis service.",
+    });
     return { ok: false, status: 502, error: "Could not reach the analysis service." };
   }
 
   if (!res.ok) {
+    void recordAiUsage({
+      ...usageBase,
+      durationMs: Date.now() - t0,
+      status: "error",
+      errorMessage: `HTTP ${res.status}`,
+    });
     if (res.status === 401 || res.status === 403) {
       return { ok: false, status: 503, error: "Invalid analysis credentials." };
     }
@@ -89,6 +123,15 @@ export async function analyzeProductImage(
   }
 
   const data = await res.json();
+  const usageMeta = data.usageMetadata;
+  void recordAiUsage({
+    ...usageBase,
+    inputTokens: usageMeta?.promptTokenCount ?? null,
+    outputTokens: usageMeta?.candidatesTokenCount ?? null,
+    totalTokens: usageMeta?.totalTokenCount ?? null,
+    durationMs: Date.now() - t0,
+    status: "success",
+  });
   const rawText: string = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
   if (!rawText) {
     return { ok: false, status: 502, error: "No response from the analysis service." };

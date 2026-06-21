@@ -2,7 +2,7 @@ import { readFile } from "fs/promises";
 import { join } from "path";
 import { cloudinary } from "@/lib/cloudinary";
 import { getImageDimensions, fmtBytes } from "@/lib/image-utils";
-import { appendResearchLog, type ImageMeta } from "@/lib/research-log";
+import { recordAiUsage, type AiUsageContext } from "@/lib/ai-usage/record";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -81,10 +81,16 @@ export interface TryOnInput {
   productColor: string;
   /** Used for Cloudinary tags and research log. */
   productId: string;
-  /** Optional — enriches the research log. */
+  /** Optional — enriches logs and the usage record. */
   productTitle?: string;
-  /** Optional — enriches the research log. */
+  /** Optional — enriches logs and the usage record. */
   userId?: string;
+  /**
+   * Optional cost-attribution context. When omitted, usage is recorded under
+   * the "tryon" feature with input.userId. Model-gen strategies pass their own
+   * feature (e.g. "catalogue") so the same physical call attributes correctly.
+   */
+  usage?: AiUsageContext;
 }
 
 export interface TryOnResult {
@@ -197,8 +203,27 @@ export async function generateTryOn(input: TryOnInput): Promise<TryOnResult> {
   const generationMs = Date.now() - t0;
   console.log(`[tryon] Gemini responded: ${geminiRes.status}  (${generationMs} ms)`);
 
+  const feature = input.usage?.feature ?? "tryon";
+  const storeId = input.usage?.storeId ?? null;
+  const usageUserId = input.usage?.userId ?? (userId === "unknown" ? null : userId);
+  const requestBytes = userPhotoBuffer.length + productBuffer.length;
+
   if (!geminiRes.ok) {
     const body = await geminiRes.text();
+    void recordAiUsage({
+      provider: "gemini",
+      model: GEMINI_MODEL,
+      feature,
+      operation: "tryon",
+      durationMs: generationMs,
+      requestBytes,
+      imageInputs: 2,
+      storeId,
+      userId: usageUserId,
+      productId,
+      status: "error",
+      errorMessage: `HTTP ${geminiRes.status}: ${body.slice(0, 300)}`,
+    });
     throw new Error(
       `Gemini API error ${geminiRes.status}: ${body.slice(0, 300)}`
     );
@@ -229,6 +254,23 @@ export async function generateTryOn(input: TryOnInput): Promise<TryOnResult> {
 
   if (!imagePart?.inlineData) {
     const finishReason = data.candidates?.[0]?.finishReason ?? "unknown";
+    void recordAiUsage({
+      provider: "gemini",
+      model: GEMINI_MODEL,
+      feature,
+      operation: "tryon",
+      inputTokens: tokenInput,
+      outputTokens: tokenOutput,
+      totalTokens: tokenTotal,
+      durationMs: generationMs,
+      requestBytes,
+      imageInputs: 2,
+      storeId,
+      userId: usageUserId,
+      productId,
+      status: "error",
+      errorMessage: `No image returned. Finish reason: ${finishReason}`,
+    });
     throw new Error(
       `No image returned by Gemini. Finish reason: ${finishReason}`
     );
@@ -264,45 +306,34 @@ export async function generateTryOn(input: TryOnInput): Promise<TryOnResult> {
 
   console.log(`[tryon] Uploaded to Cloudinary: ${uploaded.secure_url}`);
 
-  // ── Write research log ───────────────────────────────────────────────────
-  const userImageMeta: ImageMeta = {
-    label:      "user-photo",
-    mime:       userPhotoMimeType,
-    sizeBytes:  userPhotoBuffer.length,
-    widthPx:    userDims?.width ?? null,
-    heightPx:   userDims?.height ?? null,
-  };
-  const productImageMeta: ImageMeta = {
-    label:      "product-image",
-    mime:       productMime,
-    sizeBytes:  productBuffer.length,
-    widthPx:    productDims?.width ?? null,
-    heightPx:   productDims?.height ?? null,
-  };
-  const outputImageMeta: ImageMeta = {
-    label:      "tryon-output",
-    mime:       outMime,
-    sizeBytes:  outBuffer.length,
-    widthPx:    outDims?.width ?? null,
-    heightPx:   outDims?.height ?? null,
-  };
-
-  await appendResearchLog({
-    timestamp:       new Date().toISOString(),
-    type:            "tryon",
+  // ── Record AI usage (cost ledger) ────────────────────────────────────────
+  void recordAiUsage({
+    provider: "gemini",
+    model: GEMINI_MODEL,
+    feature,
+    operation: "tryon",
+    inputTokens: tokenInput,
+    outputTokens: tokenOutput,
+    totalTokens: tokenTotal,
+    imagesGenerated: 1,
+    imageInputs: 2,
+    requestBytes,
+    responseBytes: outBuffer.length,
+    durationMs: generationMs,
+    storeId,
+    userId: usageUserId,
     productId,
-    productTitle,
-    productCategory,
-    productColor,
-    userId,
-    outputUrl:       uploaded.secure_url,
-    generationMs,
-    inputImages:     [userImageMeta, productImageMeta],
-    outputImage:     outputImageMeta,
-    tokens:
-      tokenInput !== null && tokenOutput !== null && tokenTotal !== null
-        ? { input: tokenInput, output: tokenOutput, total: tokenTotal }
-        : null,
+    status: "success",
+    metadata: {
+      outputUrl: uploaded.secure_url,
+      category: productCategory,
+      color: productColor,
+      inputImages: [
+        { label: "user-photo", mime: userPhotoMimeType, sizeBytes: userPhotoBuffer.length, widthPx: userDims?.width ?? null, heightPx: userDims?.height ?? null },
+        { label: "product-image", mime: productMime, sizeBytes: productBuffer.length, widthPx: productDims?.width ?? null, heightPx: productDims?.height ?? null },
+      ],
+      outputImage: { mime: outMime, sizeBytes: outBuffer.length, widthPx: outDims?.width ?? null, heightPx: outDims?.height ?? null },
+    },
   });
 
   return { url: uploaded.secure_url };

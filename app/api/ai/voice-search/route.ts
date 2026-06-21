@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
+import { recordAiUsage } from "@/lib/ai-usage/record";
 
 const GEMINI_MODEL = "gemini-2.5-flash";
 
@@ -31,7 +32,7 @@ Rules:
 
 export async function POST(req: NextRequest) {
   try {
-    await requireAuth();
+    const session = await requireAuth();
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey || apiKey === "your-gemini-api-key-here") {
@@ -47,6 +48,16 @@ export async function POST(req: NextRequest) {
     if (!transcript) {
       return NextResponse.json({ error: "No transcript provided" }, { status: 400 });
     }
+
+    const t0 = Date.now();
+    const usageBase = {
+      provider: "gemini",
+      model: GEMINI_MODEL,
+      feature: "voice_search",
+      requestBytes: Buffer.byteLength(transcript, "utf8"),
+      storeId: session.id,
+      userId: session.id,
+    } as const;
 
     const geminiRes = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
@@ -71,6 +82,12 @@ export async function POST(req: NextRequest) {
     if (!geminiRes.ok) {
       const errText = await geminiRes.text();
       console.error("Gemini voice-search error:", geminiRes.status, errText);
+      void recordAiUsage({
+        ...usageBase,
+        durationMs: Date.now() - t0,
+        status: "error",
+        errorMessage: `HTTP ${geminiRes.status}`,
+      });
       if (geminiRes.status === 429) {
         return NextResponse.json(
           { error: "AI rate limit reached. Try again in a moment." },
@@ -81,6 +98,15 @@ export async function POST(req: NextRequest) {
     }
 
     const geminiData = await geminiRes.json();
+    const usageMeta = geminiData.usageMetadata;
+    void recordAiUsage({
+      ...usageBase,
+      inputTokens: usageMeta?.promptTokenCount ?? null,
+      outputTokens: usageMeta?.candidatesTokenCount ?? null,
+      totalTokens: usageMeta?.totalTokenCount ?? null,
+      durationMs: Date.now() - t0,
+      status: "success",
+    });
     const rawText =
       geminiData.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
 

@@ -136,6 +136,64 @@ model GenerationRecord {
   @@map("generation_records")
 }
 
+// Append-only cost/usage ledger: one row per billable AI API call (NOT per
+// generated image — a catalogue run makes 2 paid calls but yields 5 images;
+// the 3 close-ups are free Cloudinary crops). Provider/model/feature are plain
+// strings so new providers and features need no schema change. `estimatedCostUsd`
+// is computed at write time from lib/ai-usage/pricing.ts and stamped with
+// `pricingVersion` so historical rows stay reproducible when prices change; the
+// raw drivers (tokens, image counts, bytes) are stored alongside so any row can
+// be re-priced later. This is the single source of truth for AI cost — quality
+// lives separately on GenerationRecord.
+model AiUsageEvent {
+  id String @id @default(cuid())
+
+  provider  String // "gemini" | "vertex" | future
+  model     String // e.g. "gemini-3.1-flash-image", "virtual-try-on-001"
+  feature   String // "tryon" | "model_gen" | "catalogue" | "quick_listing" | "metadata_extract" | "voice_search" | "ai_review"
+  operation String? // optional sub-type (view, objective, …)
+
+  // Token drivers (Gemini). Null for providers/calls that report no tokens.
+  inputTokens  Int?
+  outputTokens Int?
+  totalTokens  Int?
+
+  // Image drivers. imagesGenerated bills Vertex per-image; imageInputs drives
+  // Gemini input tokens (input images are tokenized).
+  imagesGenerated Int @default(0)
+  imageInputs     Int @default(0)
+
+  // Payload sizes (bytes) — supersede the old JSONL research log.
+  requestBytes  Int?
+  responseBytes Int?
+
+  durationMs Int?
+
+  // Cost estimate computed at write time; null when the model has no known price.
+  estimatedCostUsd Float?
+  pricingVersion   String?
+
+  // Attribution. storeId = retailer who owns the product; userId = acting user.
+  storeId   String?
+  userId    String?
+  productId String?
+
+  status       String  @default("success") // "success" | "error"
+  errorMessage String?
+
+  // Provider-specific extras (resolution, finishReason, sampleCount, dims …) as
+  // a JSON string via lib/serialize.ts. Keeps the table provider-agnostic.
+  metadata String?
+
+  createdAt DateTime @default(now())
+
+  @@index([provider, model])
+  @@index([feature, createdAt])
+  @@index([storeId, createdAt])
+  @@index([createdAt])
+  @@map("ai_usage_events")
+}
+
 model Recommendation {
   id              String @id @default(cuid())
   sourceProductId String

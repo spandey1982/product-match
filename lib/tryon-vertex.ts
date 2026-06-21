@@ -3,7 +3,7 @@ import { join } from "path";
 import { GoogleAuth } from "google-auth-library";
 import { cloudinary } from "@/lib/cloudinary";
 import { getImageDimensions, fmtBytes } from "@/lib/image-utils";
-import { appendResearchLog, type ImageMeta } from "@/lib/research-log";
+import { recordAiUsage } from "@/lib/ai-usage/record";
 import type { TryOnInput, TryOnResult } from "@/lib/tryon";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -213,8 +213,27 @@ export async function generateTryOnVertex(input: TryOnInput): Promise<TryOnResul
   const generationMs = Date.now() - t0;
   console.log(`[tryon-vertex] Vertex responded: ${vertexRes.status}  (${generationMs} ms)`);
 
+  const feature = input.usage?.feature ?? "tryon";
+  const storeId = input.usage?.storeId ?? null;
+  const usageUserId = input.usage?.userId ?? (userId === "unknown" ? null : userId);
+  const requestBytes = userPhotoBuffer.length + productBuffer.length;
+
   if (!vertexRes.ok) {
     const body = await vertexRes.text();
+    void recordAiUsage({
+      provider: "vertex",
+      model: VERTEX_MODEL,
+      feature,
+      operation: "tryon",
+      durationMs: generationMs,
+      requestBytes,
+      imageInputs: 2,
+      storeId,
+      userId: usageUserId,
+      productId,
+      status: "error",
+      errorMessage: `HTTP ${vertexRes.status}: ${body.slice(0, 300)}`,
+    });
     throw new Error(
       `Vertex AI error ${vertexRes.status}: ${body.slice(0, 300)}`
     );
@@ -225,6 +244,20 @@ export async function generateTryOnVertex(input: TryOnInput): Promise<TryOnResul
   const prediction = data.predictions?.find((p) => p.bytesBase64Encoded);
 
   if (!prediction?.bytesBase64Encoded) {
+    void recordAiUsage({
+      provider: "vertex",
+      model: VERTEX_MODEL,
+      feature,
+      operation: "tryon",
+      durationMs: generationMs,
+      requestBytes,
+      imageInputs: 2,
+      storeId,
+      userId: usageUserId,
+      productId,
+      status: "error",
+      errorMessage: "No image returned by Vertex AI Virtual Try-On",
+    });
     throw new Error("No image returned by Vertex AI Virtual Try-On");
   }
 
@@ -260,42 +293,32 @@ export async function generateTryOnVertex(input: TryOnInput): Promise<TryOnResul
 
   console.log(`[tryon-vertex] Uploaded to Cloudinary: ${uploaded.secure_url}`);
 
-  // ── Write research log ───────────────────────────────────────────────────
-  const userImageMeta: ImageMeta = {
-    label:      "user-photo",
-    mime:       userPhotoMimeType,
-    sizeBytes:  userPhotoBuffer.length,
-    widthPx:    userDims?.width ?? null,
-    heightPx:   userDims?.height ?? null,
-  };
-  const productImageMeta: ImageMeta = {
-    label:      "product-image",
-    mime:       productMime,
-    sizeBytes:  productBuffer.length,
-    widthPx:    productDims?.width ?? null,
-    heightPx:   productDims?.height ?? null,
-  };
-  const outputImageMeta: ImageMeta = {
-    label:      "tryon-output",
-    mime:       outMime,
-    sizeBytes:  outBuffer.length,
-    widthPx:    outDims?.width ?? null,
-    heightPx:   outDims?.height ?? null,
-  };
-
-  await appendResearchLog({
-    timestamp:       new Date().toISOString(),
-    type:            "tryon-vertex",
+  // ── Record AI usage (cost ledger) ────────────────────────────────────────
+  // Vertex VTO bills per generated image and reports no tokens.
+  void recordAiUsage({
+    provider: "vertex",
+    model: VERTEX_MODEL,
+    feature,
+    operation: "tryon",
+    imagesGenerated: 1,
+    imageInputs: 2,
+    requestBytes,
+    responseBytes: outBuffer.length,
+    durationMs: generationMs,
+    storeId,
+    userId: usageUserId,
     productId,
-    productTitle,
-    productCategory,
-    productColor,
-    userId,
-    outputUrl:       uploaded.secure_url,
-    generationMs,
-    inputImages:     [userImageMeta, productImageMeta],
-    outputImage:     outputImageMeta,
-    tokens:          null, // Vertex predict does not report token usage
+    status: "success",
+    metadata: {
+      outputUrl: uploaded.secure_url,
+      category: productCategory,
+      color: productColor,
+      inputImages: [
+        { label: "user-photo", mime: userPhotoMimeType, sizeBytes: userPhotoBuffer.length, widthPx: userDims?.width ?? null, heightPx: userDims?.height ?? null },
+        { label: "product-image", mime: productMime, sizeBytes: productBuffer.length, widthPx: productDims?.width ?? null, heightPx: productDims?.height ?? null },
+      ],
+      outputImage: { mime: outMime, sizeBytes: outBuffer.length, widthPx: outDims?.width ?? null, heightPx: outDims?.height ?? null },
+    },
   });
 
   return { url: uploaded.secure_url };

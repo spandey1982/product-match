@@ -6,7 +6,7 @@ const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 
 export async function POST(req: NextRequest) {
   try {
-    await requireAuth();
+    const session = await requireAuth();
 
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
@@ -23,7 +23,10 @@ export async function POST(req: NextRequest) {
 
     // Delegate to the shared, provider-agnostic metadata service.
     const buffer = Buffer.from(await file.arrayBuffer());
-    const result = await analyzeProductImage(buffer, file.type);
+    const result = await analyzeProductImage(buffer, file.type, {
+      storeId: session.id,
+      userId: session.id,
+    });
 
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: result.status });
