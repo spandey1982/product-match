@@ -175,6 +175,7 @@ Schema changes: `npx prisma generate` then restart dev server.
 | Shared metadata service (provider-agnostic) | `lib/metadata/analyze.ts` (`Product.pattern`) |
 | Crop-template system (catalogue close-ups) | `lib/model-gen/crop-templates.ts` |
 | Front/back reference profiles | `lib/model-gen/reference-models.ts` (`loadReferenceImage(..., {profile})`) |
+| Generation perf/quality records | `GenerationRecord` table, `lib/model-gen/generation-record.ts` |
 | Model-gen strategies | `lib/model-gen/strategies/{quick-listing,catalogue}.ts` |
 | AI-gen settings (storage accessor + API) | `lib/model-gen/settings.ts`, `app/api/settings/ai-generation/route.ts` |
 | Store branding overlay | `lib/model-gen/branding.ts` |
@@ -267,6 +268,15 @@ purpose-led, provider-free language too — "Automatic" (Recommended), "Natural
 Drape" (Gemini, best for draped ethnic wear), "Sharp Fit" (Vertex, best for
 structured/western + footwear). The underlying ids/storage (`auto/gemini/vertex`,
 `User.tryOnProvider`) are unchanged; only the labels/descriptions changed.
+
+**Generation performance tracking (Phase E, done).** Every objective-based
+generation writes one `GenerationRecord` per image — `provider, category,
+objective, view, outputUrl, createdAt` (+ nullable `generationMs`/`tokensTotal`
+and AI/manual score columns). Standalone table (no FK to Product) so records are
+durable analytics snapshots. Each image is tagged with the backend that produced
+it (close-ups inherit their base shot's provider). Non-blocking/non-fatal. This
+is the queryable store that AI review (Phase F) and manual review (Phase G)
+scores attach to, and that data-driven catalogue Auto routing will read.
 
 **Try-on improvement research (recommendation only — not built):** today try-on
 uses only `product.imageUrl`. Highest-payoff additive wins, in order: (1) pass the

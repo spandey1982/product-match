@@ -89,6 +89,49 @@ model ProductImage {
   @@map("product_images")
 }
 
+// Performance + quality record for one generated image. Deliberately NOT a
+// foreign-key child of Product: these are durable analytics snapshots that must
+// survive product edits/deletes, so category/provider/objective are copied in.
+// AI scores (Phase F) and manual scores (Phase G) are filled in later; null
+// until reviewed.
+model GenerationRecord {
+  id        String @id @default(cuid())
+  productId String?
+  userId    String?
+
+  provider  String // "gemini" | "vertex"
+  category  String
+  objective String // "quick_listing" | "catalogue"
+  view      String // "front" | "back" | "front-top" | ...
+  outputUrl String
+
+  generationMs Int?
+  tokensTotal  Int?
+
+  // AI review scores (1–5), null until reviewed
+  aiAuthenticity        Float?
+  aiRealism             Float?
+  aiGarmentPreservation Float?
+  aiDrapeQuality        Float?
+  aiPatternPreservation Float?
+  aiRenderingQuality    Float?
+  aiOverall             Float?
+  aiReviewModel         String?
+  aiReviewedAt          DateTime?
+
+  // Manual review (Phase G), null until rated
+  manualScore      Int?
+  manualReviewer   String?
+  manualReviewedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([provider, category])
+  @@index([productId])
+  @@index([objective])
+  @@map("generation_records")
+}
+
 model Recommendation {
   id              String @id @default(cuid())
   sourceProductId String

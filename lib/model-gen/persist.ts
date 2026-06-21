@@ -12,6 +12,8 @@ import type { GenerationObjective } from "./objectives";
 export interface GeneratedImage {
   url: string;
   view: string;
+  /** Backend that produced it ("gemini" | "vertex"); for perf tracking. */
+  provider?: string;
 }
 
 /** Pick the primary image: a "front" view if present, else the first one. */

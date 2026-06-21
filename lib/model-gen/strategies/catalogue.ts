@@ -56,14 +56,14 @@ export async function runCatalogueStrategy(opts: {
   );
 
   const images: GeneratedImage[] = [];
-  const baseUrls: Partial<Record<"front" | "back", string>> = {};
+  const baseShots: Partial<Record<"front" | "back", { url: string; provider: CatalogueBackend }>> = {};
 
   /** Generate one base shot via the chosen provider, with Gemini fallback. */
   async function generateBaseShot(
     viewId: "front" | "back",
     promptText: string,
     reference: ReferenceImage | null
-  ): Promise<string | null> {
+  ): Promise<{ url: string; provider: CatalogueBackend } | null> {
     // Vertex (Sharp Fit): VTO with the reference model as the person. Needs a
     // reference; back views need the back reference. Falls back to Gemini.
     if (provider === "vertex" && vertexReady && reference) {
@@ -78,7 +78,7 @@ export async function runCatalogueStrategy(opts: {
           productTitle: product.title,
           userId: "model-gen",
         });
-        return res.url;
+        return { url: res.url, provider: "vertex" };
       } catch (err) {
         console.error(`[catalogue] Vertex ${viewId} failed — falling back to Gemini:`, err);
       }
@@ -97,7 +97,7 @@ export async function runCatalogueStrategy(opts: {
       folder: "product-match/catalogue",
       view: viewId,
     });
-    return result?.url ?? null;
+    return result ? { url: result.url, provider: "gemini" } : null;
   }
 
   // Sequential: keeps within provider rate limits and orders results by view.
@@ -113,18 +113,23 @@ export async function runCatalogueStrategy(opts: {
       hasReference: Boolean(reference),
     });
 
-    const url = await generateBaseShot(view.id as "front" | "back", prompt, reference);
-    if (url) {
-      images.push({ url, view: view.id });
-      baseUrls[view.id as "front" | "back"] = url;
+    const shot = await generateBaseShot(view.id as "front" | "back", prompt, reference);
+    if (shot) {
+      images.push({ url: shot.url, view: view.id, provider: shot.provider });
+      baseShots[view.id as "front" | "back"] = shot;
     }
   }
 
   // Derive category close-ups by cropping the matching base shot (no blind crop).
+  // A close-up inherits the provider of the base shot it was cropped from.
   for (const closeUp of resolveCloseUps(product.category)) {
-    const base = baseUrls[closeUp.from];
+    const base = baseShots[closeUp.from];
     if (!base) continue; // base shot failed → skip its close-ups
-    images.push({ url: buildCropUrl(base, closeUp.region), view: closeUp.id });
+    images.push({
+      url: buildCropUrl(base.url, closeUp.region),
+      view: closeUp.id,
+      provider: base.provider,
+    });
   }
 
   return { images };

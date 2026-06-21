@@ -21,6 +21,7 @@ import { getAiGenSettings } from "./settings";
 import { resolveAutoProvider } from "@/lib/providers/auto-routing";
 import { getBrandingConfig, applyBranding } from "./branding";
 import { persistGeneratedImages, type GeneratedImage } from "./persist";
+import { recordGenerations } from "./generation-record";
 import { runQuickListingStrategy } from "./strategies/quick-listing";
 import { runCatalogueStrategy, type StrategyProduct } from "./strategies/catalogue";
 
@@ -102,6 +103,15 @@ export async function generateModelImages(
 
   if (branded.length > 0) {
     await persistGeneratedImages(product.id, branded, objective);
+    // Record perf/quality rows (non-blocking, non-fatal) for analytics + scoring.
+    await recordGenerations({
+      productId: product.id,
+      userId: input.userId,
+      category: product.category,
+      objective,
+      defaultProvider: objective === "quick_listing" ? "vertex" : catalogueProvider,
+      images: branded,
+    });
   }
 
   return { objective, modelType, images: branded };
