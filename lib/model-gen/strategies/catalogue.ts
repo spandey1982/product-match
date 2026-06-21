@@ -27,6 +27,8 @@ export interface StrategyProduct {
   color: string;
   gender: string;
   imageUrl: string;
+  /** Optional back-of-product image — used for the back base shot when present. */
+  backImageUrl?: string | null;
 }
 
 export type CatalogueBackend = "gemini" | "vertex";
@@ -41,6 +43,13 @@ export async function runCatalogueStrategy(opts: {
 
   const source = await fetchProductImageBuffer(product.imageUrl);
   if (!source) return { images: [] };
+
+  // Optional back-of-product image → used for the back base shot so the back
+  // profile is generated from real data instead of being invented. Falls back
+  // to the front image when not provided (current behaviour).
+  const backSource = product.backImageUrl
+    ? await fetchProductImageBuffer(product.backImageUrl)
+    : null;
 
   const variant = resolveReferenceVariant(product.category);
   // Load front + back reference profiles once; each gracefully falls back to the
@@ -62,14 +71,16 @@ export async function runCatalogueStrategy(opts: {
   async function generateBaseShot(
     viewId: "front" | "back",
     promptText: string,
-    reference: ReferenceImage | null
+    reference: ReferenceImage | null,
+    productSource: { buffer: Buffer; mime: string },
+    productUrl: string
   ): Promise<{ url: string; provider: CatalogueBackend } | null> {
     // Vertex (Sharp Fit): VTO with the reference model as the person. Needs a
     // reference; back views need the back reference. Falls back to Gemini.
     if (provider === "vertex" && vertexReady && reference) {
       try {
         const res = await generateTryOnVertex({
-          productImageUrl: product.imageUrl,
+          productImageUrl: productUrl,
           userPhotoBuffer: reference.buffer,
           userPhotoMimeType: reference.mime as TryOnMimeType,
           productCategory: product.category,
@@ -89,8 +100,8 @@ export async function runCatalogueStrategy(opts: {
       productTitle: product.title,
       productCategory: product.category,
       productColor: product.color,
-      productBuffer: source!.buffer,
-      productMime: source!.mime,
+      productBuffer: productSource.buffer,
+      productMime: productSource.mime,
       referenceBuffer: reference?.buffer ?? null,
       referenceMime: reference?.mime ?? null,
       prompt: promptText,
@@ -104,6 +115,9 @@ export async function runCatalogueStrategy(opts: {
   for (const view of baseViews) {
     const isBack = view.id === "back";
     const reference = isBack ? backRef : frontRef;
+    // Use the real back image for the back view when available.
+    const productSource = isBack && backSource ? backSource : source;
+    const productUrl = isBack && product.backImageUrl ? product.backImageUrl : product.imageUrl;
 
     const prompt = buildViewPrompt({
       category: product.category,
@@ -113,7 +127,13 @@ export async function runCatalogueStrategy(opts: {
       hasReference: Boolean(reference),
     });
 
-    const shot = await generateBaseShot(view.id as "front" | "back", prompt, reference);
+    const shot = await generateBaseShot(
+      view.id as "front" | "back",
+      prompt,
+      reference,
+      productSource,
+      productUrl
+    );
     if (shot) {
       images.push({ url: shot.url, view: view.id, provider: shot.provider });
       baseShots[view.id as "front" | "back"] = shot;

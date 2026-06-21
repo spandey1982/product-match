@@ -38,6 +38,7 @@ export type Product = {
   season: string[];
   price: number;
   imageUrl?: string | null;
+  backImageUrl?: string | null;
   thumbnailUrl?: string | null;
   modelImageUrl?: string | null;
   inStock: boolean;

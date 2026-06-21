@@ -77,6 +77,10 @@ export default function UploadPage() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageUrlInput, setImageUrlInput] = useState("");
+  // Optional back-of-product image — improves back-profile generation only.
+  const backFileRef = useRef<HTMLInputElement>(null);
+  const [backImageFile, setBackImageFile] = useState<File | null>(null);
+  const [backImagePreview, setBackImagePreview] = useState<string | null>(null);
   const [extracting, setExtracting] = useState(false);
   const [extractError, setExtractError] = useState("");
   const [generateModel, setGenerateModel] = useState(false);
@@ -262,6 +266,20 @@ export default function UploadPage() {
     setter(arr.includes(item) ? arr.filter((i) => i !== item) : [...arr, item]);
   }
 
+  async function handleBackImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBackImagePreview(URL.createObjectURL(file));
+    const resized = await resizeImage(file);
+    setBackImageFile(resized);
+  }
+
+  function clearBackImage() {
+    setBackImageFile(null);
+    setBackImagePreview(null);
+    if (backFileRef.current) backFileRef.current.value = "";
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -292,6 +310,18 @@ export default function UploadPage() {
         }
       }
 
+      // Optional back image — best-effort; never blocks product creation.
+      let backImageUrl: string | undefined;
+      if (backImageFile) {
+        try {
+          const bfd = new FormData();
+          bfd.append("file", backImageFile);
+          const backRes = await fetch("/api/upload", { method: "POST", body: bfd });
+          const backData = await backRes.json();
+          if (backRes.ok) backImageUrl = backData.url;
+        } catch {/* optional — ignore back-image upload failure */}
+      }
+
       const res = await fetch("/api/products", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -303,6 +333,7 @@ export default function UploadPage() {
           styleTags: selectedStyles,
           season: selectedSeasons,
           imageUrl,
+          backImageUrl,
         }),
       });
 
@@ -448,6 +479,56 @@ export default function UploadPage() {
               }}
             />
           )}
+
+          {/* Optional back image — subtle enhancement; the flow works without it.
+              Improves back-profile catalogue generation when provided. */}
+          <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
+            <div className="flex items-center gap-3 min-w-0">
+              {backImagePreview ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={backImagePreview}
+                  alt="Back of product"
+                  className="h-10 w-10 rounded-lg object-cover border border-gray-100 shrink-0"
+                />
+              ) : (
+                <div className="h-10 w-10 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center shrink-0">
+                  <ImagePlus className="h-4 w-4 text-gray-300" />
+                </div>
+              )}
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-gray-900">Back image <span className="text-gray-400 font-normal">(optional)</span></p>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Improves back-view generation — uses the real back instead of guessing.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => backFileRef.current?.click()}
+                className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:border-gray-300"
+              >
+                {backImagePreview ? "Replace" : "Add"}
+              </button>
+              {backImagePreview && (
+                <button
+                  type="button"
+                  onClick={clearBackImage}
+                  className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-red-600 hover:border-red-200"
+                >
+                  Remove
+                </button>
+              )}
+              <input
+                ref={backFileRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                onChange={handleBackImageSelect}
+              />
+            </div>
+          </div>
 
           {/* Generate model image toggle — inside image card so it's immediately visible */}
           <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">

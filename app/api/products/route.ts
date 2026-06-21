@@ -77,6 +77,7 @@ export async function POST(req: NextRequest) {
       season,
       price,
       imageUrl,
+      backImageUrl,
       sku,
     } = body;
 
@@ -103,6 +104,7 @@ export async function POST(req: NextRequest) {
         season: serializeArray(season || []),
         price: parseFloat(price),
         imageUrl,
+        backImageUrl: backImageUrl || null,
         sku: sku || undefined,
         userId: session.id,
       },

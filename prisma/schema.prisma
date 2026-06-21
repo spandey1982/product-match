@@ -48,6 +48,10 @@ model Product {
   price     Float
 
   imageUrl      String?
+  // Optional back-of-product image. When present, back-profile catalogue
+  // generation uses it instead of the model inventing the back. Nullable →
+  // existing products and the current flow are unaffected.
+  backImageUrl  String?
   thumbnailUrl  String?
   modelImageUrl String?
 

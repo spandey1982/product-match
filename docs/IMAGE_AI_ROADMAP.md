@@ -289,6 +289,14 @@ dashboard, **not linked anywhere**) gated by `isAdmin` (role `ADMIN` or the
 rating per image alongside the AI scores; no new table. Non-admins get a 404.
 Future Auto routing can blend AI + manual averages per category×provider.
 
+**Optional back product image (Phase H, done).** `Product.backImageUrl` (nullable,
+migration `0004`) — an optional second image uploaded in the product form. The
+current flow is unchanged when it's absent. When present, the catalogue **back**
+base shot is generated from the real back image (Gemini: back image as the
+product; Vertex: back image as the garment) instead of the model inventing the
+back — meaningfully more precise for kurtis, blouses, etc. Front views and Quick
+Listing are unaffected.
+
 **Try-on improvement research (recommendation only — not built):** today try-on
 uses only `product.imageUrl`. Highest-payoff additive wins, in order: (1) pass the
 generated **on-model image** (`modelImageUrl`) as the garment reference for

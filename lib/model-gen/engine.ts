@@ -75,6 +75,7 @@ export async function generateModelImages(
     color: product.color,
     gender: product.gender,
     imageUrl: product.imageUrl,
+    backImageUrl: product.backImageUrl,
   };
 
   // Catalogue backend: explicit setting, or category-routed when "auto"
