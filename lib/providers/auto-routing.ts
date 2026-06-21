@@ -11,8 +11,8 @@ import type { TryOnProviderId } from "./types";
  * Kept intentionally simple and data-shaped (a plain map + small context) so it
  * can later be (a) overridden per-retailer from settings, (b) extended with more
  * signals (gender, material, drape attributes), or (c) replaced by data-driven
- * routing learned from logs/tryon-research.jsonl — without changing callers.
- * See docs/IMAGE_AI_ROADMAP.md §7–8.
+ * routing learned from the generation_records (quality) and ai_usage_events
+ * (cost) tables — without changing callers. See docs/IMAGE_AI_ROADMAP.md §7–8.
  */
 
 /** Context available to the router. Optional fields keep future signals additive. */

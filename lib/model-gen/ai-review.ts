@@ -14,6 +14,7 @@
  * routing. Manual review (Phase G) writes to separate columns on the same row.
  */
 import { db } from "@/lib/db";
+import { recordAiUsage } from "@/lib/ai-usage/record";
 
 const REVIEW_MODEL = "gemini-2.5-flash-lite";
 
@@ -89,6 +90,8 @@ export async function reviewAndStore(
     }
     parts.push({ text: RUBRIC });
 
+    const imageInputs = product ? 2 : 1;
+    const t0 = Date.now();
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${REVIEW_MODEL}:generateContent?key=${apiKey}`,
       {
@@ -100,9 +103,36 @@ export async function reviewAndStore(
         }),
       }
     );
-    if (!res.ok) return;
+    if (!res.ok) {
+      void recordAiUsage({
+        provider: "gemini",
+        model: REVIEW_MODEL,
+        feature: "ai_review",
+        operation: "review",
+        durationMs: Date.now() - t0,
+        imageInputs,
+        status: "error",
+        errorMessage: `HTTP ${res.status}`,
+        metadata: { recordId },
+      });
+      return;
+    }
 
     const data = await res.json();
+    const usageMeta = data.usageMetadata;
+    void recordAiUsage({
+      provider: "gemini",
+      model: REVIEW_MODEL,
+      feature: "ai_review",
+      operation: "review",
+      inputTokens: usageMeta?.promptTokenCount ?? null,
+      outputTokens: usageMeta?.candidatesTokenCount ?? null,
+      totalTokens: usageMeta?.totalTokenCount ?? null,
+      durationMs: Date.now() - t0,
+      imageInputs,
+      status: "success",
+      metadata: { recordId },
+    });
     const raw: string = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
     const json = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
     if (!json) return;

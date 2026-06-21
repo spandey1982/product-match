@@ -38,8 +38,12 @@ export async function runCatalogueStrategy(opts: {
   modelType: ModelType;
   /** Resolved backend (auto already resolved to a concrete provider). */
   provider?: CatalogueBackend;
+  /** Retailer who owns the product — for AI cost attribution. */
+  userId?: string;
 }): Promise<{ images: GeneratedImage[] }> {
-  const { product, modelType, provider = "gemini" } = opts;
+  const { product, modelType, provider = "gemini", userId } = opts;
+  // Same store + acting user for every call in this run; feature is "catalogue".
+  const usage = { feature: "catalogue", storeId: userId ?? null, userId: userId ?? null };
 
   const source = await fetchProductImageBuffer(product.imageUrl);
   if (!source) return { images: [] };
@@ -88,6 +92,7 @@ export async function runCatalogueStrategy(opts: {
           productId: product.id,
           productTitle: product.title,
           userId: "model-gen",
+          usage,
         });
         return { url: res.url, provider: "vertex" };
       } catch (err) {
@@ -107,6 +112,7 @@ export async function runCatalogueStrategy(opts: {
       prompt: promptText,
       folder: "product-match/catalogue",
       view: viewId,
+      usage,
     });
     return result ? { url: result.url, provider: "gemini" } : null;
   }

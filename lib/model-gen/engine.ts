@@ -88,11 +88,16 @@ export async function generateModelImages(
 
   const { images } =
     objective === "quick_listing"
-      ? await runQuickListingStrategy({ product: strategyProduct, modelType })
+      ? await runQuickListingStrategy({
+          product: strategyProduct,
+          modelType,
+          userId: input.userId,
+        })
       : await runCatalogueStrategy({
           product: strategyProduct,
           modelType,
           provider: catalogueProvider,
+          userId: input.userId,
         });
 
   // Brand each image (store logo, or store name) before persisting, so the

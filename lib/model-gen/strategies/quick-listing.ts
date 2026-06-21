@@ -27,8 +27,11 @@ import type { StrategyProduct } from "./catalogue";
 export async function runQuickListingStrategy(opts: {
   product: StrategyProduct;
   modelType: ModelType;
+  /** Retailer who owns the product — for AI cost attribution. */
+  userId?: string;
 }): Promise<{ images: GeneratedImage[]; usedFallback: boolean }> {
-  const { product, modelType } = opts;
+  const { product, modelType, userId } = opts;
+  const usage = { feature: "quick_listing", storeId: userId ?? null, userId: userId ?? null };
 
   const variant = resolveReferenceVariant(product.category);
   // Quick Listing is a single front-facing shot → use the front reference.
@@ -49,6 +52,7 @@ export async function runQuickListingStrategy(opts: {
         productId: product.id,
         productTitle: product.title,
         userId: "model-gen",
+        usage,
       });
       return { images: [{ url: result.url, view: "front", provider: "vertex" }], usedFallback: false };
     } catch (err) {
@@ -85,6 +89,7 @@ export async function runQuickListingStrategy(opts: {
     prompt,
     folder: "product-match/models",
     view: "front",
+    usage,
   });
 
   return {

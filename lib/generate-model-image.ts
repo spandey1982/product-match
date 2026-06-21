@@ -3,7 +3,7 @@ import { join } from "path";
 import { db } from "@/lib/db";
 import { cloudinary } from "@/lib/cloudinary";
 import { getImageDimensions, fmtBytes } from "@/lib/image-utils";
-import { appendResearchLog, type ImageMeta } from "@/lib/research-log";
+import { recordAiUsage, type AiUsageContext } from "@/lib/ai-usage/record";
 import { getBrandingConfig, applyBranding } from "@/lib/model-gen/branding";
 
 const GEMINI_MODEL = "gemini-3.1-flash-image";
@@ -99,6 +99,11 @@ export interface GeminiImageGenInput {
   folder?: string;
   /** View label for tags/logging (e.g. "front", "back"). Defaults to "model". */
   view?: string;
+  /**
+   * Cost-attribution context. When omitted, usage records under "model_gen".
+   * Strategies pass their objective feature ("catalogue" | "quick_listing").
+   */
+  usage?: AiUsageContext;
 }
 
 /**
@@ -119,11 +124,18 @@ export async function runGeminiImageGen(
   const {
     productId, productTitle, productCategory, productColor,
     productBuffer, productMime, referenceBuffer, referenceMime,
-    prompt, folder = "product-match/models", view = "model",
+    prompt, folder = "product-match/models", view = "model", usage,
   } = input;
+
+  const feature = usage?.feature ?? "model_gen";
+  const storeId = usage?.storeId ?? null;
+  const usageUserId = usage?.userId ?? null;
 
   try {
     const hasReference = Boolean(referenceBuffer && referenceMime);
+    const imageInputs = hasReference ? 2 : 1;
+    const requestBytes =
+      productBuffer.length + (hasReference ? referenceBuffer!.length : 0);
 
     // Image parts: reference model first (if any), then the product garment.
     const parts: Array<Record<string, unknown>> = [];
@@ -160,6 +172,20 @@ export async function runGeminiImageGen(
     if (!res.ok) {
       const err = await res.text();
       console.error(`[model-image] Gemini error ${res.status}:`, err.slice(0, 200));
+      void recordAiUsage({
+        provider: "gemini",
+        model: GEMINI_MODEL,
+        feature,
+        operation: view,
+        durationMs: generationMs,
+        requestBytes,
+        imageInputs,
+        storeId,
+        userId: usageUserId,
+        productId,
+        status: "error",
+        errorMessage: `HTTP ${res.status}: ${err.slice(0, 300)}`,
+      });
       return null;
     }
 
@@ -175,17 +201,35 @@ export async function runGeminiImageGen(
       };
     };
 
-    const usage = data.usageMetadata;
-    const tokenInput  = usage?.promptTokenCount     ?? null;
-    const tokenOutput = usage?.candidatesTokenCount ?? null;
-    const tokenTotal  = usage?.totalTokenCount      ?? null;
+    const usageMeta = data.usageMetadata;
+    const tokenInput  = usageMeta?.promptTokenCount     ?? null;
+    const tokenOutput = usageMeta?.candidatesTokenCount ?? null;
+    const tokenTotal  = usageMeta?.totalTokenCount      ?? null;
 
     const responseParts = data.candidates?.[0]?.content?.parts ?? [];
     const imagePart = responseParts.find(
       (p: { inlineData?: { mimeType: string; data: string } }) => p.inlineData?.data
     );
     if (!imagePart) {
-      console.error(`[model-image] No image in Gemini response (finish: ${data.candidates?.[0]?.finishReason})`);
+      const finishReason = data.candidates?.[0]?.finishReason;
+      console.error(`[model-image] No image in Gemini response (finish: ${finishReason})`);
+      void recordAiUsage({
+        provider: "gemini",
+        model: GEMINI_MODEL,
+        feature,
+        operation: view,
+        inputTokens: tokenInput,
+        outputTokens: tokenOutput,
+        totalTokens: tokenTotal,
+        durationMs: generationMs,
+        requestBytes,
+        imageInputs,
+        storeId,
+        userId: usageUserId,
+        productId,
+        status: "error",
+        errorMessage: `No image returned. Finish reason: ${finishReason ?? "unknown"}`,
+      });
       return null;
     }
 
@@ -214,13 +258,12 @@ export async function runGeminiImageGen(
     });
     console.log(`[model-image] Uploaded: ${uploaded.secure_url}`);
 
-    // ── Research log (seed corpus for the future learning loop) ─────────────
-    const inputImages: ImageMeta[] = [];
+    // ── Record AI usage (cost ledger) ───────────────────────────────────────
+    const inputImages: Array<Record<string, unknown>> = [];
     if (hasReference) {
       const refDims = getImageDimensions(referenceBuffer!, referenceMime!);
       inputImages.push({
-        label: "reference-model", mime: referenceMime!,
-        sizeBytes: referenceBuffer!.length,
+        label: "reference-model", mime: referenceMime!, sizeBytes: referenceBuffer!.length,
         widthPx: refDims?.width ?? null, heightPx: refDims?.height ?? null,
       });
     }
@@ -229,25 +272,34 @@ export async function runGeminiImageGen(
       widthPx: inputDims?.width ?? null, heightPx: inputDims?.height ?? null,
     });
 
-    await appendResearchLog({
-      timestamp:       new Date().toISOString(),
-      type:            "model",
+    void recordAiUsage({
+      provider: "gemini",
+      model: GEMINI_MODEL,
+      feature,
+      operation: view,
+      inputTokens: tokenInput,
+      outputTokens: tokenOutput,
+      totalTokens: tokenTotal,
+      imagesGenerated: 1,
+      imageInputs,
+      requestBytes,
+      responseBytes: outBuffer.length,
+      durationMs: generationMs,
+      storeId,
+      userId: usageUserId,
       productId,
-      productTitle,
-      productCategory,
-      productColor,
-      userId:          "system",
-      outputUrl:       uploaded.secure_url,
-      generationMs,
-      inputImages,
-      outputImage: {
-        label: "model-output", mime: outMime, sizeBytes: outBuffer.length,
-        widthPx: outDims?.width ?? null, heightPx: outDims?.height ?? null,
+      status: "success",
+      metadata: {
+        outputUrl: uploaded.secure_url,
+        category: productCategory,
+        color: productColor,
+        view,
+        inputImages,
+        outputImage: {
+          mime: outMime, sizeBytes: outBuffer.length,
+          widthPx: outDims?.width ?? null, heightPx: outDims?.height ?? null,
+        },
       },
-      tokens:
-        tokenInput !== null && tokenOutput !== null && tokenTotal !== null
-          ? { input: tokenInput, output: tokenOutput, total: tokenTotal }
-          : null,
     });
 
     return { url: uploaded.secure_url };
@@ -286,6 +338,7 @@ export async function generateModelImage(productId: string): Promise<void> {
       productBuffer:   source.buffer,
       productMime:     source.mime,
       prompt,
+      usage: { feature: "model_gen", storeId: product.userId, userId: product.userId },
     });
     if (!result) return;
 
