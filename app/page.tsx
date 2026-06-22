@@ -586,21 +586,21 @@ function HowItWorks() {
 function Pricing() {
   const plans = [
     {
-      name: "Starter", price: "Free", period: "Forever · No credit card",
-      desc: "Try Mentis with a real catalog. See what AI can do for your products.",
-      features: ["Up to 25 products", "AI Cataloging (titles + descriptions)", "Smart outfit matching", "10 Fashion Studio images/month", "Basic analytics"],
-      cta: "Start Free →", featured: false,
+      name: "Starter", price: "₹999", period: "/month · billed annually",
+      desc: "Launch your AI catalog and try-on for a focused product range.",
+      features: ["50 catalogue or Virtual Try-On generations/month", "Up to 50 products", "AI Cataloging (titles + descriptions)", "Smart outfit matching", "Basic analytics"],
+      cta: "Start 14-day Trial →", featured: false,
     },
     {
       name: "Growth", price: "₹4,999", period: "/month · billed annually",
       desc: "The complete AI commerce stack for growing boutiques and D2C brands.",
-      features: ["Up to 500 products", "Full AI Cataloging suite", "Fashion Studio — 200 images/month", "Virtual Try-On (website embed)", "Smart Matching — unlimited", "Social content packs", "Priority support"],
+      features: ["300 catalogue or Virtual Try-On generations/month", "Up to 300 products", "Full AI Cataloging suite", "Virtual Try-On (website embed)", "Smart Matching — unlimited", "Social content packs", "Priority support"],
       cta: "Start 14-day Trial →", featured: true, badge: "MOST POPULAR",
     },
     {
-      name: "Pro", price: "₹12,999", period: "/month · billed annually",
+      name: "Business", price: "₹9,999", period: "/month · billed annually",
       desc: "For established retailers with high catalog volume and multi-channel needs.",
-      features: ["Unlimited products", "Fashion Studio — unlimited images", "Virtual Try-On (web + WhatsApp)", "In-Store Kiosk (1 location)", "Custom model styles", "API access", "Dedicated onboarding"],
+      features: ["900 catalogue or Virtual Try-On generations/month", "Up to 900 products", "Virtual Try-On (web + WhatsApp)", "In-Store Kiosk (1 location)", "Custom model styles", "API access", "Dedicated onboarding"],
       cta: "Talk to Sales →", featured: false,
     },
     {
