@@ -600,13 +600,13 @@ function Pricing() {
     {
       name: "Business", price: "₹9,999", period: "/month · billed annually",
       desc: "For established retailers with high catalog volume and multi-channel needs.",
-      features: ["900 catalogue or Virtual Try-On generations/month", "Up to 900 products", "Virtual Try-On (web + WhatsApp)", "In-Store Kiosk (1 location)", "Custom model styles", "API access", "Dedicated onboarding"],
+      features: ["900 catalogue or Virtual Try-On generations/month", "Up to 900 products", "Virtual Try-On (web + WhatsApp)", "SEO & AEO optimization", "Custom model styles", "API access", "Dedicated onboarding"],
       cta: "Talk to Sales →", featured: false,
     },
     {
       name: "Enterprise", price: "Custom", period: "Multi-location · High volume",
       desc: "For apparel chains and multi-brand retailers needing custom deployment.",
-      features: ["Everything in Pro", "Multiple store kiosks", "White-label options", "SLA guarantee", "On-premise deployment option", "Dedicated success manager"],
+      features: ["Everything in Business", "SEO & AEO optimization", "MCP server setup", "Multiple store kiosks", "White-label options", "SLA guarantee", "On-premise deployment option", "Dedicated success manager"],
       cta: "Contact Sales →", featured: false,
     },
   ];
