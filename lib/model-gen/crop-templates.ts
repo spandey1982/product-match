@@ -31,24 +31,26 @@ export interface CloseUp {
   region: CropRegion;
 }
 
-// ── Category close-up sets (Task 4) ──────────────────────────────────────────
+// ── Category close-up sets ────────────────────────────────────────────────────
+// Close-ups are cropped from the base shots; the master delivery variant then
+// upscales+sharpens the crop, so each close-up is rendered at high resolution.
 
-// Saree → Front Full, Back Full, Front Top, Front Bottom, Back Top (5 total)
+// Saree → Front Full, Back Full, Blouse, Pallu, Pleats (5 total)
 const SAREE: CloseUp[] = [
-  { id: "front-top",    label: "Front Top Close-Up",    from: "front", region: { x: 0.10, y: 0.02, w: 0.80, h: 0.42 } },
-  { id: "front-bottom", label: "Front Bottom Close-Up", from: "front", region: { x: 0.10, y: 0.55, w: 0.80, h: 0.43 } },
-  { id: "back-top",     label: "Back Top Close-Up",     from: "back",  region: { x: 0.10, y: 0.02, w: 0.80, h: 0.42 } },
+  { id: "blouse", label: "Blouse Close-Up", from: "front", region: { x: 0.20, y: 0.06, w: 0.60, h: 0.30 } },
+  { id: "pallu",  label: "Pallu Close-Up",  from: "front", region: { x: 0.06, y: 0.04, w: 0.52, h: 0.44 } },
+  { id: "pleats", label: "Pleats Close-Up", from: "front", region: { x: 0.24, y: 0.50, w: 0.52, h: 0.46 } },
 ];
 
-// Lehenga → Front Full, Back Full, Front Top, Front Bottom (4 total)
+// Lehenga → Front Full, Back Full, Blouse, Lehenga Detail (4 total)
 const LEHENGA: CloseUp[] = [
-  { id: "front-top",    label: "Front Top Close-Up",    from: "front", region: { x: 0.12, y: 0.05, w: 0.76, h: 0.40 } },
-  { id: "front-bottom", label: "Front Bottom Close-Up", from: "front", region: { x: 0.05, y: 0.50, w: 0.90, h: 0.48 } },
+  { id: "blouse",         label: "Blouse Close-Up",         from: "front", region: { x: 0.20, y: 0.05, w: 0.60, h: 0.32 } },
+  { id: "lehenga-detail", label: "Lehenga Detail Close-Up", from: "front", region: { x: 0.08, y: 0.50, w: 0.84, h: 0.48 } },
 ];
 
-// Kurti / T-Shirt / Shirt / Trouser / Leggings / similar → Front, Back, Detail (3 total)
+// Kurti / T-Shirt / Shirt / Trouser / Leggings / similar → Front, Back, Design (3 total)
 const DETAIL: CloseUp[] = [
-  { id: "detail", label: "Detail Close-Up", from: "front", region: { x: 0.25, y: 0.08, w: 0.50, h: 0.30 } },
+  { id: "design", label: "Design Close-Up", from: "front", region: { x: 0.22, y: 0.16, w: 0.56, h: 0.40 } },
 ];
 
 const CATEGORY_CLOSEUPS: Record<string, CloseUp[]> = {
