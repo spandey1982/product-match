@@ -321,5 +321,11 @@ export async function generateTryOnVertex(input: TryOnInput): Promise<TryOnResul
     },
   });
 
-  return { url: uploaded.secure_url };
+  return {
+    url: uploaded.secure_url,
+    width: outDims?.width ?? null,
+    height: outDims?.height ?? null,
+    bytes: outBuffer.length,
+    model: VERTEX_MODEL,
+  };
 }

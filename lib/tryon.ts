@@ -96,6 +96,11 @@ export interface TryOnInput {
 export interface TryOnResult {
   /** Cloudinary URL of the generated try-on image. */
   url: string;
+  /** Output image facts (optional) — used for generation analytics. */
+  width?: number | null;
+  height?: number | null;
+  bytes?: number | null;
+  model?: string;
 }
 
 // ─── Core generation function ─────────────────────────────────────────────────

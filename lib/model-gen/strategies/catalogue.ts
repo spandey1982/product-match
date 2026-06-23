@@ -33,6 +33,15 @@ export interface StrategyProduct {
 
 export type CatalogueBackend = "gemini" | "vertex";
 
+interface BaseShot {
+  url: string;
+  provider: CatalogueBackend;
+  model: string | null;
+  width: number | null;
+  height: number | null;
+  bytes: number | null;
+}
+
 export async function runCatalogueStrategy(opts: {
   product: StrategyProduct;
   modelType: ModelType;
@@ -69,7 +78,7 @@ export async function runCatalogueStrategy(opts: {
   );
 
   const images: GeneratedImage[] = [];
-  const baseShots: Partial<Record<"front" | "back", { url: string; provider: CatalogueBackend }>> = {};
+  const baseShots: Partial<Record<"front" | "back", BaseShot>> = {};
 
   /** Generate one base shot via the chosen provider, with Gemini fallback. */
   async function generateBaseShot(
@@ -78,7 +87,7 @@ export async function runCatalogueStrategy(opts: {
     reference: ReferenceImage | null,
     productSource: { buffer: Buffer; mime: string },
     productUrl: string
-  ): Promise<{ url: string; provider: CatalogueBackend } | null> {
+  ): Promise<BaseShot | null> {
     // Vertex (Sharp Fit): VTO with the reference model as the person. Needs a
     // reference; back views need the back reference. Falls back to Gemini.
     if (provider === "vertex" && vertexReady && reference) {
@@ -94,7 +103,14 @@ export async function runCatalogueStrategy(opts: {
           userId: "model-gen",
           usage,
         });
-        return { url: res.url, provider: "vertex" };
+        return {
+          url: res.url,
+          provider: "vertex",
+          model: res.model ?? null,
+          width: res.width ?? null,
+          height: res.height ?? null,
+          bytes: res.bytes ?? null,
+        };
       } catch (err) {
         console.error(`[catalogue] Vertex ${viewId} failed — falling back to Gemini:`, err);
       }
@@ -114,7 +130,16 @@ export async function runCatalogueStrategy(opts: {
       view: viewId,
       usage,
     });
-    return result ? { url: result.url, provider: "gemini" } : null;
+    return result
+      ? {
+          url: result.url,
+          provider: "gemini",
+          model: result.model,
+          width: result.width,
+          height: result.height,
+          bytes: result.bytes,
+        }
+      : null;
   }
 
   // Sequential: keeps within provider rate limits and orders results by view.
@@ -141,7 +166,15 @@ export async function runCatalogueStrategy(opts: {
       productUrl
     );
     if (shot) {
-      images.push({ url: shot.url, view: view.id, provider: shot.provider });
+      images.push({
+        url: shot.url,
+        view: view.id,
+        provider: shot.provider,
+        modelName: shot.model ?? undefined,
+        width: shot.width,
+        height: shot.height,
+        bytes: shot.bytes,
+      });
       baseShots[view.id as "front" | "back"] = shot;
     }
   }
