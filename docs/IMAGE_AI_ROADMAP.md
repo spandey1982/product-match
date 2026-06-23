@@ -177,6 +177,7 @@ Schema changes: `npx prisma generate` then restart dev server.
 | Auto model-type selection (gender/age) | `lib/model-gen/model-selection.ts` |
 | Shared metadata service (provider-agnostic) | `lib/metadata/analyze.ts` (`Product.pattern`) |
 | Crop-template system (catalogue close-ups) | `lib/model-gen/crop-templates.ts` |
+| Image variant delivery (master/display/thumbnail) | `lib/images/variants.ts` |
 | Front/back reference profiles | `lib/model-gen/reference-models.ts` (`loadReferenceImage(..., {profile})`) |
 | Generation perf/quality records | `GenerationRecord` table, `lib/model-gen/generation-record.ts` |
 | Automated AI review (quality scoring) | `lib/model-gen/ai-review.ts` (`ENABLE_AI_REVIEW`) |
@@ -288,6 +289,20 @@ dashboard, **not linked anywhere**) gated by `isAdmin` (role `ADMIN` or the
 `ADMIN_EMAILS` allowlist). Reuses the `GenerationRecord` manual columns — a 1–5
 rating per image alongside the AI scores; no new table. Non-admins get a 404.
 Future Auto routing can blend AI + manual averages per category×provider.
+
+**High-quality image pipeline (HQ steps 1–5, done).** One stored master →
+three Cloudinary **delivery variants** (`lib/images/variants.ts`): MASTER
+(`f_auto,q_auto,c_scale,w_2048,e_sharpen`) for zoom/download/social, DISPLAY
+(~1200px), THUMBNAIL (~400px) — all with `f_auto`/`q_auto` (previously applied
+nowhere). No extra stored files, no extra AI calls; variants compose with
+existing branding/crop/normalize transforms. Viewers + downloads use MASTER
+(the zoom fix); close-ups are cropped from the base and upscaled by the master
+variant. `GenerationRecord` gained `modelName/width/height/fileSizeBytes` and
+extended eval (`aiTextureQuality/aiProductVisibility/aiIssues`). Crop templates
+now produce named close-ups (saree blouse/pallu/pleats, lehenga blouse/detail,
+kurti design). **Deferred (team + Cloudinary-plan dependent):** generative AI
+super-resolution tier (`e_upscale`/Real-ESRGAN) for true detail, and raising the
+800px product-input cap.
 
 **Optional back product image (Phase H, done).** `Product.backImageUrl` (nullable,
 migration `0004`) — an optional second image uploaded in the product form. The
