@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Product, Recommendation } from "@/types";
 import { formatCurrency, formatPercent } from "@/lib/utils";
 import { ProductImage } from "./ProductImage";
+import { thumbnailUrl } from "@/lib/images/variants";
 import { Badge } from "@/components/ui/badge";
 import { Sparkles, Tag } from "lucide-react";
 import { getConfidenceLabel } from "@/lib/matching-engine/confidence";
@@ -50,7 +51,7 @@ export function RecommendationCard({ recommendation }: RecommendationCardProps) 
         {/* Image + score overlay */}
         <div className="relative aspect-[3/4] overflow-hidden">
           <ProductImage
-            src={product.imageUrl}
+            src={product.imageUrl ? thumbnailUrl(product.imageUrl) : product.imageUrl}
             title={product.title}
             category={product.category}
             className="w-full h-full transition-transform duration-300 group-hover:scale-105"

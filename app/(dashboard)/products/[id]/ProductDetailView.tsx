@@ -26,6 +26,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { ProductImageViewer } from "@/components/product/ProductImageViewer";
+import { displayUrl, masterUrl } from "@/lib/images/variants";
 
 interface GeneratedImage {
   url: string;
@@ -102,6 +103,10 @@ export function ProductDetailView({
   const productImages = [product.imageUrl, ...onModel.map((g) => g.url)].filter(
     Boolean
   ) as string[];
+  // Delivery variants: ~1200px for the inline carousel, upscaled+sharpened
+  // master for the full-screen zoom viewer. f_auto/q_auto on both.
+  const displayImages = productImages.map(displayUrl);
+  const masterImages = productImages.map(masterUrl);
   const imageLabels = productImages.map((_, i) =>
     i === 0 ? "Product" : onModel[i - 1]?.view === "on-model" ? "On model" : prettyView(onModel[i - 1].view)
   );
@@ -192,7 +197,7 @@ export function ProductDetailView({
       {/* Full-screen product image viewer */}
       {viewerIndex !== null && productImages.length > 0 && (
         <ProductImageViewer
-          images={productImages}
+          images={masterImages}
           labels={imageLabels}
           initialIndex={viewerIndex}
           onClose={() => setViewerIndex(null)}
@@ -217,7 +222,7 @@ export function ProductDetailView({
             onClick={() => setViewerIndex(0)}
           >
             <ImageCarousel
-              images={productImages}
+              images={displayImages}
               title={product.title}
               category={product.category}
               className="w-full h-full"

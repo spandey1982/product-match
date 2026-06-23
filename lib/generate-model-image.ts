@@ -117,7 +117,7 @@ export interface GeminiImageGenInput {
  */
 export async function runGeminiImageGen(
   input: GeminiImageGenInput
-): Promise<{ url: string } | null> {
+): Promise<{ url: string; width: number | null; height: number | null; bytes: number; model: string } | null> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || apiKey === "your-gemini-api-key-here") return null;
 
@@ -302,7 +302,13 @@ export async function runGeminiImageGen(
       },
     });
 
-    return { url: uploaded.secure_url };
+    return {
+      url: uploaded.secure_url,
+      width: outDims?.width ?? null,
+      height: outDims?.height ?? null,
+      bytes: outBuffer.length,
+      model: GEMINI_MODEL,
+    };
   } catch (err) {
     console.error("[model-image] Gemini gen error:", err);
     return null;

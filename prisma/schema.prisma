@@ -104,10 +104,16 @@ model GenerationRecord {
   userId    String?
 
   provider  String // "gemini" | "vertex"
+  modelName String? // e.g. "gemini-3.1-flash-image", "virtual-try-on-001"
   category  String
   objective String // "quick_listing" | "catalogue"
   view      String // "front" | "back" | "front-top" | ...
   outputUrl String
+
+  // Master (pre-variant) image facts — base shots only; null for derived crops.
+  width        Int?
+  height       Int?
+  fileSizeBytes Int?
 
   generationMs Int?
   tokensTotal  Int?
@@ -119,7 +125,11 @@ model GenerationRecord {
   aiDrapeQuality        Float?
   aiPatternPreservation Float?
   aiRenderingQuality    Float?
+  aiTextureQuality      Float?
+  aiProductVisibility   Float?
   aiOverall             Float?
+  // JSON array of detected issue strings, e.g. ["soft texture","color shift"].
+  aiIssues              String?
   aiReviewModel         String?
   aiReviewedAt          DateTime?
 

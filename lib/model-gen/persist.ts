@@ -14,6 +14,11 @@ export interface GeneratedImage {
   view: string;
   /** Backend that produced it ("gemini" | "vertex"); for perf tracking. */
   provider?: string;
+  /** Image facts for analytics — base shots only; null/undefined for crops. */
+  modelName?: string;
+  width?: number | null;
+  height?: number | null;
+  bytes?: number | null;
 }
 
 /** Pick the primary image: a "front" view if present, else the first one. */

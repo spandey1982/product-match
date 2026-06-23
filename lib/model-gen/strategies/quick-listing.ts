@@ -54,7 +54,14 @@ export async function runQuickListingStrategy(opts: {
         userId: "model-gen",
         usage,
       });
-      return { images: [{ url: result.url, view: "front", provider: "vertex" }], usedFallback: false };
+      return {
+        images: [{
+          url: result.url, view: "front", provider: "vertex",
+          modelName: result.model ?? undefined,
+          width: result.width ?? null, height: result.height ?? null, bytes: result.bytes ?? null,
+        }],
+        usedFallback: false,
+      };
     } catch (err) {
       console.error(
         "[model-gen] quick-listing Vertex failed — falling back to Gemini:",
@@ -93,7 +100,13 @@ export async function runQuickListingStrategy(opts: {
   });
 
   return {
-    images: result ? [{ url: result.url, view: "front", provider: "gemini" }] : [],
+    images: result
+      ? [{
+          url: result.url, view: "front", provider: "gemini",
+          modelName: result.model,
+          width: result.width, height: result.height, bytes: result.bytes,
+        }]
+      : [],
     usedFallback: true,
   };
 }
