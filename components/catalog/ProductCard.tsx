@@ -5,6 +5,7 @@ import { Check, Loader2, RotateCcw } from "lucide-react";
 import { Product } from "@/types";
 import { formatCurrency } from "@/lib/utils";
 import { ImageCarousel } from "@/components/product/ImageCarousel";
+import { thumbnailUrl } from "@/lib/images/variants";
 import { Badge } from "@/components/ui/badge";
 import { Sparkles } from "lucide-react";
 import { useTrialRoom, TRYON_LIMIT } from "@/components/trial-room/TrialRoomProvider";
@@ -138,7 +139,9 @@ export function ProductCard({ product }: ProductCardProps) {
           {/* Image + overlays — clipped to rounded top corners */}
           <div className="absolute inset-0 overflow-hidden rounded-t-2xl bg-gray-50">
             <ImageCarousel
-              images={[product.imageUrl, product.modelImageUrl]}
+              images={[product.imageUrl, product.modelImageUrl].map((u) =>
+                u ? thumbnailUrl(u) : u
+              )}
               title={product.title}
               category={product.category}
               className="w-full h-full"

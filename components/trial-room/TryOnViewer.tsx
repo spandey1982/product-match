@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useTrialRoom } from "@/components/trial-room/TrialRoomProvider";
 import { downloadImage } from "@/lib/share-image";
+import { masterUrl } from "@/lib/images/variants";
 import { cn } from "@/lib/utils";
 import type { TryOnEntry } from "@/lib/trial-room-types";
 
@@ -221,7 +222,7 @@ export function TryOnViewer({ entries, initialIndex, onClose }: Props) {
       const filename = `tryon-${current.product.title
         .replace(/\s+/g, "-")
         .toLowerCase()}.jpg`;
-      await downloadImage(current.resultUrl, filename);
+      await downloadImage(masterUrl(current.resultUrl), filename);
       setDownloaded(true);
       setTimeout(() => setDownloaded(false), 2500);
     } catch {
@@ -289,7 +290,7 @@ export function TryOnViewer({ entries, initialIndex, onClose }: Props) {
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={entry.resultUrl!}
+                src={masterUrl(entry.resultUrl!)}
                 alt={`Try-on for ${entry.product.title}`}
                 className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl"
                 draggable={false}

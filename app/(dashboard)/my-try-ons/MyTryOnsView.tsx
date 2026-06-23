@@ -19,6 +19,7 @@ import {
 import { useTrialRoom } from "@/components/trial-room/TrialRoomProvider";
 import { HangerPlusIcon } from "@/components/icons/HangerPlusIcon";
 import { TryOnViewer } from "@/components/trial-room/TryOnViewer";
+import { displayUrl } from "@/lib/images/variants";
 import { cn } from "@/lib/utils";
 import type { TryOnEntry } from "@/lib/trial-room-types";
 
@@ -215,7 +216,7 @@ function TryOnCard({
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={entry.resultUrl}
+              src={displayUrl(entry.resultUrl)}
               alt={`Try-on for ${entry.product.title}`}
               className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-[1.02]"
               draggable={false}
