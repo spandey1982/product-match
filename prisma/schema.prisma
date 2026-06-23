@@ -125,7 +125,11 @@ model GenerationRecord {
   aiDrapeQuality        Float?
   aiPatternPreservation Float?
   aiRenderingQuality    Float?
+  aiTextureQuality      Float?
+  aiProductVisibility   Float?
   aiOverall             Float?
+  // JSON array of detected issue strings, e.g. ["soft texture","color shift"].
+  aiIssues              String?
   aiReviewModel         String?
   aiReviewedAt          DateTime?
 

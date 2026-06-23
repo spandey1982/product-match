@@ -31,14 +31,17 @@ function sampleRate(): number {
 }
 
 const RUBRIC = `You are a strict fashion e-commerce QA reviewer. Image 1 is an AI-GENERATED model photo. Image 2 is the ORIGINAL product. Rate Image 1 from 1 (poor) to 5 (excellent). Return raw JSON only, no markdown:
-{"authenticity":0,"realism":0,"garmentPreservation":0,"drapeQuality":0,"patternPreservation":0,"renderingQuality":0,"overall":0}
+{"authenticity":0,"realism":0,"garmentPreservation":0,"drapeQuality":0,"patternPreservation":0,"textureQuality":0,"productVisibility":0,"renderingQuality":0,"overall":0,"issues":[]}
 - authenticity: looks like a real photograph, not obviously AI-generated
 - realism: natural body, pose and lighting; no artifacts or extra/missing limbs
 - garmentPreservation: the garment matches the product in shape, cut and colour
 - drapeQuality: the fabric falls and drapes naturally and correctly
 - patternPreservation: the print/pattern/motif is preserved faithfully
+- textureQuality: fabric texture/weave is visible and convincing
+- productVisibility: the product is clearly shown, unobstructed and well-framed
 - renderingQuality: sharp, high-resolution, undistorted
-- overall: holistic quality 1–5`;
+- overall: holistic quality 1–5
+- issues: short array of any problems seen, e.g. ["soft texture","color shift","extra limb"] (empty array if none)`;
 
 async function fetchImageBase64(url: string): Promise<{ data: string; mime: string } | null> {
   try {
@@ -58,8 +61,11 @@ interface RawScores {
   garmentPreservation?: unknown;
   drapeQuality?: unknown;
   patternPreservation?: unknown;
+  textureQuality?: unknown;
+  productVisibility?: unknown;
   renderingQuality?: unknown;
   overall?: unknown;
+  issues?: unknown;
 }
 
 /** Clamp a raw score to [0,5] or null when not a finite number. */
@@ -148,7 +154,10 @@ export async function reviewAndStore(
         aiDrapeQuality: score(s.drapeQuality),
         aiPatternPreservation: score(s.patternPreservation),
         aiRenderingQuality: score(s.renderingQuality),
+        aiTextureQuality: score(s.textureQuality),
+        aiProductVisibility: score(s.productVisibility),
         aiOverall: score(s.overall),
+        aiIssues: Array.isArray(s.issues) ? JSON.stringify(s.issues.map(String)) : null,
         aiReviewModel: REVIEW_MODEL,
         aiReviewedAt: new Date(),
       },
