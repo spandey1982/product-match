@@ -2,7 +2,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Upload, X, ArrowLeft, ImagePlus, Sparkles, Check, Wand2 } from "lucide-react";
+import { Upload, ArrowLeft, ImagePlus, Sparkles, Check, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -80,10 +80,32 @@ export default function UploadPage() {
   const backFileRef = useRef<HTMLInputElement>(null);
   const [backImageFile, setBackImageFile] = useState<File | null>(null);
   const [backImagePreview, setBackImagePreview] = useState<string | null>(null);
-  // Optional category-specific detail close-ups (extraction-only).
+  // Multi-image uploader: one "active" (enlarged) slot at a time — slot 0 is the
+  // main product photo, the rest are category-specific detail close-ups.
   const partInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const [partFiles, setPartFiles] = useState<Record<string, File>>({});
   const [partPreviews, setPartPreviews] = useState<Record<string, string>>({});
+  const [activeSlot, setActiveSlot] = useState<string>("main");
+
+  /** Ordered slot ids for the current category (main first, then close-ups). */
+  function slotIds(): string[] {
+    return ["main", ...partSlotsFor(form.category).map((s) => s.id)];
+  }
+  /** Move focus to the next slot (cycling) — encourages filling them all. */
+  function advanceSlot(currentId: string) {
+    const ids = slotIds();
+    const idx = ids.indexOf(currentId);
+    setActiveSlot(ids[(idx + 1) % ids.length]);
+  }
+  function clearSlot(id: string) {
+    if (id === "main") {
+      setImageFile(null);
+      setImagePreview(null);
+      setImageUrlInput("");
+    } else {
+      clearPart(id);
+    }
+  }
   const [extracting, setExtracting] = useState(false);
   const [extractError, setExtractError] = useState("");
   const [generateModel, setGenerateModel] = useState(false);
@@ -198,8 +220,9 @@ export default function UploadPage() {
     }
     setImagePreview(URL.createObjectURL(file)); // original for crisp preview
     setImageUrlInput("");
-    const resized = await resizeImage(file);   // max 800px JPEG for upload + AI
+    const resized = await resizeImage(file);   // max 1280px JPEG for upload + AI
     setImageFile(resized);
+    advanceSlot("main"); // move on to the next slot to encourage more uploads
     await extractFromImage(resized);
   }
 
@@ -305,6 +328,7 @@ export default function UploadPage() {
     const resized = await resizeImage(file);
     setPartFiles((prev) => ({ ...prev, [slotId]: resized }));
     setPartPreviews((prev) => ({ ...prev, [slotId]: URL.createObjectURL(file) }));
+    advanceSlot(slotId); // auto-advance to the next slot
   }
 
   function clearPart(slotId: string) {
@@ -436,6 +460,18 @@ export default function UploadPage() {
     );
   }
 
+  // Image slots for the active-card uploader (main + category close-ups).
+  const imageSlots = [
+    { id: "main", label: "Product photo" },
+    ...partSlotsFor(form.category).map((s) => ({ id: s.id, label: s.label })),
+  ];
+  const activeId = imageSlots.some((s) => s.id === activeSlot) ? activeSlot : "main";
+  const activeSlotObj = imageSlots.find((s) => s.id === activeId) ?? imageSlots[0];
+  const slotPreview = (id: string): string | null =>
+    id === "main" ? imagePreview : partPreviews[id] ?? null;
+  const openSlotPicker = (id: string) =>
+    id === "main" ? fileRef.current?.click() : partInputRefs.current[id]?.click();
+
   return (
     <div className="max-w-2xl mx-auto">
       <Link
@@ -473,6 +509,7 @@ export default function UploadPage() {
               // Different category → different detail slots; reset close-ups.
               setPartFiles({});
               setPartPreviews({});
+              setActiveSlot("main");
             }}
             options={CATEGORIES.map((c) => ({ value: c, label: c }))}
             placeholder="Select a category"
@@ -487,55 +524,84 @@ export default function UploadPage() {
             Product Image
           </h2>
 
-          {imagePreview ? (
-            <div className="flex flex-col items-center gap-3">
-              <div className="relative w-48 h-64">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={imagePreview}
-                  alt="Preview"
-                  className="w-full h-full object-cover rounded-2xl"
-                  onError={() => setImagePreview(null)}
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    setImageFile(null);
-                    setImagePreview(null);
-                    setImageUrlInput("");
-                  }}
-                  className="absolute top-2 right-2 h-7 w-7 bg-white rounded-full shadow flex items-center justify-center hover:bg-red-50 transition-colors"
-                  aria-label="Remove image"
-                >
-                  <X className="h-4 w-4 text-gray-600" />
-                </button>
-              </div>
-              <button
-                type="button"
-                onClick={() => fileRef.current?.click()}
-                className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:border-indigo-300 hover:text-indigo-600 transition-colors"
-              >
-                Change image
-              </button>
-            </div>
-          ) : (
+          {imageSlots.length > 1 && (
+            <p className="text-xs text-gray-400 -mt-2 mb-3">
+              Add the product photo, then the close-ups — each saved card moves you to the next. Tap any card to switch.
+            </p>
+          )}
+
+          {/* Active (enlarged) card — the only one you can upload from */}
+          <div className="mx-auto w-full max-w-[15rem]">
             <button
               type="button"
-              disabled={!form.category}
-              onClick={() => (form.category ? fileRef.current?.click() : setExtractError("Select a product category first."))}
-              className={`w-full border-2 border-dashed rounded-2xl p-10 transition-all text-center group ${
-                form.category
-                  ? "border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/30 cursor-pointer"
-                  : "border-gray-100 opacity-60 cursor-not-allowed"
-              }`}
+              onClick={() => openSlotPicker(activeId)}
+              className="relative w-full aspect-[4/5] rounded-2xl overflow-hidden border-2 border-dashed border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/30 transition-all flex flex-col items-center justify-center group bg-gray-50/40"
             >
-              <ImagePlus className="h-8 w-8 text-gray-300 group-hover:text-indigo-400 mx-auto mb-3 transition-colors" />
-              <p className="text-sm font-medium text-gray-500 group-hover:text-indigo-600">
-                {form.category ? "Click to upload image" : "Select a category first"}
-              </p>
-              <p className="text-xs text-gray-400 mt-1">JPEG, PNG, WebP · max 5MB</p>
+              {slotPreview(activeId) ? (
+                <>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={slotPreview(activeId)!} alt={activeSlotObj.label} className="absolute inset-0 w-full h-full object-cover" />
+                  <span className="absolute bottom-0 inset-x-0 bg-black/45 text-white text-[11px] font-medium py-1.5 text-center">
+                    {activeSlotObj.label} · tap to change
+                  </span>
+                </>
+              ) : (
+                <>
+                  <ImagePlus className="h-8 w-8 text-gray-300 group-hover:text-indigo-400 mb-2 transition-colors" />
+                  <p className="text-sm font-medium text-gray-500 group-hover:text-indigo-600">Upload {activeSlotObj.label}</p>
+                  <p className="text-[11px] text-gray-400 mt-0.5">JPEG, PNG, WebP</p>
+                </>
+              )}
             </button>
+            {slotPreview(activeId) && (
+              <button type="button" onClick={() => clearSlot(activeId)} className="mt-1.5 mx-auto block text-[11px] text-gray-400 hover:text-red-500">
+                Remove
+              </button>
+            )}
+          </div>
+
+          {/* Remaining slots — stacked rectangular cards; tap to enlarge */}
+          {imageSlots.filter((s) => s.id !== activeId).length > 0 && (
+            <div className="mt-3 space-y-2">
+              {imageSlots.filter((s) => s.id !== activeId).map((s) => {
+                const preview = slotPreview(s.id);
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => setActiveSlot(s.id)}
+                    className="w-full flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-2 hover:border-indigo-300 text-left transition-colors"
+                  >
+                    <div className="h-11 w-11 rounded-lg overflow-hidden bg-gray-50 border border-gray-100 flex items-center justify-center shrink-0">
+                      {preview ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={preview} alt={s.label} className="h-full w-full object-cover" />
+                      ) : (
+                        <ImagePlus className="h-4 w-4 text-gray-300" />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-gray-800 truncate">{s.label}</p>
+                      <p className="text-xs text-gray-400">{preview ? "Uploaded · tap to change" : "Tap to add"}</p>
+                    </div>
+                    {preview && <Check className="h-4 w-4 text-emerald-500 shrink-0" />}
+                  </button>
+                );
+              })}
+            </div>
           )}
+
+          {/* Hidden inputs for the close-up slots (main input is below) */}
+          {partSlotsFor(form.category).map((slot) => (
+            <input
+              key={slot.id}
+              ref={(el) => { partInputRefs.current[slot.id] = el; }}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              onChange={(e) => handlePartSelect(slot.id, e)}
+            />
+          ))}
           <input
             ref={fileRef}
             type="file"
@@ -564,67 +630,6 @@ export default function UploadPage() {
                 setImagePreview(e.target.value || null);
               }}
             />
-          )}
-
-          {/* Optional category-specific detail close-ups (extraction-only). Shown
-              once a category with slots is chosen and the main image is added. */}
-          {partSlotsFor(form.category).length > 0 && imageFile && (
-            <div className="mt-4 pt-4 border-t border-gray-100">
-              <p className="text-sm font-medium text-gray-900">
-                Detail close-ups <span className="text-gray-400 font-normal">(optional)</span>
-              </p>
-              <p className="text-xs text-gray-400 mt-0.5 mb-3">
-                Close-ups of key areas help the AI capture fine detail. Used to describe the product — they don&apos;t add to image-generation cost.
-              </p>
-              <div className="grid grid-cols-3 gap-3">
-                {partSlotsFor(form.category).map((slot) => {
-                  const preview = partPreviews[slot.id];
-                  return (
-                    <div key={slot.id}>
-                      <div className="relative aspect-square rounded-xl overflow-hidden bg-white border border-gray-100">
-                        {preview ? (
-                          <>
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={preview}
-                              alt={slot.label}
-                              className="w-full h-full object-cover cursor-pointer"
-                              onClick={() => partInputRefs.current[slot.id]?.click()}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => clearPart(slot.id)}
-                              className="absolute top-1 right-1 h-6 w-6 bg-white rounded-full shadow flex items-center justify-center hover:bg-red-50"
-                              aria-label={`Remove ${slot.label}`}
-                            >
-                              <X className="h-3.5 w-3.5 text-gray-600" />
-                            </button>
-                          </>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => partInputRefs.current[slot.id]?.click()}
-                            className="w-full h-full flex flex-col items-center justify-center text-gray-300 hover:text-indigo-400 hover:bg-indigo-50/30 transition-colors"
-                            title={slot.hint}
-                          >
-                            <ImagePlus className="h-5 w-5" />
-                            <span className="text-[10px] mt-1 font-medium">Add</span>
-                          </button>
-                        )}
-                      </div>
-                      <p className="text-xs font-medium text-gray-700 mt-1.5 text-center">{slot.label}</p>
-                      <input
-                        ref={(el) => { partInputRefs.current[slot.id] = el; }}
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp"
-                        className="hidden"
-                        onChange={(e) => handlePartSelect(slot.id, e)}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
           )}
 
           {/* Optional back image — subtle enhancement; the flow works without it.
