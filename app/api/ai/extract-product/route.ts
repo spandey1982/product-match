@@ -10,6 +10,9 @@ export async function POST(req: NextRequest) {
 
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
+    // Retailer-selected category (chosen before upload) — asserted as ground
+    // truth so the model never reclassifies (e.g. saree → dupatta).
+    const category = String(formData.get("category") || "").trim() || undefined;
 
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
@@ -26,7 +29,7 @@ export async function POST(req: NextRequest) {
     const result = await analyzeProductImage(buffer, file.type, {
       storeId: session.id,
       userId: session.id,
-    });
+    }, category);
 
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: result.status });

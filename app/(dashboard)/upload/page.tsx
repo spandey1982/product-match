@@ -187,6 +187,10 @@ export default function UploadPage() {
   async function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!form.category) {
+      setExtractError("Select a product category first, then upload the image.");
+      return;
+    }
     setImagePreview(URL.createObjectURL(file)); // original for crisp preview
     setImageUrlInput("");
     const resized = await resizeImage(file);   // max 800px JPEG for upload + AI
@@ -200,6 +204,9 @@ export default function UploadPage() {
     try {
       const fd = new FormData();
       fd.append("file", file);
+      // Pass the retailer-confirmed category so the model describes the product
+      // AS that category and never reclassifies it (e.g. saree → dupatta).
+      if (form.category) fd.append("category", form.category);
       const res = await fetch("/api/ai/extract-product", { method: "POST", body: fd });
       const data = await res.json();
 
@@ -234,8 +241,13 @@ export default function UploadPage() {
     }
   }
 
-  /** Resize image client-side to max 800px, convert to JPEG 85% — reduces AI token count ~10x */
-  function resizeImage(file: File, maxPx = 800, quality = 0.85): Promise<File> {
+  /**
+   * Resize client-side to a faithful working size (max 1280px, JPEG 90%) before
+   * upload + AI. 1280 preserves far more fabric/weave/embroidery detail for both
+   * recognition and downstream generation than the old 800px cap, while keeping
+   * upload size and token count reasonable.
+   */
+  function resizeImage(file: File, maxPx = 1280, quality = 0.9): Promise<File> {
     return new Promise((resolve) => {
       const img = new Image();
       const url = URL.createObjectURL(file);
@@ -410,6 +422,24 @@ export default function UploadPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Step 1 — Category first. Drives accurate AI auto-fill (no
+            mis-classification) and the category-specific image guidance below. */}
+        <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm">
+          <h2 className="text-sm font-semibold text-gray-900 mb-1">
+            Product category <span className="text-red-500">*</span>
+          </h2>
+          <p className="text-xs text-gray-400 mb-4">
+            Select this first — it&apos;s used to recognise your product correctly and guide the image analysis.
+          </p>
+          <Select
+            value={form.category}
+            onChange={(e) => setForm({ ...form, category: e.target.value })}
+            options={CATEGORIES.map((c) => ({ value: c, label: c }))}
+            placeholder="Select a category"
+            required
+          />
+        </div>
+
         {/* Image upload */}
         <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm">
           <h2 className="text-sm font-semibold text-gray-900 mb-4">
@@ -440,12 +470,17 @@ export default function UploadPage() {
           ) : (
             <button
               type="button"
-              onClick={() => fileRef.current?.click()}
-              className="w-full border-2 border-dashed border-gray-200 rounded-2xl p-10 hover:border-indigo-300 hover:bg-indigo-50/30 transition-all text-center group"
+              disabled={!form.category}
+              onClick={() => (form.category ? fileRef.current?.click() : setExtractError("Select a product category first."))}
+              className={`w-full border-2 border-dashed rounded-2xl p-10 transition-all text-center group ${
+                form.category
+                  ? "border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/30 cursor-pointer"
+                  : "border-gray-100 opacity-60 cursor-not-allowed"
+              }`}
             >
               <ImagePlus className="h-8 w-8 text-gray-300 group-hover:text-indigo-400 mx-auto mb-3 transition-colors" />
               <p className="text-sm font-medium text-gray-500 group-hover:text-indigo-600">
-                Click to upload image
+                {form.category ? "Click to upload image" : "Select a category first"}
               </p>
               <p className="text-xs text-gray-400 mt-1">JPEG, PNG, WebP · max 5MB</p>
             </button>
@@ -819,20 +854,17 @@ export default function UploadPage() {
           />
 
           <div className="grid grid-cols-2 gap-4">
-            <Select
-              label="Category *"
-              value={form.category}
-              onChange={(e) => setForm({ ...form, category: e.target.value })}
-              options={CATEGORIES.map((c) => ({ value: c, label: c }))}
-              placeholder="Select category"
-              required
-            />
             <Input
               label="Subcategory"
               placeholder="e.g. Bridal Saree"
               value={form.subcategory}
               onChange={(e) => setForm({ ...form, subcategory: e.target.value })}
             />
+            <div className="flex items-end pb-2.5">
+              <p className="text-xs text-gray-400">
+                Category: <span className="font-medium text-gray-700">{form.category || "—"}</span> · set at the top
+              </p>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
