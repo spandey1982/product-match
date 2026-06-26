@@ -32,21 +32,45 @@ export interface DetailNotesContext {
   userId?: string | null;
 }
 
-/**
- * Return the product's cached detailNotes, extracting + persisting them first if
- * absent. Returns null when unavailable (no key, no image, or extraction failed).
- */
-export async function ensureDetailNotes(
+type DetailColumn = "detailNotes" | "backDetailNotes";
+
+/** Front-image detail notes (used in front-view prompts + the legacy path). */
+export function ensureDetailNotes(
   productId: string,
   imageUrl: string,
   category: string,
   ctx: DetailNotesContext = {}
 ): Promise<string | null> {
+  return ensureNotes(productId, imageUrl, category, "detailNotes", ctx);
+}
+
+/** Back-image detail notes (used only in the BACK-view prompt of catalogue). */
+export function ensureBackDetailNotes(
+  productId: string,
+  backImageUrl: string,
+  category: string,
+  ctx: DetailNotesContext = {}
+): Promise<string | null> {
+  return ensureNotes(productId, backImageUrl, category, "backDetailNotes", ctx);
+}
+
+/**
+ * Return the product's cached notes for `column`, extracting + persisting them
+ * first if absent. Returns null when unavailable (no key, no image, or failure).
+ */
+async function ensureNotes(
+  productId: string,
+  imageUrl: string,
+  category: string,
+  column: DetailColumn,
+  ctx: DetailNotesContext = {}
+): Promise<string | null> {
   const existing = await db.product.findUnique({
     where: { id: productId },
-    select: { detailNotes: true },
+    select: { detailNotes: true, backDetailNotes: true },
   });
-  if (existing?.detailNotes) return existing.detailNotes;
+  const cached = column === "detailNotes" ? existing?.detailNotes : existing?.backDetailNotes;
+  if (cached) return cached;
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || apiKey === "your-gemini-api-key-here") return null;
@@ -108,7 +132,10 @@ export async function ensureDetailNotes(
       .slice(0, 400);
     if (!text) return null;
 
-    await db.product.update({ where: { id: productId }, data: { detailNotes: text } });
+    await db.product.update({
+      where: { id: productId },
+      data: column === "detailNotes" ? { detailNotes: text } : { backDetailNotes: text },
+    });
     return text;
   } catch (err) {
     console.error("[detail-notes] extraction failed:", err);

@@ -10,7 +10,7 @@ import { preprocessProductImage } from "@/lib/images/preprocess";
 const GEMINI_MODEL = "gemini-3.1-flash-image";
 
 /** Build a prompt tailored to the product category and gender */
-function buildPrompt(category: string, color: string, gender: string): string {
+function buildPrompt(category: string, color: string, gender: string, detailNotes?: string | null): string {
   const cat = category.toLowerCase();
   const isWomen = gender !== "MEN";
 
@@ -21,13 +21,17 @@ function buildPrompt(category: string, color: string, gender: string): string {
   const setting =
     "professional fashion photography studio, soft diffused lighting, clean white background, high resolution, photorealistic";
 
+  const detail = detailNotes?.trim()
+    ? ` Faithfully preserve these product specifics: ${detailNotes.trim()}.`
+    : "";
+
   if (["jewellery", "clutch", "handbag"].includes(cat)) {
-    return `Close-up fashion photograph of ${subject} wearing/holding this ${category}. ${setting}.`;
+    return `Close-up fashion photograph of ${subject} wearing/holding this ${category}. ${setting}.${detail}`;
   }
   if (["footwear"].includes(cat)) {
-    return `Fashion photograph showing ${subject} wearing these shoes. Full or half body shot. ${setting}.`;
+    return `Fashion photograph showing ${subject} wearing these shoes. Full or half body shot. ${setting}.${detail}`;
   }
-  return `Full body fashion photograph of ${subject} wearing this ${color} ${category}. The garment is clearly visible and styled naturally. ${setting}.`;
+  return `Full body fashion photograph of ${subject} wearing this ${color} ${category}. The garment is clearly visible and styled naturally. ${setting}.${detail}`;
 }
 
 const MIME_BY_EXT: Record<string, string> = {
@@ -343,7 +347,15 @@ export async function generateModelImage(productId: string): Promise<void> {
     const source = await fetchProductImageBuffer(product.imageUrl);
     if (!source) return;
 
-    const prompt = buildPrompt(product.category, product.color, product.gender);
+    // Prompt enrichment (front-only path). Dynamic import avoids a static import
+    // cycle (detail-notes imports fetchProductImageBuffer from this module).
+    const { ensureDetailNotes } = await import("@/lib/metadata/detail-notes");
+    const detailNotes = await ensureDetailNotes(productId, product.imageUrl, product.category, {
+      storeId: product.userId,
+      userId: product.userId,
+    });
+
+    const prompt = buildPrompt(product.category, product.color, product.gender, detailNotes);
     const result = await runGeminiImageGen({
       productId,
       productTitle:    product.title,

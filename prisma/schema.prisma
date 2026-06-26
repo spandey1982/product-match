@@ -48,6 +48,9 @@ model Product {
   // Lazily extracted once (category-aware) and cached; fed into the generation
   // prompt so fine detail isn't lost during synthesis. Nullable → safe default.
   detailNotes String?
+  // Same, but for the back image — fed only into the BACK-view prompt (catalogue
+  // generates a back view; quick-listing is front-only so never uses this).
+  backDetailNotes String?
   gender    String @default("WOMEN")
   season    String @default("[]")
   price     Float

@@ -25,7 +25,7 @@ import { recordGenerations } from "./generation-record";
 import { maybeReviewGenerations } from "./ai-review";
 import { runQuickListingStrategy } from "./strategies/quick-listing";
 import { runCatalogueStrategy, type StrategyProduct } from "./strategies/catalogue";
-import { ensureDetailNotes } from "@/lib/metadata/detail-notes";
+import { ensureDetailNotes, ensureBackDetailNotes } from "@/lib/metadata/detail-notes";
 
 /**
  * Master switch for the objective-based generation UI + routing. When OFF
@@ -70,12 +70,15 @@ export async function generateModelImages(
   }
 
   // Prompt enrichment: concise, category-grounded detail hints, extracted once
-  // and cached. Non-fatal — null when unavailable. Threaded into the prompt so
-  // the model is told which fine specifics to preserve.
-  const detailNotes = await ensureDetailNotes(product.id, product.imageUrl, product.category, {
-    storeId: input.userId,
-    userId: input.userId,
-  });
+  // and cached. Non-fatal — null when unavailable. Threaded per-view into the
+  // prompt so the model is told which fine specifics to preserve. Back notes are
+  // only extracted when a back image exists (catalogue back view uses them;
+  // quick-listing is front-only and never sees them).
+  const ctx = { storeId: input.userId, userId: input.userId };
+  const detailNotes = await ensureDetailNotes(product.id, product.imageUrl, product.category, ctx);
+  const backDetailNotes = product.backImageUrl
+    ? await ensureBackDetailNotes(product.id, product.backImageUrl, product.category, ctx)
+    : null;
 
   const strategyProduct: StrategyProduct = {
     id: product.id,
@@ -86,6 +89,7 @@ export async function generateModelImages(
     imageUrl: product.imageUrl,
     backImageUrl: product.backImageUrl,
     detailNotes,
+    backDetailNotes,
   };
 
   // Catalogue backend: explicit setting, or category-routed when "auto"
