@@ -244,7 +244,10 @@ export default function UploadPage() {
     setExtractError("");
     try {
       const fd = new FormData();
-      fd.append("file", file);
+      // Extraction only needs to read attributes — send a smaller image than the
+      // stored one to cut payload/tokens/latency (fewer transient failures).
+      const small = await resizeImage(file, 896, 0.85);
+      fd.append("file", small);
       // Pass the retailer-confirmed category so the model describes the product
       // AS that category and never reclassifies it (e.g. saree → dupatta).
       if (form.category) fd.append("category", form.category);

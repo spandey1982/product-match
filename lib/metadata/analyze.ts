@@ -91,27 +91,36 @@ export async function analyzeProductImage(
     productId: context.productId ?? null,
   } as const;
 
-  let res: Response;
-  try {
-    res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${ANALYZER_MODEL}:generateContent?key=${apiKey}`,
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${ANALYZER_MODEL}:generateContent?key=${apiKey}`;
+  const body = JSON.stringify({
+    contents: [
       {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                { inline_data: { mime_type: mimeType, data: buffer.toString("base64") } },
-                { text: buildAnalysisPrompt(knownCategory) },
-              ],
-            },
-          ],
-          generationConfig: { temperature: 0.2 },
-        }),
-      }
-    );
-  } catch {
+        parts: [
+          { inline_data: { mime_type: mimeType, data: buffer.toString("base64") } },
+          { text: buildAnalysisPrompt(knownCategory) },
+        ],
+      },
+    ],
+    generationConfig: { temperature: 0.2 },
+  });
+
+  // Transient failures (rate limits, 5xx, network blips) are common on hosted
+  // infra and were falling back to manual entry on the first hiccup. Retry a few
+  // times with backoff so a single transient error doesn't fail the auto-fill.
+  let res: Response | null = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body });
+    } catch {
+      res = null;
+    }
+    if (res && res.ok) break;
+    const transient = !res || res.status === 429 || res.status >= 500;
+    if (!transient || attempt === 3) break;
+    await new Promise((r) => setTimeout(r, 500 * attempt)); // 0.5s, then 1s
+  }
+
+  if (!res) {
     void recordAiUsage({
       ...usageBase,
       durationMs: Date.now() - t0,
