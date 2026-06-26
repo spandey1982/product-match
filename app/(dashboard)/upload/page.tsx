@@ -8,13 +8,14 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { partSlotsFor } from "@/lib/product/part-slots";
+import { categorySlotsFor, partSlotsFor } from "@/lib/product/part-slots";
 
 const CATEGORIES = [
-  "Saree", "Lehenga", "Blouse", "Dupatta", "Kurta",
+  "Saree", "Lehenga", "Blouse", "Dupatta", "Kurta", "Kurti",
   "Salwar", "Anarkali", "Sharara", "Palazzo",
   "Jewellery", "Footwear", "Clutch", "Handbag",
-  "Suit", "Tie", "Shirt", "Other",
+  "Suit", "Tie", "Shirt", "T-shirt", "Waistcoat",
+  "Trouser", "Jeans", "Other",
 ];
 
 const OCCASIONS = [
@@ -76,10 +77,9 @@ export default function UploadPage() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageUrlInput, setImageUrlInput] = useState("");
-  // Optional back-of-product image — improves back-profile generation only.
-  const backFileRef = useRef<HTMLInputElement>(null);
-  const [backImageFile, setBackImageFile] = useState<File | null>(null);
-  const [backImagePreview, setBackImagePreview] = useState<string | null>(null);
+  // Fingerprint of the last main image we extracted from — re-uploading the same
+  // image skips the (paid) extraction call; a different image re-runs it.
+  const [lastExtractedHash, setLastExtractedHash] = useState<string | null>(null);
   // Multi-image uploader: one "active" (enlarged) slot at a time — slot 0 is the
   // main product photo, the rest are category-specific detail close-ups.
   const partInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -209,6 +209,12 @@ export default function UploadPage() {
     }
   }
 
+  /** SHA-256 of the raw file bytes — a stable identity for the same image. */
+  async function fileHash(file: File): Promise<string> {
+    const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+    return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
+
   async function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     // Reset the input so re-picking the SAME file still fires onChange next time.
@@ -223,6 +229,13 @@ export default function UploadPage() {
     const resized = await resizeImage(file);   // max 1280px JPEG for upload + AI
     setImageFile(resized);
     advanceSlot("main"); // move on to the next slot to encourage more uploads
+
+    // Skip the (paid) extraction when the SAME image is re-uploaded; only a new
+    // image (even of the same product) re-runs it.
+    let hash: string | null = null;
+    try { hash = await fileHash(file); } catch { /* hashing unsupported — extract anyway */ }
+    if (hash && hash === lastExtractedHash) return;
+    if (hash) setLastExtractedHash(hash);
     await extractFromImage(resized);
   }
 
@@ -306,21 +319,6 @@ export default function UploadPage() {
     setter(arr.includes(item) ? arr.filter((i) => i !== item) : [...arr, item]);
   }
 
-  async function handleBackImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = ""; // allow re-picking the same file
-    if (!file) return;
-    setBackImagePreview(URL.createObjectURL(file));
-    const resized = await resizeImage(file);
-    setBackImageFile(resized);
-  }
-
-  function clearBackImage() {
-    setBackImageFile(null);
-    setBackImagePreview(null);
-    if (backFileRef.current) backFileRef.current.value = "";
-  }
-
   async function handlePartSelect(slotId: string, e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = ""; // allow re-picking the same file
@@ -366,18 +364,6 @@ export default function UploadPage() {
         }
       }
 
-      // Optional back image — best-effort; never blocks product creation.
-      let backImageUrl: string | undefined;
-      if (backImageFile) {
-        try {
-          const bfd = new FormData();
-          bfd.append("file", backImageFile);
-          const backRes = await fetch("/api/upload", { method: "POST", body: bfd });
-          const backData = await backRes.json();
-          if (backRes.ok) backImageUrl = backData.url;
-        } catch {/* optional — ignore back-image upload failure */}
-      }
-
       // Optional detail close-ups (extraction-only) — best-effort, never block.
       const partImages: { slot: string; label: string; url: string }[] = [];
       for (const slot of partSlotsFor(form.category)) {
@@ -403,7 +389,6 @@ export default function UploadPage() {
           styleTags: selectedStyles,
           season: selectedSeasons,
           imageUrl,
-          backImageUrl,
           partImages,
         }),
       });
@@ -460,10 +445,11 @@ export default function UploadPage() {
     );
   }
 
-  // Image slots for the active-card uploader (main + category close-ups).
+  // Image slots for the active-card uploader (main + category cards).
+  const slotCfg = categorySlotsFor(form.category);
   const imageSlots = [
-    { id: "main", label: "Product photo" },
-    ...partSlotsFor(form.category).map((s) => ({ id: s.id, label: s.label })),
+    { id: "main", label: slotCfg.main },
+    ...slotCfg.others.map((s) => ({ id: s.id, label: s.label })),
   ];
   const activeId = imageSlots.some((s) => s.id === activeSlot) ? activeSlot : "main";
   const activeSlotObj = imageSlots.find((s) => s.id === activeId) ?? imageSlots[0];
@@ -506,10 +492,13 @@ export default function UploadPage() {
             value={form.category}
             onChange={(e) => {
               setForm({ ...form, category: e.target.value });
-              // Different category → different detail slots; reset close-ups.
+              // Different category → different detail slots; reset close-ups and
+              // the extraction fingerprint (the same image must re-extract under
+              // the new category).
               setPartFiles({});
               setPartPreviews({});
               setActiveSlot("main");
+              setLastExtractedHash(null);
             }}
             options={CATEGORIES.map((c) => ({ value: c, label: c }))}
             placeholder="Select a category"
@@ -526,51 +515,54 @@ export default function UploadPage() {
 
           {imageSlots.length > 1 && (
             <p className="text-xs text-gray-400 -mt-2 mb-3">
-              Add the product photo, then the close-ups — each saved card moves you to the next. Tap any card to switch.
+              Add the main photo first — the other cards then unlock and each saved card moves you to the next. Tap any card to switch.
             </p>
           )}
 
-          {/* Active (enlarged) card — the only one you can upload from */}
-          <div className="mx-auto w-full max-w-[15rem]">
-            <button
-              type="button"
-              onClick={() => openSlotPicker(activeId)}
-              className="relative w-full aspect-[4/5] rounded-2xl overflow-hidden border-2 border-dashed border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/30 transition-all flex flex-col items-center justify-center group bg-gray-50/40"
-            >
-              {slotPreview(activeId) ? (
-                <>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={slotPreview(activeId)!} alt={activeSlotObj.label} className="absolute inset-0 w-full h-full object-cover" />
-                  <span className="absolute bottom-0 inset-x-0 bg-black/45 text-white text-[11px] font-medium py-1.5 text-center">
-                    {activeSlotObj.label} · tap to change
-                  </span>
-                </>
-              ) : (
-                <>
-                  <ImagePlus className="h-8 w-8 text-gray-300 group-hover:text-indigo-400 mb-2 transition-colors" />
-                  <p className="text-sm font-medium text-gray-500 group-hover:text-indigo-600">Upload {activeSlotObj.label}</p>
-                  <p className="text-[11px] text-gray-400 mt-0.5">JPEG, PNG, WebP</p>
-                </>
-              )}
-            </button>
-            {slotPreview(activeId) && (
-              <button type="button" onClick={() => clearSlot(activeId)} className="mt-1.5 mx-auto block text-[11px] text-gray-400 hover:text-red-500">
-                Remove
-              </button>
+          {/* Active (enlarged) card — landscape, the only one you can upload from */}
+          <button
+            type="button"
+            onClick={() => openSlotPicker(activeId)}
+            className="relative w-full h-44 rounded-2xl overflow-hidden border-2 border-dashed border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/30 transition-all flex flex-col items-center justify-center group bg-gray-50/40"
+          >
+            {slotPreview(activeId) ? (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={slotPreview(activeId)!} alt={activeSlotObj.label} className="absolute inset-0 w-full h-full object-contain bg-white" />
+                <span className="absolute bottom-0 inset-x-0 bg-black/45 text-white text-[11px] font-medium py-1.5 text-center">
+                  {activeSlotObj.label} · tap to change
+                </span>
+              </>
+            ) : (
+              <>
+                <ImagePlus className="h-8 w-8 text-gray-300 group-hover:text-indigo-400 mb-2 transition-colors" />
+                <p className="text-sm font-medium text-gray-500 group-hover:text-indigo-600">Upload {activeSlotObj.label}</p>
+                <p className="text-[11px] text-gray-400 mt-0.5">JPEG, PNG, WebP</p>
+              </>
             )}
-          </div>
+          </button>
+          {slotPreview(activeId) && (
+            <button type="button" onClick={() => clearSlot(activeId)} className="mt-1.5 block text-[11px] text-gray-400 hover:text-red-500">
+              Remove
+            </button>
+          )}
 
-          {/* Remaining slots — stacked rectangular cards; tap to enlarge */}
+          {/* Remaining slots — stacked rectangular cards; tap to enlarge. Locked
+              until the main photo is uploaded (it's the primary/extraction image). */}
           {imageSlots.filter((s) => s.id !== activeId).length > 0 && (
             <div className="mt-3 space-y-2">
               {imageSlots.filter((s) => s.id !== activeId).map((s) => {
                 const preview = slotPreview(s.id);
+                const locked = s.id !== "main" && !imageFile;
                 return (
                   <button
                     key={s.id}
                     type="button"
+                    disabled={locked}
                     onClick={() => setActiveSlot(s.id)}
-                    className="w-full flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-2 hover:border-indigo-300 text-left transition-colors"
+                    className={`w-full flex items-center gap-3 rounded-xl border p-2 text-left transition-colors ${
+                      locked ? "border-gray-100 opacity-60 cursor-not-allowed" : "border-gray-200 bg-white hover:border-indigo-300"
+                    }`}
                   >
                     <div className="h-11 w-11 rounded-lg overflow-hidden bg-gray-50 border border-gray-100 flex items-center justify-center shrink-0">
                       {preview ? (
@@ -582,7 +574,9 @@ export default function UploadPage() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-gray-800 truncate">{s.label}</p>
-                      <p className="text-xs text-gray-400">{preview ? "Uploaded · tap to change" : "Tap to add"}</p>
+                      <p className="text-xs text-gray-400">
+                        {locked ? "Add the main photo first" : preview ? "Uploaded · tap to change" : "Tap to add"}
+                      </p>
                     </div>
                     {preview && <Check className="h-4 w-4 text-emerald-500 shrink-0" />}
                   </button>
@@ -610,77 +604,6 @@ export default function UploadPage() {
             onChange={handleImageSelect}
           />
 
-          {/* Divider with OR */}
-          {!imageFile && (
-            <div className="flex items-center gap-3 mt-4">
-              <div className="flex-1 h-px bg-gray-100" />
-              <span className="text-xs text-gray-400 font-medium">or paste a URL</span>
-              <div className="flex-1 h-px bg-gray-100" />
-            </div>
-          )}
-
-          {/* External image URL fallback */}
-          {!imageFile && (
-            <Input
-              className="mt-3"
-              placeholder="https://example.com/product-image.jpg"
-              value={imageUrlInput}
-              onChange={(e) => {
-                setImageUrlInput(e.target.value);
-                setImagePreview(e.target.value || null);
-              }}
-            />
-          )}
-
-          {/* Optional back image — subtle enhancement; the flow works without it.
-              Improves back-profile catalogue generation when provided. */}
-          <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
-            <div className="flex items-center gap-3 min-w-0">
-              {backImagePreview ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={backImagePreview}
-                  alt="Back of product"
-                  className="h-10 w-10 rounded-lg object-cover border border-gray-100 shrink-0"
-                />
-              ) : (
-                <div className="h-10 w-10 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center shrink-0">
-                  <ImagePlus className="h-4 w-4 text-gray-300" />
-                </div>
-              )}
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-gray-900">Back image <span className="text-gray-400 font-normal">(optional)</span></p>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  Improves back-view generation.
-                </p>
-              </div>
-            </div>
-            <div className="flex gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={() => backFileRef.current?.click()}
-                className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:border-gray-300"
-              >
-                {backImagePreview ? "Replace" : "Add"}
-              </button>
-              {backImagePreview && (
-                <button
-                  type="button"
-                  onClick={clearBackImage}
-                  className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-red-600 hover:border-red-200"
-                >
-                  Remove
-                </button>
-              )}
-              <input
-                ref={backFileRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                className="hidden"
-                onChange={handleBackImageSelect}
-              />
-            </div>
-          </div>
         </div>
         )}
 
