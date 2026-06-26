@@ -5,6 +5,7 @@ import { cloudinary } from "@/lib/cloudinary";
 import { getImageDimensions, fmtBytes } from "@/lib/image-utils";
 import { recordAiUsage, type AiUsageContext } from "@/lib/ai-usage/record";
 import { getBrandingConfig, applyBranding } from "@/lib/model-gen/branding";
+import { preprocessProductImage } from "@/lib/images/preprocess";
 
 const GEMINI_MODEL = "gemini-3.1-flash-image";
 
@@ -133,9 +134,16 @@ export async function runGeminiImageGen(
 
   try {
     const hasReference = Boolean(referenceBuffer && referenceMime);
+
+    // Controlled Lanczos+sharpen downscale + high-quality encode before the model
+    // sees it — a deliberate, faithful input instead of Gemini's blind internal
+    // downsample of the full upload. Non-fatal (falls back to the original).
+    const { buffer: modelInputBuffer, mime: modelInputMime } =
+      await preprocessProductImage(productBuffer, productMime);
+
     const imageInputs = hasReference ? 2 : 1;
     const requestBytes =
-      productBuffer.length + (hasReference ? referenceBuffer!.length : 0);
+      modelInputBuffer.length + (hasReference ? referenceBuffer!.length : 0);
 
     // Image parts: reference model first (if any), then the product garment.
     const parts: Array<Record<string, unknown>> = [];
@@ -145,14 +153,14 @@ export async function runGeminiImageGen(
       });
     }
     parts.push({
-      inline_data: { mime_type: productMime, data: productBuffer.toString("base64") },
+      inline_data: { mime_type: modelInputMime, data: modelInputBuffer.toString("base64") },
     });
     parts.push({ text: prompt });
 
-    const inputDims = getImageDimensions(productBuffer, productMime);
+    const inputDims = getImageDimensions(modelInputBuffer, modelInputMime);
     console.log(`[model-image] ── Gemini gen (${view}) ────────────────────────`);
     console.log(`[model-image] Product: ${productTitle} (${productCategory} · ${productColor})  reference=${hasReference}`);
-    console.log(`[model-image] Product image: ${fmtBytes(productBuffer.length)}  mime=${productMime}  ${inputDims ? `${inputDims.width}×${inputDims.height}px` : "dims=unknown"}`);
+    console.log(`[model-image] Product image (preprocessed): ${fmtBytes(modelInputBuffer.length)}  mime=${modelInputMime}  ${inputDims ? `${inputDims.width}×${inputDims.height}px` : "dims=unknown"}`);
 
     const t0 = Date.now();
     const res = await fetch(
@@ -268,7 +276,7 @@ export async function runGeminiImageGen(
       });
     }
     inputImages.push({
-      label: "product-image", mime: productMime, sizeBytes: productBuffer.length,
+      label: "product-image", mime: modelInputMime, sizeBytes: modelInputBuffer.length,
       widthPx: inputDims?.width ?? null, heightPx: inputDims?.height ?? null,
     });
 
