@@ -26,6 +26,7 @@ import { maybeReviewGenerations } from "./ai-review";
 import { runQuickListingStrategy } from "./strategies/quick-listing";
 import { runCatalogueStrategy, type StrategyProduct } from "./strategies/catalogue";
 import { ensureDetailNotes, ensureBackDetailNotes } from "@/lib/metadata/detail-notes";
+import { parsePartImages } from "@/lib/product/part-slots";
 
 /**
  * Master switch for the objective-based generation UI + routing. When OFF
@@ -69,6 +70,15 @@ export async function generateModelImages(
     return { objective, modelType, images: [] };
   }
 
+  // Back image for the catalogue back view: any uploaded detail card whose slot
+  // is a "back" of the product (blouse-back, kurta-back, coat-back, choli-back,
+  // trouser-back, …) feeds back-profile generation. Falls back to the legacy
+  // Product.backImageUrl, else null (model invents the back, as before).
+  const backPart = parsePartImages(product.partImages).find(
+    (p) => /back/i.test(p.slot) || /back/i.test(p.label)
+  );
+  const backImageUrl = backPart?.url ?? product.backImageUrl ?? null;
+
   // Prompt enrichment: concise, category-grounded detail hints, extracted once
   // and cached. Non-fatal — null when unavailable. Threaded per-view into the
   // prompt so the model is told which fine specifics to preserve. Back notes are
@@ -76,8 +86,8 @@ export async function generateModelImages(
   // quick-listing is front-only and never sees them).
   const ctx = { storeId: input.userId, userId: input.userId };
   const detailNotes = await ensureDetailNotes(product.id, product.imageUrl, product.category, ctx);
-  const backDetailNotes = product.backImageUrl
-    ? await ensureBackDetailNotes(product.id, product.backImageUrl, product.category, ctx)
+  const backDetailNotes = backImageUrl
+    ? await ensureBackDetailNotes(product.id, backImageUrl, product.category, ctx)
     : null;
 
   const strategyProduct: StrategyProduct = {
@@ -87,7 +97,7 @@ export async function generateModelImages(
     color: product.color,
     gender: product.gender,
     imageUrl: product.imageUrl,
-    backImageUrl: product.backImageUrl,
+    backImageUrl,
     detailNotes,
     backDetailNotes,
   };
