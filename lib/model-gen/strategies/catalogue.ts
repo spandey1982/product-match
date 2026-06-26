@@ -29,6 +29,8 @@ export interface StrategyProduct {
   imageUrl: string;
   /** Optional back-of-product image — used for the back base shot when present. */
   backImageUrl?: string | null;
+  /** Concise generation detail hints (prompt enrichment); null when unavailable. */
+  detailNotes?: string | null;
 }
 
 export type CatalogueBackend = "gemini" | "vertex";
@@ -156,6 +158,7 @@ export async function runCatalogueStrategy(opts: {
       gender: product.gender,
       view,
       hasReference: Boolean(reference),
+      detailNotes: product.detailNotes,
     });
 
     const shot = await generateBaseShot(

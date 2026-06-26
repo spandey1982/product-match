@@ -43,6 +43,11 @@ model Product {
   // shared metadata service (lib/metadata) and reused by generation + future
   // recommendation/stylist systems. Nullable → existing rows unaffected.
   pattern   String?
+  // Concise generation hints — the visually critical specifics the model must
+  // preserve (weave/technique, motifs, border, embellishment, texture).
+  // Lazily extracted once (category-aware) and cached; fed into the generation
+  // prompt so fine detail isn't lost during synthesis. Nullable → safe default.
+  detailNotes String?
   gender    String @default("WOMEN")
   season    String @default("[]")
   price     Float

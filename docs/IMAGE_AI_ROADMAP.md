@@ -301,8 +301,32 @@ variant. `GenerationRecord` gained `modelName/width/height/fileSizeBytes` and
 extended eval (`aiTextureQuality/aiProductVisibility/aiIssues`). Crop templates
 now produce named close-ups (saree blouse/pallu/pleats, lehenga blouse/detail,
 kurti design). **Deferred (team + Cloudinary-plan dependent):** generative AI
-super-resolution tier (`e_upscale`/Real-ESRGAN) for true detail, and raising the
-800px product-input cap.
+super-resolution tier (`e_upscale`/Real-ESRGAN) for true detail.
+
+**Production image pipeline (resize + zoom + prompt enrichment).** Three
+production changes from the vision-quality work (R&D — benchmarks/upscalers/
+region-refinement — was evaluated separately and kept off `main`; only these
+shipped):
+1. **Controlled input preprocessing** (`lib/images/preprocess.ts`, wired into
+   `runGeminiImageGen`). Live generation previously sent the *full upload* (≤5MB)
+   to Gemini, which downsampled it with its own resampler — uncontrolled loss
+   (there was **no 800px cap** in production; that figure only existed in the
+   benchmark). Now: Lanczos3 → ~1280px (high-fidelity sweet spot; bigger wastes
+   input tokens for diminishing understanding) + light sharpen + WebP-q90.
+   Non-fatal fallback. (Lossless AVIF/WebP rejected — can't recover what the
+   source JPG already lost, and AVIF API support is uncertain.)
+2. **Full-screen viewer zoom** (`ProductImageViewer`). Tap/wheel zoom + drag-pan
+   coexisting with the swipe carousel; per-slide caps (full shots 3×, crops 2×),
+   no numeric readout.
+3. **Prompt enrichment v1** (`lib/metadata/detail-notes.ts`, `Product.detailNotes`,
+   migration `0008_add_product_detail_notes`). Lazy, cached, category-grounded
+   (uses the retailer's **confirmed** category, not an AI guess) extraction of the
+   visually critical specifics (weave/technique, motifs, border, embellishment,
+   texture); threaded into `buildViewPrompt` so the model is told what to
+   preserve. One-time Flash-lite call per product. **v2 (planned):** optional,
+   category-specific part-image uploads (saree → pallu/border/blouse; lehenga →
+   blouse front/back/sleeve; etc.) used as **extraction-only** inputs (never sent
+   to generation — keeps generation tokens flat) to enrich `detailNotes`.
 
 **Optional back product image (Phase H, done).** `Product.backImageUrl` (nullable,
 migration `0004`) — an optional second image uploaded in the product form. The

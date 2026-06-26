@@ -25,6 +25,7 @@ import { recordGenerations } from "./generation-record";
 import { maybeReviewGenerations } from "./ai-review";
 import { runQuickListingStrategy } from "./strategies/quick-listing";
 import { runCatalogueStrategy, type StrategyProduct } from "./strategies/catalogue";
+import { ensureDetailNotes } from "@/lib/metadata/detail-notes";
 
 /**
  * Master switch for the objective-based generation UI + routing. When OFF
@@ -68,6 +69,14 @@ export async function generateModelImages(
     return { objective, modelType, images: [] };
   }
 
+  // Prompt enrichment: concise, category-grounded detail hints, extracted once
+  // and cached. Non-fatal — null when unavailable. Threaded into the prompt so
+  // the model is told which fine specifics to preserve.
+  const detailNotes = await ensureDetailNotes(product.id, product.imageUrl, product.category, {
+    storeId: input.userId,
+    userId: input.userId,
+  });
+
   const strategyProduct: StrategyProduct = {
     id: product.id,
     title: product.title,
@@ -76,6 +85,7 @@ export async function generateModelImages(
     gender: product.gender,
     imageUrl: product.imageUrl,
     backImageUrl: product.backImageUrl,
+    detailNotes,
   };
 
   // Catalogue backend: explicit setting, or category-routed when "auto"
