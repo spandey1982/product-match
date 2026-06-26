@@ -186,6 +186,8 @@ export default function UploadPage() {
 
   async function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
+    // Reset the input so re-picking the SAME file still fires onChange next time.
+    e.target.value = "";
     if (!file) return;
     if (!form.category) {
       setExtractError("Select a product category first, then upload the image.");
@@ -280,6 +282,7 @@ export default function UploadPage() {
 
   async function handleBackImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-picking the same file
     if (!file) return;
     setBackImagePreview(URL.createObjectURL(file));
     const resized = await resizeImage(file);
@@ -447,24 +450,34 @@ export default function UploadPage() {
           </h2>
 
           {imagePreview ? (
-            <div className="relative w-48 h-64 mx-auto">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={imagePreview}
-                alt="Preview"
-                className="w-full h-full object-cover rounded-2xl"
-                onError={() => setImagePreview(null)}
-              />
+            <div className="flex flex-col items-center gap-3">
+              <div className="relative w-48 h-64">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={imagePreview}
+                  alt="Preview"
+                  className="w-full h-full object-cover rounded-2xl"
+                  onError={() => setImagePreview(null)}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setImageFile(null);
+                    setImagePreview(null);
+                    setImageUrlInput("");
+                  }}
+                  className="absolute top-2 right-2 h-7 w-7 bg-white rounded-full shadow flex items-center justify-center hover:bg-red-50 transition-colors"
+                  aria-label="Remove image"
+                >
+                  <X className="h-4 w-4 text-gray-600" />
+                </button>
+              </div>
               <button
                 type="button"
-                onClick={() => {
-                  setImageFile(null);
-                  setImagePreview(null);
-                  setImageUrlInput("");
-                }}
-                className="absolute top-2 right-2 h-7 w-7 bg-white rounded-full shadow flex items-center justify-center hover:bg-red-50 transition-colors"
+                onClick={() => fileRef.current?.click()}
+                className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:border-indigo-300 hover:text-indigo-600 transition-colors"
               >
-                <X className="h-4 w-4 text-gray-600" />
+                Change image
               </button>
             </div>
           ) : (
