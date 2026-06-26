@@ -82,6 +82,7 @@ export async function runQuickListingStrategy(opts: {
     gender: product.gender,
     view: frontView,
     hasReference: Boolean(reference),
+    detailNotes: product.detailNotes,
   });
 
   const result = await runGeminiImageGen({

@@ -301,8 +301,57 @@ variant. `GenerationRecord` gained `modelName/width/height/fileSizeBytes` and
 extended eval (`aiTextureQuality/aiProductVisibility/aiIssues`). Crop templates
 now produce named close-ups (saree blouse/pallu/pleats, lehenga blouse/detail,
 kurti design). **Deferred (team + Cloudinary-plan dependent):** generative AI
-super-resolution tier (`e_upscale`/Real-ESRGAN) for true detail, and raising the
-800px product-input cap.
+super-resolution tier (`e_upscale`/Real-ESRGAN) for true detail.
+
+**Production image pipeline (resize + zoom + prompt enrichment).** Three
+production changes from the vision-quality work (R&D — benchmarks/upscalers/
+region-refinement — was evaluated separately and kept off `main`; only these
+shipped):
+1. **Controlled input preprocessing** (`lib/images/preprocess.ts`, wired into
+   `runGeminiImageGen`). Live generation previously sent the *full upload* (≤5MB)
+   to Gemini, which downsampled it with its own resampler — uncontrolled loss
+   (there was **no 800px cap** in production; that figure only existed in the
+   benchmark). Now: Lanczos3 → ~1280px (high-fidelity sweet spot; bigger wastes
+   input tokens for diminishing understanding) + light sharpen + WebP-q90.
+   Non-fatal fallback. (Lossless AVIF/WebP rejected — can't recover what the
+   source JPG already lost, and AVIF API support is uncertain.)
+2. **Full-screen viewer zoom** (`ProductImageViewer`). Tap/wheel zoom + drag-pan
+   coexisting with the swipe carousel; per-slide caps (full shots 3×, crops 2×),
+   no numeric readout.
+3. **Prompt enrichment v1** (`lib/metadata/detail-notes.ts`, `Product.detailNotes`,
+   migration `0008_add_product_detail_notes`). Lazy, cached, category-grounded
+   (uses the retailer's **confirmed** category, not an AI guess) extraction of the
+   visually critical specifics (weave/technique, motifs, border, embellishment,
+   texture); threaded into `buildViewPrompt` so the model is told what to
+   preserve. One-time Flash-lite call per product. Notes are **per-view**: front
+   notes → front prompts, back notes (`Product.backDetailNotes`, migration `0009`)
+   → the catalogue back-view prompt only (quick-listing is front-only, so it never
+   sees back detail). Wired into both the objective engine and the legacy path.
+4. **Prompt enrichment v2 — category-first + detail close-ups (done).**
+   - **Category-first:** the category selector is the first field and is required
+     before image upload; it's passed to the extractor and asserted as ground
+     truth so the model never reclassifies (e.g. saree → dupatta), not even in the
+     title. Removed the duplicate category control.
+   - **Detail close-ups** (`lib/product/part-slots.ts`, `Product.partImages`,
+     migration `0010`): optional, category-specific close-up slots (Saree →
+     pallu/border/blouse; Lehenga → skirt/blouse/dupatta; Sharara similar; Men's
+     Suit → trouser/waistcoat) rendered as a grid once a category + main image are
+     chosen. **Extraction-only** — they enrich the front `detailNotes` (added as
+     extra image parts to the one-time Flash extraction) but are **never** sent to
+     the image generator, so generation token cost is unchanged.
+   - **Input cap:** the real cap was the client-side resize at upload (800px,
+     applied before both AI and storage — which also made the server preprocessing
+     a no-op). Raised to **1280px @ q90**.
+   - **Stepped upload flow:** the Add-Product page is now progressive — category
+     (required) → image card (+ detail close-ups) → AI auto-fill status → generate
+     toggle (objectives shown as two concise side-by-side cards) → always-visible
+     metadata form → Add to Catalog. Gender/model pickers removed (gender comes
+     from extraction; model auto-selected).
+
+   **Near-future (requested, not built):** model picker (choose among a few base
+   models); background options by colour/location; branding that blends subtly
+   into the catalogue background rather than a hard logo overlay; surfacing the
+   stored detail close-ups on the product detail/edit page.
 
 **Optional back product image (Phase H, done).** `Product.backImageUrl` (nullable,
 migration `0004`) — an optional second image uploaded in the product form. The

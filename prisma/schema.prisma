@@ -43,6 +43,14 @@ model Product {
   // shared metadata service (lib/metadata) and reused by generation + future
   // recommendation/stylist systems. Nullable → existing rows unaffected.
   pattern   String?
+  // Concise generation hints — the visually critical specifics the model must
+  // preserve (weave/technique, motifs, border, embellishment, texture).
+  // Lazily extracted once (category-aware) and cached; fed into the generation
+  // prompt so fine detail isn't lost during synthesis. Nullable → safe default.
+  detailNotes String?
+  // Same, but for the back image — fed only into the BACK-view prompt (catalogue
+  // generates a back view; quick-listing is front-only so never uses this).
+  backDetailNotes String?
   gender    String @default("WOMEN")
   season    String @default("[]")
   price     Float
@@ -52,6 +60,11 @@ model Product {
   // generation uses it instead of the model inventing the back. Nullable →
   // existing products and the current flow are unaffected.
   backImageUrl  String?
+  // Optional category-specific detail close-ups (pallu/border/blouse/skirt/…),
+  // as a JSON array of { slot, label, url }. EXTRACTION-ONLY — fed to the
+  // metadata/detail extractor to enrich the prompt, never sent to the image
+  // generator (so generation token cost is unchanged). Nullable → safe default.
+  partImages    String?
   thumbnailUrl  String?
   modelImageUrl String?
 

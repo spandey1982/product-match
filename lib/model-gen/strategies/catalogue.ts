@@ -29,6 +29,10 @@ export interface StrategyProduct {
   imageUrl: string;
   /** Optional back-of-product image — used for the back base shot when present. */
   backImageUrl?: string | null;
+  /** Front-image generation detail hints (prompt enrichment); null when unavailable. */
+  detailNotes?: string | null;
+  /** Back-image detail hints — used only for the back-view prompt. */
+  backDetailNotes?: string | null;
 }
 
 export type CatalogueBackend = "gemini" | "vertex";
@@ -156,6 +160,8 @@ export async function runCatalogueStrategy(opts: {
       gender: product.gender,
       view,
       hasReference: Boolean(reference),
+      // Back view uses back-image notes; all other views use front notes.
+      detailNotes: isBack ? product.backDetailNotes : product.detailNotes,
     });
 
     const shot = await generateBaseShot(

@@ -5,11 +5,12 @@ import { cloudinary } from "@/lib/cloudinary";
 import { getImageDimensions, fmtBytes } from "@/lib/image-utils";
 import { recordAiUsage, type AiUsageContext } from "@/lib/ai-usage/record";
 import { getBrandingConfig, applyBranding } from "@/lib/model-gen/branding";
+import { preprocessProductImage } from "@/lib/images/preprocess";
 
 const GEMINI_MODEL = "gemini-3.1-flash-image";
 
 /** Build a prompt tailored to the product category and gender */
-function buildPrompt(category: string, color: string, gender: string): string {
+function buildPrompt(category: string, color: string, gender: string, detailNotes?: string | null): string {
   const cat = category.toLowerCase();
   const isWomen = gender !== "MEN";
 
@@ -20,13 +21,17 @@ function buildPrompt(category: string, color: string, gender: string): string {
   const setting =
     "professional fashion photography studio, soft diffused lighting, clean white background, high resolution, photorealistic";
 
+  const detail = detailNotes?.trim()
+    ? ` Faithfully preserve these product specifics: ${detailNotes.trim()}.`
+    : "";
+
   if (["jewellery", "clutch", "handbag"].includes(cat)) {
-    return `Close-up fashion photograph of ${subject} wearing/holding this ${category}. ${setting}.`;
+    return `Close-up fashion photograph of ${subject} wearing/holding this ${category}. ${setting}.${detail}`;
   }
   if (["footwear"].includes(cat)) {
-    return `Fashion photograph showing ${subject} wearing these shoes. Full or half body shot. ${setting}.`;
+    return `Fashion photograph showing ${subject} wearing these shoes. Full or half body shot. ${setting}.${detail}`;
   }
-  return `Full body fashion photograph of ${subject} wearing this ${color} ${category}. The garment is clearly visible and styled naturally. ${setting}.`;
+  return `Full body fashion photograph of ${subject} wearing this ${color} ${category}. The garment is clearly visible and styled naturally. ${setting}.${detail}`;
 }
 
 const MIME_BY_EXT: Record<string, string> = {
@@ -133,9 +138,16 @@ export async function runGeminiImageGen(
 
   try {
     const hasReference = Boolean(referenceBuffer && referenceMime);
+
+    // Controlled Lanczos+sharpen downscale + high-quality encode before the model
+    // sees it — a deliberate, faithful input instead of Gemini's blind internal
+    // downsample of the full upload. Non-fatal (falls back to the original).
+    const { buffer: modelInputBuffer, mime: modelInputMime } =
+      await preprocessProductImage(productBuffer, productMime);
+
     const imageInputs = hasReference ? 2 : 1;
     const requestBytes =
-      productBuffer.length + (hasReference ? referenceBuffer!.length : 0);
+      modelInputBuffer.length + (hasReference ? referenceBuffer!.length : 0);
 
     // Image parts: reference model first (if any), then the product garment.
     const parts: Array<Record<string, unknown>> = [];
@@ -145,14 +157,14 @@ export async function runGeminiImageGen(
       });
     }
     parts.push({
-      inline_data: { mime_type: productMime, data: productBuffer.toString("base64") },
+      inline_data: { mime_type: modelInputMime, data: modelInputBuffer.toString("base64") },
     });
     parts.push({ text: prompt });
 
-    const inputDims = getImageDimensions(productBuffer, productMime);
+    const inputDims = getImageDimensions(modelInputBuffer, modelInputMime);
     console.log(`[model-image] ── Gemini gen (${view}) ────────────────────────`);
     console.log(`[model-image] Product: ${productTitle} (${productCategory} · ${productColor})  reference=${hasReference}`);
-    console.log(`[model-image] Product image: ${fmtBytes(productBuffer.length)}  mime=${productMime}  ${inputDims ? `${inputDims.width}×${inputDims.height}px` : "dims=unknown"}`);
+    console.log(`[model-image] Product image (preprocessed): ${fmtBytes(modelInputBuffer.length)}  mime=${modelInputMime}  ${inputDims ? `${inputDims.width}×${inputDims.height}px` : "dims=unknown"}`);
 
     const t0 = Date.now();
     const res = await fetch(
@@ -268,7 +280,7 @@ export async function runGeminiImageGen(
       });
     }
     inputImages.push({
-      label: "product-image", mime: productMime, sizeBytes: productBuffer.length,
+      label: "product-image", mime: modelInputMime, sizeBytes: modelInputBuffer.length,
       widthPx: inputDims?.width ?? null, heightPx: inputDims?.height ?? null,
     });
 
@@ -335,7 +347,15 @@ export async function generateModelImage(productId: string): Promise<void> {
     const source = await fetchProductImageBuffer(product.imageUrl);
     if (!source) return;
 
-    const prompt = buildPrompt(product.category, product.color, product.gender);
+    // Prompt enrichment (front-only path). Dynamic import avoids a static import
+    // cycle (detail-notes imports fetchProductImageBuffer from this module).
+    const { ensureDetailNotes } = await import("@/lib/metadata/detail-notes");
+    const detailNotes = await ensureDetailNotes(productId, product.imageUrl, product.category, {
+      storeId: product.userId,
+      userId: product.userId,
+    });
+
+    const prompt = buildPrompt(product.category, product.color, product.gender, detailNotes);
     const result = await runGeminiImageGen({
       productId,
       productTitle:    product.title,

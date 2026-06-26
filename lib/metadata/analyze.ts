@@ -43,12 +43,25 @@ export type MetadataResult =
   | { ok: true; metadata: ProductMetadata }
   | { ok: false; status: number; error: string };
 
-const ANALYSIS_PROMPT = `Indian ethnic fashion product image. Return raw JSON only, no markdown:
+/**
+ * Build the analysis prompt. When the retailer has already chosen a category, it
+ * is asserted as ground truth so the model describes (title/description/etc.)
+ * the product AS that category and never reclassifies it — preventing e.g. a
+ * saree being mistaken for a dupatta.
+ */
+function buildAnalysisPrompt(knownCategory?: string): string {
+  const cat = knownCategory?.trim();
+  const categoryAssertion = cat
+    ? `IMPORTANT: This product IS a ${cat}. Treat it as a ${cat} throughout — describe the title and description as a ${cat}, and never reclassify it. Set "category" to exactly "${cat}".`
+    : "";
+  return `Indian ethnic fashion product image. ${categoryAssertion}
+Return raw JSON only, no markdown:
 {"title":"","description":"2-3 sentences","category":"Saree|Lehenga|Blouse|Dupatta|Kurta|Salwar|Anarkali|Sharara|Palazzo|Jewellery|Footwear|Clutch|Handbag|Suit|Tie|Other","subcategory":"or empty string","color":"primary color","pattern":"Solid|Floral|Paisley|Geometric|Striped|Polka|Checked|Embroidered|Printed|Woven|Zari|Bandhani|Block Print|Abstract|other","material":"Silk|Cotton|Chiffon|Georgette|Velvet|Banarasi|Kanjeevaram|Linen|Crepe|Net|Satin|Polyester|Organza|Khadi|Wool|Gold|best guess","gender":"WOMEN|MEN|UNISEX|GIRLS|BOYS","occasion":[],"styleTags":[],"season":[],"price":0}
 occasion options: Wedding Bridal Festive Party Casual Formal Office Traditional Religious Anniversary
 styleTags options: Ethnic Boho Minimalist Traditional Contemporary Fusion Royal Bridal Casual Festive
 season options: Spring Summer Autumn Winter All Season
 price: integer INR estimate based on quality. Arrays may be empty. Use "Other" for unknown category. "pattern" is the dominant visual print/motif.`;
+}
 
 /**
  * Analyse a product image into structured metadata. Never throws — returns a
@@ -57,7 +70,9 @@ price: integer INR estimate based on quality. Arrays may be empty. Use "Other" f
 export async function analyzeProductImage(
   buffer: Buffer,
   mimeType: string,
-  context: AnalyzeContext = {}
+  context: AnalyzeContext = {},
+  /** Retailer-confirmed category — asserted as ground truth, never reclassified. */
+  knownCategory?: string
 ): Promise<MetadataResult> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || apiKey === "your-gemini-api-key-here") {
@@ -88,7 +103,7 @@ export async function analyzeProductImage(
             {
               parts: [
                 { inline_data: { mime_type: mimeType, data: buffer.toString("base64") } },
-                { text: ANALYSIS_PROMPT },
+                { text: buildAnalysisPrompt(knownCategory) },
               ],
             },
           ],
@@ -152,7 +167,8 @@ export async function analyzeProductImage(
   const metadata: ProductMetadata = {
     title: String(parsed.title || ""),
     description: String(parsed.description || ""),
-    category: String(parsed.category || "Other"),
+    // Retailer-confirmed category wins — never let the model override it.
+    category: knownCategory?.trim() || String(parsed.category || "Other"),
     subcategory: String(parsed.subcategory || ""),
     color: String(parsed.color || ""),
     pattern: String(parsed.pattern || ""),

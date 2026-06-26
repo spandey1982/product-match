@@ -77,16 +77,26 @@ export interface ViewPromptInput {
   view: PromptView;
   /** Whether a reference-model image accompanies the request. */
   hasReference: boolean;
+  /** Optional concise detail hints (prompt enrichment) to preserve fine detail. */
+  detailNotes?: string | null;
+}
+
+/** "Preserve these product specifics: …" clause, or "" when no notes. */
+function detailClause(detailNotes?: string | null): string {
+  const notes = detailNotes?.trim();
+  return notes ? `Faithfully preserve these product specifics: ${notes}.` : "";
 }
 
 /**
  * Compose the full prompt for one view. When a reference model image is
  * supplied it is sent as the first image and the prompt instructs the model to
  * dress that exact person (improving draping consistency); otherwise a fresh
- * model is described from the product's gender.
+ * model is described from the product's gender. Detail hints (when present)
+ * tell the model which fine specifics it must not lose during synthesis.
  */
 export function buildViewPrompt(input: ViewPromptInput): string {
-  const { category, color, gender, view, hasReference } = input;
+  const { category, color, gender, view, hasReference, detailNotes } = input;
+  const detail = detailClause(detailNotes);
 
   if (hasReference) {
     return [
@@ -94,13 +104,15 @@ export function buildViewPrompt(input: ViewPromptInput): string {
       `Generate a photorealistic photograph of the model in Image 1 wearing this ${color} ${category} from Image 2.`,
       "Preserve the model's face, body and skin tone from Image 1, and the garment's exact colour, print and texture from Image 2.",
       view.modifier,
+      detail,
       SETTING,
-    ].join(" ");
+    ].filter(Boolean).join(" ");
   }
 
   return [
     `Full-body fashion photograph of ${subjectFor(gender)} wearing this ${color} ${category}.`,
     view.modifier,
+    detail,
     SETTING,
-  ].join(" ");
+  ].filter(Boolean).join(" ");
 }

@@ -110,6 +110,13 @@ export function ProductDetailView({
   const imageLabels = productImages.map((_, i) =>
     i === 0 ? "Product" : onModel[i - 1]?.view === "on-model" ? "On model" : prettyView(onModel[i - 1].view)
   );
+  // Zoom caps: full shots (product photo + full-body on-model views) allow more
+  // magnification; named close-up crops are already zoomed in, so they allow
+  // less. A crop is any generated slide whose view isn't a full-body base shot.
+  const FULL_VIEWS = new Set(["on-model", "front", "back"]);
+  const maxZooms = productImages.map((_, i) =>
+    i === 0 || FULL_VIEWS.has(onModel[i - 1]?.view) ? 3 : 2
+  );
 
   async function handleDelete() {
     if (!confirmDelete) { setConfirmDelete(true); return; }
@@ -199,6 +206,7 @@ export function ProductDetailView({
         <ProductImageViewer
           images={masterImages}
           labels={imageLabels}
+          maxZooms={maxZooms}
           initialIndex={viewerIndex}
           onClose={() => setViewerIndex(null)}
         />

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { displayUrl } from "@/lib/images/variants";
 
 export interface ReviewRecord {
   id: string;
@@ -18,6 +19,9 @@ export interface ReviewRecord {
   aiDrapeQuality: number | null;
   aiPatternPreservation: number | null;
   aiRenderingQuality: number | null;
+  aiTextureQuality: number | null;
+  aiProductVisibility: number | null;
+  aiIssues: string | null;
   manualScore: number | null;
   manualReviewer: string | null;
   createdAt: string;
@@ -25,6 +29,17 @@ export interface ReviewRecord {
 
 function fmt(v: number | null): string {
   return v === null || v === undefined ? "—" : v.toFixed(1);
+}
+
+/** Parse the stored JSON issues array into a string[] (tolerant of bad data). */
+function parseIssues(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr.map(String) : [];
+  } catch {
+    return [];
+  }
 }
 
 function Card({ record, onRated }: { record: ReviewRecord; onRated: (r: ReviewRecord) => void }) {
@@ -47,11 +62,13 @@ function Card({ record, onRated }: { record: ReviewRecord; onRated: (r: ReviewRe
     }
   }
 
+  const issues = parseIssues(record.aiIssues);
+
   return (
     <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm">
       <div className="aspect-[3/4] bg-gray-50">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={record.outputUrl} alt={record.view} className="w-full h-full object-contain" />
+        <img src={displayUrl(record.outputUrl)} alt={record.view} className="w-full h-full object-contain" />
       </div>
       <div className="p-3 space-y-2">
         <div className="flex items-center justify-between gap-2">
@@ -63,9 +80,20 @@ function Card({ record, onRated }: { record: ReviewRecord; onRated: (r: ReviewRe
 
         <div className="text-[11px] text-gray-500 leading-relaxed">
           <div className="flex justify-between"><span>AI overall</span><span className="font-medium text-gray-700">{fmt(record.aiOverall)}</span></div>
-          <div className="flex justify-between"><span>Garment / Drape</span><span>{fmt(record.aiGarmentPreservation)} / {fmt(record.aiDrapeQuality)}</span></div>
-          <div className="flex justify-between"><span>Pattern / Render</span><span>{fmt(record.aiPatternPreservation)} / {fmt(record.aiRenderingQuality)}</span></div>
+          <div className="flex justify-between"><span>Texture / Pattern</span><span>{fmt(record.aiTextureQuality)} / {fmt(record.aiPatternPreservation)}</span></div>
+          <div className="flex justify-between"><span>Sharpness / Drape</span><span>{fmt(record.aiRenderingQuality)} / {fmt(record.aiDrapeQuality)}</span></div>
+          <div className="flex justify-between"><span>Garment / Product vis.</span><span>{fmt(record.aiGarmentPreservation)} / {fmt(record.aiProductVisibility)}</span></div>
         </div>
+
+        {issues.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {issues.map((iss, idx) => (
+              <span key={idx} className="text-[10px] bg-amber-50 text-amber-700 rounded-full px-1.5 py-0.5">
+                {iss}
+              </span>
+            ))}
+          </div>
+        )}
 
         <div className="pt-1">
           <p className="text-[10px] font-medium text-gray-400 mb-1">Manual rating</p>
