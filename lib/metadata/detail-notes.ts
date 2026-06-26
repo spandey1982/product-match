@@ -14,6 +14,7 @@
 import { db } from "@/lib/db";
 import { recordAiUsage } from "@/lib/ai-usage/record";
 import { fetchProductImageBuffer } from "@/lib/generate-model-image";
+import { parsePartImages } from "@/lib/product/part-slots";
 
 const MODEL = "gemini-2.5-flash-lite";
 
@@ -67,7 +68,7 @@ async function ensureNotes(
 ): Promise<string | null> {
   const existing = await db.product.findUnique({
     where: { id: productId },
-    select: { detailNotes: true, backDetailNotes: true },
+    select: { detailNotes: true, backDetailNotes: true, partImages: true },
   });
   const cached = column === "detailNotes" ? existing?.detailNotes : existing?.backDetailNotes;
   if (cached) return cached;
@@ -78,13 +79,27 @@ async function ensureNotes(
   const source = await fetchProductImageBuffer(imageUrl);
   if (!source) return null;
 
+  // Front notes are enriched with the retailer's detail close-ups (pallu/border/
+  // …) when present — richer, more precise hints. Extraction-only: these images
+  // never reach the image generator. Back notes use the back image alone.
+  const imageParts: Array<{ inline_data: { mime_type: string; data: string } }> = [
+    { inline_data: { mime_type: source.mime, data: source.buffer.toString("base64") } },
+  ];
+  if (column === "detailNotes") {
+    const parts = parsePartImages(existing?.partImages).slice(0, 4);
+    for (const p of parts) {
+      const buf = await fetchProductImageBuffer(p.url);
+      if (buf) imageParts.push({ inline_data: { mime_type: buf.mime, data: buf.buffer.toString("base64") } });
+    }
+  }
+
   const t0 = Date.now();
   const usageBase = {
     provider: "gemini",
     model: MODEL,
     feature: "detail_extract",
     requestBytes: source.buffer.length,
-    imageInputs: 1,
+    imageInputs: imageParts.length,
     storeId: ctx.storeId ?? null,
     userId: ctx.userId ?? null,
     productId,
@@ -100,7 +115,7 @@ async function ensureNotes(
           contents: [
             {
               parts: [
-                { inline_data: { mime_type: source.mime, data: source.buffer.toString("base64") } },
+                ...imageParts,
                 { text: buildExtractionPrompt(category) },
               ],
             },

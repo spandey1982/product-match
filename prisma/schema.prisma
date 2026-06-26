@@ -60,6 +60,11 @@ model Product {
   // generation uses it instead of the model inventing the back. Nullable →
   // existing products and the current flow are unaffected.
   backImageUrl  String?
+  // Optional category-specific detail close-ups (pallu/border/blouse/skirt/…),
+  // as a JSON array of { slot, label, url }. EXTRACTION-ONLY — fed to the
+  // metadata/detail extractor to enrich the prompt, never sent to the image
+  // generator (so generation token cost is unchanged). Nullable → safe default.
+  partImages    String?
   thumbnailUrl  String?
   modelImageUrl String?
 

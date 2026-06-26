@@ -323,10 +323,25 @@ shipped):
    (uses the retailer's **confirmed** category, not an AI guess) extraction of the
    visually critical specifics (weave/technique, motifs, border, embellishment,
    texture); threaded into `buildViewPrompt` so the model is told what to
-   preserve. One-time Flash-lite call per product. **v2 (planned):** optional,
-   category-specific part-image uploads (saree → pallu/border/blouse; lehenga →
-   blouse front/back/sleeve; etc.) used as **extraction-only** inputs (never sent
-   to generation — keeps generation tokens flat) to enrich `detailNotes`.
+   preserve. One-time Flash-lite call per product. Notes are **per-view**: front
+   notes → front prompts, back notes (`Product.backDetailNotes`, migration `0009`)
+   → the catalogue back-view prompt only (quick-listing is front-only, so it never
+   sees back detail). Wired into both the objective engine and the legacy path.
+4. **Prompt enrichment v2 — category-first + detail close-ups (done).**
+   - **Category-first:** the category selector is the first field and is required
+     before image upload; it's passed to the extractor and asserted as ground
+     truth so the model never reclassifies (e.g. saree → dupatta), not even in the
+     title. Removed the duplicate category control.
+   - **Detail close-ups** (`lib/product/part-slots.ts`, `Product.partImages`,
+     migration `0010`): optional, category-specific close-up slots (Saree →
+     pallu/border/blouse; Lehenga → skirt/blouse/dupatta; Sharara similar; Men's
+     Suit → trouser/waistcoat) rendered as a grid once a category + main image are
+     chosen. **Extraction-only** — they enrich the front `detailNotes` (added as
+     extra image parts to the one-time Flash extraction) but are **never** sent to
+     the image generator, so generation token cost is unchanged.
+   - **Input cap:** the real cap was the client-side resize at upload (800px,
+     applied before both AI and storage — which also made the server preprocessing
+     a no-op). Raised to **1280px @ q90**.
 
 **Optional back product image (Phase H, done).** `Product.backImageUrl` (nullable,
 migration `0004`) — an optional second image uploaded in the product form. The

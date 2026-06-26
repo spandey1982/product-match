@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { partSlotsFor } from "@/lib/product/part-slots";
 
 const CATEGORIES = [
   "Saree", "Lehenga", "Blouse", "Dupatta", "Kurta",
@@ -81,6 +82,10 @@ export default function UploadPage() {
   const backFileRef = useRef<HTMLInputElement>(null);
   const [backImageFile, setBackImageFile] = useState<File | null>(null);
   const [backImagePreview, setBackImagePreview] = useState<string | null>(null);
+  // Optional category-specific detail close-ups (extraction-only).
+  const partInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const [partFiles, setPartFiles] = useState<Record<string, File>>({});
+  const [partPreviews, setPartPreviews] = useState<Record<string, string>>({});
   const [extracting, setExtracting] = useState(false);
   const [extractError, setExtractError] = useState("");
   const [generateModel, setGenerateModel] = useState(false);
@@ -295,6 +300,20 @@ export default function UploadPage() {
     if (backFileRef.current) backFileRef.current.value = "";
   }
 
+  async function handlePartSelect(slotId: string, e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-picking the same file
+    if (!file) return;
+    const resized = await resizeImage(file);
+    setPartFiles((prev) => ({ ...prev, [slotId]: resized }));
+    setPartPreviews((prev) => ({ ...prev, [slotId]: URL.createObjectURL(file) }));
+  }
+
+  function clearPart(slotId: string) {
+    setPartFiles((prev) => { const n = { ...prev }; delete n[slotId]; return n; });
+    setPartPreviews((prev) => { const n = { ...prev }; delete n[slotId]; return n; });
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -337,6 +356,20 @@ export default function UploadPage() {
         } catch {/* optional — ignore back-image upload failure */}
       }
 
+      // Optional detail close-ups (extraction-only) — best-effort, never block.
+      const partImages: { slot: string; label: string; url: string }[] = [];
+      for (const slot of partSlotsFor(form.category)) {
+        const file = partFiles[slot.id];
+        if (!file) continue;
+        try {
+          const pfd = new FormData();
+          pfd.append("file", file);
+          const pRes = await fetch("/api/upload", { method: "POST", body: pfd });
+          const pData = await pRes.json();
+          if (pRes.ok) partImages.push({ slot: slot.id, label: slot.label, url: pData.url });
+        } catch {/* optional — ignore a close-up upload failure */}
+      }
+
       const res = await fetch("/api/products", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -349,6 +382,7 @@ export default function UploadPage() {
           season: selectedSeasons,
           imageUrl,
           backImageUrl,
+          partImages,
         }),
       });
 
@@ -436,7 +470,12 @@ export default function UploadPage() {
           </p>
           <Select
             value={form.category}
-            onChange={(e) => setForm({ ...form, category: e.target.value })}
+            onChange={(e) => {
+              setForm({ ...form, category: e.target.value });
+              // Different category → different detail slots; reset close-ups.
+              setPartFiles({});
+              setPartPreviews({});
+            }}
             options={CATEGORIES.map((c) => ({ value: c, label: c }))}
             placeholder="Select a category"
             required
@@ -526,6 +565,67 @@ export default function UploadPage() {
                 setImagePreview(e.target.value || null);
               }}
             />
+          )}
+
+          {/* Optional category-specific detail close-ups (extraction-only). Shown
+              once a category with slots is chosen and the main image is added. */}
+          {partSlotsFor(form.category).length > 0 && imageFile && (
+            <div className="mt-4 pt-4 border-t border-gray-100">
+              <p className="text-sm font-medium text-gray-900">
+                Detail close-ups <span className="text-gray-400 font-normal">(optional)</span>
+              </p>
+              <p className="text-xs text-gray-400 mt-0.5 mb-3">
+                Close-ups of key areas help the AI capture fine detail. Used to describe the product — they don&apos;t add to image-generation cost.
+              </p>
+              <div className="grid grid-cols-3 gap-3">
+                {partSlotsFor(form.category).map((slot) => {
+                  const preview = partPreviews[slot.id];
+                  return (
+                    <div key={slot.id}>
+                      <div className="relative aspect-square rounded-xl overflow-hidden bg-white border border-gray-100">
+                        {preview ? (
+                          <>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={preview}
+                              alt={slot.label}
+                              className="w-full h-full object-cover cursor-pointer"
+                              onClick={() => partInputRefs.current[slot.id]?.click()}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => clearPart(slot.id)}
+                              className="absolute top-1 right-1 h-6 w-6 bg-white rounded-full shadow flex items-center justify-center hover:bg-red-50"
+                              aria-label={`Remove ${slot.label}`}
+                            >
+                              <X className="h-3.5 w-3.5 text-gray-600" />
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => partInputRefs.current[slot.id]?.click()}
+                            className="w-full h-full flex flex-col items-center justify-center text-gray-300 hover:text-indigo-400 hover:bg-indigo-50/30 transition-colors"
+                            title={slot.hint}
+                          >
+                            <ImagePlus className="h-5 w-5" />
+                            <span className="text-[10px] mt-1 font-medium">Add</span>
+                          </button>
+                        )}
+                      </div>
+                      <p className="text-xs font-medium text-gray-700 mt-1.5 text-center">{slot.label}</p>
+                      <input
+                        ref={(el) => { partInputRefs.current[slot.id] = el; }}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        className="hidden"
+                        onChange={(e) => handlePartSelect(slot.id, e)}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           )}
 
           {/* Optional back image — subtle enhancement; the flow works without it.

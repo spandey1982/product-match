@@ -78,6 +78,7 @@ export async function POST(req: NextRequest) {
       price,
       imageUrl,
       backImageUrl,
+      partImages,
       sku,
     } = body;
 
@@ -105,6 +106,12 @@ export async function POST(req: NextRequest) {
         price: parseFloat(price),
         imageUrl,
         backImageUrl: backImageUrl || null,
+        // Detail close-ups (extraction-only). Stored as JSON; ignored if not a
+        // non-empty array.
+        partImages:
+          Array.isArray(partImages) && partImages.length > 0
+            ? JSON.stringify(partImages)
+            : null,
         sku: sku || undefined,
         userId: session.id,
       },
