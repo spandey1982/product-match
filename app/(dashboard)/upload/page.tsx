@@ -27,14 +27,6 @@ const STYLE_OPTIONS = [
   "Fusion", "Royal", "Bridal", "Casual", "Festive",
 ];
 
-const GENDERS = [
-  { value: "WOMEN", label: "Women" },
-  { value: "MEN", label: "Men" },
-  { value: "UNISEX", label: "Unisex" },
-  { value: "GIRLS", label: "Girls" },
-  { value: "BOYS", label: "Boys" },
-];
-
 const SEASONS = ["Spring", "Summer", "Autumn", "Winter", "All Season"];
 const MATERIALS = [
   "Silk", "Cotton", "Chiffon", "Georgette", "Velvet",
@@ -71,6 +63,12 @@ const CATALOGUE_STYLES: { id: "auto" | "gemini" | "vertex"; label: string }[] = 
   { id: "vertex", label: "Economy" },
 ];
 
+// Concise, retailer-facing objective labels/descriptions shown side by side.
+const OBJECTIVE_META: Record<string, { label: string; desc: string }> = {
+  quick_listing: { label: "Quick Listing", desc: "One fast on-model front shot." },
+  catalogue: { label: "Catalogue & Social", desc: "Full multi-view set for catalog & social." },
+};
+
 export default function UploadPage() {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -94,9 +92,9 @@ export default function UploadPage() {
   // only renders when the feature flag is on. Provider names never appear here.
   const [aiGen, setAiGen] = useState<AiGenConfig | null>(null);
   const [objective, setObjective] = useState<string>("");
-  // "auto" = pick the model from the product (category + gender). The concrete
-  // types are manual overrides.
-  const [modelType, setModelType] = useState<string>("auto");
+  // Model is auto-selected from the product (category + detected gender) for now;
+  // an explicit picker is planned. Kept in state so the gen request can pass it.
+  const [modelType] = useState<string>("auto");
 
   // Store branding for generated images (persisted immediately on change).
   const [brandingEnabled, setBrandingEnabled] = useState(true);
@@ -482,7 +480,8 @@ export default function UploadPage() {
           />
         </div>
 
-        {/* Image upload */}
+        {/* Step 2 — Product image (revealed once a category is chosen) */}
+        {form.category && (
         <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm">
           <h2 className="text-sm font-semibold text-gray-900 mb-4">
             Product Image
@@ -677,9 +676,43 @@ export default function UploadPage() {
               />
             </div>
           </div>
+        </div>
+        )}
 
-          {/* Generate model image toggle — inside image card so it's immediately visible */}
-          <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
+        {/* Step 3 — AI auto-fill status (after the image is added) */}
+        {extracting && (
+          <div className="flex items-center gap-3 p-4 bg-indigo-50 border border-indigo-100 rounded-2xl">
+            <div className="h-2 w-2 bg-indigo-500 rounded-full animate-pulse shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-indigo-700">Analyzing image with Gemini Flash…</p>
+              <p className="text-xs text-indigo-500 mt-0.5">Extracting color, material, occasion and more</p>
+            </div>
+          </div>
+        )}
+        {!extracting && extractError && (
+          <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-100 rounded-2xl">
+            <Wand2 className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-amber-700">AI auto-fill skipped</p>
+              <p className="text-xs text-amber-600 mt-0.5">{extractError}</p>
+            </div>
+          </div>
+        )}
+        {!extracting && !extractError && imageFile && (
+          <div className="flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-100 rounded-2xl">
+            <Check className="h-4 w-4 text-emerald-500 shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-emerald-700">Details auto-filled by Gemini Flash</p>
+              <p className="text-xs text-emerald-600 mt-0.5">Review and adjust any fields below before saving</p>
+            </div>
+            <button type="button" onClick={() => imageFile && extractFromImage(imageFile)} className="ml-auto text-xs text-emerald-700 underline underline-offset-2 hover:no-underline shrink-0">Re-run</button>
+          </div>
+        )}
+
+        {/* Step 4 — Generate model image (revealed once the image is added) */}
+        {imageFile && (
+        <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm">
+          <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-900">Generate model image</p>
               <p className="text-xs text-gray-400 mt-0.5">
@@ -707,32 +740,30 @@ export default function UploadPage() {
               Only when generation is on AND the feature flag is enabled. */}
           {generateModel && aiGen?.enabled && (
             <div className="mt-4 pt-4 border-t border-gray-100 space-y-4">
-              {/* Objective */}
-              <div>
-                <p className="text-xs font-medium text-gray-500 mb-2">What do you need?</p>
-                <div className="grid gap-2">
-                  {aiGen.objectives.map((o) => {
-                    const active = objective === o.id;
-                    return (
-                      <button
-                        key={o.id}
-                        type="button"
-                        onClick={() => setObjective(o.id)}
-                        aria-pressed={active}
-                        className={`text-left rounded-2xl border p-3 transition-all ${
-                          active
-                            ? "border-indigo-300 bg-indigo-50/60 ring-1 ring-indigo-200"
-                            : "border-gray-100 bg-white hover:border-gray-200"
-                        }`}
-                      >
-                        <span className="text-sm font-semibold text-gray-900">{o.label}</span>
-                        <span className="block text-xs text-gray-500 mt-0.5 leading-relaxed">
-                          {o.description}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
+              {/* Objective — concise cards, side by side */}
+              <div className="grid grid-cols-2 gap-2">
+                {aiGen.objectives.map((o) => {
+                  const active = objective === o.id;
+                  const meta = OBJECTIVE_META[o.id];
+                  return (
+                    <button
+                      key={o.id}
+                      type="button"
+                      onClick={() => setObjective(o.id)}
+                      aria-pressed={active}
+                      className={`text-left rounded-2xl border p-3 transition-all ${
+                        active
+                          ? "border-indigo-300 bg-indigo-50/60 ring-1 ring-indigo-200"
+                          : "border-gray-100 bg-white hover:border-gray-200"
+                      }`}
+                    >
+                      <span className="text-sm font-semibold text-gray-900">{meta?.label ?? o.label}</span>
+                      <span className="block text-xs text-gray-500 mt-0.5 leading-snug">
+                        {meta?.desc ?? o.description}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
 
               {/* Catalogue style — only for the Catalogue objective. Store-level
@@ -771,33 +802,9 @@ export default function UploadPage() {
                 </div>
               )}
 
-              {/* Store model */}
-              <div>
-                <p className="text-xs font-medium text-gray-500 mb-2">Model</p>
-                <div className="flex flex-wrap gap-2">
-                  {[{ id: "auto", label: "Auto" }, ...aiGen.modelTypes].map((m) => {
-                    const active = modelType === m.id;
-                    return (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onClick={() => setModelType(m.id)}
-                        aria-pressed={active}
-                        className={`rounded-full border px-4 py-1.5 text-sm font-medium transition-all ${
-                          active
-                            ? "border-indigo-300 bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200"
-                            : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
-                        }`}
-                      >
-                        {m.label}
-                      </button>
-                    );
-                  })}
-                </div>
-                <p className="text-[11px] text-gray-400 mt-1.5">
-                  Auto picks the model from the product&apos;s category &amp; gender. Choose one to override.
-                </p>
-              </div>
+              {/* Model selection is automatic for now (derived from the product's
+                  category + the gender detected at extraction). A picker for
+                  alternative models is planned. */}
 
               {/* Image branding — store-level; applies to all generated images */}
               <div>
@@ -896,51 +903,6 @@ export default function UploadPage() {
             </div>
           )}
         </div>
-
-        {/* AI extraction status */}
-        {extracting && (
-          <div className="flex items-center gap-3 p-4 bg-indigo-50 border border-indigo-100 rounded-2xl">
-            <div className="h-2 w-2 bg-indigo-500 rounded-full animate-pulse shrink-0" />
-            <div>
-              <p className="text-sm font-medium text-indigo-700">
-                Analyzing image with Gemini Flash…
-              </p>
-              <p className="text-xs text-indigo-500 mt-0.5">
-                Extracting category, color, material, occasion and more
-              </p>
-            </div>
-          </div>
-        )}
-
-        {!extracting && extractError && (
-          <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-100 rounded-2xl">
-            <Wand2 className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
-            <div>
-              <p className="text-sm font-medium text-amber-700">AI auto-fill skipped</p>
-              <p className="text-xs text-amber-600 mt-0.5">{extractError}</p>
-            </div>
-          </div>
-        )}
-
-        {!extracting && !extractError && imageFile && (
-          <div className="flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-100 rounded-2xl">
-            <Check className="h-4 w-4 text-emerald-500 shrink-0" />
-            <div>
-              <p className="text-sm font-medium text-emerald-700">
-                Details auto-filled by Gemini Flash
-              </p>
-              <p className="text-xs text-emerald-600 mt-0.5">
-                Review and adjust any fields below before saving
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => extractFromImage(imageFile)}
-              className="ml-auto text-xs text-emerald-700 underline underline-offset-2 hover:no-underline shrink-0"
-            >
-              Re-run
-            </button>
-          </div>
         )}
 
         {/* Fields — dimmed while Gemini is extracting */}
@@ -1007,15 +969,6 @@ export default function UploadPage() {
               options={MATERIALS.map((m) => ({ value: m, label: m }))}
               placeholder="Select material"
             />
-            <Select
-              label="Gender"
-              value={form.gender}
-              onChange={(e) => setForm({ ...form, gender: e.target.value })}
-              options={GENDERS}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
             <Select
               label="Pattern / Print"
               value={form.pattern}

@@ -342,6 +342,16 @@ shipped):
    - **Input cap:** the real cap was the client-side resize at upload (800px,
      applied before both AI and storage — which also made the server preprocessing
      a no-op). Raised to **1280px @ q90**.
+   - **Stepped upload flow:** the Add-Product page is now progressive — category
+     (required) → image card (+ detail close-ups) → AI auto-fill status → generate
+     toggle (objectives shown as two concise side-by-side cards) → always-visible
+     metadata form → Add to Catalog. Gender/model pickers removed (gender comes
+     from extraction; model auto-selected).
+
+   **Near-future (requested, not built):** model picker (choose among a few base
+   models); background options by colour/location; branding that blends subtly
+   into the catalogue background rather than a hard logo overlay; surfacing the
+   stored detail close-ups on the product detail/edit page.
 
 **Optional back product image (Phase H, done).** `Product.backImageUrl` (nullable,
 migration `0004`) — an optional second image uploaded in the product form. The
