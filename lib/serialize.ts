@@ -1,4 +1,4 @@
-// Helpers for SQLite JSON array serialization
+// Helpers for JSON array serialization (arrays stored as TEXT columns in Postgres)
 export function serializeArray(arr: string[]): string {
   return JSON.stringify(arr);
 }

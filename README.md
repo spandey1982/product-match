@@ -8,6 +8,7 @@ A B2B SaaS tool that helps retailers upload their product catalog and receive in
 
 - Node.js 20+
 - npm
+- PostgreSQL 14+ (local instance for development)
 
 ### Setup
 
@@ -15,15 +16,28 @@ A B2B SaaS tool that helps retailers upload their product catalog and receive in
 # Install dependencies
 npm install
 
-# Run database migrations (creates prisma/dev.db)
-npm run db:migrate
+# 1. Create a local Postgres database + role (run once, in a shell where
+#    `psql` is on PATH — e.g. PostgreSQL's "SQL Shell (psql)" on Windows).
+#    You'll be prompted for your postgres superuser password.
+psql -U postgres -h localhost -c "CREATE ROLE pm_dev WITH LOGIN PASSWORD 'pm_dev_pw';"
+psql -U postgres -h localhost -c "CREATE DATABASE product_match_dev OWNER pm_dev;"
 
-# Seed with 55 demo products
+# 2. Copy the env template and fill in real values
+cp .env.example .env   # DATABASE_URL is already set for the local DB above
+
+# 3. Generate the Prisma client, then apply migrations
+npm run db:generate
+npm run db:deploy
+
+# 4. Seed with 55 demo products
 npm run db:seed
 
-# Start the dev server
+# 5. Start the dev server
 npm run dev
 ```
+
+> The app connects to Postgres via the `@prisma/adapter-pg` driver adapter
+> (`lib/db.ts`), reading `DATABASE_URL`. PostgreSQL is required for both dev and prod.
 
 Open [http://localhost:3000](http://localhost:3000).
 
@@ -111,12 +125,12 @@ product-match/
 │   │   ├── color-harmony.ts  # Color family + harmony rules
 │   │   └── confidence.ts     # Confidence label (client-safe)
 │   ├── auth.ts               # JWT session management
-│   ├── db.ts                 # Prisma + LibSQL adapter
-│   └── serialize.ts          # JSON array encode/decode for SQLite
+│   ├── db.ts                 # Prisma + Postgres (pg) adapter
+│   └── serialize.ts          # JSON array encode/decode (arrays stored as TEXT)
 ├── prisma/
-│   ├── schema.prisma         # SQLite schema (arrays as JSON strings)
-│   ├── seed.ts               # 55 Indian ethnic fashion products
-│   └── dev.db                # SQLite database file
+│   ├── schema.prisma         # Postgres schema (arrays as JSON strings in TEXT)
+│   ├── migrations/           # SQL migrations (0001_init_postgres, …)
+│   └── seed.ts               # 55 Indian ethnic fashion products
 └── prisma.config.ts          # Prisma 7 datasource config
 ```
 
@@ -142,15 +156,15 @@ Recommendation query params: `?limit=8&refresh=true`
 | Framework   | Next.js 16 (App Router)             |
 | Language    | TypeScript                          |
 | Styling     | Tailwind CSS + shadcn/ui            |
-| Database    | SQLite via LibSQL (`prisma/dev.db`) |
-| ORM         | Prisma 7 + `@prisma/adapter-libsql` |
+| Database    | PostgreSQL (local dev + Railway prod) |
+| ORM         | Prisma 7 + `@prisma/adapter-pg`     |
 | Auth        | JWT + httpOnly cookies (`jsonwebtoken`, `bcryptjs`) |
 | Animation   | Framer Motion                       |
 
 ## Environment Variables
 
 ```env
-DATABASE_URL="file:./prisma/dev.db"
+DATABASE_URL="postgresql://pm_dev:pm_dev_pw@localhost:5432/product_match_dev"
 JWT_SECRET="your-secret-minimum-32-chars"
 NEXT_PUBLIC_APP_URL="http://localhost:3000"
 
@@ -168,21 +182,34 @@ GOOGLE_APPLICATION_CREDENTIALS_JSON=""  # deploy (Railway/Vercel): SA key as bas
 ```bash
 npm run dev          # Start dev server
 npm run build        # Production build
-npm run db:migrate   # Run Prisma migrations
+npm run db:deploy    # Apply existing migrations (use this for setup)
+npm run db:migrate   # Create + apply a new dev migration
 npm run db:seed      # Seed demo products and user
 npm run db:studio    # Open Prisma Studio
 ```
 
+## Database (PostgreSQL)
+
+The app runs on PostgreSQL in **both** local dev and production (Railway), via
+the `@prisma/adapter-pg` driver adapter. Notes:
+
+- `DATABASE_URL` is the only connection input. Local dev points at a local
+  Postgres; production points at the Railway Postgres service.
+- Array fields (`colors`, `occasion`, `styleTags`, `season`) are intentionally
+  stored as **JSON strings in `TEXT` columns**, not native `text[]`. Always read
+  and write them through `lib/serialize.ts` (`serializeArray` / `parseArray`).
+- Migrations live in `prisma/migrations`. Apply them with `npm run db:deploy`
+  (`prisma migrate deploy`). The `start` script also runs `migrate deploy` so
+  Railway applies pending migrations on each deploy.
+
+### Railway (production)
+
+1. Add a PostgreSQL service to the Railway project.
+2. Set the app service's `DATABASE_URL` to the Postgres service's connection
+   string (Railway can reference it via `${{Postgres.DATABASE_URL}}`).
+3. Deploys run `prisma migrate deploy && next start` automatically (`npm start`).
+
 ## Extending to Production
-
-### Switch to PostgreSQL
-
-1. Install `@prisma/adapter-pg` and `pg`
-2. Update `prisma/schema.prisma` provider to `postgresql`
-3. Replace `String @default("[]")` fields with native `String[]`
-4. Remove `serializeArray`/`parseArray` calls — Prisma handles arrays natively
-5. Update `lib/db.ts` to use `PrismaPg` adapter
-6. Set `DATABASE_URL` to your Postgres connection string
 
 ### Add Vector Search
 

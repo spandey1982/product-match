@@ -101,12 +101,12 @@ Consult it when relevant.
 ## Database
 
 Development:
-- SQLite
+- PostgreSQL (local instance)
 
 Production:
 - Railway Deployment
-- PostgreSQL migration path supported
-- Prisma ORM
+- PostgreSQL
+- Prisma ORM (via `@prisma/adapter-pg`)
 
 ## Authentication
 
