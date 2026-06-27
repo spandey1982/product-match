@@ -295,12 +295,42 @@ export default function UploadPage() {
   }
 
   /**
-   * Resize client-side to a faithful working size (max 1280px, JPEG 90%) before
-   * upload + AI. 1280 preserves far more fabric/weave/embroidery detail for both
-   * recognition and downstream generation than the old 800px cap, while keeping
-   * upload size and token count reasonable.
+   * Controlled client-side downscale to a faithful working size before upload.
+   * Uses createImageBitmap's high-quality resampler (a Lanczos-class filter)
+   * resampling from the FULL original held in memory — far better colour/detail
+   * than a single canvas drawImage — WITHOUT uploading the original, so stored
+   * size, storage cost and transit are unchanged. A big phone photo is shrunk
+   * here, so it also never trips the upload size limit. Falls back to the legacy
+   * canvas path on browsers without resizeQuality support.
    */
-  function resizeImage(file: File, maxPx = 1280, quality = 0.9): Promise<File> {
+  async function resizeImage(file: File, maxPx = 1280, quality = 0.9): Promise<File> {
+    try {
+      const full = await createImageBitmap(file);
+      const scale = Math.min(1, maxPx / Math.max(full.width, full.height));
+      const w = Math.max(1, Math.round(full.width * scale));
+      const h = Math.max(1, Math.round(full.height * scale));
+      const resized =
+        scale < 1
+          ? await createImageBitmap(full, { resizeWidth: w, resizeHeight: h, resizeQuality: "high" })
+          : full;
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext("2d")!.drawImage(resized, 0, 0);
+      if (resized !== full) resized.close();
+      full.close();
+      const blob = await new Promise<Blob | null>((res) =>
+        canvas.toBlob(res, "image/jpeg", quality)
+      );
+      if (blob) return new File([blob], "product.jpg", { type: "image/jpeg" });
+    } catch {
+      /* createImageBitmap / resizeQuality unsupported — fall back below */
+    }
+    return legacyResizeImage(file, maxPx, quality);
+  }
+
+  /** Legacy single-step canvas resize — fallback for older browsers only. */
+  function legacyResizeImage(file: File, maxPx = 1280, quality = 0.9): Promise<File> {
     return new Promise((resolve) => {
       const img = new Image();
       const url = URL.createObjectURL(file);

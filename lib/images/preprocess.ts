@@ -21,8 +21,13 @@
  */
 import sharp from "sharp";
 
-/** Model-input cap. ~1280px covers the high-fidelity sweet spot (≈1200–1536). */
-export const PRODUCT_INPUT_MAX_PX = 1280;
+/**
+ * Model-input cap for generation. 1024px is a deliberate balance: enough detail
+ * for faithful synthesis while trimming input tokens/cost vs the old 1280. The
+ * Lanczos3 downscale below keeps this controlled (no uncontrolled model-side
+ * downsample). Revisit upward only if generation quality visibly suffers.
+ */
+export const PRODUCT_INPUT_MAX_PX = 1024;
 
 export interface Preprocessed {
   buffer: Buffer;
