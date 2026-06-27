@@ -27,7 +27,6 @@ import {
 } from "lucide-react";
 import { ProductImageViewer } from "@/components/product/ProductImageViewer";
 import { displayUrl, masterUrl } from "@/lib/images/variants";
-import { normalizeCatalogueUrl } from "@/lib/image-normalize";
 
 interface GeneratedImage {
   url: string;
@@ -104,17 +103,14 @@ export function ProductDetailView({
   const productImages = [product.imageUrl, ...onModel.map((g) => g.url)].filter(
     Boolean
   ) as string[];
-  // Full-body model views (front/back/on-model) render on a uniform 3:4 canvas
-  // so a catalogue's shots — and shots across catalogues — share one dimension.
-  // The product photo and detail close-ups keep their natural aspect.
-  const FULL_VIEWS = new Set(["on-model", "front", "back"]);
-  const framedImages = productImages.map((url, i) =>
-    i > 0 && FULL_VIEWS.has(onModel[i - 1]?.view) ? normalizeCatalogueUrl(url) : url
-  );
   // Delivery variants: ~1200px for the inline carousel, upscaled+sharpened
   // master for the full-screen zoom viewer. f_auto/q_auto on both.
-  const displayImages = framedImages.map(displayUrl);
-  const masterImages = framedImages.map(masterUrl);
+  // Uniform card dimensions are handled at GENERATION (base shots rendered at
+  // 3:4), NOT via a display-time c_pad — that produced broken delivery URLs and
+  // blanked the detail/full-screen views. See docs/CATALOGUE_REFACTOR_PLAN.md.
+  const displayImages = productImages.map(displayUrl);
+  const masterImages = productImages.map(masterUrl);
+  const FULL_VIEWS = new Set(["on-model", "front", "back"]);
   const imageLabels = productImages.map((_, i) =>
     i === 0 ? "Product" : onModel[i - 1]?.view === "on-model" ? "On model" : prettyView(onModel[i - 1].view)
   );
