@@ -742,12 +742,14 @@ export default function UploadPage() {
                 </div>
               )}
 
-              {/* Backdrop — studio environment for generated images. Store-level;
-                  persisted immediately. Applies to both objectives. */}
-              {backdrops.length > 0 && (
+              {/* Backdrop — only for the prompt-based catalogue path (Premium /
+                  Automatic). Quick listing and Sharp Fit (Economy/Vertex) don't
+                  take a backdrop: they use the reference-model studios as-is. */}
+              {objective === "catalogue" && catalogueProvider !== "vertex" && backdrops.length > 0 && (
                 <BackdropSelect
                   presets={backdrops}
                   value={backdrop}
+                  productColor={form.color}
                   onChange={(next) => {
                     setBackdrop(next);
                     patchBranding({ backdrop: next });
