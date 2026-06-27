@@ -49,6 +49,29 @@ const GRAVITY: Record<BrandingPosition, string> = {
   "top-right": "north_east",
 };
 
+/**
+ * Backdrop-derived hints for adaptive branding (Phase 4). Lets the watermark
+ * read against the chosen studio instead of being pasted on identically:
+ *  • `mark` — "dark" on light/bright backdrops, "light" on dark ones. Drives
+ *    the text watermark colour (a white label is invisible on Boutique Beige).
+ *  • `brightness` — 0 (dark) … 1 (bright). Brighter studios let the logo sit
+ *    more subtly, so opacity eases down a touch.
+ * Deterministic, no AI. Optional — when absent, branding keeps its prior look.
+ */
+export interface BrandingAdapt {
+  mark: "dark" | "light";
+  brightness: number;
+}
+
+/** Logo opacity tuned to the backdrop: brighter studio → subtler mark. */
+function logoOpacity(adapt?: BrandingAdapt): number {
+  if (!adapt) return 85;
+  return Math.max(68, Math.min(88, Math.round(92 - adapt.brightness * 26)));
+}
+
+/** Deep neutral for a dark watermark — premium, not flat black. */
+const DARK_MARK_COLOR = "rgb:3f3a34";
+
 /** Cloudinary-escape text for a `l_text:` layer (commas, slashes, %, spaces). */
 function escapeText(text: string): string {
   // Cloudinary needs commas/slashes double-escaped inside layer text; encode
@@ -57,18 +80,24 @@ function escapeText(text: string): string {
 }
 
 /** Build the overlay transformation segment, or null if nothing to overlay. */
-function buildOverlayTransform(config: BrandingConfig): string | null {
+function buildOverlayTransform(config: BrandingConfig, adapt?: BrandingAdapt): string | null {
   const gravity = GRAVITY[config.position];
 
   if (config.logoPublicId) {
     // Logo image overlay. Public-id path separators become ":" in a layer ref.
+    // Opacity eases with backdrop brightness so the mark stays subtle.
     const layer = config.logoPublicId.replace(/\//g, ":");
-    return `l_${layer},w_0.18,fl_relative,o_85,g_${gravity},x_0.04,y_0.04`;
+    return `l_${layer},w_0.18,fl_relative,o_${logoOpacity(adapt)},g_${gravity},x_0.04,y_0.04`;
   }
 
   const name = config.storeName?.trim();
   if (name) {
-    // Text watermark: white bold label with a soft shadow for legibility.
+    // Text watermark, adapted to the backdrop. On light/bright studios a white
+    // label disappears, so use a deep-neutral mark (clean, no heavy shadow);
+    // on dark studios keep the white label with a soft shadow for legibility.
+    if ((adapt?.mark ?? "light") === "dark") {
+      return `l_text:Arial_36_bold:${escapeText(name)},co_${DARK_MARK_COLOR},o_72,g_${gravity},x_30,y_25`;
+    }
     return `l_text:Arial_36_bold:${escapeText(name)},co_white,e_shadow:40,o_90,g_${gravity},x_30,y_25`;
   }
 
@@ -79,11 +108,18 @@ function buildOverlayTransform(config: BrandingConfig): string | null {
  * Return a branded delivery URL for a Cloudinary image, or the original URL
  * unchanged when branding is off / there's no logo or name / the URL isn't a
  * recognizable Cloudinary upload URL.
+ *
+ * `adapt` (optional) tailors the watermark to the chosen backdrop — see
+ * BrandingAdapt. When omitted, branding renders exactly as before.
  */
-export function applyBranding(secureUrl: string, config: BrandingConfig): string {
+export function applyBranding(
+  secureUrl: string,
+  config: BrandingConfig,
+  adapt?: BrandingAdapt
+): string {
   if (!config.enabled) return secureUrl;
 
-  const transform = buildOverlayTransform(config);
+  const transform = buildOverlayTransform(config, adapt);
   if (!transform) return secureUrl;
 
   const marker = "/upload/";

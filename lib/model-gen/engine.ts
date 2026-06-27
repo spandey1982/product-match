@@ -147,10 +147,16 @@ export async function generateModelImages(
 
   // Brand each image (store logo, or store name) before persisting, so the
   // branded URL flows to display, share and download. No-op when disabled.
+  // Phase 4: branding adapts to the chosen backdrop (mark colour + opacity)
+  // from the preset's hints — deterministic, keeps the garment the hero.
   const branding = await getBrandingConfig(input.userId);
+  const brandingAdapt = {
+    mark: backdropPreset.branding.preferredLogo,
+    brightness: backdropPreset.color.brightness,
+  };
   const branded: GeneratedImage[] = images.map((img) => ({
     ...img,
-    url: applyBranding(img.url, branding),
+    url: applyBranding(img.url, branding, brandingAdapt),
   }));
 
   if (branded.length > 0) {
