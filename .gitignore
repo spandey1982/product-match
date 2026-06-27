@@ -46,6 +46,14 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+
+# Local dev database — testing data is kept separate from deployed product data.
+# Never commit/push the local DB. (App + prod run on PostgreSQL.)
+/prisma/*.db
+/prisma/*.db-journal
+/prisma/*.db-shm
+/prisma/*.db-wal
 
 # vercel
 .vercel

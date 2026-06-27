@@ -50,7 +50,7 @@ prompt/RAG engine arrives. Keep them separate.
 
 **Shared**
 - `lib/research-log.ts` → `logs/tryon-research.jsonl` — append-only log of every generation (inputs/outputs/timings/provider). **This is the seed corpus for the future learning loop.** Extend, never replace.
-- Storage: Cloudinary. DB: SQLite (dev) / Postgres (prod) via Prisma 7.
+- Storage: Cloudinary. DB: PostgreSQL (dev + prod) via Prisma 7.
 
 ## 5. Provider resolution & precedence
 

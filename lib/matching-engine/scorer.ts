@@ -48,7 +48,7 @@ function computeStyleScore(
 }
 
 export function scoreMatch(source: Product, target: Product): MatchScore {
-  // Parse JSON strings from SQLite
+  // Parse JSON string arrays (stored as TEXT)
   const sourceOccasions = parseArray(source.occasion);
   const targetOccasions = parseArray(target.occasion);
   const sourceStyles = parseArray(source.styleTags);
