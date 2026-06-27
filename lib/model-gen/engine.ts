@@ -19,7 +19,7 @@ import { DEFAULT_MODEL_TYPE, type ModelType } from "./reference-models";
 import { resolveModelType } from "./model-selection";
 import { getAiGenSettings } from "./settings";
 import { resolveAutoProvider } from "@/lib/providers/auto-routing";
-import { getBrandingConfig, applyBranding } from "./branding";
+import { getBrandingConfig, applyBranding, resolveBrandingAdapt } from "./branding";
 import { resolveBackdropPreset, renderBackdropPrompt } from "./backdrops";
 import { pickSmartBackdrop } from "./backdrop-match";
 import { persistGeneratedImages, type GeneratedImage } from "./persist";
@@ -147,17 +147,25 @@ export async function generateModelImages(
 
   // Brand each image (store logo, or store name) before persisting, so the
   // branded URL flows to display, share and download. No-op when disabled.
-  // Phase 4: branding adapts to the chosen backdrop (mark colour + opacity)
-  // from the preset's hints — deterministic, keeps the garment the hero.
+  // Phase 4: branding adapts to the ACTUAL background it sits on — each image's
+  // watermark corner is sampled (resolveBrandingAdapt) so the mark is legible
+  // and intentional regardless of provider (Gemini studio or Vertex reference
+  // background). The preset hint is only a fallback if sampling fails.
   const branding = await getBrandingConfig(input.userId);
-  const brandingAdapt = {
+  const fallbackAdapt = {
     mark: backdropPreset.branding.preferredLogo,
     brightness: backdropPreset.color.brightness,
   };
-  const branded: GeneratedImage[] = images.map((img) => ({
-    ...img,
-    url: applyBranding(img.url, branding, brandingAdapt),
-  }));
+  const willBrand =
+    branding.enabled && (Boolean(branding.logoPublicId) || Boolean(branding.storeName?.trim()));
+
+  const branded: GeneratedImage[] = await Promise.all(
+    images.map(async (img) => {
+      if (!willBrand) return img;
+      const adapt = await resolveBrandingAdapt(img.url, branding.position, fallbackAdapt);
+      return { ...img, url: applyBranding(img.url, branding, adapt) };
+    })
+  );
 
   if (branded.length > 0) {
     await persistGeneratedImages(product.id, branded, objective);

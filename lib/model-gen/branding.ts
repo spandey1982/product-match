@@ -13,6 +13,7 @@
  */
 import { db } from "@/lib/db";
 import { getAiGenSettings, type BrandingPosition } from "./settings";
+import { sampleRegionRgb, type Rgb } from "./studio-anchor";
 
 export interface BrandingConfig {
   enabled: boolean;
@@ -50,27 +51,52 @@ const GRAVITY: Record<BrandingPosition, string> = {
 };
 
 /**
- * Backdrop-derived hints for adaptive branding (Phase 4). Lets the watermark
- * read against the chosen studio instead of being pasted on identically:
- *  • `mark` — "dark" on light/bright backdrops, "light" on dark ones. Drives
- *    the text watermark colour (a white label is invisible on Boutique Beige).
- *  • `brightness` — 0 (dark) … 1 (bright). Brighter studios let the logo sit
- *    more subtly, so opacity eases down a touch.
- * Deterministic, no AI. Optional — when absent, branding keeps its prior look.
+ * How the watermark should render against the ACTUAL area it sits on. Resolved
+ * per image by sampling the real corner pixels (resolveBrandingAdapt) — not the
+ * preset's nominal colour — so the mark is legible on any output, Gemini studio
+ * or Vertex reference-model background alike.
+ *  • `mark` — "light" on dark/medium backgrounds, "dark" on light ones.
+ *  • `brightness` — 0 (dark) … 1 (bright) luminance of that corner; eases the
+ *    logo opacity so the mark stays subtle without disappearing.
  */
 export interface BrandingAdapt {
   mark: "dark" | "light";
   brightness: number;
 }
 
-/** Logo opacity tuned to the backdrop: brighter studio → subtler mark. */
-function logoOpacity(adapt?: BrandingAdapt): number {
-  if (!adapt) return 85;
-  return Math.max(68, Math.min(88, Math.round(92 - adapt.brightness * 26)));
+/** Premium mark tones — soft, never flat #fff / #000, so it reads as designed. */
+const LIGHT_MARK_COLOR = "rgb:f7f4ee"; // warm ivory, for dark/medium backgrounds
+const DARK_MARK_COLOR = "rgb:2b2723"; // warm near-black, for light backgrounds
+
+/**
+ * Perceived luminance 0 (black) … 1 (white). Below ~0.6 a light mark reads
+ * best; medium-grey studios (≈0.5) therefore get the ivory mark + soft shadow.
+ */
+function luminance({ r, g, b }: Rgb): number {
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
 }
 
-/** Deep neutral for a dark watermark — premium, not flat black. */
-const DARK_MARK_COLOR = "rgb:3f3a34";
+/**
+ * Resolve the watermark treatment for a SPECIFIC image by sampling the actual
+ * background in the watermark's corner. Falls back to `fallback` (preset-based)
+ * if sampling fails. Never throws.
+ */
+export async function resolveBrandingAdapt(
+  secureUrl: string,
+  position: BrandingPosition,
+  fallback: BrandingAdapt
+): Promise<BrandingAdapt> {
+  const rgb = await sampleRegionRgb(secureUrl, GRAVITY[position], 0.28, 0.16);
+  if (!rgb) return fallback;
+  const lum = luminance(rgb);
+  return { mark: lum < 0.6 ? "light" : "dark", brightness: lum };
+}
+
+/** Logo opacity tuned to the corner: lighter background → subtler mark. */
+function logoOpacity(adapt?: BrandingAdapt): number {
+  if (!adapt) return 85;
+  return Math.max(70, Math.min(90, Math.round(94 - adapt.brightness * 26)));
+}
 
 /** Cloudinary-escape text for a `l_text:` layer (commas, slashes, %, spaces). */
 function escapeText(text: string): string {
@@ -85,20 +111,23 @@ function buildOverlayTransform(config: BrandingConfig, adapt?: BrandingAdapt): s
 
   if (config.logoPublicId) {
     // Logo image overlay. Public-id path separators become ":" in a layer ref.
-    // Opacity eases with backdrop brightness so the mark stays subtle.
+    // Opacity eases with the corner's brightness so the mark stays subtle.
     const layer = config.logoPublicId.replace(/\//g, ":");
     return `l_${layer},w_0.18,fl_relative,o_${logoOpacity(adapt)},g_${gravity},x_0.04,y_0.04`;
   }
 
   const name = config.storeName?.trim();
   if (name) {
-    // Text watermark, adapted to the backdrop. On light/bright studios a white
-    // label disappears, so use a deep-neutral mark (clean, no heavy shadow);
-    // on dark studios keep the white label with a soft shadow for legibility.
-    if ((adapt?.mark ?? "light") === "dark") {
-      return `l_text:Arial_36_bold:${escapeText(name)},co_${DARK_MARK_COLOR},o_72,g_${gravity},x_30,y_25`;
+    // A refined wordmark: medium weight + letter-spacing for an intentional,
+    // boutique feel, in a soft premium tone chosen for the real background.
+    const label = `l_text:Arial_42_bold_letter_spacing_3:${escapeText(name)}`;
+    const place = `g_${gravity},x_40,y_34`;
+    if ((adapt?.mark ?? "light") === "light") {
+      // Ivory mark + soft shadow → legible on dark/medium/vignetted corners.
+      return `${label},co_${LIGHT_MARK_COLOR},e_shadow:30,o_92,${place}`;
     }
-    return `l_text:Arial_36_bold:${escapeText(name)},co_white,e_shadow:40,o_90,g_${gravity},x_30,y_25`;
+    // Warm near-black mark → clean and legible on genuinely light backdrops.
+    return `${label},co_${DARK_MARK_COLOR},o_88,${place}`;
   }
 
   return null;
