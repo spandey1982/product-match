@@ -16,7 +16,7 @@ export async function generateMetadata({ params }: Props) {
     where: { id },
     select: { title: true },
   });
-  return { title: `${product?.title || "Product"} — ProductMatch` };
+  return { title: `${product?.title || "Product"} — Mentis` };
 }
 
 export default async function ProductDetailPage({ params, searchParams }: Props) {

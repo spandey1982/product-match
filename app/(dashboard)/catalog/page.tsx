@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import { CatalogView } from "./CatalogView";
 
 export const metadata = {
-  title: "Catalog — ProductMatch",
+  title: "Catalog — Mentis",
 };
 
 export default function CatalogPage() {

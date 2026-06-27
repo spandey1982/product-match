@@ -21,7 +21,7 @@ export default async function AuthLayout({
           <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
             <Sparkles className="h-4 w-4 text-white" />
           </div>
-          <span className="font-bold text-gray-900">ProductMatch</span>
+          <span className="font-bold text-gray-900">Mentis</span>
         </Link>
       </header>
 

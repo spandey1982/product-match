@@ -5,7 +5,7 @@ import { listTryOnProviders, DEFAULT_TRYON_PROVIDER_ID } from "@/lib/providers";
 import { isTryOnMode, type TryOnMode } from "@/lib/providers/active";
 import { SettingsView } from "./SettingsView";
 
-export const metadata = { title: "Settings — ProductMatch" };
+export const metadata = { title: "Settings — Mentis" };
 
 export default async function SettingsPage() {
   const session = await getSession();
