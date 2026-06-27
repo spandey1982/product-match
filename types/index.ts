@@ -41,6 +41,7 @@ export type Product = {
   backImageUrl?: string | null;
   thumbnailUrl?: string | null;
   modelImageUrl?: string | null;
+  generatedImages?: ProductImage[];
   inStock: boolean;
   isActive: boolean;
   sku?: string | null;

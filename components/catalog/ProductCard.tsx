@@ -139,9 +139,10 @@ export function ProductCard({ product }: ProductCardProps) {
           {/* Image + overlays — clipped to rounded top corners */}
           <div className="absolute inset-0 overflow-hidden rounded-t-2xl bg-gray-50">
             <ImageCarousel
-              images={[product.imageUrl, product.modelImageUrl].map((u) =>
-                u ? thumbnailUrl(u) : u
-              )}
+              images={[
+                ...(product.generatedImages?.map((gi) => thumbnailUrl(gi.url)) ?? []),
+                product.imageUrl ? thumbnailUrl(product.imageUrl) : null,
+              ].filter(Boolean) as string[]}
               title={product.title}
               category={product.category}
               className="w-full h-full"

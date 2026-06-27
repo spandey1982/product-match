@@ -33,6 +33,11 @@ export async function GET(req: NextRequest) {
         orderBy: { createdAt: "desc" },
         skip: (page - 1) * limit,
         take: limit,
+        include: {
+          generatedImages: {
+            orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+          },
+        },
       }),
       db.product.count({ where }),
     ]);
