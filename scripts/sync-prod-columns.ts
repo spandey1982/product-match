@@ -44,6 +44,21 @@ function columnOf(sql: string): string {
 
 async function main() {
   const client = createClient(authToken ? { url: url!, authToken } : { url: url! });
+
+  // Proof-of-life: count existing rows BEFORE touching anything. This raw query
+  // doesn't select the missing columns, so it works even while the app can't —
+  // confirming the data is intact, just unreadable until the columns are added.
+  try {
+    const p = await client.execute(`SELECT COUNT(*) AS n FROM products`);
+    const u = await client.execute(`SELECT COUNT(*) AS n FROM users`);
+    console.log(`\nDatabase contents BEFORE any change:`);
+    console.log(`  products: ${p.rows?.[0]?.n}`);
+    console.log(`  users:    ${u.rows?.[0]?.n}`);
+    console.log(`(If these look right, your data is safe — the app just couldn't read it.)\n`);
+  } catch (e) {
+    console.log(`(Could not read row counts: ${(e as Error).message})\n`);
+  }
+
   let applied = 0;
   let skipped = 0;
   for (const sql of STATEMENTS) {
