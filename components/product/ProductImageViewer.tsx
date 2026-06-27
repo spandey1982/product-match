@@ -378,6 +378,7 @@ export function ProductImageViewer({ images, labels, maxZooms, initialIndex, onC
         {/* Desktop prev/next chevrons — hidden while zoomed */}
         {!zoomed && index > 0 && (
           <button
+            onMouseDown={(e) => e.stopPropagation()}
             onClick={() => navigate(Math.max(0, index - 1))}
             className="hidden md:flex absolute left-4 top-1/2 -translate-y-1/2 h-11 w-11 rounded-full bg-black/40 backdrop-blur-sm hover:bg-black/60 items-center justify-center text-white transition-colors z-10"
             aria-label="Previous image"
@@ -387,6 +388,7 @@ export function ProductImageViewer({ images, labels, maxZooms, initialIndex, onC
         )}
         {!zoomed && index < total - 1 && (
           <button
+            onMouseDown={(e) => e.stopPropagation()}
             onClick={() => navigate(Math.min(total - 1, index + 1))}
             className="hidden md:flex absolute right-4 top-1/2 -translate-y-1/2 h-11 w-11 rounded-full bg-black/40 backdrop-blur-sm hover:bg-black/60 items-center justify-center text-white transition-colors z-10"
             aria-label="Next image"
