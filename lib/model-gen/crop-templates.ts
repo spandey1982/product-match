@@ -38,7 +38,9 @@ export interface CloseUp {
 // Saree → Front Full, Back Full, Blouse, Pallu, Pleats (5 total)
 const SAREE: CloseUp[] = [
   { id: "blouse", label: "Blouse Close-Up", from: "front", region: { x: 0.20, y: 0.06, w: 0.60, h: 0.30 } },
-  { id: "pallu",  label: "Pallu Close-Up",  from: "front", region: { x: 0.06, y: 0.04, w: 0.52, h: 0.44 } },
+  // Pallu = the spread drape, visible on the BACK shot (over the shoulder down
+  // to where the drape ends), not the front. Left portion of the back base.
+  { id: "pallu",  label: "Pallu Close-Up",  from: "back",  region: { x: 0.0, y: 0.18, w: 0.55, h: 0.77 } },
   { id: "pleats", label: "Pleats Close-Up", from: "front", region: { x: 0.24, y: 0.50, w: 0.52, h: 0.46 } },
 ];
 

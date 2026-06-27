@@ -22,15 +22,25 @@ is a *controlled* resize. Good results, balanced against storage/cost.
 6. Branding (`branding.ts`) — overlay inserted before `/v` (after crop), adaptive colour + relative size.
 7. (Removed) display-time `c_pad` normalize — produced broken URLs; replaced by generate-at-AR.
 
-## Aspect-ratio strategy (decided)
+## Aspect-ratio strategy (decided + VERIFIED)
 
 Both the catalogue grid card and the product-detail card are `aspect-[3/4]`.
-So: **make the source 3:4, don't pad at delivery.**
+Uniform dimensions are achieved with a **verified Cloudinary transform** at
+delivery — no generation change or asset rework needed.
 
-- **Base `(b)` — Gemini (Natural Drape):** request a **3:4 portrait** render → fills the card, no pad transform. 🔬
-- **Base `(b)` — Vertex (Sharp Fit):** output AR = the reference-model image AR. Fix by standardising **reference images to 3:4** (asset work). Interim: a reliable crop/pad on the Vertex base only. ⏳
-- **Extras (enhanced uploads + `(c)` crops):** normalise to 3:4 with **`c_fill` + `g_auto`** (reliable crop-to-fill, no `b_blurred`). Detail shots tolerate a fill crop. 🔬
-- Avoid `b_blurred` edge-extension (it was the fragile piece that blanked rendering).
+- **Base `(b)` (both providers):** ✅ `normalizeCatalogueUrl` =
+  `c_pad,ar_3:4,w_1200,b_auto:border` — pads to 3:4, extends the detected edge
+  colour into the bars (blends into beige Gemini OR grey Vertex). Verified 200
+  for the full chain (pad → branding → delivery variant). Applied at display for
+  full-body views; existing products get it immediately, no regeneration.
+- **Extras (enhanced uploads + `(c)` crops):** ✅ `c_fill,g_auto,ar_3:4,w_1200`
+  (verified 200) — reliable crop-to-fill, no padding.
+- **`b_blurred` is INVALID** as a background token on this plan (Cloudinary reads
+  it as a colour named "blurred" → 400). This single token blanked every
+  detail/full-screen image; root-caused via the demo-cloud transform validator.
+- Generate-at-3:4 / 3:4 reference images are now OPTIONAL (the delivery transform
+  already gives uniformity), kept only as a future quality nicety.
+- **Pallu crop** comes from the **BACK** base (the spread drape), not the front.
 
 ## Per-category upload → display
 
