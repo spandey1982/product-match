@@ -49,6 +49,10 @@ export async function persistGeneratedImages(
   }
 
   // Keep the legacy single-image field on the primary, for unchanged UI.
-  const primaryUrl = images[primary].url;
-  await db.$executeRaw`UPDATE products SET "modelImageUrl" = ${primaryUrl}, "updatedAt" = datetime('now') WHERE id = ${productId}`;
+  // Typed Prisma update (updatedAt is @updatedAt, set automatically) — the
+  // previous raw query used SQLite's datetime('now'), invalid on Postgres.
+  await db.product.update({
+    where: { id: productId },
+    data: { modelImageUrl: images[primary].url },
+  });
 }
