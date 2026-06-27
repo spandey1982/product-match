@@ -120,14 +120,18 @@ function buildOverlayTransform(config: BrandingConfig, adapt?: BrandingAdapt): s
   if (name) {
     // A refined wordmark: medium weight + letter-spacing for an intentional,
     // boutique feel, in a soft premium tone chosen for the real background.
-    const label = `l_text:Arial_42_bold_letter_spacing_3:${escapeText(name)}`;
-    const place = `g_${gravity},x_40,y_34`;
+    // Size + offset are RELATIVE (fl_relative) so the mark is a consistent
+    // FRACTION of each image — base shots and the smaller close-up crops render
+    // it at the same proportional size, not a fixed px that balloons on crops.
+    const label = `l_text:Arial_50_bold_letter_spacing_3:${escapeText(name)}`;
+    const sizing = "fl_relative,w_0.2";
+    const place = `g_${gravity},x_0.04,y_0.04`;
     if ((adapt?.mark ?? "light") === "light") {
       // Ivory mark + soft shadow → legible on dark/medium/vignetted corners.
-      return `${label},co_${LIGHT_MARK_COLOR},e_shadow:30,o_92,${place}`;
+      return `${label},${sizing},co_${LIGHT_MARK_COLOR},e_shadow:30,o_92,${place}`;
     }
     // Warm near-black mark → clean and legible on genuinely light backdrops.
-    return `${label},co_${DARK_MARK_COLOR},o_88,${place}`;
+    return `${label},${sizing},co_${DARK_MARK_COLOR},o_88,${place}`;
   }
 
   return null;
