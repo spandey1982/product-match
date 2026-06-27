@@ -18,6 +18,7 @@ import { resolvePromptSet, buildViewPrompt } from "../prompt-sets";
 import { resolveReferenceVariant } from "../reference-selection";
 import { loadReferenceImage, type ModelType, type ReferenceImage } from "../reference-models";
 import { resolveCloseUps, buildCropUrl } from "../crop-templates";
+import { sampleStudioColor } from "../studio-anchor";
 import type { GeneratedImage } from "../persist";
 
 export interface StrategyProduct {
@@ -53,8 +54,10 @@ export async function runCatalogueStrategy(opts: {
   provider?: CatalogueBackend;
   /** Retailer who owns the product — for AI cost attribution. */
   userId?: string;
+  /** Studio backdrop fragment, identical for every view (studio consistency). */
+  backdrop: string;
 }): Promise<{ images: GeneratedImage[] }> {
-  const { product, modelType, provider = "gemini", userId } = opts;
+  const { product, modelType, provider = "gemini", userId, backdrop } = opts;
   // Same store + acting user for every call in this run; feature is "catalogue".
   const usage = { feature: "catalogue", storeId: userId ?? null, userId: userId ?? null };
 
@@ -83,6 +86,9 @@ export async function runCatalogueStrategy(opts: {
 
   const images: GeneratedImage[] = [];
   const baseShots: Partial<Record<"front" | "back", BaseShot>> = {};
+  // Minimal background data from the first (front) shot — pins later views to its
+  // realized backdrop colour without re-sending the whole image. Non-fatal.
+  let studioAnchor: string | null = null;
 
   /** Generate one base shot via the chosen provider, with Gemini fallback. */
   async function generateBaseShot(
@@ -162,6 +168,10 @@ export async function runCatalogueStrategy(opts: {
       hasReference: Boolean(reference),
       // Back view uses back-image notes; all other views use front notes.
       detailNotes: isBack ? product.backDetailNotes : product.detailNotes,
+      // Same studio for front + back; the crop-derived close-ups inherit it.
+      backdrop,
+      // Pin the back to the front's realized backdrop colour (front defines it).
+      studioAnchor: isBack ? studioAnchor : null,
     });
 
     const shot = await generateBaseShot(
@@ -182,6 +192,11 @@ export async function runCatalogueStrategy(opts: {
         bytes: shot.bytes,
       });
       baseShots[view.id as "front" | "back"] = shot;
+      // After the front shot lands, capture its backdrop colour so the back
+      // shot (next iteration) can be pinned to the exact same studio.
+      if (view.id === "front") {
+        studioAnchor = await sampleStudioColor(shot.url);
+      }
     }
   }
 

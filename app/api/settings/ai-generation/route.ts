@@ -12,6 +12,7 @@ import {
 import { isAiGenObjectivesEnabled } from "@/lib/model-gen/engine";
 import { listObjectives, isGenerationObjective } from "@/lib/model-gen/objectives";
 import { MODEL_TYPES, isModelType } from "@/lib/model-gen/reference-models";
+import { listBackdropOptions, isBackdropSelection } from "@/lib/model-gen/backdrops";
 import { isVertexTryOnEnabled, getVertexConfig } from "@/lib/tryon-vertex";
 
 /** Resolve the store logo's delivery URL from its public_id, if uploaded. */
@@ -34,6 +35,8 @@ function options() {
       description: o.description,
     })),
     modelTypes: MODEL_TYPES,
+    // Studio backdrop presets for the chooser (CSS-rendered previews).
+    backdrops: listBackdropOptions(),
     // Whether "Sharp Fit" (Vertex) is usable; "Natural Drape"/"Automatic" always are.
     vertexAvailable: isVertexTryOnEnabled() && getVertexConfig() !== null,
   };
@@ -68,6 +71,7 @@ export async function PATCH(req: NextRequest) {
     const rawBrandingEnabled = (body as { brandingEnabled?: unknown }).brandingEnabled;
     const rawBrandingPosition = (body as { brandingPosition?: unknown }).brandingPosition;
     const rawCatalogueProvider = (body as { catalogueProvider?: unknown }).catalogueProvider;
+    const rawBackdrop = (body as { backdrop?: unknown }).backdrop;
 
     if (rawModelType !== undefined && !isModelType(rawModelType)) {
       return NextResponse.json(
@@ -99,6 +103,12 @@ export async function PATCH(req: NextRequest) {
         { status: 400 }
       );
     }
+    if (rawBackdrop !== undefined && !isBackdropSelection(rawBackdrop)) {
+      return NextResponse.json(
+        { error: "Invalid backdrop." },
+        { status: 400 }
+      );
+    }
 
     // Merge onto the current (defaulted) settings so a partial update is safe.
     const current = await getAiGenSettings(session.id);
@@ -108,6 +118,7 @@ export async function PATCH(req: NextRequest) {
       brandingEnabled: typeof rawBrandingEnabled === "boolean" ? rawBrandingEnabled : current.brandingEnabled,
       brandingPosition: isBrandingPosition(rawBrandingPosition) ? rawBrandingPosition : current.brandingPosition,
       catalogueProvider: isCatalogueProvider(rawCatalogueProvider) ? rawCatalogueProvider : current.catalogueProvider,
+      backdrop: isBackdropSelection(rawBackdrop) ? rawBackdrop : current.backdrop,
     };
 
     await db.user.update({

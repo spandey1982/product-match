@@ -20,6 +20,8 @@ import { resolveModelType } from "./model-selection";
 import { getAiGenSettings } from "./settings";
 import { resolveAutoProvider } from "@/lib/providers/auto-routing";
 import { getBrandingConfig, applyBranding } from "./branding";
+import { resolveBackdropPreset, renderBackdropPrompt } from "./backdrops";
+import { pickSmartBackdrop } from "./backdrop-match";
 import { persistGeneratedImages, type GeneratedImage } from "./persist";
 import { recordGenerations } from "./generation-record";
 import { maybeReviewGenerations } from "./ai-review";
@@ -110,18 +112,37 @@ export async function generateModelImages(
       ? resolveAutoProvider({ category: product.category })
       : settings.catalogueProvider;
 
+  // Resolve the backdrop preset: Smart match scores presets against the product
+  // (Phase 3, deterministic — no AI call); an explicit choice resolves directly.
+  const backdropPreset =
+    settings.backdrop.mode === "smart"
+      ? pickSmartBackdrop({
+          color: product.color,
+          category: product.category,
+          pattern: product.pattern,
+        })
+      : resolveBackdropPreset(settings.backdrop);
+
+  // One deterministic studio prompt, reused for every view so the generated set
+  // looks like a single studio (Phase 2). Applies to the prompt-based (Gemini /
+  // Natural Drape) path; the Vertex (Sharp Fit) VTO path inherits the reference
+  // model's studio instead.
+  const backdrop = renderBackdropPrompt(backdropPreset);
+
   const { images } =
     objective === "quick_listing"
       ? await runQuickListingStrategy({
           product: strategyProduct,
           modelType,
           userId: input.userId,
+          backdrop,
         })
       : await runCatalogueStrategy({
           product: strategyProduct,
           modelType,
           provider: catalogueProvider,
           userId: input.userId,
+          backdrop,
         });
 
   // Brand each image (store logo, or store name) before persisting, so the

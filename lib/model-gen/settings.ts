@@ -17,6 +17,11 @@ import {
   isGenerationObjective,
   type GenerationObjective,
 } from "./objectives";
+import {
+  DEFAULT_BACKDROP_SELECTION,
+  parseBackdropSelection,
+  type BackdropSelection,
+} from "./backdrops";
 
 /** Where the brand watermark sits on generated model images. */
 export type BrandingPosition = "top-left" | "top-right";
@@ -43,6 +48,8 @@ export interface AiGenSettings {
   brandingPosition: BrandingPosition;
   /** Backend for the Catalogue & Social objective (independent of try-on). */
   catalogueProvider: CatalogueProvider;
+  /** Studio backdrop for generated images (Smart match, or a chosen preset). */
+  backdrop: BackdropSelection;
 }
 
 export const DEFAULT_AI_GEN_SETTINGS: AiGenSettings = {
@@ -51,6 +58,7 @@ export const DEFAULT_AI_GEN_SETTINGS: AiGenSettings = {
   brandingEnabled: true,
   brandingPosition: "top-right",
   catalogueProvider: "auto",
+  backdrop: { ...DEFAULT_BACKDROP_SELECTION },
 };
 
 /** Parse raw aiGenSettings JSON into a fully-populated, validated object. */
@@ -75,6 +83,7 @@ export function parseAiGenSettings(raw: string | null | undefined): AiGenSetting
       catalogueProvider: isCatalogueProvider(parsed.catalogueProvider)
         ? parsed.catalogueProvider
         : DEFAULT_AI_GEN_SETTINGS.catalogueProvider,
+      backdrop: parseBackdropSelection(parsed.backdrop),
     };
   } catch {
     return { ...DEFAULT_AI_GEN_SETTINGS };
