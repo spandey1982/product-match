@@ -150,11 +150,19 @@ export function applyBranding(
 
   const transform = buildOverlayTransform(config, adapt);
   if (!transform) return secureUrl;
+  if (!secureUrl.includes("/upload/")) return secureUrl;
+
+  // Insert the overlay as the LAST transform, before the /v<version>/ segment.
+  // Critical for close-ups: their URL already carries a c_crop right after
+  // /upload/, so chaining the overlay here brands the CROPPED image rather than
+  // branding the full base and then cropping it (which truncated the mark).
+  const version = secureUrl.match(/\/v\d+\//);
+  if (version && version.index !== undefined) {
+    const at = version.index;
+    return `${secureUrl.slice(0, at)}/${transform}${secureUrl.slice(at)}`;
+  }
 
   const marker = "/upload/";
-  const idx = secureUrl.indexOf(marker);
-  if (idx === -1) return secureUrl;
-
-  const insertAt = idx + marker.length;
-  return secureUrl.slice(0, insertAt) + transform + "/" + secureUrl.slice(insertAt);
+  const at = secureUrl.indexOf(marker) + marker.length;
+  return secureUrl.slice(0, at) + transform + "/" + secureUrl.slice(at);
 }

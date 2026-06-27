@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { ProductImageViewer } from "@/components/product/ProductImageViewer";
 import { displayUrl, masterUrl } from "@/lib/images/variants";
+import { normalizeCatalogueUrl } from "@/lib/image-normalize";
 
 interface GeneratedImage {
   url: string;
@@ -103,19 +104,23 @@ export function ProductDetailView({
   const productImages = [product.imageUrl, ...onModel.map((g) => g.url)].filter(
     Boolean
   ) as string[];
+  // Full-body model views (front/back/on-model) render on a uniform 3:4 canvas
+  // so a catalogue's shots — and shots across catalogues — share one dimension.
+  // The product photo and detail close-ups keep their natural aspect.
+  const FULL_VIEWS = new Set(["on-model", "front", "back"]);
+  const framedImages = productImages.map((url, i) =>
+    i > 0 && FULL_VIEWS.has(onModel[i - 1]?.view) ? normalizeCatalogueUrl(url) : url
+  );
   // Delivery variants: ~1200px for the inline carousel, upscaled+sharpened
   // master for the full-screen zoom viewer. f_auto/q_auto on both.
-  const displayImages = productImages.map(displayUrl);
-  const masterImages = productImages.map(masterUrl);
+  const displayImages = framedImages.map(displayUrl);
+  const masterImages = framedImages.map(masterUrl);
   const imageLabels = productImages.map((_, i) =>
     i === 0 ? "Product" : onModel[i - 1]?.view === "on-model" ? "On model" : prettyView(onModel[i - 1].view)
   );
-  // Zoom caps: full shots (product photo + full-body on-model views) allow more
-  // magnification; named close-up crops are already zoomed in, so they allow
-  // less. A crop is any generated slide whose view isn't a full-body base shot.
-  const FULL_VIEWS = new Set(["on-model", "front", "back"]);
+  // Zoom caps: 2.5× for full shots, 2× for already-zoomed close-up crops.
   const maxZooms = productImages.map((_, i) =>
-    i === 0 || FULL_VIEWS.has(onModel[i - 1]?.view) ? 3 : 2
+    i === 0 || FULL_VIEWS.has(onModel[i - 1]?.view) ? 2.5 : 2
   );
 
   async function handleDelete() {
