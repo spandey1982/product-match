@@ -1,13 +1,20 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
-import { Upload, Sparkles, Bot } from "lucide-react";
+import { useState, useCallback, useRef, useEffect } from "react";
+import { Upload, Sparkles, Bot, History, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PipelineDashboard } from "./PipelineDashboard";
 import { ItemGrid } from "./ItemGrid";
 import type { AutoCatalogBatch, AutoCatalogItem } from "./types";
 
-type View = "upload" | "pipeline";
+type View = "upload" | "pipeline" | "history";
+
+const STATUS_COLORS: Record<string, string> = {
+  pending:   "bg-gray-100 text-gray-600",
+  running:   "bg-blue-100 text-blue-700",
+  completed: "bg-emerald-100 text-emerald-700",
+  paused:    "bg-yellow-100 text-yellow-700",
+};
 
 export function AutoCatalogView() {
   const [view, setView] = useState<View>("upload");
@@ -18,9 +25,37 @@ export function AutoCatalogView() {
   const [error, setError] = useState<string | null>(null);
   const [batch, setBatch] = useState<AutoCatalogBatch | null>(null);
   const [items, setItems] = useState<AutoCatalogItem[]>([]);
+  const [batches, setBatches] = useState<AutoCatalogBatch[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  async function loadHistory() {
+    setLoadingHistory(true);
+    try {
+      const res = await fetch("/api/auto-catalog/batches");
+      const data = await res.json();
+      setBatches(data.batches ?? []);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }
+
+  async function openBatch(batchId: string) {
+    const res = await fetch(`/api/auto-catalog/batches/${batchId}`);
+    const data = await res.json();
+    setBatch(data.batch);
+    setItems(data.items);
+    setView("pipeline");
+    if (data.batch.status === "running") startPolling(batchId);
+  }
+
+  useEffect(() => {
+    if (view === "history") {
+      setTimeout(() => void loadHistory(), 0);
+    }
+  }, [view]);
 
   const addFiles = useCallback((incoming: FileList | File[]) => {
     const allowed = ["image/jpeg", "image/png", "image/webp"];
@@ -120,6 +155,72 @@ export function AutoCatalogView() {
     await fetch(`/api/auto-catalog/items/${itemId}`, { method: "POST" });
   }
 
+  if (view === "history") {
+    return (
+      <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+              <History className="h-6 w-6 text-indigo-600" />
+              Previous Batches
+            </h1>
+            <p className="text-sm text-gray-500 mt-0.5">
+              Your last 20 autonomous catalog runs
+            </p>
+          </div>
+          <Button variant="outline" onClick={() => { setView("upload"); setFiles([]); }}>
+            New Batch
+          </Button>
+        </div>
+
+        {loadingHistory ? (
+          <div className="space-y-3">
+            {[1,2,3].map((i) => (
+              <div key={i} className="h-20 rounded-2xl bg-gray-100 animate-pulse" />
+            ))}
+          </div>
+        ) : batches.length === 0 ? (
+          <div className="text-center py-16 text-gray-400">
+            <History className="h-10 w-10 mx-auto mb-3 opacity-30" />
+            <p>No previous batches found</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {batches.map((b) => (
+              <button
+                key={b.id}
+                onClick={() => openBatch(b.id)}
+                className="w-full rounded-2xl border border-gray-100 bg-white px-5 py-4 flex items-center justify-between hover:border-indigo-200 hover:bg-indigo-50/30 transition-colors text-left"
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full capitalize ${STATUS_COLORS[b.status] ?? "bg-gray-100 text-gray-600"}`}>
+                      {b.status}
+                    </span>
+                    <span className="text-xs text-gray-400">
+                      {new Date(b.createdAt).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-4 text-sm text-gray-600">
+                    <span>{b.totalCount} uploaded</span>
+                    <span className="text-emerald-600 font-medium">{b.publishedCount} published</span>
+                    {b.manualQcCount > 0 && (
+                      <span className="text-red-500">{b.manualQcCount} needs review</span>
+                    )}
+                    {b.unknownCount > 0 && (
+                      <span className="text-yellow-600">{b.unknownCount} unknown</span>
+                    )}
+                  </div>
+                </div>
+                <ChevronRight className="h-4 w-4 text-gray-400 shrink-0" />
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   if (view === "pipeline" && batch) {
     return (
       <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
@@ -133,9 +234,15 @@ export function AutoCatalogView() {
               AI is processing your products autonomously
             </p>
           </div>
-          <Button variant="outline" onClick={() => { setView("upload"); setFiles([]); }}>
-            New Batch
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setView("history")}>
+              <History className="h-4 w-4 mr-1.5" />
+              Previous Batches
+            </Button>
+            <Button variant="outline" onClick={() => { setView("upload"); setFiles([]); }}>
+              New Batch
+            </Button>
+          </div>
         </div>
 
         <PipelineDashboard batch={batch} />
@@ -162,6 +269,15 @@ export function AutoCatalogView() {
         <p className="text-gray-500">
           Upload product photos and the AI handles classification, cataloging, image generation, and QC automatically.
         </p>
+        <div className="flex justify-center pt-1">
+          <button
+            onClick={() => setView("history")}
+            className="flex items-center gap-1.5 text-sm text-indigo-600 hover:text-indigo-800 transition-colors"
+          >
+            <History className="h-4 w-4" />
+            View previous batches
+          </button>
+        </div>
       </div>
 
       {/* Upload zone */}
