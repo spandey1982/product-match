@@ -167,6 +167,18 @@ export async function runPipeline(itemId: string): Promise<void> {
 
     if (qcResult.failedImages.length > 0) {
       try {
+        // Delete images flagged as wrong-view before regenerating so the image
+        // agent starts fresh and doesn't accumulate incorrect images.
+        if (qcResult.mismatchedViewImages.length > 0) {
+          const mismatchedIds = qcResult.mismatchedViewImages.map((m) => m.imageId);
+          await db.productImage.deleteMany({
+            where: { id: { in: mismatchedIds }, productId: draftProduct.id },
+          });
+          console.log(
+            `[auto-catalog] deleted ${mismatchedIds.length} mismatched view image(s) for product ${draftProduct.id}:`,
+            qcResult.mismatchedViewImages.map((m) => `${m.expectedView} → showed ${m.detectedView}`)
+          );
+        }
         await imageAgent(draftProduct.id, userId);
       } catch {
         // Non-fatal

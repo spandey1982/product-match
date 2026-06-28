@@ -59,9 +59,12 @@ export interface QcResult {
     // Image checks
     imageQuality: QcCheck;
     hasGeneratedImage: QcCheck;
+    viewAccuracy: QcCheck;
   };
   failedFields: string[];
   failedImages: string[];
+  // Images whose view label does not match the expected view — need regeneration
+  mismatchedViewImages: Array<{ imageId: string; url: string; expectedView: string; detectedView: string }>;
 }
 
 /** The CLASSIFICATION_THRESHOLD below which a product goes to Unknown Bucket. */

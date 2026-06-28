@@ -6,14 +6,28 @@ import {
   type QcResult,
   type QcStatus,
 } from "../types";
+import { verifyImageView, type ExpectedView } from "./verifyImageView";
 
 function check(status: QcStatus, confidence: number, message: string): QcCheck {
   return { status, confidence, message };
 }
 
+// Maps the ProductImage.view DB value to the ExpectedView label the verifier understands
+const VIEW_MAP: Record<string, ExpectedView> = {
+  front:     "front",
+  back:      "back",
+  "close-up": "close-up",
+  closeup:   "close-up",
+  "on-model":"on-model",
+};
+
 /**
- * QC Agent — validates catalog completeness and image availability.
- * Returns a structured QcResult with per-check statuses and an overall score.
+ * QC Agent — validates catalog completeness and image accuracy.
+ *
+ * Image view accuracy check: fetches each generated ProductImage, calls the
+ * vision verifier to confirm the image actually shows the expected view (front/
+ * back/close-up), and flags mismatches so the pipeline can delete and regenerate
+ * only the wrong images.
  */
 export async function qcAgent(
   catalogResult: CatalogResult,
@@ -21,6 +35,7 @@ export async function qcAgent(
 ): Promise<QcResult> {
   const failedFields: string[] = [];
   const failedImages: string[] = [];
+  const mismatchedViewImages: QcResult["mismatchedViewImages"] = [];
 
   // ── Catalog checks ────────────────────────────────────────────────────────
 
@@ -65,11 +80,11 @@ export async function qcAgent(
       ? check("warning", materialConf, "Material confidence below 70%")
       : check("failed", materialConf, "Material confidence too low");
 
-  // ── Image checks ──────────────────────────────────────────────────────────
+  // ── Image presence check ──────────────────────────────────────────────────
 
   const images = await db.productImage.findMany({
     where: { productId },
-    select: { url: true, view: true, isPrimary: true },
+    select: { id: true, url: true, view: true, isPrimary: true },
   });
 
   const product = await db.product.findUnique({
@@ -84,7 +99,53 @@ export async function qcAgent(
 
   if (!hasImage) failedImages.push("model_image");
 
-  // Placeholder image quality check (future: call vision model for blur/resolution)
+  // ── View accuracy check ───────────────────────────────────────────────────
+  // For each ProductImage that has a known view label, verify the actual image
+  // content matches. Run all verifications in parallel to keep latency low.
+
+  let viewAccuracyCheck: QcCheck;
+
+  const verifiableImages = images.filter((img) => img.view && VIEW_MAP[img.view]);
+
+  if (verifiableImages.length === 0) {
+    viewAccuracyCheck = check("pass", 0.8, "No multi-view images to verify");
+  } else {
+    const verifications = await Promise.all(
+      verifiableImages.map((img) =>
+        verifyImageView(img.id, img.url, VIEW_MAP[img.view!]!)
+      )
+    );
+
+    const mismatches = verifications.filter((v) => !v.match && v.confidence >= 0.7);
+
+    for (const m of mismatches) {
+      mismatchedViewImages.push({
+        imageId: m.imageId,
+        url: m.url,
+        expectedView: m.expectedView,
+        detectedView: m.detectedView,
+      });
+      failedImages.push(`view_mismatch:${m.imageId}`);
+    }
+
+    if (mismatches.length === 0) {
+      viewAccuracyCheck = check("pass", 0.9, `All ${verifiableImages.length} view(s) verified correct`);
+    } else if (mismatches.length < verifiableImages.length) {
+      viewAccuracyCheck = check(
+        "warning",
+        0.6,
+        `${mismatches.length} of ${verifiableImages.length} view(s) show wrong content (e.g. front shown as back)`
+      );
+    } else {
+      viewAccuracyCheck = check(
+        "failed",
+        0.3,
+        `All ${mismatches.length} view(s) show wrong content — regeneration needed`
+      );
+    }
+  }
+
+  // Placeholder image quality check (future: blur/resolution detection)
   const imageQualityCheck = hasImage
     ? check("pass", 0.85, "Image quality acceptable")
     : check("failed", 0, "No image to evaluate");
@@ -92,12 +153,13 @@ export async function qcAgent(
   // ── Score calculation ─────────────────────────────────────────────────────
 
   const weights: Array<[QcCheck, number]> = [
-    [missingFieldsCheck, 30],
-    [categoryCheck, 20],
-    [colorCheck, 15],
-    [materialCheck, 10],
-    [hasImageCheck, 15],
-    [imageQualityCheck, 10],
+    [missingFieldsCheck,  30],
+    [categoryCheck,       15],
+    [colorCheck,          10],
+    [materialCheck,        5],
+    [hasImageCheck,       15],
+    [viewAccuracyCheck,   15],
+    [imageQualityCheck,   10],
   ];
 
   const statusScore = (s: QcStatus) => (s === "pass" ? 1 : s === "warning" ? 0.5 : 0);
@@ -116,14 +178,16 @@ export async function qcAgent(
     overall: score >= QC_PASS_THRESHOLD ? overall : "failed",
     score,
     checks: {
-      missingFields: missingFieldsCheck,
+      missingFields:      missingFieldsCheck,
       categoryConfidence: categoryCheck,
-      colorConfidence: colorCheck,
+      colorConfidence:    colorCheck,
       materialConfidence: materialCheck,
-      imageQuality: imageQualityCheck,
-      hasGeneratedImage: hasImageCheck,
+      hasGeneratedImage:  hasImageCheck,
+      viewAccuracy:       viewAccuracyCheck,
+      imageQuality:       imageQualityCheck,
     },
     failedFields,
     failedImages,
+    mismatchedViewImages,
   };
 }
