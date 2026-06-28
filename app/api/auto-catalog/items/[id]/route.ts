@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { runPipeline } from "@/lib/auto-catalog/pipeline";
 
 // PATCH /api/auto-catalog/items/[id] — manual QC edits or category assignment
 export async function PATCH(
@@ -45,11 +44,6 @@ export async function PATCH(
     }
 
     await db.autoCatalogItem.update({ where: { id }, data: updates });
-
-    // If category was just assigned, resume the pipeline
-    if (body.category && item.stage === "unknown") {
-      runPipeline(id).catch(console.error);
-    }
 
     return NextResponse.json({ ok: true });
   } catch (err) {

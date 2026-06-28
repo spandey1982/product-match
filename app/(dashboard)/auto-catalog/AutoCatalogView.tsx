@@ -153,6 +153,9 @@ export function AutoCatalogView() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ category }),
     });
+    // Run the pipeline synchronously from the UI — fire-and-forget in the
+    // route handler gets killed by Next.js before it can do any work.
+    await fetch(`/api/auto-catalog/items/${itemId}/process`, { method: "POST" });
   }
 
   async function handleApprove(itemId: string) {
