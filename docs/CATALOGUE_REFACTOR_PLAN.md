@@ -80,10 +80,12 @@ Source resolution per display card:
 - Base 3:4 uniformity via the verified `normalizeCatalogueUrl` (display) — generate-at-3:4 dropped as unnecessary.
 - 🔬 Verify end-to-end in-app: generate a saree + a kurti, confirm the card stacks, enhancement, fallbacks, and brand placement.
 
-## R3 — Coverage-aware brand placement ⏳
+## R3 — Coverage-aware brand placement ✅
 
-- `lib/model-gen/studio-anchor.ts` — sample all 4 card corners (avg + busyness/variance).
-- `lib/model-gen/branding.ts` — `resolveBrandingPlacement(card)`: place the mark in the calmest corner (least product), with the adaptive colour we already compute. Brand on the **card** canvas (top-right by default once 3:4 source lands; overridden by the calmest corner when that's product).
+- ✅ `lib/model-gen/studio-anchor.ts` — `sampleRegionStat`: a corner as a 16×16 grid → avg colour + luminance variance (low = flat backdrop, high = busy).
+- ✅ `lib/model-gen/branding.ts` — `resolveBrandingPlacement`: samples all 4 corners, places the mark in the calmest (configured corner wins within 25%), with the adaptive colour for that corner. `applyBranding`/`buildOverlayTransform` take the resolved placement.
+- ✅ `lib/model-gen/engine.ts` — brands each card via `resolveBrandingPlacement`.
+- 🔬 Verify in-app: the product-filled close-up that overlapped now puts the mark in a clear corner.
 
 ## Open decisions / verification gates
 
