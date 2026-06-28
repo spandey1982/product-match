@@ -135,7 +135,11 @@ export function AutoCatalogView() {
       }
 
       // Mark batch completed
-      await fetch(`/api/auto-catalog/batches/${batchId}`, { method: "GET" });
+      await fetch(`/api/auto-catalog/batches/${batchId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "completed" }),
+      });
     } catch (err) {
       setError(String(err));
     } finally {
@@ -153,6 +157,12 @@ export function AutoCatalogView() {
 
   async function handleApprove(itemId: string) {
     await fetch(`/api/auto-catalog/items/${itemId}`, { method: "POST" });
+  }
+
+  async function handleRetry(itemId: string) {
+    // Reset item to uploaded state, then re-process it synchronously
+    await fetch(`/api/auto-catalog/items/${itemId}/retry`, { method: "POST" });
+    await fetch(`/api/auto-catalog/items/${itemId}/process`, { method: "POST" });
   }
 
   if (view === "history") {
@@ -251,6 +261,7 @@ export function AutoCatalogView() {
           items={items}
           onAssignCategory={handleAssignCategory}
           onApprove={handleApprove}
+          onRetry={handleRetry}
         />
       </div>
     );

@@ -48,21 +48,25 @@ interface Props {
   items: AutoCatalogItem[];
   onAssignCategory: (itemId: string, category: string) => Promise<void>;
   onApprove: (itemId: string) => Promise<void>;
+  onRetry: (itemId: string) => Promise<void>;
 }
 
 function ItemCard({
   item,
   onAssignCategory,
   onApprove,
+  onRetry,
 }: {
   item: AutoCatalogItem;
   onAssignCategory: (itemId: string, category: string) => Promise<void>;
   onApprove: (itemId: string) => Promise<void>;
+  onRetry: (itemId: string) => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [selectedCat, setSelectedCat] = useState("");
   const [assigning, setAssigning] = useState(false);
   const [approving, setApproving] = useState(false);
+  const [retrying, setRetrying] = useState(false);
 
   const catalog = item.catalogResult ? JSON.parse(item.catalogResult) : null;
   const qc = item.qcResult ? JSON.parse(item.qcResult) : null;
@@ -79,6 +83,12 @@ function ItemCard({
     setApproving(true);
     await onApprove(item.id);
     setApproving(false);
+  }
+
+  async function handleRetry() {
+    setRetrying(true);
+    await onRetry(item.id);
+    setRetrying(false);
   }
 
   return (
@@ -195,9 +205,21 @@ function ItemCard({
 
         {/* Failed */}
         {item.stage === "failed" && (
-          <p className="text-xs text-red-500 truncate">
-            {item.failureReason || "Unknown error"}
-          </p>
+          <div className="space-y-2 pt-1">
+            <p className="text-xs text-red-500 line-clamp-2">
+              {item.failureReason || "Unknown error"}
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full h-7 text-xs border-red-200 text-red-600 hover:bg-red-50"
+              disabled={retrying}
+              onClick={handleRetry}
+            >
+              <RefreshCw className={`h-3 w-3 mr-1 ${retrying ? "animate-spin" : ""}`} />
+              {retrying ? "Retrying..." : "Retry from start"}
+            </Button>
+          </div>
         )}
 
         {/* Expanded catalog view */}
@@ -223,7 +245,7 @@ function ItemCard({
   );
 }
 
-export function ItemGrid({ items, onAssignCategory, onApprove }: Props) {
+export function ItemGrid({ items, onAssignCategory, onApprove, onRetry }: Props) {
   const [filter, setFilter] = useState<string>("all");
 
   const filters = [
@@ -275,6 +297,7 @@ export function ItemGrid({ items, onAssignCategory, onApprove }: Props) {
             item={item}
             onAssignCategory={onAssignCategory}
             onApprove={onApprove}
+            onRetry={onRetry}
           />
         ))}
       </div>
