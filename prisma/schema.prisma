@@ -217,6 +217,79 @@ model AiUsageEvent {
   @@map("ai_usage_events")
 }
 
+// ── Autonomous AI Catalog Pipeline ──────────────────────────────────────────
+
+// One batch = one "Start" click by the merchant. Tracks aggregate pipeline
+// progress across all items in the batch.
+model AutoCatalogBatch {
+  id     String @id @default(cuid())
+  userId String
+
+  status String @default("pending") // pending | running | completed | paused
+
+  // Aggregate counters — updated as items progress through the pipeline
+  totalCount      Int @default(0)
+  uploadedCount   Int @default(0)
+  classifiedCount Int @default(0)
+  unknownCount    Int @default(0)
+  catalogedCount  Int @default(0)
+  imagedCount     Int @default(0)
+  qcPassedCount   Int @default(0)
+  retryingCount   Int @default(0)
+  manualQcCount   Int @default(0)
+  publishedCount  Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items AutoCatalogItem[]
+
+  @@index([userId])
+  @@map("auto_catalog_batches")
+}
+
+// One item = one product being processed through the pipeline.
+model AutoCatalogItem {
+  id      String @id @default(cuid())
+  batchId String
+  userId  String
+
+  // The uploaded raw image (Cloudinary URL)
+  imageUrl  String
+  mimeType  String @default("image/jpeg")
+  fileName  String @default("")
+
+  // Pipeline stage for this item
+  stage String @default("uploaded")
+  // uploaded | classifying | unknown | cataloging | generating_images
+  // | qc_running | retrying | manual_qc | ready | published | failed
+
+  // Classification output (JSON)
+  classificationResult String? // { category, confidence, groupId, allCategories }
+
+  // Catalog output (JSON) — all fields with confidence scores
+  catalogResult String?
+
+  // QC output (JSON) — per-check results + overall score
+  qcResult String?
+
+  // Retry tracking
+  retryCount  Int    @default(0)
+  failureReason String?
+
+  // Linked product once published
+  productId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  batch AutoCatalogBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([batchId])
+  @@index([userId, stage])
+  @@map("auto_catalog_items")
+}
+
 model Recommendation {
   id              String @id @default(cuid())
   sourceProductId String
