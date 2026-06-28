@@ -147,24 +147,28 @@ export function AutoCatalogView() {
     }
   }
 
+  function resumePolling() {
+    if (batch) startPolling(batch.id);
+  }
+
   async function handleAssignCategory(itemId: string, category: string) {
     await fetch(`/api/auto-catalog/items/${itemId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ category }),
     });
-    // Run the pipeline synchronously from the UI — fire-and-forget in the
-    // route handler gets killed by Next.js before it can do any work.
+    resumePolling();
     await fetch(`/api/auto-catalog/items/${itemId}/process`, { method: "POST" });
   }
 
   async function handleApprove(itemId: string) {
     await fetch(`/api/auto-catalog/items/${itemId}`, { method: "POST" });
+    resumePolling();
   }
 
   async function handleRetry(itemId: string) {
-    // Reset item to uploaded state, then re-process it synchronously
     await fetch(`/api/auto-catalog/items/${itemId}/retry`, { method: "POST" });
+    resumePolling();
     await fetch(`/api/auto-catalog/items/${itemId}/process`, { method: "POST" });
   }
 
