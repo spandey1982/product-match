@@ -51,7 +51,9 @@ export function RecommendationCard({ recommendation }: RecommendationCardProps) 
         {/* Image + score overlay */}
         <div className="relative aspect-[3/4] overflow-hidden">
           <ProductImage
-            src={product.imageUrl ? thumbnailUrl(product.imageUrl) : product.imageUrl}
+            src={thumbnailUrl(
+              product.generatedImages?.[0]?.url ?? product.imageUrl ?? ""
+            )}
             title={product.title}
             category={product.category}
             className="w-full h-full transition-transform duration-300 group-hover:scale-105"

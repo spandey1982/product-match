@@ -165,7 +165,11 @@ export async function getStoredRecommendations(
     orderBy: { matchScore: "desc" },
     take: limit,
     include: {
-      targetProduct: true,
+      targetProduct: {
+        include: {
+          generatedImages: { orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }] },
+        },
+      },
     },
   });
 }
