@@ -101,7 +101,7 @@ export function ProductDetailView({
   const hasModelImage = onModel.length > 0;
   const [generating, setGenerating] = useState(initialGenerating && !hasModelImage);
 
-  const productImages = [product.imageUrl, ...onModel.map((g) => g.url)].filter(
+  const productImages = [...onModel.map((g) => g.url), product.imageUrl].filter(
     Boolean
   ) as string[];
   // Full-body model views (front/back/on-model) render on a uniform 3:4 canvas
