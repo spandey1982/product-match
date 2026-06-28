@@ -78,18 +78,29 @@ export function AutoCatalogView() {
       const { batchId } = await uploadRes.json();
       setUploadProgress(70);
 
-      // Start pipeline
-      await fetch(`/api/auto-catalog/batches/${batchId}/start`, { method: "POST" });
+      // Start pipeline — returns item ids to process
+      const startRes = await fetch(`/api/auto-catalog/batches/${batchId}/start`, { method: "POST" });
+      const { itemIds } = await startRes.json();
       setUploadProgress(100);
 
-      // Load initial batch state
+      // Load initial batch state and switch to pipeline view
       const batchRes = await fetch(`/api/auto-catalog/batches/${batchId}`);
       const batchData = await batchRes.json();
       setBatch(batchData.batch);
       setItems(batchData.items);
-
       setView("pipeline");
+
+      // Start polling for live updates
       startPolling(batchId);
+
+      // Process each item sequentially — each call blocks until the item finishes
+      // This keeps the pipeline alive since Next.js terminates fire-and-forget promises
+      for (const itemId of itemIds) {
+        await fetch(`/api/auto-catalog/items/${itemId}/process`, { method: "POST" });
+      }
+
+      // Mark batch completed
+      await fetch(`/api/auto-catalog/batches/${batchId}`, { method: "GET" });
     } catch (err) {
       setError(String(err));
     } finally {

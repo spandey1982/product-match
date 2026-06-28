@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { runPipeline } from "@/lib/auto-catalog/pipeline";
 
-// POST /api/auto-catalog/batches/[id]/start — kick off pipeline for all items
+// POST /api/auto-catalog/batches/[id]/start — marks batch as running and returns item ids
+// The UI is responsible for calling /api/auto-catalog/items/[id]/process for each item.
 export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -34,17 +34,7 @@ export async function POST(
       data: { status: "running" },
     });
 
-    // Fire-and-forget — each item runs independently so one failure doesn't block others
-    Promise.allSettled(items.map((item) => runPipeline(item.id)))
-      .then(async () => {
-        await db.autoCatalogBatch.update({
-          where: { id },
-          data: { status: "completed" },
-        });
-      })
-      .catch(console.error);
-
-    return NextResponse.json({ started: items.length });
+    return NextResponse.json({ started: items.length, itemIds: items.map((i) => i.id) });
   } catch (err) {
     if ((err as Error).message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
