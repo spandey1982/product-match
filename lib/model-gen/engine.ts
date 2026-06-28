@@ -19,7 +19,9 @@ import { DEFAULT_MODEL_TYPE, type ModelType } from "./reference-models";
 import { resolveModelType } from "./model-selection";
 import { getAiGenSettings } from "./settings";
 import { resolveAutoProvider } from "@/lib/providers/auto-routing";
-import { getBrandingConfig, applyBranding } from "./branding";
+import { getBrandingConfig, applyBranding, resolveBrandingPlacement } from "./branding";
+import { resolveBackdropPreset, renderBackdropPrompt } from "./backdrops";
+import { pickSmartBackdrop } from "./backdrop-match";
 import { persistGeneratedImages, type GeneratedImage } from "./persist";
 import { recordGenerations } from "./generation-record";
 import { maybeReviewGenerations } from "./ai-review";
@@ -74,7 +76,8 @@ export async function generateModelImages(
   // is a "back" of the product (blouse-back, kurta-back, coat-back, choli-back,
   // trouser-back, …) feeds back-profile generation. Falls back to the legacy
   // Product.backImageUrl, else null (model invents the back, as before).
-  const backPart = parsePartImages(product.partImages).find(
+  const partImages = parsePartImages(product.partImages);
+  const backPart = partImages.find(
     (p) => /back/i.test(p.slot) || /back/i.test(p.label)
   );
   const backImageUrl = backPart?.url ?? product.backImageUrl ?? null;
@@ -110,38 +113,74 @@ export async function generateModelImages(
       ? resolveAutoProvider({ category: product.category })
       : settings.catalogueProvider;
 
+  // Resolve the backdrop preset: Smart match scores presets against the product
+  // (Phase 3, deterministic — no AI call); an explicit choice resolves directly.
+  const backdropPreset =
+    settings.backdrop.mode === "smart"
+      ? pickSmartBackdrop({
+          color: product.color,
+          category: product.category,
+          pattern: product.pattern,
+        })
+      : resolveBackdropPreset(settings.backdrop);
+
+  // One deterministic studio prompt, reused for every view so the generated set
+  // looks like a single studio (Phase 2). Applies to the prompt-based (Gemini /
+  // Natural Drape) path; the Vertex (Sharp Fit) VTO path inherits the reference
+  // model's studio instead.
+  const backdrop = renderBackdropPrompt(backdropPreset);
+
   const { images } =
     objective === "quick_listing"
       ? await runQuickListingStrategy({
           product: strategyProduct,
           modelType,
           userId: input.userId,
+          backdrop,
         })
       : await runCatalogueStrategy({
           product: strategyProduct,
           modelType,
           provider: catalogueProvider,
           userId: input.userId,
+          backdrop,
+          partImages,
         });
 
   // Brand each image (store logo, or store name) before persisting, so the
   // branded URL flows to display, share and download. No-op when disabled.
+  // Phase 4 + R3: branding adapts to the ACTUAL image — each card's four corners
+  // are sampled (resolveBrandingPlacement) so the mark lands in the calmest
+  // corner (least product overlap) in a colour legible against it, regardless of
+  // provider. The preset hint is only a fallback if sampling fails.
   const branding = await getBrandingConfig(input.userId);
-  const branded: GeneratedImage[] = images.map((img) => ({
-    ...img,
-    url: applyBranding(img.url, branding),
-  }));
+  const fallbackAdapt = {
+    mark: backdropPreset.branding.preferredLogo,
+    brightness: backdropPreset.color.brightness,
+  };
+  const willBrand =
+    branding.enabled && (Boolean(branding.logoPublicId) || Boolean(branding.storeName?.trim()));
+
+  const branded: GeneratedImage[] = await Promise.all(
+    images.map(async (img) => {
+      if (!willBrand) return img;
+      const placement = await resolveBrandingPlacement(img.url, branding.position, fallbackAdapt);
+      return { ...img, url: applyBranding(img.url, branding, placement) };
+    })
+  );
 
   if (branded.length > 0) {
     await persistGeneratedImages(product.id, branded, objective);
-    // Record perf/quality rows (non-fatal) for analytics + scoring.
+    // Record perf/quality rows (non-fatal) for analytics + scoring — only for the
+    // ACTUAL generations, not enhanced uploads (which aren't AI-generated).
+    const generated = branded.filter((img) => img.source !== "upload");
     const records = await recordGenerations({
       productId: product.id,
       userId: input.userId,
       category: product.category,
       objective,
       defaultProvider: objective === "quick_listing" ? "vertex" : catalogueProvider,
-      images: branded,
+      images: generated,
     });
     // Fire-and-forget AI review (flag- + sample-gated); never blocks the response.
     maybeReviewGenerations(records, { productImageUrl: product.imageUrl });

@@ -373,7 +373,12 @@ export async function generateModelImage(productId: string): Promise<void> {
     const branding = await getBrandingConfig(product.userId);
     const finalUrl = applyBranding(result.url, branding);
 
-    await db.$executeRaw`UPDATE products SET "modelImageUrl" = ${finalUrl}, "updatedAt" = datetime('now') WHERE id = ${productId}`;
+    // Typed Prisma update (updatedAt is @updatedAt) — the previous raw query
+    // used SQLite's datetime('now'), invalid on Postgres.
+    await db.product.update({
+      where: { id: productId },
+      data: { modelImageUrl: finalUrl },
+    });
   } catch (err) {
     console.error("[model-image] Unexpected error:", err);
   }

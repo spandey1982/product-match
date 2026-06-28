@@ -58,9 +58,6 @@ export function resolvePromptSet(category: string | null | undefined): PromptVie
   return CATEGORY_PROMPT_SET[key] ?? GENERIC;
 }
 
-const SETTING =
-  "Professional fashion e-commerce photography, soft diffused studio lighting, clean light-grey background, high resolution, photorealistic, no text or watermark.";
-
 function subjectFor(gender: string): string {
   switch (gender) {
     case "MEN":   return "a well-groomed Indian man, 30 years old, confident posture";
@@ -79,6 +76,19 @@ export interface ViewPromptInput {
   hasReference: boolean;
   /** Optional concise detail hints (prompt enrichment) to preserve fine detail. */
   detailNotes?: string | null;
+  /**
+   * The studio backdrop fragment (from renderBackdropPrompt). Identical across
+   * every view of a generation, which is what makes the set look like one
+   * studio. Required so a caller can never silently drop the backdrop.
+   */
+  backdrop: string;
+  /**
+   * Optional exact backdrop colour (hex) sampled from the FIRST shot of the set
+   * (studio-anchor). When present, the view is pinned to that colour so later
+   * shots match the realized studio of the first — minimal background data, not
+   * the whole image.
+   */
+  studioAnchor?: string | null;
 }
 
 /** "Preserve these product specifics: …" clause, or "" when no notes. */
@@ -94,9 +104,18 @@ function detailClause(detailNotes?: string | null): string {
  * model is described from the product's gender. Detail hints (when present)
  * tell the model which fine specifics it must not lose during synthesis.
  */
+/** "…match the backdrop colour #hex…" clause, or "" when no anchor. */
+function anchorClause(studioAnchor?: string | null): string {
+  const hex = studioAnchor?.trim();
+  return hex
+    ? `The studio backdrop colour must exactly match ${hex} from the first shot of this set, keeping one identical studio across every image.`
+    : "";
+}
+
 export function buildViewPrompt(input: ViewPromptInput): string {
-  const { category, color, gender, view, hasReference, detailNotes } = input;
+  const { category, color, gender, view, hasReference, detailNotes, backdrop, studioAnchor } = input;
   const detail = detailClause(detailNotes);
+  const anchor = anchorClause(studioAnchor);
 
   if (hasReference) {
     return [
@@ -105,7 +124,8 @@ export function buildViewPrompt(input: ViewPromptInput): string {
       "Preserve the model's face, body and skin tone from Image 1, and the garment's exact colour, print and texture from Image 2.",
       view.modifier,
       detail,
-      SETTING,
+      backdrop,
+      anchor,
     ].filter(Boolean).join(" ");
   }
 
@@ -113,6 +133,7 @@ export function buildViewPrompt(input: ViewPromptInput): string {
     `Full-body fashion photograph of ${subjectFor(gender)} wearing this ${color} ${category}.`,
     view.modifier,
     detail,
-    SETTING,
+    backdrop,
+    anchor,
   ].filter(Boolean).join(" ");
 }

@@ -17,7 +17,9 @@ import type { TryOnMimeType } from "@/lib/tryon";
 import { resolvePromptSet, buildViewPrompt } from "../prompt-sets";
 import { resolveReferenceVariant } from "../reference-selection";
 import { loadReferenceImage, type ModelType, type ReferenceImage } from "../reference-models";
-import { resolveCloseUps, buildCropUrl } from "../crop-templates";
+import { sampleStudioColor } from "../studio-anchor";
+import { resolveCatalogueStack } from "../catalogue-cards";
+import type { PartImage } from "@/lib/product/part-slots";
 import type { GeneratedImage } from "../persist";
 
 export interface StrategyProduct {
@@ -53,8 +55,12 @@ export async function runCatalogueStrategy(opts: {
   provider?: CatalogueBackend;
   /** Retailer who owns the product — for AI cost attribution. */
   userId?: string;
+  /** Studio backdrop fragment, identical for every view (studio consistency). */
+  backdrop: string;
+  /** Uploaded detail images — sourced into the catalogue card stack (R2). */
+  partImages?: PartImage[];
 }): Promise<{ images: GeneratedImage[] }> {
-  const { product, modelType, provider = "gemini", userId } = opts;
+  const { product, modelType, provider = "gemini", userId, backdrop, partImages = [] } = opts;
   // Same store + acting user for every call in this run; feature is "catalogue".
   const usage = { feature: "catalogue", storeId: userId ?? null, userId: userId ?? null };
 
@@ -81,8 +87,10 @@ export async function runCatalogueStrategy(opts: {
     (v) => v.id === "front" || v.id === "back"
   );
 
-  const images: GeneratedImage[] = [];
   const baseShots: Partial<Record<"front" | "back", BaseShot>> = {};
+  // Minimal background data from the first (front) shot — pins later views to its
+  // realized backdrop colour without re-sending the whole image. Non-fatal.
+  let studioAnchor: string | null = null;
 
   /** Generate one base shot via the chosen provider, with Gemini fallback. */
   async function generateBaseShot(
@@ -162,6 +170,10 @@ export async function runCatalogueStrategy(opts: {
       hasReference: Boolean(reference),
       // Back view uses back-image notes; all other views use front notes.
       detailNotes: isBack ? product.backDetailNotes : product.detailNotes,
+      // Same studio for front + back; the crop-derived close-ups inherit it.
+      backdrop,
+      // Pin the back to the front's realized backdrop colour (front defines it).
+      studioAnchor: isBack ? studioAnchor : null,
     });
 
     const shot = await generateBaseShot(
@@ -172,30 +184,48 @@ export async function runCatalogueStrategy(opts: {
       productUrl
     );
     if (shot) {
-      images.push({
-        url: shot.url,
-        view: view.id,
-        provider: shot.provider,
-        modelName: shot.model ?? undefined,
-        width: shot.width,
-        height: shot.height,
-        bytes: shot.bytes,
-      });
       baseShots[view.id as "front" | "back"] = shot;
+      // After the front shot lands, capture its backdrop colour so the back
+      // shot (next iteration) can be pinned to the exact same studio.
+      if (view.id === "front") {
+        studioAnchor = await sampleStudioColor(shot.url);
+      }
     }
   }
 
-  // Derive category close-ups by cropping the matching base shot (no blind crop).
-  // A close-up inherits the provider of the base shot it was cropped from.
-  for (const closeUp of resolveCloseUps(product.category)) {
-    const base = baseShots[closeUp.from];
-    if (!base) continue; // base shot failed → skip its close-ups
-    images.push({
-      url: buildCropUrl(base.url, closeUp.region),
-      view: closeUp.id,
-      provider: base.provider,
-    });
+  // Build the display card stack: AI base shots, model-crops, and the retailer's
+  // enhanced uploaded detail images (with base-crop fallback). Branding is
+  // applied later by the engine, on each final card.
+  const baseRefs: Partial<Record<"front" | "back", { url: string; provider: string }>> = {};
+  for (const k of ["front", "back"] as const) {
+    const b = baseShots[k];
+    if (b) baseRefs[k] = { url: b.url, provider: b.provider };
   }
+
+  const stack = resolveCatalogueStack({
+    category: product.category,
+    baseShots: baseRefs,
+    partImages,
+    mainImageUrl: product.imageUrl,
+  });
+
+  // Merge the generation metadata back onto the AI base cards (for recording).
+  const images: GeneratedImage[] = stack.map((card) => {
+    if (card.source === "ai-base") {
+      const b = baseShots[card.view as "front" | "back"];
+      return {
+        url: card.url,
+        view: card.view,
+        provider: card.provider,
+        source: card.source,
+        modelName: b?.model ?? undefined,
+        width: b?.width ?? null,
+        height: b?.height ?? null,
+        bytes: b?.bytes ?? null,
+      };
+    }
+    return { url: card.url, view: card.view, provider: card.provider, source: card.source };
+  });
 
   return { images };
 }

@@ -38,7 +38,9 @@ export interface CloseUp {
 // Saree → Front Full, Back Full, Blouse, Pallu, Pleats (5 total)
 const SAREE: CloseUp[] = [
   { id: "blouse", label: "Blouse Close-Up", from: "front", region: { x: 0.20, y: 0.06, w: 0.60, h: 0.30 } },
-  { id: "pallu",  label: "Pallu Close-Up",  from: "front", region: { x: 0.06, y: 0.04, w: 0.52, h: 0.44 } },
+  // Pallu = the spread drape, visible on the BACK shot (over the shoulder down
+  // to where the drape ends), not the front. Left portion of the back base.
+  { id: "pallu",  label: "Pallu Close-Up",  from: "back",  region: { x: 0.0, y: 0.18, w: 0.55, h: 0.77 } },
   { id: "pleats", label: "Pleats Close-Up", from: "front", region: { x: 0.24, y: 0.50, w: 0.52, h: 0.46 } },
 ];
 
@@ -53,12 +55,19 @@ const DETAIL: CloseUp[] = [
   { id: "design", label: "Design Close-Up", from: "front", region: { x: 0.22, y: 0.16, w: 0.56, h: 0.40 } },
 ];
 
+// Kurti / Kurta → the salwar/pyjama shows on the lower body of the FRONT base.
+const KURTI: CloseUp[] = [
+  { id: "salwar", label: "Salwar Close-Up", from: "front", region: { x: 0.30, y: 0.62, w: 0.40, h: 0.36 } },
+];
+
 const CATEGORY_CLOSEUPS: Record<string, CloseUp[]> = {
   saree: SAREE,
   dupatta: SAREE,
   lehenga: LEHENGA,
   sharara: LEHENGA,
-  // kurta/kurti/shirt/trouser/leggings/t-shirt/etc. → DETAIL (default)
+  kurta: KURTI,
+  kurti: KURTI,
+  // shirt/trouser/leggings/t-shirt/etc. → DETAIL (default)
 };
 
 /** The default close-up set for categories without a specific template. */
@@ -68,6 +77,18 @@ export const DEFAULT_CLOSEUPS: CloseUp[] = DETAIL;
 export function resolveCloseUps(category: string | null | undefined): CloseUp[] {
   const key = category?.trim().toLowerCase() ?? "";
   return CATEGORY_CLOSEUPS[key] ?? DEFAULT_CLOSEUPS;
+}
+
+/**
+ * Look up a single crop region by id within a category (e.g. "pleats", "salwar",
+ * "pallu"). Used by the catalogue card resolver for model-crop cards and for the
+ * base-crop fallback when an uploaded detail image is absent.
+ */
+export function cropRegionFor(
+  category: string | null | undefined,
+  cropId: string
+): CloseUp | undefined {
+  return resolveCloseUps(category).find((c) => c.id === cropId);
 }
 
 /**

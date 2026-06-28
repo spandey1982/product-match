@@ -29,8 +29,10 @@ export async function runQuickListingStrategy(opts: {
   modelType: ModelType;
   /** Retailer who owns the product — for AI cost attribution. */
   userId?: string;
+  /** Studio backdrop fragment — applied on the Gemini fallback path. */
+  backdrop: string;
 }): Promise<{ images: GeneratedImage[]; usedFallback: boolean }> {
-  const { product, modelType, userId } = opts;
+  const { product, modelType, userId, backdrop } = opts;
   const usage = { feature: "quick_listing", storeId: userId ?? null, userId: userId ?? null };
 
   const variant = resolveReferenceVariant(product.category);
@@ -56,7 +58,7 @@ export async function runQuickListingStrategy(opts: {
       });
       return {
         images: [{
-          url: result.url, view: "front", provider: "vertex",
+          url: result.url, view: "front", provider: "vertex", source: "ai-base",
           modelName: result.model ?? undefined,
           width: result.width ?? null, height: result.height ?? null, bytes: result.bytes ?? null,
         }],
@@ -83,6 +85,7 @@ export async function runQuickListingStrategy(opts: {
     view: frontView,
     hasReference: Boolean(reference),
     detailNotes: product.detailNotes,
+    backdrop,
   });
 
   const result = await runGeminiImageGen({
@@ -103,7 +106,7 @@ export async function runQuickListingStrategy(opts: {
   return {
     images: result
       ? [{
-          url: result.url, view: "front", provider: "gemini",
+          url: result.url, view: "front", provider: "gemini", source: "ai-base",
           modelName: result.model,
           width: result.width, height: result.height, bytes: result.bytes,
         }]

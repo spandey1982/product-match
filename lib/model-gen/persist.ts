@@ -14,6 +14,12 @@ export interface GeneratedImage {
   view: string;
   /** Backend that produced it ("gemini" | "vertex"); for perf tracking. */
   provider?: string;
+  /**
+   * How the card was sourced: a real AI generation ("ai-base"), a crop of one
+   * ("model-crop"), or the retailer's enhanced uploaded image ("upload"). Used
+   * to record/review only the actual generations, not derived/uploaded cards.
+   */
+  source?: "ai-base" | "model-crop" | "upload";
   /** Image facts for analytics — base shots only; null/undefined for crops. */
   modelName?: string;
   width?: number | null;
@@ -49,6 +55,10 @@ export async function persistGeneratedImages(
   }
 
   // Keep the legacy single-image field on the primary, for unchanged UI.
-  const primaryUrl = images[primary].url;
-  await db.$executeRaw`UPDATE products SET "modelImageUrl" = ${primaryUrl}, "updatedAt" = datetime('now') WHERE id = ${productId}`;
+  // Typed Prisma update (updatedAt is @updatedAt, set automatically) — the
+  // previous raw query used SQLite's datetime('now'), invalid on Postgres.
+  await db.product.update({
+    where: { id: productId },
+    data: { modelImageUrl: images[primary].url },
+  });
 }

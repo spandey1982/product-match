@@ -9,6 +9,7 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { categorySlotsFor, partSlotsFor } from "@/lib/product/part-slots";
+import BackdropSelect, { type BackdropOption, type BackdropValue } from "@/components/product/BackdropSelect";
 
 const CATEGORIES = [
   "Saree", "Lehenga", "Blouse", "Dupatta", "Kurta", "Kurti",
@@ -46,6 +47,7 @@ interface AiGenConfig {
   enabled: boolean;
   objectives: AiGenObjective[];
   modelTypes: AiGenModelType[];
+  backdrops: BackdropOption[];
   logoUrl: string | null;
   vertexAvailable: boolean;
   settings: {
@@ -54,6 +56,7 @@ interface AiGenConfig {
     brandingEnabled: boolean;
     brandingPosition: "top-left" | "top-right";
     catalogueProvider: "auto" | "gemini" | "vertex";
+    backdrop: BackdropValue;
   };
 }
 
@@ -122,6 +125,9 @@ export default function UploadPage() {
   const [brandingEnabled, setBrandingEnabled] = useState(true);
   const [brandingPosition, setBrandingPosition] = useState<"top-left" | "top-right">("top-right");
   const [catalogueProvider, setCatalogueProvider] = useState<"auto" | "gemini" | "vertex">("auto");
+  // Studio backdrop (Phase 1: store-level setting only; no generation wiring yet).
+  const [backdrops, setBackdrops] = useState<BackdropOption[]>([]);
+  const [backdrop, setBackdrop] = useState<BackdropValue>({ mode: "smart", presetId: "reference-studio" });
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [logoBusy, setLogoBusy] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -160,6 +166,8 @@ export default function UploadPage() {
         setBrandingEnabled(data.settings.brandingEnabled);
         setBrandingPosition(data.settings.brandingPosition);
         setCatalogueProvider(data.settings.catalogueProvider);
+        setBackdrops(data.backdrops ?? []);
+        if (data.settings.backdrop) setBackdrop(data.settings.backdrop);
         setLogoUrl(data.logoUrl);
       })
       .catch(() => {/* chooser stays hidden; legacy toggle still works */});
@@ -171,6 +179,7 @@ export default function UploadPage() {
     brandingEnabled?: boolean;
     brandingPosition?: string;
     catalogueProvider?: string;
+    backdrop?: BackdropValue;
   }) {
     fetch("/api/settings/ai-generation", {
       method: "PATCH",
@@ -286,12 +295,42 @@ export default function UploadPage() {
   }
 
   /**
-   * Resize client-side to a faithful working size (max 1280px, JPEG 90%) before
-   * upload + AI. 1280 preserves far more fabric/weave/embroidery detail for both
-   * recognition and downstream generation than the old 800px cap, while keeping
-   * upload size and token count reasonable.
+   * Controlled client-side downscale to a faithful working size before upload.
+   * Uses createImageBitmap's high-quality resampler (a Lanczos-class filter)
+   * resampling from the FULL original held in memory — far better colour/detail
+   * than a single canvas drawImage — WITHOUT uploading the original, so stored
+   * size, storage cost and transit are unchanged. A big phone photo is shrunk
+   * here, so it also never trips the upload size limit. Falls back to the legacy
+   * canvas path on browsers without resizeQuality support.
    */
-  function resizeImage(file: File, maxPx = 1280, quality = 0.9): Promise<File> {
+  async function resizeImage(file: File, maxPx = 1280, quality = 0.9): Promise<File> {
+    try {
+      const full = await createImageBitmap(file);
+      const scale = Math.min(1, maxPx / Math.max(full.width, full.height));
+      const w = Math.max(1, Math.round(full.width * scale));
+      const h = Math.max(1, Math.round(full.height * scale));
+      const resized =
+        scale < 1
+          ? await createImageBitmap(full, { resizeWidth: w, resizeHeight: h, resizeQuality: "high" })
+          : full;
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext("2d")!.drawImage(resized, 0, 0);
+      if (resized !== full) resized.close();
+      full.close();
+      const blob = await new Promise<Blob | null>((res) =>
+        canvas.toBlob(res, "image/jpeg", quality)
+      );
+      if (blob) return new File([blob], "product.jpg", { type: "image/jpeg" });
+    } catch {
+      /* createImageBitmap / resizeQuality unsupported — fall back below */
+    }
+    return legacyResizeImage(file, maxPx, quality);
+  }
+
+  /** Legacy single-step canvas resize — fallback for older browsers only. */
+  function legacyResizeImage(file: File, maxPx = 1280, quality = 0.9): Promise<File> {
     return new Promise((resolve) => {
       const img = new Image();
       const url = URL.createObjectURL(file);
@@ -684,7 +723,7 @@ export default function UploadPage() {
                       aria-pressed={active}
                       className={`text-left rounded-2xl border p-3 transition-all ${
                         active
-                          ? "border-indigo-300 bg-indigo-50/60 ring-1 ring-indigo-200"
+                          ? "border-indigo-300 bg-gradient-to-br from-indigo-50 to-purple-50 ring-1 ring-purple-200"
                           : "border-gray-100 bg-white hover:border-gray-200"
                       }`}
                     >
@@ -718,7 +757,7 @@ export default function UploadPage() {
                           aria-pressed={active}
                           className={`rounded-full border px-4 py-1.5 text-sm font-medium transition-all ${
                             active
-                              ? "border-indigo-300 bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200"
+                              ? "border-indigo-300 bg-gradient-to-br from-indigo-50 to-purple-50 text-indigo-700 ring-1 ring-purple-200"
                               : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
                           } ${disabled ? "opacity-40 cursor-not-allowed" : ""}`}
                         >
@@ -731,6 +770,21 @@ export default function UploadPage() {
                     Automatic picks the best style per category. Choose one to override.
                   </p>
                 </div>
+              )}
+
+              {/* Backdrop — only for the prompt-based catalogue path (Premium /
+                  Automatic). Quick listing and Sharp Fit (Economy/Vertex) don't
+                  take a backdrop: they use the reference-model studios as-is. */}
+              {objective === "catalogue" && catalogueProvider !== "vertex" && backdrops.length > 0 && (
+                <BackdropSelect
+                  presets={backdrops}
+                  value={backdrop}
+                  productColor={form.color}
+                  onChange={(next) => {
+                    setBackdrop(next);
+                    patchBranding({ backdrop: next });
+                  }}
+                />
               )}
 
               {/* Model selection is automatic for now (derived from the product's
@@ -820,7 +874,7 @@ export default function UploadPage() {
                           aria-pressed={brandingPosition === pos}
                           className={`rounded-full border px-3 py-1 text-xs font-medium transition-all ${
                             brandingPosition === pos
-                              ? "border-indigo-300 bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200"
+                              ? "border-indigo-300 bg-gradient-to-br from-indigo-50 to-purple-50 text-indigo-700 ring-1 ring-purple-200"
                               : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
                           }`}
                         >

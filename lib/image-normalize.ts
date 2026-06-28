@@ -31,3 +31,23 @@ function insertTransform(secureUrl: string, transform: string): string {
 export function normalizeTryOnUrl(secureUrl: string): string {
   return insertTransform(secureUrl, TRYON_NORMALIZE);
 }
+
+// 3:4 portrait for catalogue MODEL shots (front/back/on-model). Verified
+// against Cloudinary (returns 200):
+//   • explicit width is required — c_pad with only ar_ pads inconsistently;
+//   • b_auto:border extends the detected EDGE colour into the pad, so the bars
+//     blend into whatever studio backdrop the shot used — provider-agnostic
+//     (beige Gemini OR grey Vertex), no add-on.
+// (The earlier `b_blurred` token 400'd — Cloudinary read it as a colour named
+// "blurred"; that single token blanked every detail/full-screen image.)
+const CATALOGUE_NORMALIZE = "c_pad,ar_3:4,w_1200,b_auto:border";
+
+/**
+ * Uniform-dimension delivery URL for a catalogue full-body model shot, so a
+ * catalogue's shots — and shots across catalogues — share one aspect. Detail
+ * close-ups keep their natural aspect and must NOT be passed here. Returns the
+ * URL unchanged if it isn't a recognizable Cloudinary upload URL.
+ */
+export function normalizeCatalogueUrl(secureUrl: string): string {
+  return insertTransform(secureUrl, CATALOGUE_NORMALIZE);
+}
