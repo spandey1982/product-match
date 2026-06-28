@@ -68,16 +68,17 @@ Source resolution per display card:
 - ✅ Generation input cap 1280 → 1024 (`preprocess.ts`).
 - ✅ Part/detail images share the controlled path.
 
-## R2 — Card-stack architecture 🔜
+## R2 — Card-stack architecture ✅
 
-- `lib/product/part-slots.ts` — add a per-category **card-stack** definition (ordered display cards + source rule `ai-base | model-crop | upload:<slot>`). Pure data.
-- `lib/model-gen/catalogue-cards.ts` *(new)* — resolver: product + parsed `partImages` + base shots → ordered final cards (with fallback to base-crop).
-- `lib/images/enhance.ts` *(new)* — non-AI Cloudinary enhancement (`e_improve`, mild `e_sharpen`, trim) + 3:4 `c_fill,g_auto`. 🔬
-- `lib/model-gen/strategies/catalogue.ts` — generate base shots **at 3:4** 🔬; build the stack via the resolver instead of inline `resolveCloseUps`.
-- `lib/generate-model-image.ts` — Gemini request: add 3:4 portrait aspect. 🔬
-- `lib/model-gen/engine.ts` — pass parsed `partImages` to the strategy; brand **last** over the finished stack.
-- `lib/model-gen/persist.ts` — persist the stack; infer source from `view` (no schema migration).
-- `app/(dashboard)/products/[id]/ProductDetailView.tsx` — render the resolved stack; labels per card.
+- ✅ `lib/product/part-slots.ts` — per-category **card-stack** definition (ordered cards + source rule `ai-base | model-crop | upload`, with `fallbackCropId`).
+- ✅ `lib/model-gen/catalogue-cards.ts` — resolver: card model + `partImages` + base shots → ordered final cards (upload→base-crop fallback; "main" slot → product image; border omitted when absent).
+- ✅ `lib/images/enhance.ts` — non-AI Cloudinary enhancement `c_fill,g_auto,ar_3:4,w_1200,e_improve,e_sharpen:60` (verified 200).
+- ✅ `lib/model-gen/crop-templates.ts` — `cropRegionFor(category, id)`; pallu now from BACK; new kurti salwar region.
+- ✅ `lib/model-gen/strategies/catalogue.ts` — builds the stack via the resolver (replaces the inline crop loop).
+- ✅ `lib/model-gen/engine.ts` — passes `partImages`; records only `source !== "upload"`.
+- ✅ `lib/model-gen/persist.ts` — `GeneratedImage.source`; stack persisted; source inferred from `view` at display (no migration).
+- Base 3:4 uniformity via the verified `normalizeCatalogueUrl` (display) — generate-at-3:4 dropped as unnecessary.
+- 🔬 Verify end-to-end in-app: generate a saree + a kurti, confirm the card stacks, enhancement, fallbacks, and brand placement.
 
 ## R3 — Coverage-aware brand placement ⏳
 
