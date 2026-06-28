@@ -58,7 +58,7 @@ export async function runQuickListingStrategy(opts: {
       });
       return {
         images: [{
-          url: result.url, view: "front", provider: "vertex",
+          url: result.url, view: "front", provider: "vertex", source: "ai-base",
           modelName: result.model ?? undefined,
           width: result.width ?? null, height: result.height ?? null, bytes: result.bytes ?? null,
         }],
@@ -106,7 +106,7 @@ export async function runQuickListingStrategy(opts: {
   return {
     images: result
       ? [{
-          url: result.url, view: "front", provider: "gemini",
+          url: result.url, view: "front", provider: "gemini", source: "ai-base",
           modelName: result.model,
           width: result.width, height: result.height, bytes: result.bytes,
         }]

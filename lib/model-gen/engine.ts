@@ -76,7 +76,8 @@ export async function generateModelImages(
   // is a "back" of the product (blouse-back, kurta-back, coat-back, choli-back,
   // trouser-back, …) feeds back-profile generation. Falls back to the legacy
   // Product.backImageUrl, else null (model invents the back, as before).
-  const backPart = parsePartImages(product.partImages).find(
+  const partImages = parsePartImages(product.partImages);
+  const backPart = partImages.find(
     (p) => /back/i.test(p.slot) || /back/i.test(p.label)
   );
   const backImageUrl = backPart?.url ?? product.backImageUrl ?? null;
@@ -143,6 +144,7 @@ export async function generateModelImages(
           provider: catalogueProvider,
           userId: input.userId,
           backdrop,
+          partImages,
         });
 
   // Brand each image (store logo, or store name) before persisting, so the
@@ -169,14 +171,16 @@ export async function generateModelImages(
 
   if (branded.length > 0) {
     await persistGeneratedImages(product.id, branded, objective);
-    // Record perf/quality rows (non-fatal) for analytics + scoring.
+    // Record perf/quality rows (non-fatal) for analytics + scoring — only for the
+    // ACTUAL generations, not enhanced uploads (which aren't AI-generated).
+    const generated = branded.filter((img) => img.source !== "upload");
     const records = await recordGenerations({
       productId: product.id,
       userId: input.userId,
       category: product.category,
       objective,
       defaultProvider: objective === "quick_listing" ? "vertex" : catalogueProvider,
-      images: branded,
+      images: generated,
     });
     // Fire-and-forget AI review (flag- + sample-gated); never blocks the response.
     maybeReviewGenerations(records, { productImageUrl: product.imageUrl });

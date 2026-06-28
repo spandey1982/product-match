@@ -14,6 +14,12 @@ export interface GeneratedImage {
   view: string;
   /** Backend that produced it ("gemini" | "vertex"); for perf tracking. */
   provider?: string;
+  /**
+   * How the card was sourced: a real AI generation ("ai-base"), a crop of one
+   * ("model-crop"), or the retailer's enhanced uploaded image ("upload"). Used
+   * to record/review only the actual generations, not derived/uploaded cards.
+   */
+  source?: "ai-base" | "model-crop" | "upload";
   /** Image facts for analytics — base shots only; null/undefined for crops. */
   modelName?: string;
   width?: number | null;
