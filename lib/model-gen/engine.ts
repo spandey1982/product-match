@@ -19,7 +19,7 @@ import { DEFAULT_MODEL_TYPE, type ModelType } from "./reference-models";
 import { resolveModelType } from "./model-selection";
 import { getAiGenSettings } from "./settings";
 import { resolveAutoProvider } from "@/lib/providers/auto-routing";
-import { getBrandingConfig, applyBranding, resolveBrandingAdapt } from "./branding";
+import { getBrandingConfig, applyBranding, resolveBrandingPlacement } from "./branding";
 import { resolveBackdropPreset, renderBackdropPrompt } from "./backdrops";
 import { pickSmartBackdrop } from "./backdrop-match";
 import { persistGeneratedImages, type GeneratedImage } from "./persist";
@@ -149,10 +149,10 @@ export async function generateModelImages(
 
   // Brand each image (store logo, or store name) before persisting, so the
   // branded URL flows to display, share and download. No-op when disabled.
-  // Phase 4: branding adapts to the ACTUAL background it sits on — each image's
-  // watermark corner is sampled (resolveBrandingAdapt) so the mark is legible
-  // and intentional regardless of provider (Gemini studio or Vertex reference
-  // background). The preset hint is only a fallback if sampling fails.
+  // Phase 4 + R3: branding adapts to the ACTUAL image — each card's four corners
+  // are sampled (resolveBrandingPlacement) so the mark lands in the calmest
+  // corner (least product overlap) in a colour legible against it, regardless of
+  // provider. The preset hint is only a fallback if sampling fails.
   const branding = await getBrandingConfig(input.userId);
   const fallbackAdapt = {
     mark: backdropPreset.branding.preferredLogo,
@@ -164,8 +164,8 @@ export async function generateModelImages(
   const branded: GeneratedImage[] = await Promise.all(
     images.map(async (img) => {
       if (!willBrand) return img;
-      const adapt = await resolveBrandingAdapt(img.url, branding.position, fallbackAdapt);
-      return { ...img, url: applyBranding(img.url, branding, adapt) };
+      const placement = await resolveBrandingPlacement(img.url, branding.position, fallbackAdapt);
+      return { ...img, url: applyBranding(img.url, branding, placement) };
     })
   );
 

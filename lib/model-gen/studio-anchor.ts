@@ -30,13 +30,14 @@ function buildProbeUrl(
   secureUrl: string,
   gravity: string,
   wFrac: number,
-  hFrac: number
+  hFrac: number,
+  size = 1
 ): string | null {
   const marker = "/upload/";
   const idx = secureUrl.indexOf(marker);
   if (idx === -1) return null;
   const insertAt = idx + marker.length;
-  const transform = `c_crop,g_${gravity},w_${wFrac},h_${hFrac}/c_scale,w_1,h_1`;
+  const transform = `c_crop,g_${gravity},w_${wFrac},h_${hFrac}/c_scale,w_${size},h_${size}`;
   return secureUrl.slice(0, insertAt) + transform + "/" + secureUrl.slice(insertAt);
 }
 
@@ -59,6 +60,53 @@ export async function sampleRegionRgb(
     if (data.length < 3) return null;
 
     return { r: data[0], g: data[1], b: data[2] };
+  } catch {
+    return null;
+  }
+}
+
+/** Average colour + luminance variance of a region — used to find the calmest
+ *  (least product-busy) corner for brand placement (R3). */
+export interface RegionStat {
+  rgb: Rgb;
+  /** Luminance variance across a small grid: low = flat/backdrop, high = busy. */
+  variance: number;
+}
+
+/**
+ * Sample a region as a small NxN grid and return its average colour and
+ * luminance variance. A flat backdrop corner has low variance; a corner full of
+ * product/pattern/edges has high variance. Non-fatal (null on failure).
+ */
+export async function sampleRegionStat(
+  secureUrl: string,
+  gravity: string,
+  wFrac: number,
+  hFrac: number,
+  size = 16
+): Promise<RegionStat | null> {
+  try {
+    const probe = buildProbeUrl(secureUrl, gravity, wFrac, hFrac, size);
+    if (!probe) return null;
+    const res = await fetch(probe);
+    if (!res.ok) return null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    const { data, info } = await sharp(buf).raw().toBuffer({ resolveWithObject: true });
+    const ch = info.channels;
+    const count = info.width * info.height;
+    if (count < 1 || data.length < count * ch) return null;
+
+    let sr = 0, sg = 0, sb = 0;
+    const lums: number[] = [];
+    for (let i = 0; i < count; i++) {
+      const r = data[i * ch], g = data[i * ch + 1], b = data[i * ch + 2];
+      sr += r; sg += g; sb += b;
+      lums.push(0.299 * r + 0.587 * g + 0.114 * b);
+    }
+    const rgb = { r: Math.round(sr / count), g: Math.round(sg / count), b: Math.round(sb / count) };
+    const mean = lums.reduce((a, l) => a + l, 0) / count;
+    const variance = lums.reduce((a, l) => a + (l - mean) * (l - mean), 0) / count;
+    return { rgb, variance };
   } catch {
     return null;
   }

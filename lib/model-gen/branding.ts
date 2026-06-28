@@ -13,7 +13,7 @@
  */
 import { db } from "@/lib/db";
 import { getAiGenSettings, type BrandingPosition } from "./settings";
-import { sampleRegionRgb, type Rgb } from "./studio-anchor";
+import { sampleRegionStat, type Rgb, type RegionStat } from "./studio-anchor";
 
 export interface BrandingConfig {
   enabled: boolean;
@@ -76,20 +76,45 @@ function luminance({ r, g, b }: Rgb): number {
   return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
 }
 
+/** A resolved watermark treatment + the corner to place it in (R3). */
+export interface BrandingPlacement extends BrandingAdapt {
+  /** Cloudinary gravity for the chosen (calmest) corner, e.g. "north_east". */
+  gravity: string;
+}
+
+const PLACEMENT_GRAVITIES: string[] = ["north_east", "north_west", "south_east", "south_west"];
+
 /**
- * Resolve the watermark treatment for a SPECIFIC image by sampling the actual
- * background in the watermark's corner. Falls back to `fallback` (preset-based)
- * if sampling fails. Never throws.
+ * Coverage-aware placement (R3): sample all four corners of THIS image and put
+ * the mark in the calmest one (lowest luminance variance = most likely
+ * backdrop, least product), with the adaptive colour for that corner. The
+ * retailer's configured corner wins when it's nearly as calm, so we only
+ * relocate to avoid genuine product overlap. Falls back to the configured
+ * corner + preset adapt if sampling fails. Never throws.
  */
-export async function resolveBrandingAdapt(
+export async function resolveBrandingPlacement(
   secureUrl: string,
-  position: BrandingPosition,
+  preferredPosition: BrandingPosition,
   fallback: BrandingAdapt
-): Promise<BrandingAdapt> {
-  const rgb = await sampleRegionRgb(secureUrl, GRAVITY[position], 0.28, 0.16);
-  if (!rgb) return fallback;
-  const lum = luminance(rgb);
-  return { mark: lum < 0.6 ? "light" : "dark", brightness: lum };
+): Promise<BrandingPlacement> {
+  const preferredGravity = GRAVITY[preferredPosition];
+  const stats = await Promise.all(
+    PLACEMENT_GRAVITIES.map((g) => sampleRegionStat(secureUrl, g, 0.3, 0.2))
+  );
+  const scored = PLACEMENT_GRAVITIES
+    .map((gravity, i) => ({ gravity, stat: stats[i] }))
+    .filter((c): c is { gravity: string; stat: RegionStat } => c.stat !== null);
+
+  if (scored.length === 0) return { ...fallback, gravity: preferredGravity };
+
+  scored.sort((a, b) => a.stat.variance - b.stat.variance);
+  const calmest = scored[0];
+  const preferred = scored.find((c) => c.gravity === preferredGravity);
+  const chosen =
+    preferred && preferred.stat.variance <= calmest.stat.variance * 1.25 ? preferred : calmest;
+
+  const lum = luminance(chosen.stat.rgb);
+  return { mark: lum < 0.6 ? "light" : "dark", brightness: lum, gravity: chosen.gravity };
 }
 
 /** Logo opacity tuned to the corner: lighter background → subtler mark. */
@@ -106,14 +131,15 @@ function escapeText(text: string): string {
 }
 
 /** Build the overlay transformation segment, or null if nothing to overlay. */
-function buildOverlayTransform(config: BrandingConfig, adapt?: BrandingAdapt): string | null {
-  const gravity = GRAVITY[config.position];
+function buildOverlayTransform(config: BrandingConfig, placement?: BrandingPlacement): string | null {
+  // Gravity = the coverage-aware corner when resolved, else the configured one.
+  const gravity = placement?.gravity ?? GRAVITY[config.position];
 
   if (config.logoPublicId) {
     // Logo image overlay. Public-id path separators become ":" in a layer ref.
     // Opacity eases with the corner's brightness so the mark stays subtle.
     const layer = config.logoPublicId.replace(/\//g, ":");
-    return `l_${layer},w_0.18,fl_relative,o_${logoOpacity(adapt)},g_${gravity},x_0.04,y_0.04`;
+    return `l_${layer},w_0.18,fl_relative,o_${logoOpacity(placement)},g_${gravity},x_0.04,y_0.04`;
   }
 
   const name = config.storeName?.trim();
@@ -126,7 +152,7 @@ function buildOverlayTransform(config: BrandingConfig, adapt?: BrandingAdapt): s
     const label = `l_text:Arial_50_bold_letter_spacing_3:${escapeText(name)}`;
     const sizing = "fl_relative,w_0.2";
     const place = `g_${gravity},x_0.04,y_0.04`;
-    if ((adapt?.mark ?? "light") === "light") {
+    if ((placement?.mark ?? "light") === "light") {
       // Ivory mark + soft shadow → legible on dark/medium/vignetted corners.
       return `${label},${sizing},co_${LIGHT_MARK_COLOR},e_shadow:30,o_92,${place}`;
     }
@@ -142,17 +168,18 @@ function buildOverlayTransform(config: BrandingConfig, adapt?: BrandingAdapt): s
  * unchanged when branding is off / there's no logo or name / the URL isn't a
  * recognizable Cloudinary upload URL.
  *
- * `adapt` (optional) tailors the watermark to the chosen backdrop — see
- * BrandingAdapt. When omitted, branding renders exactly as before.
+ * `placement` (optional) tailors the watermark's colour AND corner to the
+ * actual image — see resolveBrandingPlacement. When omitted, the mark renders
+ * at the configured corner in its default (light) treatment (legacy callers).
  */
 export function applyBranding(
   secureUrl: string,
   config: BrandingConfig,
-  adapt?: BrandingAdapt
+  placement?: BrandingPlacement
 ): string {
   if (!config.enabled) return secureUrl;
 
-  const transform = buildOverlayTransform(config, adapt);
+  const transform = buildOverlayTransform(config, placement);
   if (!transform) return secureUrl;
   if (!secureUrl.includes("/upload/")) return secureUrl;
 
