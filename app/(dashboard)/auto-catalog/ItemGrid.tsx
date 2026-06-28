@@ -40,8 +40,8 @@ const PROCESSING_STAGES = new Set([
 
 const CATEGORIES = [
   "Saree", "Lehenga", "Blouse", "Dupatta", "Kurta", "Salwar", "Anarkali",
-  "Sharara", "Palazzo", "Jewellery", "Footwear", "Clutch", "Handbag",
-  "Suit", "Tie", "Other",
+  "Sharara", "Palazzo", "Shirt", "Trouser", "Jewellery", "Footwear", "Clutch",
+  "Handbag", "Suit", "Tie", "Other",
 ];
 
 interface Props {
