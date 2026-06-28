@@ -31,26 +31,37 @@ export async function runPipeline(itemId: string): Promise<void> {
     // ── Stage 2: Classification ───────────────────────────────────────────
     await setStage(itemId, "classifying");
 
+    // If the merchant already assigned a category (confidence = 0.95), skip
+    // re-classification — the AI would just override their choice with "Other".
+    const existingClassification: ClassificationResult | null = item.classificationResult
+      ? (JSON.parse(item.classificationResult) as ClassificationResult)
+      : null;
+    const isMerchantOverride = existingClassification && existingClassification.confidence >= 0.9;
+
     let classification: ClassificationResult;
-    try {
-      classification = await classificationAgent(imageUrl, userId);
-    } catch (err) {
+    if (isMerchantOverride) {
+      classification = existingClassification;
+    } else {
+      try {
+        classification = await classificationAgent(imageUrl, userId);
+      } catch (err) {
+        await db.autoCatalogItem.update({
+          where: { id: itemId },
+          data: { stage: "failed", failureReason: `Classification error: ${String(err)}` },
+        });
+        return;
+      }
+
       await db.autoCatalogItem.update({
         where: { id: itemId },
-        data: { stage: "failed", failureReason: `Classification error: ${String(err)}` },
+        data: { classificationResult: JSON.stringify(classification) },
       });
-      return;
-    }
 
-    await db.autoCatalogItem.update({
-      where: { id: itemId },
-      data: { classificationResult: JSON.stringify(classification) },
-    });
-
-    if (isBelowThreshold(classification.confidence)) {
-      await setStage(itemId, "unknown");
-      await bumpCount(batchId, "unknownCount");
-      return; // Paused — awaits merchant category assignment
+      if (isBelowThreshold(classification.confidence)) {
+        await setStage(itemId, "unknown");
+        await bumpCount(batchId, "unknownCount");
+        return; // Paused — awaits merchant category assignment
+      }
     }
 
     await bumpCount(batchId, "classifiedCount");
