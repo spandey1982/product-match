@@ -290,6 +290,58 @@ model AutoCatalogItem {
   @@map("auto_catalog_items")
 }
 
+// ── AI Fashion Designer ─────────────────────────────────────────────────────
+
+// One design session: fabric + optional assets → AI-generated garment images.
+// Separate from the product catalog — lives in the Design Library.
+model FashionDesign {
+  id          String @id @default(cuid())
+  userId      String
+  title       String @default("Untitled Design")
+  garmentType String @default("")
+
+  // Pipeline stage
+  stage String @default("uploading")
+  // uploading | analyzing_fabric | analyzing_design | analyzing_accessories
+  // | planning | constructing | generating_flat_images | completed | failed
+
+  // Agent outputs (structured JSON)
+  fabricAnalysis      String?
+  designUnderstanding String?
+  accessoryAnalysis   String?
+  generationPlan      String?
+
+  // Generated flat images (Cloudinary URLs)
+  flatFrontUrl String?
+  flatBackUrl  String?
+
+  qualityScore  Int?
+  failureReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assets FashionDesignAsset[]
+
+  @@index([userId])
+  @@map("fashion_designs")
+}
+
+// One uploaded asset per design (fabric, sketch, accessory, etc.)
+model FashionDesignAsset {
+  id        String @id @default(cuid())
+  designId  String
+  assetType String // fabric | sketch | reference | accessory | neck | sleeve | back | border | color_palette | other
+  url       String
+  fileName  String @default("")
+  mimeType  String @default("image/jpeg")
+
+  design FashionDesign @relation(fields: [designId], references: [id], onDelete: Cascade)
+
+  @@index([designId])
+  @@map("fashion_design_assets")
+}
+
 model Recommendation {
   id              String @id @default(cuid())
   sourceProductId String
