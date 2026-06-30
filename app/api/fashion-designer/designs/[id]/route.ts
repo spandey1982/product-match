@@ -28,3 +28,25 @@ export async function GET(
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
+
+// DELETE /api/fashion-designer/designs/[id]
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await requireAuth();
+    const { id } = await params;
+
+    const design = await db.fashionDesign.findFirst({ where: { id, userId: session.id } });
+    if (!design) return NextResponse.json({ error: "Design not found" }, { status: 404 });
+
+    await db.fashionDesign.delete({ where: { id } });
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    if ((err as Error).message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}

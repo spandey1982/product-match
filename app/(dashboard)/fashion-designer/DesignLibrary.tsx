@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { Wand2, Plus, ChevronRight, Sparkles } from "lucide-react";
+import { Wand2, Plus, ChevronRight, Sparkles, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface DesignSummary {
@@ -43,6 +43,7 @@ const STAGE_COLORS: Record<string, string> = {
 export function DesignLibrary() {
   const [designs, setDesigns] = useState<DesignSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/fashion-designer/designs")
@@ -50,6 +51,16 @@ export function DesignLibrary() {
       .then((d) => setDesigns(d.designs ?? []))
       .finally(() => setLoading(false));
   }, []);
+
+  async function handleDelete(e: React.MouseEvent, id: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!confirm("Delete this design? This cannot be undone.")) return;
+    setDeletingId(id);
+    await fetch(`/api/fashion-designer/designs/${id}`, { method: "DELETE" });
+    setDesigns((prev) => prev.filter((d) => d.id !== id));
+    setDeletingId(null);
+  }
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
@@ -121,11 +132,19 @@ export function DesignLibrary() {
                   </div>
                 </div>
                 {/* Info */}
-                <div className="p-3 flex items-center justify-between">
-                  <div className="min-w-0">
+                <div className="p-3 flex items-center justify-between gap-2">
+                  <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-gray-900 truncate">{d.title}</p>
                     <p className="text-xs text-gray-400 truncate">{d.garmentType || "Garment"}</p>
                   </div>
+                  <button
+                    onClick={(e) => handleDelete(e, d.id)}
+                    disabled={deletingId === d.id}
+                    className="shrink-0 p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
+                    title="Delete design"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
                   <ChevronRight className="h-4 w-4 text-gray-300 shrink-0" />
                 </div>
               </div>
