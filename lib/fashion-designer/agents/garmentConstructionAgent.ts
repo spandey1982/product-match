@@ -1,17 +1,16 @@
 import { cloudinary } from "@/lib/cloudinary";
 import type { GenerationPlan } from "../types";
 
-// Imagen 3 via Google AI Studio (same API key as Gemini)
-const IMAGEN_MODEL = "imagen-3.0-generate-002";
+const IMAGE_GEN_MODEL = "gemini-3.1-flash-image";
 
 async function generateFlatImage(prompt: string): Promise<string | null> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY not configured");
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${IMAGEN_MODEL}:predict?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_GEN_MODEL}:generateContent?key=${apiKey}`;
   const body = JSON.stringify({
-    instances: [{ prompt }],
-    parameters: { sampleCount: 1, aspectRatio: "3:4" },
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: { responseModalities: ["IMAGE"] },
   });
 
   for (let attempt = 1; attempt <= 3; attempt++) {
@@ -33,17 +32,20 @@ async function generateFlatImage(prompt: string): Promise<string | null> {
       }
 
       const data = await res.json() as {
-        predictions?: Array<{ bytesBase64Encoded?: string; mimeType?: string }>;
+        candidates?: Array<{
+          content?: { parts?: Array<{ inlineData?: { mimeType: string; data: string } }> };
+        }>;
       };
 
-      const prediction = data.predictions?.[0];
-      if (!prediction?.bytesBase64Encoded) {
-        console.error("[fashion-designer] no image bytes in Imagen response", JSON.stringify(data).slice(0, 200));
+      const parts = data.candidates?.[0]?.content?.parts ?? [];
+      const imagePart = parts.find((p) => p.inlineData?.data);
+      if (!imagePart?.inlineData) {
+        console.error("[fashion-designer] no image in response", JSON.stringify(data).slice(0, 200));
         return null;
       }
 
-      const mimeType = prediction.mimeType ?? "image/png";
-      const dataUri = `data:${mimeType};base64,${prediction.bytesBase64Encoded}`;
+      const { mimeType, data: b64 } = imagePart.inlineData;
+      const dataUri = `data:${mimeType};base64,${b64}`;
       const result = await cloudinary.uploader.upload(dataUri, {
         folder: "product-match/fashion-designer",
       });
