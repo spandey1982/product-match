@@ -255,7 +255,16 @@ export function DesignView() {
 
         {/* Right: Generated images */}
         <div className="lg:col-span-2 space-y-4">
-          {design.stage === "completed" && (design.flatFrontUrl || design.flatBackUrl) ? (
+          {design.stage === "completed" && !design.flatFrontUrl && !design.flatBackUrl ? (
+            <div className="flex flex-col items-center justify-center py-24 rounded-2xl border-2 border-dashed border-orange-100 bg-orange-50/20">
+              <XCircle className="h-10 w-10 text-orange-300 mb-4" />
+              <p className="text-sm font-medium text-gray-600">Image generation failed — analysis is complete</p>
+              <p className="text-xs text-gray-400 mt-1">Try regenerating to retry the image step</p>
+              <Button variant="outline" size="sm" className="mt-4" onClick={handleRegenerate} loading={regenerating}>
+                Regenerate
+              </Button>
+            </div>
+          ) : design.stage === "completed" && (design.flatFrontUrl || design.flatBackUrl) ? (
             <>
               <h2 className="text-lg font-semibold text-gray-900">Generated Garment</h2>
               <div className="grid grid-cols-2 gap-4">

@@ -2,7 +2,7 @@ import { cloudinary } from "@/lib/cloudinary";
 import type { GenerationPlan } from "../types";
 
 // Gemini image generation model
-const IMAGE_GEN_MODEL = "gemini-2.0-flash-preview-image-generation";
+const IMAGE_GEN_MODEL = "gemini-2.0-flash-exp-image-generation";
 
 async function generateFlatImage(
   prompt: string,
@@ -40,11 +40,12 @@ async function generateFlatImage(
       });
 
       if (!res.ok) {
+        const errBody = await res.text().catch(() => "");
+        console.error(`[fashion-designer] image gen failed: HTTP ${res.status}`, errBody.slice(0, 300));
         if (attempt < 3) {
           await new Promise((r) => setTimeout(r, 1500 * attempt));
           continue;
         }
-        console.error(`[fashion-designer] image gen failed: HTTP ${res.status}`);
         return null;
       }
 
