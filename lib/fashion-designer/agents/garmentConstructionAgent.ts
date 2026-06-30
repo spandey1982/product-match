@@ -1,34 +1,17 @@
 import { cloudinary } from "@/lib/cloudinary";
 import type { GenerationPlan } from "../types";
 
-// Gemini image generation model
-const IMAGE_GEN_MODEL = "gemini-2.0-flash-exp-image-generation";
+// Imagen 3 via Google AI Studio (same API key as Gemini)
+const IMAGEN_MODEL = "imagen-3.0-generate-002";
 
-async function generateFlatImage(
-  prompt: string,
-  fabricImageUrl: string
-): Promise<string | null> {
+async function generateFlatImage(prompt: string): Promise<string | null> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY not configured");
 
-  // Fetch fabric image as reference
-  const imgRes = await fetch(fabricImageUrl);
-  const buffer = imgRes.ok ? Buffer.from(await imgRes.arrayBuffer()) : null;
-  const mimeType = imgRes.headers.get("content-type") ?? "image/jpeg";
-
-  const parts: unknown[] = [];
-  if (buffer) {
-    parts.push({ inline_data: { mime_type: mimeType, data: buffer.toString("base64") } });
-  }
-  parts.push({ text: prompt });
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_GEN_MODEL}:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${IMAGEN_MODEL}:predict?key=${apiKey}`;
   const body = JSON.stringify({
-    contents: [{ parts }],
-    generationConfig: {
-      responseModalities: ["IMAGE", "TEXT"],
-      temperature: 0.4,
-    },
+    instances: [{ prompt }],
+    parameters: { sampleCount: 1, aspectRatio: "3:4" },
   });
 
   for (let attempt = 1; attempt <= 3; attempt++) {
@@ -41,7 +24,7 @@ async function generateFlatImage(
 
       if (!res.ok) {
         const errBody = await res.text().catch(() => "");
-        console.error(`[fashion-designer] image gen failed: HTTP ${res.status}`, errBody.slice(0, 300));
+        console.error(`[fashion-designer] image gen failed: HTTP ${res.status}`, errBody.slice(0, 400));
         if (attempt < 3) {
           await new Promise((r) => setTimeout(r, 1500 * attempt));
           continue;
@@ -50,20 +33,17 @@ async function generateFlatImage(
       }
 
       const data = await res.json() as {
-        candidates?: Array<{
-          content?: { parts?: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> }
-        }>
+        predictions?: Array<{ bytesBase64Encoded?: string; mimeType?: string }>;
       };
 
-      const responseParts = data.candidates?.[0]?.content?.parts ?? [];
-      const imagePart = responseParts.find((p) => p.inlineData);
-      if (!imagePart?.inlineData) {
-        console.error("[fashion-designer] no image in response");
+      const prediction = data.predictions?.[0];
+      if (!prediction?.bytesBase64Encoded) {
+        console.error("[fashion-designer] no image bytes in Imagen response", JSON.stringify(data).slice(0, 200));
         return null;
       }
 
-      // Upload base64 image to Cloudinary
-      const dataUri = `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`;
+      const mimeType = prediction.mimeType ?? "image/png";
+      const dataUri = `data:${mimeType};base64,${prediction.bytesBase64Encoded}`;
       const result = await cloudinary.uploader.upload(dataUri, {
         folder: "product-match/fashion-designer",
       });
@@ -78,14 +58,10 @@ async function generateFlatImage(
 
 export async function garmentConstructionAgent(
   plan: GenerationPlan,
-  fabricImageUrls: string[]
 ): Promise<{ flatFrontUrl: string | null; flatBackUrl: string | null }> {
-  const primaryFabricUrl = fabricImageUrls[0];
-
-  // Generate front and back in parallel
   const [flatFrontUrl, flatBackUrl] = await Promise.all([
-    generateFlatImage(plan.flatFrontPrompt, primaryFabricUrl),
-    generateFlatImage(plan.flatBackPrompt, primaryFabricUrl),
+    generateFlatImage(plan.flatFrontPrompt),
+    generateFlatImage(plan.flatBackPrompt),
   ]);
 
   return { flatFrontUrl, flatBackUrl };

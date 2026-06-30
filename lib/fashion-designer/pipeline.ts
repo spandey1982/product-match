@@ -80,7 +80,7 @@ export async function runDesignPipeline(designId: string): Promise<void> {
     // ── Stage 5: Garment Construction + Flat Image Generation ───────────────
     await setStage(designId, "constructing");
 
-    const { flatFrontUrl, flatBackUrl } = await garmentConstructionAgent(generationPlan, fabricUrls);
+    const { flatFrontUrl, flatBackUrl } = await garmentConstructionAgent(generationPlan);
 
     await setStage(designId, "generating_flat_images");
 
