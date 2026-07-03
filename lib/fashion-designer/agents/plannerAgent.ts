@@ -1,17 +1,36 @@
 import type { FabricAnalysis, DesignUnderstanding, AccessoryAnalysis, GenerationPlan } from "../types";
+import { callGeminiForJson } from "../gemini-client";
+import { fieldOptionLabel, type GarmentTemplate } from "../templates";
 
-const MODEL = "gemini-2.5-flash-lite";
+function buildBlueprintSection(
+  template: GarmentTemplate | null,
+  structuredOptions: Record<string, string>
+): string {
+  if (!template) return "";
+
+  const selections = template.fields
+    .map((f) => `- ${f.label}: ${fieldOptionLabel(f, structuredOptions[f.key] ?? f.default)}`)
+    .join("\n");
+
+  return `
+CONSTRUCTION BLUEPRINT (authoritative — this defines the garment's fit, silhouette and construction; do not contradict it):
+${template.blueprint}
+
+STRUCTURED SELECTIONS (authoritative — the retailer's explicit choices):
+${selections}
+`.trim();
+}
 
 export async function plannerAgent(
   fabric: FabricAnalysis,
   design: DesignUnderstanding,
   accessories: AccessoryAnalysis,
-  garmentType: string
+  garmentType: string,
+  template: GarmentTemplate | null = null,
+  structuredOptions: Record<string, string> = {},
+  designNotes = ""
 ): Promise<GenerationPlan> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error("GEMINI_API_KEY not configured");
-
-  const context = `
+  const fabricContext = `
 FABRIC:
 - Type: ${fabric.fabricType}
 - Color: ${fabric.color}
@@ -23,8 +42,19 @@ FABRIC:
 - Shine: ${fabric.shine}
 - Weave: ${fabric.weave}
 - Orientation: ${fabric.orientation}
+`.trim();
 
-DESIGN:
+  const blueprintSection = buildBlueprintSection(template, structuredOptions);
+
+  // Design understanding is secondary once a structured blueprint exists — it
+  // only fills in details the blueprint doesn't cover (embroidery, borders,
+  // decorative elements, closures). Without a template (e.g. Saree, Lehenga),
+  // it remains the primary source, unchanged from before.
+  const designLabel = blueprintSection
+    ? "AI-INFERRED DESIGN ANALYSIS (secondary — use ONLY to fill in details not already specified by the blueprint/structured selections above, e.g. embroidery, borders, decorative elements, closures):"
+    : "DESIGN:";
+  const designContext = `
+${designLabel}
 - Garment: ${design.garmentCategory || garmentType}
 - Neck: ${design.neckStyle}
 - Sleeves: ${design.sleeveStyle}
@@ -38,7 +68,13 @@ DESIGN:
 - Embroidery: ${design.embroidery}
 - Stitch Lines: ${design.stitchLines}
 - Decorative Elements: ${design.decorativeElements}
+`.trim();
 
+  const notesSection = designNotes.trim()
+    ? `DESIGN NOTES (retailer's explicit small refinements — apply these):\n${designNotes.trim()}`
+    : "";
+
+  const accessoriesContext = `
 ACCESSORIES:
 ${accessories.items.length === 0
     ? "None"
@@ -47,10 +83,14 @@ ${accessories.items.length === 0
       ).join("\n")}
 `.trim();
 
-  const prompt = `
-You are a master fashion designer and AI image generation expert specialising in Indian ethnic garments.
+  const context = [blueprintSection, fabricContext, designContext, notesSection, accessoriesContext]
+    .filter(Boolean)
+    .join("\n\n");
 
-Given the fabric analysis, design specifications, and accessories below, create a complete generation plan.
+  const prompt = `
+You are a master fashion designer and AI image generation expert specialising in Indian ethnic garments and tailored menswear.
+
+Given the information below, create a complete generation plan. Where a CONSTRUCTION BLUEPRINT and STRUCTURED SELECTIONS section is present, it is the retailer's explicit, authoritative choice — it must be followed exactly and takes precedence over any AI-inferred design analysis.
 
 ${context}
 
@@ -67,17 +107,5 @@ Return ONLY valid JSON — no markdown, no explanation:
 }
 `.trim();
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`;
-  const body = JSON.stringify({
-    contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: { temperature: 0.3 },
-  });
-
-  const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body });
-  if (!res.ok) throw new Error(`Planner API error: ${res.status}`);
-
-  const data = await res.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
-  const raw = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
-  const clean = raw.replace(/```[a-z]*\n?/g, "").replace(/```/g, "").trim();
-  return JSON.parse(clean) as GenerationPlan;
+  return callGeminiForJson<GenerationPlan>(prompt, [], { temperature: 0.3 });
 }

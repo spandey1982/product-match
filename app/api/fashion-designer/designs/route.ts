@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { cloudinary } from "@/lib/cloudinary";
+import { findTemplate } from "@/lib/fashion-designer/templates";
 
 // POST /api/fashion-designer/designs — create a design session + upload assets
 export async function POST(req: NextRequest) {
@@ -11,6 +12,40 @@ export async function POST(req: NextRequest) {
 
     const title = String(formData.get("title") || "Untitled Design");
     const garmentType = String(formData.get("garmentType") || "");
+
+    // Structured template + customization (optional — only Shirt/Trouser/Men
+    // Suit have templates today; other categories submit none of these).
+    const templateIdRaw = formData.get("templateId");
+    const templateId = typeof templateIdRaw === "string" && templateIdRaw ? templateIdRaw : null;
+    // Reject a templateId that doesn't match its declared garment category —
+    // never trust client-supplied ids.
+    const template = templateId ? findTemplate(templateId) : null;
+    if (templateId && (!template || template.garmentCategory !== garmentType)) {
+      return NextResponse.json({ error: "Invalid templateId for garment type" }, { status: 400 });
+    }
+
+    const structuredOptionsRaw = formData.get("structuredOptions");
+    let structuredOptions: string | null = null;
+    if (template && typeof structuredOptionsRaw === "string" && structuredOptionsRaw) {
+      try {
+        const parsed = JSON.parse(structuredOptionsRaw) as Record<string, unknown>;
+        // Keep only known fields for this template, coerced to string.
+        const validKeys = new Set(template.fields.map((f) => f.key));
+        const cleaned: Record<string, string> = {};
+        for (const [k, v] of Object.entries(parsed)) {
+          if (validKeys.has(k) && typeof v === "string") cleaned[k] = v;
+        }
+        structuredOptions = JSON.stringify(cleaned);
+      } catch {
+        structuredOptions = null;
+      }
+    }
+
+    const designNotesRaw = formData.get("designNotes");
+    const designNotes =
+      typeof designNotesRaw === "string" && designNotesRaw.trim()
+        ? designNotesRaw.trim().slice(0, 1000)
+        : null;
 
     // Collect all uploaded files with their asset type
     // Field name format: "fabric", "sketch", "reference", "accessory", "neck",
@@ -36,7 +71,15 @@ export async function POST(req: NextRequest) {
     }
 
     const design = await db.fashionDesign.create({
-      data: { userId: session.id, title, garmentType, stage: "uploading" },
+      data: {
+        userId: session.id,
+        title,
+        garmentType,
+        stage: "uploading",
+        templateId,
+        structuredOptions,
+        designNotes,
+      },
     });
 
     const allowed = ["image/jpeg", "image/png", "image/webp"];

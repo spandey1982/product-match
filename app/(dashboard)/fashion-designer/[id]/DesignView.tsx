@@ -6,6 +6,7 @@ import Image from "next/image";
 import { Wand2, RefreshCw, ArrowLeft, CheckCircle2, Circle, Loader2, XCircle, X, ZoomIn, ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { FabricAnalysis, DesignUnderstanding, GenerationPlan, AccessoryAnalysis } from "@/lib/fashion-designer/types";
+import { findTemplate, fieldOptionLabel } from "@/lib/fashion-designer/templates";
 
 type DesignStage =
   | "uploading" | "analyzing_fabric" | "analyzing_design" | "analyzing_accessories"
@@ -15,6 +16,9 @@ interface Design {
   id: string;
   title: string;
   garmentType: string;
+  templateId: string | null;
+  structuredOptions: string | null;
+  designNotes: string | null;
   stage: DesignStage;
   fabricAnalysis: string | null;
   designUnderstanding: string | null;
@@ -175,6 +179,11 @@ export function DesignView() {
     return <div className="text-center py-24 text-gray-500">Design not found.</div>;
   }
 
+  const template = findTemplate(design.templateId);
+  const structuredOptions = design.structuredOptions
+    ? (JSON.parse(design.structuredOptions) as Record<string, string>)
+    : {};
+
   const fabricAnalysis = design.fabricAnalysis ? JSON.parse(design.fabricAnalysis) as FabricAnalysis : null;
   const designUnderstanding = design.designUnderstanding ? JSON.parse(design.designUnderstanding) as DesignUnderstanding : null;
   const accessoryAnalysis = design.accessoryAnalysis ? JSON.parse(design.accessoryAnalysis) as AccessoryAnalysis : null;
@@ -254,6 +263,28 @@ export function DesignView() {
               </p>
             )}
           </div>
+
+          {/* Template & customization */}
+          {template && (
+            <div className="rounded-2xl border border-gray-100 bg-white p-5 space-y-2">
+              <h3 className="text-sm font-semibold text-gray-900">{template.label}</h3>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+                {template.fields.map((f) => (
+                  <div key={f.key} className="flex flex-col">
+                    <span className="text-[10px] uppercase tracking-wide text-gray-400 font-medium">
+                      {f.label}
+                    </span>
+                    <span className="text-xs text-gray-800 font-medium">
+                      {fieldOptionLabel(f, structuredOptions[f.key] ?? f.default)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              {design.designNotes && (
+                <p className="text-xs text-gray-500 pt-2 border-t border-gray-50">{design.designNotes}</p>
+              )}
+            </div>
+          )}
 
           {/* Fabric analysis */}
           {fabricAnalysis && (

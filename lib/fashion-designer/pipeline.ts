@@ -4,6 +4,7 @@ import { designUnderstandingAgent } from "./agents/designUnderstandingAgent";
 import { accessoryUnderstandingAgent } from "./agents/accessoryUnderstandingAgent";
 import { plannerAgent } from "./agents/plannerAgent";
 import { garmentConstructionAgent } from "./agents/garmentConstructionAgent";
+import { findTemplate, defaultOptionsFor } from "./templates";
 
 async function setStage(designId: string, stage: string) {
   await db.fashionDesign.update({ where: { id: designId }, data: { stage } });
@@ -20,6 +21,19 @@ export async function runDesignPipeline(designId: string): Promise<void> {
 
   const byType = (type: string) => assets.filter((a) => a.assetType === type);
   const urlsOf = (type: string) => byType(type).map((a) => a.url);
+
+  const template = findTemplate(design.templateId);
+  const savedOptions = ((): Record<string, string> => {
+    try {
+      return design.structuredOptions ? JSON.parse(design.structuredOptions) : {};
+    } catch {
+      return {};
+    }
+  })();
+  const structuredOptions: Record<string, string> = template
+    ? { ...defaultOptionsFor(template), ...savedOptions }
+    : {};
+  const designNotes = design.designNotes ?? "";
 
   try {
     // ── Stage 1: Fabric Analysis ────────────────────────────────────────────
@@ -70,7 +84,10 @@ export async function runDesignPipeline(designId: string): Promise<void> {
       fabricAnalysis,
       designUnderstanding,
       accessoryAnalysis,
-      garmentType
+      garmentType,
+      template,
+      structuredOptions,
+      designNotes
     );
     await db.fashionDesign.update({
       where: { id: designId },

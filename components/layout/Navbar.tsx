@@ -55,7 +55,7 @@ export function Navbar({ user }: NavbarProps) {
     { href: "/catalog", label: "Catalog", icon: Package, badge: 0 },
     { href: "/upload", label: "Add Product", icon: Upload, badge: 0 },
     { href: "/auto-catalog", label: "Autonomous Catalog", icon: Bot, badge: 0 },
-    { href: "/fashion-designer", label: "AI Fashion Designer", icon: Wand2, badge: 0 },
+    { href: "/fashion-designer", label: "Fabric Flow", icon: Wand2, badge: 0 },
     { href: "/my-try-ons", label: "My Try-Ons", icon: HangerPlusIcon, badge: tryOnCount },
     { href: "/wishlist", label: "Wishlist", icon: Heart, badge: wishlistCount },
   ];
