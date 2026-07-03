@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
-import { Wand2, RefreshCw, ArrowLeft, CheckCircle2, Circle, Loader2, XCircle } from "lucide-react";
+import { Wand2, RefreshCw, ArrowLeft, CheckCircle2, Circle, Loader2, XCircle, X, ZoomIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { FabricAnalysis, DesignUnderstanding, GenerationPlan, AccessoryAnalysis } from "@/lib/fashion-designer/types";
 
@@ -102,6 +102,7 @@ export function DesignView() {
   const [design, setDesign] = useState<Design | null>(null);
   const [loading, setLoading] = useState(true);
   const [regenerating, setRegenerating] = useState(false);
+  const [lightbox, setLightbox] = useState<{ url: string; label: string } | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const processingRef = useRef(false);
 
@@ -255,6 +256,26 @@ export function DesignView() {
 
         {/* Right: Generated images */}
         <div className="lg:col-span-2 space-y-4">
+          {/* Lightbox */}
+          {lightbox && (
+            <div
+              className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+              onClick={() => setLightbox(null)}
+            >
+              <button
+                className="absolute top-4 right-4 text-white/70 hover:text-white"
+                onClick={() => setLightbox(null)}
+              >
+                <X className="h-7 w-7" />
+              </button>
+              <div className="relative max-w-2xl w-full max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+                <p className="text-white/60 text-xs uppercase tracking-wide mb-2">{lightbox.label}</p>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={lightbox.url} alt={lightbox.label} className="w-full h-auto max-h-[85vh] object-contain rounded-2xl" />
+              </div>
+            </div>
+          )}
+
           {design.stage === "completed" && !design.flatFrontUrl && !design.flatBackUrl ? (
             <div className="flex flex-col items-center justify-center py-24 rounded-2xl border-2 border-dashed border-orange-100 bg-orange-50/20">
               <XCircle className="h-10 w-10 text-orange-300 mb-4" />
@@ -267,33 +288,45 @@ export function DesignView() {
           ) : design.stage === "completed" && (design.flatFrontUrl || design.flatBackUrl) ? (
             <>
               <h2 className="text-lg font-semibold text-gray-900">Generated Garment</h2>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {design.flatFrontUrl && (
                   <div className="space-y-2">
                     <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Front View</p>
-                    <div className="relative aspect-[3/4] rounded-2xl overflow-hidden border border-gray-100 bg-gray-50">
+                    <button
+                      onClick={() => setLightbox({ url: design.flatFrontUrl!, label: "Front View" })}
+                      className="relative w-full aspect-[3/4] rounded-2xl overflow-hidden border border-gray-100 bg-gray-50 group block"
+                    >
                       <Image
                         src={design.flatFrontUrl}
                         alt="Front view"
                         fill
                         className="object-contain"
-                        sizes="(max-width: 1024px) 50vw, 33vw"
+                        sizes="(max-width: 640px) 100vw, 50vw"
                       />
-                    </div>
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
+                        <ZoomIn className="h-8 w-8 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow" />
+                      </div>
+                    </button>
                   </div>
                 )}
                 {design.flatBackUrl && (
                   <div className="space-y-2">
                     <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Back View</p>
-                    <div className="relative aspect-[3/4] rounded-2xl overflow-hidden border border-gray-100 bg-gray-50">
+                    <button
+                      onClick={() => setLightbox({ url: design.flatBackUrl!, label: "Back View" })}
+                      className="relative w-full aspect-[3/4] rounded-2xl overflow-hidden border border-gray-100 bg-gray-50 group block"
+                    >
                       <Image
                         src={design.flatBackUrl}
                         alt="Back view"
                         fill
                         className="object-contain"
-                        sizes="(max-width: 1024px) 50vw, 33vw"
+                        sizes="(max-width: 640px) 100vw, 50vw"
                       />
-                    </div>
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
+                        <ZoomIn className="h-8 w-8 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow" />
+                      </div>
+                    </button>
                   </div>
                 )}
               </div>
