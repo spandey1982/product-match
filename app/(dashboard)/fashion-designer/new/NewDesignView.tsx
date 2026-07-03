@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 
 const GARMENT_TYPES = [
   "Blouse", "Kurti", "Saree", "Lehenga", "Salwar", "Anarkali",
-  "Sharara", "Palazzo", "Shirt", "Trouser", "Dupatta", "Other",
+  "Sharara", "Palazzo", "Shirt", "Trouser", "Men Suit", "Dupatta", "Other",
 ];
 
 const OPTIONAL_ASSET_TYPES = [
