@@ -279,7 +279,7 @@ export function renderBackdropPrompt(preset: BackdropPreset): string {
     `lit with ${softness} ${direction} lighting at ${exposure}`,
     `${grad} sweeping into a soft wall-to-floor transition with ${reflection}`,
     "Keep the backdrop colour, brightness, lighting, gradient, floor transition, reflections, shadows, vignette and overall studio ambience uniform and consistent",
-    "High resolution, photorealistic, no text or watermark.",
+    "High resolution, photorealistic, no text or watermark, no secondary insets or fabric swatches — exactly one continuous photograph.",
   ].join(". ");
 }
 

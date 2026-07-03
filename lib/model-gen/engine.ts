@@ -27,6 +27,7 @@ import { recordGenerations } from "./generation-record";
 import { maybeReviewGenerations } from "./ai-review";
 import { runQuickListingStrategy } from "./strategies/quick-listing";
 import { runCatalogueStrategy, type StrategyProduct } from "./strategies/catalogue";
+import type { GenerationQuality } from "./quality";
 import { ensureDetailNotes, ensureBackDetailNotes } from "@/lib/metadata/detail-notes";
 import { parsePartImages } from "@/lib/product/part-slots";
 
@@ -47,6 +48,11 @@ export interface GenerateModelImagesInput {
   objective?: GenerationObjective;
   /** Explicit store model; falls back to the retailer's stored default. */
   modelType?: ModelType;
+  /**
+   * Native Gemini output quality for this run. Defaults to "standard" — never
+   * persisted, the retailer chooses it fresh per generation (lib/model-gen/quality.ts).
+   */
+  quality?: GenerationQuality;
 }
 
 export interface GenerateModelImagesResult {
@@ -137,6 +143,7 @@ export async function generateModelImages(
           modelType,
           userId: input.userId,
           backdrop,
+          quality: input.quality,
         })
       : await runCatalogueStrategy({
           product: strategyProduct,
@@ -145,6 +152,7 @@ export async function generateModelImages(
           userId: input.userId,
           backdrop,
           partImages,
+          quality: input.quality,
         });
 
   // Brand each image (store logo, or store name) before persisting, so the

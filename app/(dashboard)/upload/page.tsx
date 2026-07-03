@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { categorySlotsFor, partSlotsFor } from "@/lib/product/part-slots";
 import BackdropSelect, { type BackdropOption, type BackdropValue } from "@/components/product/BackdropSelect";
+import { listQualityProfiles, DEFAULT_GENERATION_QUALITY, type GenerationQuality } from "@/lib/model-gen/quality";
 
 const CATEGORIES = [
   "Saree", "Lehenga", "Blouse", "Dupatta", "Kurta", "Kurti",
@@ -120,6 +121,11 @@ export default function UploadPage() {
   // Model is auto-selected from the product (category + detected gender) for now;
   // an explicit picker is planned. Kept in state so the gen request can pass it.
   const [modelType] = useState<string>("auto");
+  // Native generation quality — deliberately NOT persisted (no localStorage, no
+  // profile setting). Plain component state resets to the default on every visit
+  // to this page, so each new product starts on Standard until the retailer
+  // explicitly picks Enhanced. See lib/model-gen/quality.ts.
+  const [quality, setQuality] = useState<GenerationQuality>(DEFAULT_GENERATION_QUALITY);
 
   // Store branding for generated images (persisted immediately on change).
   const [brandingEnabled, setBrandingEnabled] = useState(true);
@@ -452,6 +458,7 @@ export default function UploadPage() {
           aiGen?.enabled && objective
             ? JSON.stringify({
                 objective,
+                quality,
                 // Omit when "auto" so the engine selects the model per product.
                 ...(modelType && modelType !== "auto" ? { modelType } : {}),
               })
@@ -786,6 +793,37 @@ export default function UploadPage() {
                   }}
                 />
               )}
+
+              {/* Generation quality — TEMPORARY control, not a persisted setting.
+                  Always resets to Standard; the retailer opts into Enhanced per
+                  generation. Placement/UI will change once quality tiers land. */}
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-2">Quality</p>
+                <div className="flex flex-wrap gap-2">
+                  {listQualityProfiles().map((q) => {
+                    const active = quality === q.id;
+                    return (
+                      <button
+                        key={q.id}
+                        type="button"
+                        onClick={() => setQuality(q.id)}
+                        aria-pressed={active}
+                        title={q.description}
+                        className={`rounded-full border px-4 py-1.5 text-sm font-medium transition-all ${
+                          active
+                            ? "border-indigo-300 bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200"
+                            : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
+                        }`}
+                      >
+                        {q.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[11px] text-gray-400 mt-1.5">
+                  {listQualityProfiles().find((q) => q.id === quality)?.description}
+                </p>
+              </div>
 
               {/* Model selection is automatic for now (derived from the product's
                   category + the gender detected at extraction). A picker for

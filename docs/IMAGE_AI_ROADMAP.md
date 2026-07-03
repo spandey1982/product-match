@@ -4,7 +4,12 @@
 > and model-image-generation work. If a chat is lost, point Claude here first.
 > Update it whenever a decision is made or a task lands.
 >
-> Last updated: 2026-06-16
+> R&D/benchmark findings (not yet, or never, promoted to production) live in
+> `docs/research/IMAGE_RND_LOG.md` — check there for prior experiments before
+> re-running one. That work happens on the local-only `rnd/image-pipeline-benchmarks`
+> branch (never pushed); only approved results land here.
+>
+> Last updated: 2026-07-03
 
 ---
 

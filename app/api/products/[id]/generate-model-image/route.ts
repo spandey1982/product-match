@@ -9,6 +9,7 @@ import {
 } from "@/lib/model-gen/engine";
 import { isGenerationObjective } from "@/lib/model-gen/objectives";
 import { isModelType } from "@/lib/model-gen/reference-models";
+import { isGenerationQuality } from "@/lib/model-gen/quality";
 
 export async function POST(
   req: NextRequest,
@@ -32,6 +33,8 @@ export async function POST(
     const body = await req.json().catch(() => ({}));
     const objective = (body as { objective?: unknown }).objective;
     const modelType = (body as { modelType?: unknown }).modelType;
+    const qualityRaw = (body as { quality?: unknown }).quality;
+    const quality = isGenerationQuality(qualityRaw) ? qualityRaw : undefined;
 
     if (isAiGenObjectivesEnabled() && isGenerationObjective(objective)) {
       await generateModelImages({
@@ -39,9 +42,10 @@ export async function POST(
         userId: session.id,
         objective,
         modelType: isModelType(modelType) ? modelType : undefined,
+        quality,
       });
     } else {
-      await generateModelImage(id);
+      await generateModelImage(id, quality);
     }
 
     // Use raw query so the cached Prisma client doesn't strip new columns

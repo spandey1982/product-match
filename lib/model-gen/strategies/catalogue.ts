@@ -21,6 +21,7 @@ import { sampleStudioColor } from "../studio-anchor";
 import { resolveCatalogueStack } from "../catalogue-cards";
 import type { PartImage } from "@/lib/product/part-slots";
 import type { GeneratedImage } from "../persist";
+import type { GenerationQuality } from "../quality";
 
 export interface StrategyProduct {
   id: string;
@@ -59,8 +60,10 @@ export async function runCatalogueStrategy(opts: {
   backdrop: string;
   /** Uploaded detail images — sourced into the catalogue card stack (R2). */
   partImages?: PartImage[];
+  /** Native Gemini output quality for this run. Defaults to "standard". */
+  quality?: GenerationQuality;
 }): Promise<{ images: GeneratedImage[] }> {
-  const { product, modelType, provider = "gemini", userId, backdrop, partImages = [] } = opts;
+  const { product, modelType, provider = "gemini", userId, backdrop, partImages = [], quality } = opts;
   // Same store + acting user for every call in this run; feature is "catalogue".
   const usage = { feature: "catalogue", storeId: userId ?? null, userId: userId ?? null };
 
@@ -141,6 +144,7 @@ export async function runCatalogueStrategy(opts: {
       folder: "product-match/catalogue",
       view: viewId,
       usage,
+      quality,
     });
     return result
       ? {
