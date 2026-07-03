@@ -166,3 +166,67 @@ The long-term quality-tier strategy (entitlements, pricing, persistence,
 admin controls, automatic recommendations) remains explicitly under
 evaluation and was **not** implemented here — see "Future Direction" in the
 originating task. This entry is a pointer for when that design work resumes.
+
+---
+
+## 2026-07-03 — Production testing findings: floating-swatch hallucination + stale merge
+
+Retailer testing of the Enhanced (2K) quality option surfaced a new defect and
+an unrelated but significant process gap.
+
+**Finding 1 — spontaneous "fabric swatch" inset.** A real 2K back-view
+generation ("Lavender Floral Embroidered Saree") included a circular floating
+fabric-detail swatch next to the model, disconnected from the garment —
+matching no element of the retailer's actual uploaded source photo. Verified
+generated (not a Cloudinary compositing artifact) by re-fetching the raw
+stored master with the branding transform stripped from the URL — the swatch
+persisted. Verified not copied from the input — the retailer's real source
+photo (a flat-lay tailor's-table shot) has no such inset. Compared against two
+back-view generations that pre-date the explicit-`imageConfig` change (2026-06-27,
+implicit aspect ratio) — neither has this artifact.
+
+Root cause: the studio prompt (`lib/model-gen/backdrops.ts`) forbade text and
+watermarks but never forbade secondary insets/collage elements. Forcing every
+generation onto a fixed, fairly open 3:4 canvas (this task's own change)
+apparently gives the model room to add a compositional convention it's seen
+heavily in Indian-ethnic-wear e-commerce training data — a small circular
+fabric-detail callout beside the main shot. This is the same underlying
+failure mode as the 4K border hallucination in the first entry above: extra
+canvas room → invented plausible-but-wrong content, not improved fidelity.
+Affects **both** Standard and Enhanced (both now request explicit 3:4), not
+Enhanced alone.
+
+**Fix:** extended the existing negative-constraint sentence in
+`renderBackdropPrompt` to *"...no secondary insets or fabric swatches — exactly
+one continuous photograph."* Verified by regenerating the exact same product/view
+that produced the original artifact — swatch is gone, clean single-subject shot.
+
+**Finding 2 — Backdrop Intelligence (R1–R3) was built but never merged to
+main.** While investigating the swatch, a retailer report of branding being
+truncated on close-up crops (and not adapting to image content) led to
+discovering that `feature/backdrop-intelligence` — a complete, phase-tracked
+"done" branch (crop-order branding fix, coverage-aware placement via
+`studio-anchor.ts`, the whole backdrop system) — branched directly off `main`'s
+tip and was never merged. `main` was still running the old branding code:
+overlay applied before crop (truncating close-up watermarks) and a static
+configured corner with no content-aware color/opacity adaptation. Merged
+`feature/backdrop-intelligence` into `main` (clean fast-forward, 17 commits, no
+schema changes) and rebased `feature/generation-quality-option` on top
+(5 conflicts, all "two branches added a different param to the same
+function" — mechanical to resolve). Verified live: close-up branding now
+renders fully uncropped, and mark color/corner genuinely vary per card.
+
+**Bonus:** the same merge incidentally fixed a third defect the retailer
+reported — a thin white line on either side of the hero product image (CSS
+`aspect-[3/4]` container vs. the model's actual ~0.7467 output ratio,
+letterboxed by `object-contain`). The merged `ProductDetailView.tsx` already
+routes front/back/on-model views through `normalizeCatalogueUrl`
+(`c_pad,ar_3:4,...`) before display, which mathematically pads to exact 3:4.
+Verified: 1200×1600, ratio exactly 0.7500. No separate fix needed.
+
+**Process takeaway:** this is the second and third time in one day a
+completed, working fix was found sitting on an unmerged branch while `main`
+ran the broken version (the first was the `datetime('now')` Postgres bug,
+independently fixed on two different branches before either reached main).
+Worth checking for other stranded branches before assuming a reported defect
+needs new code.
