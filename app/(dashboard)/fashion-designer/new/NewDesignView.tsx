@@ -4,6 +4,7 @@ import { useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Upload, Wand2, ChevronDown, ChevronUp, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { templatesForCategory, defaultOptionsFor } from "@/lib/fashion-designer/templates";
 
 const GARMENT_TYPES = [
   "Blouse", "Kurti", "Saree", "Lehenga", "Salwar", "Anarkali",
@@ -117,6 +118,33 @@ export function NewDesignView() {
   const [showOptional, setShowOptional] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [templateId, setTemplateId] = useState("");
+  const [structuredValues, setStructuredValues] = useState<Record<string, string>>({});
+  const [designNotes, setDesignNotes] = useState("");
+
+  const templates = templatesForCategory(garmentType);
+  const selectedTemplate = templates.find((t) => t.id === templateId) ?? templates[0] ?? null;
+
+  // Garment category change resets template + fields to the new category's
+  // first template (or clears them if it has none) — handled directly in the
+  // select's onChange rather than an effect, so it isn't a cascading render.
+  function handleGarmentTypeChange(newType: string) {
+    setGarmentType(newType);
+    const available = templatesForCategory(newType);
+    if (available.length > 0) {
+      setTemplateId(available[0].id);
+      setStructuredValues(defaultOptionsFor(available[0]));
+    } else {
+      setTemplateId("");
+      setStructuredValues({});
+    }
+  }
+
+  function selectTemplate(id: string) {
+    setTemplateId(id);
+    const t = templates.find((x) => x.id === id);
+    if (t) setStructuredValues(defaultOptionsFor(t));
+  }
 
   const addFiles = useCallback((incoming: File[], assetType: string) => {
     const allowed = ["image/jpeg", "image/png", "image/webp"];
@@ -152,6 +180,13 @@ export function NewDesignView() {
       const formData = new FormData();
       formData.set("title", title || `${garmentType} Design`);
       formData.set("garmentType", garmentType);
+      if (selectedTemplate) {
+        formData.set("templateId", selectedTemplate.id);
+        formData.set("structuredOptions", JSON.stringify(structuredValues));
+      }
+      if (designNotes.trim()) {
+        formData.set("designNotes", designNotes.trim());
+      }
       for (const { file, assetType } of files) {
         formData.append(assetType, file);
       }
@@ -203,7 +238,7 @@ export function NewDesignView() {
           <label className="block text-sm font-medium text-gray-700 mb-1">Garment Type</label>
           <select
             value={garmentType}
-            onChange={(e) => setGarmentType(e.target.value)}
+            onChange={(e) => handleGarmentTypeChange(e.target.value)}
             className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
           >
             {GARMENT_TYPES.map((g) => (
@@ -212,6 +247,64 @@ export function NewDesignView() {
           </select>
         </div>
       </div>
+
+      {/* Garment Template — structured blueprint + customization (Shirt/Trouser/Men Suit) */}
+      {templates.length > 0 && (
+        <div className="rounded-2xl border border-gray-100 bg-white p-5 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Garment Template</label>
+            <div className="flex flex-wrap gap-2">
+              {templates.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => selectTemplate(t.id)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                    selectedTemplate?.id === t.id
+                      ? "bg-purple-600 border-purple-600 text-white"
+                      : "border-gray-200 text-gray-600 hover:border-purple-300"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {selectedTemplate && selectedTemplate.fields.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {selectedTemplate.fields.map((field) => (
+                <div key={field.key}>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">{field.label}</label>
+                  <select
+                    value={structuredValues[field.key] ?? field.default}
+                    onChange={(e) =>
+                      setStructuredValues((prev) => ({ ...prev, [field.key]: e.target.value }))
+                    }
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                  >
+                    {field.options.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Design Notes (optional)</label>
+            <textarea
+              value={designNotes}
+              onChange={(e) => setDesignNotes(e.target.value)}
+              placeholder="Small refinements, e.g. white buttons, hidden placket, contrast stitching, premium finish"
+              maxLength={1000}
+              rows={2}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none"
+            />
+          </div>
+        </div>
+      )}
 
       {/* Required: Fabric Images */}
       <div className="rounded-2xl border-2 border-purple-100 bg-purple-50/30 p-5 space-y-4">

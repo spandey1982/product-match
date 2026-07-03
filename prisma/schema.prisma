@@ -300,6 +300,16 @@ model FashionDesign {
   title       String @default("Untitled Design")
   garmentType String @default("")
 
+  // Structured template + customization (Garment Templates / Fabric Flow).
+  // templateId references lib/fashion-designer/templates.ts; structuredOptions
+  // is a JSON object of the template's field selections (sleeve length, collar
+  // style, etc.) — the retailer's structured choices, primary source of truth
+  // over AI-inferred designUnderstanding. designNotes is optional free-text
+  // refinement (e.g. "white buttons, hidden placket").
+  templateId        String?
+  structuredOptions String?
+  designNotes       String?
+
   // Pipeline stage
   stage String @default("uploading")
   // uploading | analyzing_fabric | analyzing_design | analyzing_accessories

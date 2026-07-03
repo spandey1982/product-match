@@ -75,6 +75,9 @@ export interface FashionDesignRecord {
   userId: string;
   title: string;
   garmentType: string;
+  templateId: string | null;
+  structuredOptions: string | null;
+  designNotes: string | null;
   stage: DesignStage;
   fabricAnalysis: FabricAnalysis | null;
   designUnderstanding: DesignUnderstanding | null;
