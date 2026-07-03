@@ -6,6 +6,7 @@ import { getImageDimensions, fmtBytes } from "@/lib/image-utils";
 import { recordAiUsage, type AiUsageContext } from "@/lib/ai-usage/record";
 import { getBrandingConfig, applyBranding } from "@/lib/model-gen/branding";
 import { preprocessProductImage } from "@/lib/images/preprocess";
+import { getQualityProfile, type GenerationQuality } from "@/lib/model-gen/quality";
 
 const GEMINI_MODEL = "gemini-3.1-flash-image";
 
@@ -109,6 +110,8 @@ export interface GeminiImageGenInput {
    * Strategies pass their objective feature ("catalogue" | "quick_listing").
    */
   usage?: AiUsageContext;
+  /** Native output quality. Defaults to "standard" (1K, 3:4) — see lib/model-gen/quality.ts. */
+  quality?: GenerationQuality;
 }
 
 /**
@@ -129,8 +132,9 @@ export async function runGeminiImageGen(
   const {
     productId, productTitle, productCategory, productColor,
     productBuffer, productMime, referenceBuffer, referenceMime,
-    prompt, folder = "product-match/models", view = "model", usage,
+    prompt, folder = "product-match/models", view = "model", usage, quality,
   } = input;
+  const qualityProfile = getQualityProfile(quality);
 
   const feature = usage?.feature ?? "model_gen";
   const storeId = usage?.storeId ?? null;
@@ -165,6 +169,7 @@ export async function runGeminiImageGen(
     console.log(`[model-image] ── Gemini gen (${view}) ────────────────────────`);
     console.log(`[model-image] Product: ${productTitle} (${productCategory} · ${productColor})  reference=${hasReference}`);
     console.log(`[model-image] Product image (preprocessed): ${fmtBytes(modelInputBuffer.length)}  mime=${modelInputMime}  ${inputDims ? `${inputDims.width}×${inputDims.height}px` : "dims=unknown"}`);
+    console.log(`[model-image] Quality: ${qualityProfile.id} (imageSize=${qualityProfile.imageSize}, aspectRatio=${qualityProfile.aspectRatio})`);
 
     const t0 = Date.now();
     const res = await fetch(
@@ -174,7 +179,10 @@ export async function runGeminiImageGen(
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{ parts }],
-          generationConfig: { responseModalities: ["IMAGE"] },
+          generationConfig: {
+            responseModalities: ["IMAGE"],
+            imageConfig: { imageSize: qualityProfile.imageSize, aspectRatio: qualityProfile.aspectRatio },
+          },
         }),
       }
     );
@@ -332,11 +340,12 @@ export async function runGeminiImageGen(
  * Reads the product image from Cloudinary or public/uploads, sends it to
  * Gemini, saves the result, and updates the product record.
  *
- * This is the original single-image flow — unchanged in behavior. The richer
- * objective-based generation lives in lib/model-gen and reuses the helpers
- * above. Fire-and-forget safe — all errors are caught internally.
+ * This is the original single-image flow — unchanged in behavior other than
+ * the optional quality param. The richer objective-based generation lives in
+ * lib/model-gen and reuses the helpers above. Fire-and-forget safe — all
+ * errors are caught internally.
  */
-export async function generateModelImage(productId: string): Promise<void> {
+export async function generateModelImage(productId: string, quality?: GenerationQuality): Promise<void> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || apiKey === "your-gemini-api-key-here") return;
 
@@ -365,6 +374,7 @@ export async function generateModelImage(productId: string): Promise<void> {
       productMime:     source.mime,
       prompt,
       usage: { feature: "model_gen", storeId: product.userId, userId: product.userId },
+      quality,
     });
     if (!result) return;
 

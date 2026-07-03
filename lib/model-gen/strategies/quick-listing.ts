@@ -23,6 +23,7 @@ import { resolveReferenceVariant } from "../reference-selection";
 import { loadReferenceImage, type ModelType } from "../reference-models";
 import type { GeneratedImage } from "../persist";
 import type { StrategyProduct } from "./catalogue";
+import type { GenerationQuality } from "../quality";
 
 export async function runQuickListingStrategy(opts: {
   product: StrategyProduct;
@@ -31,8 +32,10 @@ export async function runQuickListingStrategy(opts: {
   userId?: string;
   /** Studio backdrop fragment — applied on the Gemini fallback path. */
   backdrop: string;
+  /** Native Gemini output quality for the fallback path. Defaults to "standard". */
+  quality?: GenerationQuality;
 }): Promise<{ images: GeneratedImage[]; usedFallback: boolean }> {
-  const { product, modelType, userId, backdrop } = opts;
+  const { product, modelType, userId, backdrop, quality } = opts;
   const usage = { feature: "quick_listing", storeId: userId ?? null, userId: userId ?? null };
 
   const variant = resolveReferenceVariant(product.category);
@@ -101,6 +104,7 @@ export async function runQuickListingStrategy(opts: {
     folder: "product-match/models",
     view: "front",
     usage,
+    quality,
   });
 
   return {
