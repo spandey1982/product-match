@@ -3,13 +3,38 @@ import type { GenerationPlan } from "../types";
 
 const IMAGE_GEN_MODEL = "gemini-3.1-flash-image";
 
-async function generateFlatImage(prompt: string): Promise<string | null> {
+async function fetchImagePart(url: string): Promise<{ inline_data: { mime_type: string; data: string } } | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const mime = res.headers.get("content-type")?.split(";")[0] ?? "image/jpeg";
+    const data = Buffer.from(await res.arrayBuffer()).toString("base64");
+    return { inline_data: { mime_type: mime, data } };
+  } catch {
+    return null;
+  }
+}
+
+async function generateFlatImage(
+  prompt: string,
+  referenceUrls: string[]
+): Promise<string | null> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY not configured");
 
+  // Fetch up to 4 reference images to keep request size reasonable
+  const imageParts = (
+    await Promise.all(referenceUrls.slice(0, 4).map(fetchImagePart))
+  ).filter(Boolean);
+
+  const parts: unknown[] = [
+    ...imageParts,
+    { text: prompt },
+  ];
+
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_GEN_MODEL}:generateContent?key=${apiKey}`;
   const body = JSON.stringify({
-    contents: [{ parts: [{ text: prompt }] }],
+    contents: [{ parts }],
     generationConfig: { responseModalities: ["IMAGE"] },
   });
 
@@ -45,8 +70,7 @@ async function generateFlatImage(prompt: string): Promise<string | null> {
       }
 
       const { mimeType, data: b64 } = imagePart.inlineData;
-      const dataUri = `data:${mimeType};base64,${b64}`;
-      const result = await cloudinary.uploader.upload(dataUri, {
+      const result = await cloudinary.uploader.upload(`data:${mimeType};base64,${b64}`, {
         folder: "product-match/fashion-designer",
       });
       return result.secure_url;
@@ -60,10 +84,11 @@ async function generateFlatImage(prompt: string): Promise<string | null> {
 
 export async function garmentConstructionAgent(
   plan: GenerationPlan,
+  referenceUrls: string[] = [],
 ): Promise<{ flatFrontUrl: string | null; flatBackUrl: string | null }> {
   const [flatFrontUrl, flatBackUrl] = await Promise.all([
-    generateFlatImage(plan.flatFrontPrompt),
-    generateFlatImage(plan.flatBackPrompt),
+    generateFlatImage(plan.flatFrontPrompt, referenceUrls),
+    generateFlatImage(plan.flatBackPrompt, referenceUrls),
   ]);
 
   return { flatFrontUrl, flatBackUrl };

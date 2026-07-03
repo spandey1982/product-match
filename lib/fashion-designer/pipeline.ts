@@ -80,7 +80,18 @@ export async function runDesignPipeline(designId: string): Promise<void> {
     // ── Stage 5: Garment Construction + Flat Image Generation ───────────────
     await setStage(designId, "constructing");
 
-    const { flatFrontUrl, flatBackUrl } = await garmentConstructionAgent(generationPlan);
+    // Pass fabric + sketch/reference images so the model can visually follow them
+    const referenceUrls = [
+      ...urlsOf("fabric"),
+      ...urlsOf("sketch"),
+      ...urlsOf("reference"),
+      ...urlsOf("neck"),
+      ...urlsOf("sleeve"),
+      ...urlsOf("back"),
+      ...urlsOf("border"),
+    ];
+
+    const { flatFrontUrl, flatBackUrl } = await garmentConstructionAgent(generationPlan, referenceUrls);
 
     await setStage(designId, "generating_flat_images");
 
