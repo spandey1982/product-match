@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
-import { Wand2, RefreshCw, ArrowLeft, CheckCircle2, Circle, Loader2, XCircle, X, ZoomIn } from "lucide-react";
+import { Wand2, RefreshCw, ArrowLeft, CheckCircle2, Circle, Loader2, XCircle, X, ZoomIn, ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { FabricAnalysis, DesignUnderstanding, GenerationPlan, AccessoryAnalysis } from "@/lib/fashion-designer/types";
 
@@ -103,6 +103,8 @@ export function DesignView() {
   const [loading, setLoading] = useState(true);
   const [regenerating, setRegenerating] = useState(false);
   const [lightbox, setLightbox] = useState<{ url: string; label: string } | null>(null);
+  const [addingToCatalog, setAddingToCatalog] = useState(false);
+  const [catalogProductId, setCatalogProductId] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const processingRef = useRef(false);
 
@@ -143,6 +145,16 @@ export function DesignView() {
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  async function handleAddToCatalog() {
+    setAddingToCatalog(true);
+    const res = await fetch(`/api/fashion-designer/designs/${id}/add-to-catalog`, { method: "POST" });
+    const data = await res.json() as { productId?: string; error?: string };
+    if (data.productId) {
+      setCatalogProductId(data.productId);
+    }
+    setAddingToCatalog(false);
+  }
 
   async function handleRegenerate() {
     setRegenerating(true);
@@ -187,16 +199,40 @@ export function DesignView() {
           </div>
         </div>
         {design.stage === "completed" && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRegenerate}
-            loading={regenerating}
-            className="gap-1.5"
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
-            Regenerate
-          </Button>
+          <div className="flex items-center gap-2">
+            {catalogProductId ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push(`/products/${catalogProductId}`)}
+                className="gap-1.5 text-emerald-600 border-emerald-200 hover:bg-emerald-50"
+              >
+                <ShoppingBag className="h-3.5 w-3.5" />
+                View in Catalog
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleAddToCatalog}
+                loading={addingToCatalog}
+                className="gap-1.5"
+              >
+                <ShoppingBag className="h-3.5 w-3.5" />
+                Add to Catalog
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRegenerate}
+              loading={regenerating}
+              className="gap-1.5"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Regenerate
+            </Button>
+          </div>
         )}
       </div>
 
