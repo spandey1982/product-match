@@ -102,7 +102,7 @@ export function ShareModelImage({ product }: Props) {
           disabled={shareState === "loading" || shareState === "success"}
           aria-label="Share on Instagram"
           className={cn(
-            "w-full flex items-center justify-center gap-2 py-3 px-4 rounded-2xl text-sm font-medium transition-all duration-200 select-none border",
+            "w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-medium transition-all duration-200 select-none border",
             shareState === "success"
               ? "bg-green-50 text-green-700 border-green-200 cursor-default"
               : [
