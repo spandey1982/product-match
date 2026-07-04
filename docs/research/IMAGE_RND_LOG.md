@@ -230,3 +230,203 @@ ran the broken version (the first was the `datetime('now')` Postgres bug,
 independently fixed on two different branches before either reached main).
 Worth checking for other stranded branches before assuming a reported defect
 needs new code.
+
+---
+
+## 2026-07-04 — Investigation: storage/delivery efficiency after the 2K quality change
+
+**Objective.** Enhanced (2K) generation confirmed better fabric/embroidery
+detail, but the raw files are much larger. Investigate whether storage/delivery
+can be made more efficient **without reducing what Gemini generates** — the
+retailer's explicit constraint was "optimize after generation, never generate
+less to save space." Investigation only; no code changed.
+
+**Method — no new paid provider calls.** Every number below comes from either
+(a) the existing `ai_usage_events` ledger (40 real past generations already on
+disk from prior sessions), or (b) free local re-encoding of real, already-downloaded
+generated JPEGs via `sharp` — no new Gemini/Vertex/Replicate calls were made.
+
+**Q1 — output format.** Always `image/jpeg`. Confirmed across all 40 logged
+`gemini-3.1-flash-image` generations (1K/2K/4K, multiple categories) — 100%
+JPEG, no PNG/WebP ever observed.
+
+**Q2 — real file sizes** (averaged from the ledger):
+
+| Tier | Pixels | Avg size (n) |
+|---|---|---|
+| 1K | ~800×1343 | ~620 KB (n≈17) |
+| 2K | ~1600×2686 | ~2.3 MB (n≈8) |
+| 4K | ~3200×5372 | ~7.7 MB (n≈5) |
+
+**Q3 — what's actually uploaded to Cloudinary.** Traced `runGeminiImageGen`
+(`lib/generate-model-image.ts`): the raw `inlineData` bytes Gemini returns are
+base64-decoded and uploaded via `cloudinary.uploader.upload(dataUri, {...})`
+**completely unmodified** — no resize, no re-encode, no quality/format
+parameter. Confirmed the same is true at all 8 `cloudinary.uploader.upload`
+call sites in the repo (catalogue/quick-listing, legacy, try-on ×2, fashion-designer
+×2, auto-catalog, product/logo upload) — none pass `quality`, `format`, or
+`eager`. `lib/cloudinary.ts` itself is bare SDK config, no upload preset.
+
+**Q4 — is Cloudinary auto-optimizing?** Not automatically — but it's already
+wired up **deliberately, at delivery time only**: `lib/images/variants.ts`
+inserts `f_auto,q_auto` (+ a width cap) into three explicit derived URLs
+(`master` w_2048, `display` w_1200, `thumbnail` w_400), applied at render in
+`ProductDetailView`/`ProductCard`/`RecommendationCard`. Verified live: a
+`display`-variant 2K image (1200×1600, `c_pad,ar_3:4` + `f_auto,q_auto,w_1200`)
+delivered at **~147 KB** — Cloudinary's own optimization already works well
+*when a variant URL is actually used*.
+
+**Found one real gap:** `components/product/ShareModelImage.tsx` uses
+`product.modelImageUrl` **directly**, bypassing all three variant helpers.
+Every share and download transfers the full, unoptimized, un-capped stored
+master (2.3–7.7 MB at Enhanced/4K) — the only place in the app that does.
+
+**The actual finding — the stored master itself is needlessly large.**
+Free local test: re-encoded three real generated images (1K/2K/4K) through
+`sharp`'s mozjpeg encoder at quality 95 (i.e. *near-maximum*, deliberately
+conservative) and it was consistently **~27–28% of Gemini's original file
+size** — WebP/AVIF at even more conservative settings (q80/q70) landed at
+5–13%. Cropped a detail-heavy embroidery region from the original vs. the
+q90 mozjpeg re-encode and visually compared them side by side — indistinguishable.
+This means Gemini's own JPEG encoder is not close to size-optimal for the
+same visual quality; the bloat is encoding inefficiency, not real information
+we'd be discarding by re-encoding.
+
+| Re-encode | 1K (617KB orig) | 2K (2260KB orig) | 4K (7665KB orig) |
+|---|---|---|---|
+| JPEG q95 mozjpeg | 173KB (28%) | 618KB (27%) | 2111KB (28%) |
+| JPEG q90 mozjpeg | 115KB (19%) | 375KB (17%) | 1324KB (17%) |
+| WebP q80 | 50KB (8%) | 156KB (7%) | 488KB (6%) |
+| AVIF q70 | 49KB (8%) | 141KB (6%) | 426KB (4%) |
+| PNG (lossless) | 1579KB (256%) | 6284KB (278%) | 23309KB (304%) |
+
+Lossless (PNG) roundtrip is 2.5–3× *larger* than Gemini's own JPEG — expected
+(photographic content, not line art) and confirms lossless is the wrong target
+for this content category entirely.
+
+**Cloudinary cost model** (verified via Cloudinary's own pricing pages,
+2026): a unified credit system — 1 credit = 1 GB storage **or** 1 GB
+bandwidth **or** 1,000 transformations. Transformations are cheap per-unit
+and CDN-cached after first render (an unchanged derived URL doesn't
+re-transform on repeat views), so at Mentis's realistic scale transformation
+volume is not a cost concern. **Opinion: bandwidth will become the dominant
+cost as traffic grows** — it scales with page views/shares/downloads, not
+catalog size, and it's the one dimension the `ShareModelImage` gap actively
+makes worse today. Storage is a distant second, growing linearly with catalog
+size × chosen quality tier; re-encoding the master addresses storage directly
+and (for the one bypassed path) bandwidth too.
+
+**Critique of the proposed pipeline** (Native Gen → Master → Store → Delivery
+variants → Serve): directionally correct and already ~80% built — the
+master/display/thumbnail hierarchy exists today. The one missing stage is a
+**re-encode step between generation and upload**: Gemini's raw output should
+be re-compressed (JPEG mozjpeg q90–92, matching the existing `preprocessProductImage`
+convention of "controlled encode, not the provider's blind default") *before*
+`cloudinary.uploader.upload`, so the stored master itself — not just its
+derived delivery URLs — is efficient. This is strictly post-generation: same
+pixels Gemini decided to draw, just encoded without the waste. Fully
+consistent with the stated principle (never reduce generation quality to save
+space) — this reduces bytes, not information content, and the visual A/B
+above didn't find a perceptible difference at q90+.
+
+**Modern formats (WebP/AVIF):** Cloudinary already supports both and already
+negotiates per-browser automatically via the existing `f_auto` in every
+delivery variant — no gap there. Recommend the **stored master stay JPEG**
+(universal compatibility for a source-of-truth asset — other integrations,
+tools, or future export paths won't all support AVIF), and continue leaving
+WebP/AVIF entirely to Cloudinary's `f_auto` delivery-time negotiation rather
+than picking one modern format to bake into storage.
+
+**Lossless vs. visually lossless:** visually lossless (JPEG q90–92 mozjpeg,
+or Cloudinary's own `q_auto`) for every category asked about — masters,
+listings, zoom, thumbnails. AI-generated images are already a lossy
+reinterpretation of the real product (per this log's earlier findings);
+chasing pixel-perfect lossless storage protects information that was never
+recorded exactly in the first place, at real cost (2.5–3× larger, confirmed
+above).
+
+**Zoom experience:** already solved. `ProductImageViewer` (the zoom modal) is
+conditionally rendered — `{viewerIndex !== null && <ProductImageViewer images={masterImages} .../>}`
+in `ProductDetailView.tsx` — so the `master` variant URLs are never fetched by
+the browser until the user actually opens the zoom viewer. No new lazy-loading
+mechanism needed; the existing React conditional-render pattern already
+achieves it.
+
+**Compression-quality methodology:** the visual A/B approach proposed (embroidery/
+lace/jewellery/texture/face, inspect for the point where size drops sharply with
+no visible loss) is the right methodology, and the table above is a first pass at
+exactly that — but on 3 images from one product. Recommend a slightly broader
+pass (5–8 real products across categories with heavy embroidery/zari/lace/
+jewellery, since those are the highest-risk content for compression artifacts)
+before locking an exact quality number — still zero Gemini spend, pure local
+re-encoding of already-generated images.
+
+**Recommendation.**
+1. Add a `reencodeGeneratedImage` step in `runGeminiImageGen`, right after the
+   Gemini response and before `cloudinary.uploader.upload` — re-encode via
+   `sharp` JPEG mozjpeg at a quality settled by the broader A/B pass above
+   (q90–92 is the strong prior from this first pass). Store the re-encoded
+   buffer, not the raw Gemini bytes.
+2. Fix `ShareModelImage.tsx` to route through `masterUrl()` instead of the bare
+   `modelImageUrl` — closes the one bandwidth gap found.
+3. Leave the delivery-variant system (`f_auto,q_auto` in `variants.ts`) exactly
+   as-is — it already works and this doesn't change it.
+4. No change to generation itself (resolution, `imageConfig`, prompts) — this
+   whole plan operates strictly after Gemini's response.
+
+**Final decision:** none yet — this was investigation-only per the task brief.
+Recommendation above is ready for approval; the only remaining open question
+(exact re-encode quality setting) can be closed with the broader zero-cost
+local A/B pass, not a new benchmark mode or any paid provider call.
+
+**Follow-up actions.**
+1. Run the broader 5–8-product visual A/B pass to settle the exact mozjpeg
+   quality setting (or confirm q90–92 holds).
+2. If approved, implement on a fresh branch off current `main` (the old
+   `feature/generation-quality-option` is merged/closed) — small, scoped: one
+   re-encode function + the `ShareModelImage` fix.
+3. Consider whether `AiUsageEvent.responseBytes` should log the *stored*
+   (re-encoded) size vs. the *raw Gemini* size, or both — useful to keep both
+   for cost transparency (real stored bytes vs. what Gemini actually billed
+   for) if this ships.
+
+---
+
+## 2026-07-04 — Implementation: post-generation re-encode + ShareModelImage fix
+
+Retailer reviewed the compression comparison directly (a temporary admin page,
+since the sandboxed visualization widget can't load `res.cloudinary.com` and
+can't practically embed real images as base64 either — both hit hard limits
+this session). Verdict: Original/q95/q90/production-q_auto/WebP80 all
+indistinguishable; AVIF q70 showed very minor softness on close zoom only —
+confirms the master should stay JPEG (mozjpeg) rather than adopt a modern
+format for storage, leaving WebP/AVIF entirely to Cloudinary's existing
+`f_auto` delivery-time negotiation. Approved for implementation.
+
+**Shipped** on `feature/reencode-generated-images` (off current `main`):
+- `lib/images/reencode.ts` — `reencodeGeneratedImage`, mozjpeg q90, non-fatal
+  fallback to the original buffer on failure (matches the existing
+  `preprocessProductImage` convention).
+- Wired into `runGeminiImageGen` (`lib/generate-model-image.ts`) right after
+  decoding Gemini's response, before the Cloudinary upload — so every
+  generation path that shares this function (legacy `generateModelImage`,
+  catalogue strategy, quick-listing's Gemini fallback) gets it automatically,
+  at both Standard and Enhanced quality. `AiUsageEvent.metadata.outputImage`
+  now logs both `sizeBytes` (raw, ties to Gemini's token billing) and
+  `storedSizeBytes`/`storedMime` (what's actually persisted/served) — closes
+  follow-up #3 above.
+- `components/product/ShareModelImage.tsx` now routes through `masterUrl()`
+  instead of the bare `modelImageUrl` — the one path that bypassed the
+  delivery-variant system entirely.
+
+**Verified live** (one real generation, approved in advance): a real catalogue
+front+back generation showed raw Gemini output of 573KB/557KB re-encoding to
+136KB/128KB stored (76-77% smaller) — consistent with the local A/B. Confirmed
+the actual Cloudinary-served file matches the re-encoded size (not the raw
+one), and visually inspected the stored result — clean, no artifacts.
+
+**What this changes vs. what it doesn't.** Generation itself (prompts,
+`imageConfig`, resolution) is completely untouched — this operates strictly on
+Gemini's response before it's stored. The existing delivery-variant system
+(`f_auto,q_auto` in `lib/images/variants.ts`) is unchanged and still does its
+job; it now just starts from a smaller, more efficient base file.
