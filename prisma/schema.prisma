@@ -325,9 +325,10 @@ model FashionDesign {
   flatFrontUrl String?
   flatBackUrl  String?
 
-  qualityScore    Int?
-  failureReason   String?
-  cancelRequested Boolean @default(false)
+  qualityScore      Int?
+  failureReason     String?
+  cancelRequested   Boolean @default(false)
+  catalogProductId  String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -28,6 +28,7 @@ interface Design {
   flatBackUrl: string | null;
   qualityScore: number | null;
   failureReason: string | null;
+  catalogProductId: string | null;
 }
 
 const PIPELINE_STAGES: { key: DesignStage; label: string }[] = [
@@ -135,6 +136,7 @@ export function DesignView() {
       if (!res.ok) { setLoading(false); return; }
       const data = await res.json() as { design: Design };
       setDesign(data.design);
+      if (data.design.catalogProductId) setCatalogProductId(data.design.catalogProductId);
       setLoading(false);
 
       if (data.design.stage === "uploading" && !processingRef.current) {

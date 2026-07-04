@@ -45,6 +45,9 @@ export async function POST(
     if (design.stage !== "completed" || !design.flatFrontUrl) {
       return NextResponse.json({ error: "Design is not completed" }, { status: 400 });
     }
+    if (design.catalogProductId) {
+      return NextResponse.json({ productId: design.catalogProductId });
+    }
 
     const fabric = design.fabricAnalysis
       ? (JSON.parse(design.fabricAnalysis) as FabricAnalysis)
@@ -106,6 +109,21 @@ export async function POST(
         imageUrl: design.flatFrontUrl,
         backImageUrl: design.flatBackUrl ?? undefined,
       },
+    });
+
+    // Create ProductImage records for all generated views so they appear in
+    // the catalog carousel (generatedImages) in order: front first, then back.
+    const imageRecords: { productId: string; url: string; view: string; objective: string; isPrimary: boolean }[] = [];
+    imageRecords.push({ productId: product.id, url: design.flatFrontUrl, view: "front", objective: "catalogue", isPrimary: true });
+    if (design.flatBackUrl) {
+      imageRecords.push({ productId: product.id, url: design.flatBackUrl, view: "back", objective: "catalogue", isPrimary: false });
+    }
+    await db.productImage.createMany({ data: imageRecords });
+
+    // Persist the link so the UI can show "View in Catalog" after page refresh
+    await db.fashionDesign.update({
+      where: { id },
+      data: { catalogProductId: product.id },
     });
 
     // Generate recommendations in the background
