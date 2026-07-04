@@ -289,7 +289,9 @@ export function ProductDetailView({
             onClick={() => setViewerIndex(0)}
           >
             <ImageCarousel
+              key={displayImages[0] ?? "no-image"}
               images={displayImages}
+              labels={imageLabels}
               title={product.title}
               category={product.category}
               className="w-full h-full"
