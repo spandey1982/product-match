@@ -40,7 +40,7 @@ export default async function ProductDetailPage({ params, searchParams }: Props)
   const generatedImages = await db.productImage.findMany({
     where: { productId: id },
     orderBy: { createdAt: "asc" },
-    select: { url: true, view: true },
+    select: { url: true, view: true, objective: true },
   });
 
   return (

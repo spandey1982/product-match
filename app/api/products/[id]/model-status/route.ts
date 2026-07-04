@@ -29,7 +29,7 @@ export async function GET(
     const generatedImages = await db.productImage.findMany({
       where: { productId: id },
       orderBy: { createdAt: "asc" },
-      select: { url: true, view: true },
+      select: { url: true, view: true, objective: true },
     });
 
     return NextResponse.json({
