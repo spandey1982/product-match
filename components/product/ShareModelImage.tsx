@@ -102,13 +102,12 @@ export function ShareModelImage({ product }: Props) {
           disabled={shareState === "loading" || shareState === "success"}
           aria-label="Share on Instagram"
           className={cn(
-            "w-full flex items-center justify-center gap-2 py-3 px-4 rounded-2xl text-sm font-semibold transition-all duration-200 select-none",
+            "w-full flex items-center justify-center gap-2 py-3 px-4 rounded-2xl text-sm font-medium transition-all duration-200 select-none border",
             shareState === "success"
-              ? "bg-green-50 text-green-700 border border-green-200 cursor-default"
+              ? "bg-green-50 text-green-700 border-green-200 cursor-default"
               : [
-                  igGradient,
-                  "text-white shadow-md shadow-pink-200/50",
-                  "hover:opacity-90 active:scale-[0.98] active:shadow-none",
+                  "bg-white text-gray-600 border-gray-200",
+                  "hover:bg-gray-50 active:scale-[0.98]",
                   shareState === "loading" && "opacity-75 pointer-events-none",
                 ]
           )}
@@ -126,7 +125,7 @@ export function ShareModelImage({ product }: Props) {
           ) : (
             <>
               <Share2 className="h-4 w-4" />
-              Share on Instagram
+              Share
             </>
           )}
         </button>
