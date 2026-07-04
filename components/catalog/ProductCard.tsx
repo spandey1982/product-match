@@ -140,6 +140,7 @@ export function ProductCard({ product }: ProductCardProps) {
           <div className="absolute inset-0 overflow-hidden rounded-t-2xl bg-gray-50">
             <ImageCarousel
               images={[
+                product.modelImageUrl ? thumbnailUrl(product.modelImageUrl) : null,
                 ...(product.generatedImages?.map((gi) => thumbnailUrl(gi.url)) ?? []),
                 product.imageUrl ? thumbnailUrl(product.imageUrl) : null,
               ].filter(Boolean) as string[]}
