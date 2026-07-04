@@ -508,7 +508,7 @@ export function ProductDetailView({
                     {generating ? (
                       <><Loader2 className="h-4 w-4 animate-spin" /> Generating…</>
                     ) : (
-                      <><ImagePlus className="h-4 w-4" /> {hasModelImage ? "Regenerate Image" : "Generate Image"}</>
+                      <><ImagePlus className="h-4 w-4" /> {hasModelImage ? "Regenerate Model Image" : "Generate Model Image"}</>
                     )}
                   </Button>
                 </>
