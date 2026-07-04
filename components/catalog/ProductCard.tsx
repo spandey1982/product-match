@@ -174,18 +174,7 @@ export function ProductCard({ product }: ProductCardProps) {
             </h3>
           </div>
 
-          <div className="flex items-center gap-1.5 mb-3">
-            <Badge variant="outline" className="text-xs capitalize">
-              {product.category}
-            </Badge>
-            {product.styleTags[0] && (
-              <Badge variant="purple" className="text-xs capitalize">
-                {product.styleTags[0]}
-              </Badge>
-            )}
-          </div>
-
-          <div className="flex items-center justify-between">
+<div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
               <div
                 className="h-3 w-3 rounded-full border border-gray-200 ring-1 ring-offset-1"
