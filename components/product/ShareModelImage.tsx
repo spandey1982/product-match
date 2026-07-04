@@ -9,6 +9,7 @@ import {
   copyText,
   openInstagram,
 } from "@/lib/share-image";
+import { masterUrl } from "@/lib/images/variants";
 import { cn } from "@/lib/utils";
 import {
   Share2,
@@ -39,7 +40,10 @@ export function ShareModelImage({ product }: Props) {
   const [actionError, setActionError] = useState<string | null>(null);
 
   const caption = buildCaption(product);
-  const imageUrl = product.modelImageUrl!;
+  // Share/download previously used the bare stored URL directly — the one path
+  // in the app that bypassed the delivery-variant system entirely, transferring
+  // the full unoptimized master on every share/download.
+  const imageUrl = masterUrl(product.modelImageUrl!);
   const downloadFilename = `${(product.title ?? "product")
     .replace(/\s+/g, "-")
     .toLowerCase()}-model.jpg`;

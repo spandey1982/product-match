@@ -6,6 +6,7 @@ import { getImageDimensions, fmtBytes } from "@/lib/image-utils";
 import { recordAiUsage, type AiUsageContext } from "@/lib/ai-usage/record";
 import { getBrandingConfig, applyBranding } from "@/lib/model-gen/branding";
 import { preprocessProductImage } from "@/lib/images/preprocess";
+import { reencodeGeneratedImage } from "@/lib/images/reencode";
 import { getQualityProfile, type GenerationQuality } from "@/lib/model-gen/quality";
 
 const GEMINI_MODEL = "gemini-3.1-flash-image";
@@ -263,10 +264,16 @@ export async function runGeminiImageGen(
 
     const outMime = imagePart.inlineData!.mimeType ?? "image/jpeg";
     const outBuffer = Buffer.from(imagePart.inlineData!.data, "base64");
-    const outDims = getImageDimensions(outBuffer, outMime);
-    console.log(`[model-image] Output: ${fmtBytes(outBuffer.length)}  mime=${outMime}  ${outDims ? `${outDims.width}×${outDims.height}px` : "dims=unknown"}`);
+    console.log(`[model-image] Output (raw from Gemini): ${fmtBytes(outBuffer.length)}  mime=${outMime}`);
 
-    const dataUri = `data:${outMime};base64,${imagePart.inlineData!.data}`;
+    // Re-encode before storing — Gemini's own JPEG encoder is not size-optimal
+    // (see lib/images/reencode.ts). Same pixels, ~80% smaller, no perceptible
+    // quality change (docs/research/IMAGE_RND_LOG.md, 2026-07-04).
+    const { buffer: storedBuffer, mime: storedMime } = await reencodeGeneratedImage(outBuffer, outMime);
+    const outDims = getImageDimensions(storedBuffer, storedMime);
+    console.log(`[model-image] Output (re-encoded, stored): ${fmtBytes(storedBuffer.length)}  mime=${storedMime}  ${outDims ? `${outDims.width}×${outDims.height}px` : "dims=unknown"}`);
+
+    const dataUri = `data:${storedMime};base64,${storedBuffer.toString("base64")}`;
     const uploaded = await cloudinary.uploader.upload(dataUri, {
       folder,
       tags: [
@@ -324,8 +331,11 @@ export async function runGeminiImageGen(
         view,
         inputImages,
         outputImage: {
+          // Raw = what Gemini billed for (tokens correlate with this). Stored =
+          // what we actually persist/serve, after the post-generation re-encode.
           mime: outMime, sizeBytes: outBuffer.length,
           widthPx: outDims?.width ?? null, heightPx: outDims?.height ?? null,
+          storedMime, storedSizeBytes: storedBuffer.length,
         },
       },
     });
@@ -334,7 +344,7 @@ export async function runGeminiImageGen(
       url: uploaded.secure_url,
       width: outDims?.width ?? null,
       height: outDims?.height ?? null,
-      bytes: outBuffer.length,
+      bytes: storedBuffer.length,
       model: GEMINI_MODEL,
     };
   } catch (err) {
