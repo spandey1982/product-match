@@ -35,6 +35,7 @@ import { normalizeCatalogueUrl } from "@/lib/image-normalize";
 interface GeneratedImage {
   url: string;
   view: string;
+  objective?: string;
 }
 
 interface Props {
@@ -106,9 +107,17 @@ export function ProductDetailView({
   // Live display values (updated on save)
   const [displayProduct, setDisplayProduct] = useState(product);
 
+  // Separate model images from catalogue flat images
+  const modelImages: GeneratedImage[] = genImages.filter(
+    (g) => g.objective === "model" || g.view === "on-model"
+  );
+  const catalogueImages: GeneratedImage[] = genImages.filter(
+    (g) => g.objective === "catalogue" && g.view !== "on-model"
+  );
+
   const onModel: GeneratedImage[] =
-    genImages.length > 0
-      ? genImages
+    modelImages.length > 0
+      ? modelImages
       : modelUrl
       ? [{ url: modelUrl, view: "on-model" }]
       : [];
@@ -116,21 +125,26 @@ export function ProductDetailView({
   const hasModelImage = onModel.length > 0;
   const [generating, setGenerating] = useState(initialGenerating && !hasModelImage);
 
-  const productImages = [...onModel.map((g) => g.url), product.imageUrl].filter(
+  // Carousel order: on-model first, then catalogue flat views, then raw imageUrl
+  const allImages: GeneratedImage[] = [
+    ...onModel,
+    ...catalogueImages,
+  ];
+  const productImages = [...allImages.map((g) => g.url), product.imageUrl].filter(
     Boolean
   ) as string[];
 
   const FULL_VIEWS = new Set(["on-model", "front", "back"]);
   const framedImages = productImages.map((url, i) =>
-    i > 0 && FULL_VIEWS.has(onModel[i - 1]?.view) ? normalizeCatalogueUrl(url) : url
+    i > 0 && FULL_VIEWS.has(allImages[i - 1]?.view) ? normalizeCatalogueUrl(url) : url
   );
   const displayImages = framedImages.map(displayUrl);
   const masterImages = framedImages.map(masterUrl);
   const imageLabels = productImages.map((_, i) =>
-    i === 0 ? "Product" : onModel[i - 1]?.view === "on-model" ? "On model" : prettyView(onModel[i - 1].view)
+    i === 0 ? "Product" : allImages[i - 1]?.view === "on-model" ? "On model" : prettyView(allImages[i - 1].view)
   );
   const maxZooms = productImages.map((_, i) =>
-    i === 0 || FULL_VIEWS.has(onModel[i - 1]?.view) ? 2.5 : 2
+    i === 0 || FULL_VIEWS.has(allImages[i - 1]?.view) ? 2.5 : 2
   );
 
   async function handleDelete() {
@@ -236,7 +250,10 @@ export function ProductDetailView({
             modelImageUrl: string | null;
             generatedImages: GeneratedImage[];
           };
-          const ready = data.generatedImages?.length > 0 || !!data.modelImageUrl;
+          const hasOnModel = data.generatedImages?.some(
+            (g) => g.objective === "model" || g.view === "on-model"
+          );
+          const ready = hasOnModel || !!data.modelImageUrl;
           if (active && ready) {
             setGenImages(data.generatedImages ?? []);
             setModelUrl(data.modelImageUrl ?? null);
