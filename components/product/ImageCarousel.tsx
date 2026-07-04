@@ -107,12 +107,6 @@ export function ImageCarousel({ images, title, category, className, labels }: Im
         ))}
       </div>
 
-      {/* Label badge */}
-      <div className="absolute top-2 left-2 z-10">
-        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-black/30 backdrop-blur-sm text-white">
-          {labels?.[index] ?? (index === 0 ? "Product" : "On model")}
-        </span>
-      </div>
     </div>
   );
 }
