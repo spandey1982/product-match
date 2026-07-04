@@ -149,15 +149,7 @@ export function ProductCard({ product }: ProductCardProps) {
               className="w-full h-full"
             />
 
-            {/* Match indicator — top left */}
-            <div className="absolute top-2 left-2 z-10">
-              <div className="flex items-center gap-1 bg-white/90 backdrop-blur-sm rounded-full px-2 py-1 text-xs font-medium text-indigo-600 shadow-sm">
-                <Sparkles className="h-3 w-3" />
-                Match
-              </div>
-            </div>
-
-            {!product.inStock && (
+{!product.inStock && (
               <div className="absolute inset-0 bg-white/60 flex items-center justify-center z-10">
                 <Badge variant="error">Out of Stock</Badge>
               </div>
