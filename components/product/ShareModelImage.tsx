@@ -23,6 +23,7 @@ import {
 
 interface Props {
   product: Product;
+  iconOnly?: boolean;
 }
 
 type ShareState = "idle" | "loading" | "success" | "fallback";
@@ -33,7 +34,7 @@ const igGradient =
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function ShareModelImage({ product }: Props) {
+export function ShareModelImage({ product, iconOnly = false }: Props) {
   const [shareState, setShareState] = useState<ShareState>("idle");
   const [copied, setCopied] = useState(false);
   const [downloaded, setDownloaded] = useState(false);
@@ -89,6 +90,31 @@ export function ShareModelImage({ product }: Props) {
     } catch {
       setActionError("Could not access clipboard");
     }
+  }
+
+  // ── Icon-only overlay button ──────────────────────────────────────────────
+  if (iconOnly) {
+    return (
+      <button
+        onClick={handleShare}
+        disabled={shareState === "loading"}
+        aria-label="Share"
+        className={cn(
+          "h-8 w-8 rounded-full flex items-center justify-center transition-all duration-200",
+          "bg-black/40 backdrop-blur-sm text-white hover:bg-black/60 active:scale-95",
+          shareState === "success" && "bg-green-500/80 hover:bg-green-500/80",
+          shareState === "loading" && "opacity-75 pointer-events-none",
+        )}
+      >
+        {shareState === "loading" ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : shareState === "success" ? (
+          <Check className="h-3.5 w-3.5" />
+        ) : (
+          <Share2 className="h-3.5 w-3.5" />
+        )}
+      </button>
+    );
   }
 
   // ── Render ───────────────────────────────────────────────────────────────

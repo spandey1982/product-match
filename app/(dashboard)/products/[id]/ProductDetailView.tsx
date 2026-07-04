@@ -369,15 +369,15 @@ export function ProductDetailView({
                   {!product.inStock && <Badge variant="error">Out of Stock</Badge>}
                 </div>
               </div>
+              {product.modelImageUrl && (
+                <div className="absolute bottom-3 right-3 z-30 pointer-events-auto" onClick={(e) => e.stopPropagation()}>
+                  <ShareModelImage product={product} iconOnly />
+                </div>
+              )}
             </div>
           </div>
 
           <div className="flex gap-2">
-            {product.modelImageUrl && (
-              <div className="flex-1 min-w-0">
-                <ShareModelImage product={product} />
-              </div>
-            )}
             <div className="flex-1 min-w-0">
               <TryOnQueueButton product={product} />
             </div>
