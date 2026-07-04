@@ -377,8 +377,8 @@ export function ProductDetailView({
             </div>
           </div>
 
-          <div className="flex gap-2">
-            <div className="flex-1 min-w-0">
+          <div className="flex justify-center">
+            <div className="min-w-[220px]">
               <TryOnQueueButton product={product} />
             </div>
           </div>
