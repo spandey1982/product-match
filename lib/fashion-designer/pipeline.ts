@@ -10,6 +10,21 @@ async function setStage(designId: string, stage: string) {
   await db.fashionDesign.update({ where: { id: designId }, data: { stage } });
 }
 
+async function isCancelled(designId: string): Promise<boolean> {
+  const d = await db.fashionDesign.findUnique({
+    where: { id: designId },
+    select: { cancelRequested: true },
+  });
+  return d?.cancelRequested ?? false;
+}
+
+async function abort(designId: string) {
+  await db.fashionDesign.update({
+    where: { id: designId },
+    data: { stage: "failed", failureReason: "Cancelled by user", cancelRequested: false },
+  });
+}
+
 export async function runDesignPipeline(designId: string): Promise<void> {
   const design = await db.fashionDesign.findUnique({
     where: { id: designId },
@@ -35,6 +50,9 @@ export async function runDesignPipeline(designId: string): Promise<void> {
     : {};
   const designNotes = design.designNotes ?? "";
 
+  // Clear any stale cancel flag before starting
+  await db.fashionDesign.update({ where: { id: designId }, data: { cancelRequested: false } });
+
   try {
     // ── Stage 1: Fabric Analysis ────────────────────────────────────────────
     await setStage(designId, "analyzing_fabric");
@@ -54,6 +72,8 @@ export async function runDesignPipeline(designId: string): Promise<void> {
       data: { fabricAnalysis: JSON.stringify(fabricAnalysis) },
     });
 
+    if (await isCancelled(designId)) { await abort(designId); return; }
+
     // ── Stage 2: Design Understanding ───────────────────────────────────────
     await setStage(designId, "analyzing_design");
 
@@ -63,6 +83,8 @@ export async function runDesignPipeline(designId: string): Promise<void> {
       where: { id: designId },
       data: { designUnderstanding: JSON.stringify(designUnderstanding) },
     });
+
+    if (await isCancelled(designId)) { await abort(designId); return; }
 
     // ── Stage 3: Accessory Understanding ────────────────────────────────────
     await setStage(designId, "analyzing_accessories");
@@ -76,6 +98,8 @@ export async function runDesignPipeline(designId: string): Promise<void> {
       where: { id: designId },
       data: { accessoryAnalysis: JSON.stringify(accessoryAnalysis) },
     });
+
+    if (await isCancelled(designId)) { await abort(designId); return; }
 
     // ── Stage 4: Planning ────────────────────────────────────────────────────
     await setStage(designId, "planning");
@@ -93,6 +117,8 @@ export async function runDesignPipeline(designId: string): Promise<void> {
       where: { id: designId },
       data: { generationPlan: JSON.stringify(generationPlan) },
     });
+
+    if (await isCancelled(designId)) { await abort(designId); return; }
 
     // ── Stage 5: Garment Construction + Flat Image Generation ───────────────
     await setStage(designId, "constructing");

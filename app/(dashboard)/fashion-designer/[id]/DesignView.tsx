@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
-import { Wand2, RefreshCw, ArrowLeft, CheckCircle2, Circle, Loader2, XCircle, X, ZoomIn, ShoppingBag } from "lucide-react";
+import { Wand2, RefreshCw, ArrowLeft, CheckCircle2, Circle, Loader2, XCircle, X, ZoomIn, ShoppingBag, StopCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { FabricAnalysis, DesignUnderstanding, GenerationPlan, AccessoryAnalysis } from "@/lib/fashion-designer/types";
 import { findTemplate, fieldOptionLabel } from "@/lib/fashion-designer/templates";
@@ -111,6 +111,7 @@ export function DesignView() {
   const [catalogProductId, setCatalogProductId] = useState<string | null>(null);
   const [showRegenerateModal, setShowRegenerateModal] = useState(false);
   const [regenerateFeedback, setRegenerateFeedback] = useState("");
+  const [cancelling, setCancelling] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const processingRef = useRef(false);
 
@@ -151,6 +152,12 @@ export function DesignView() {
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  async function handleCancel() {
+    setCancelling(true);
+    await fetch(`/api/fashion-designer/designs/${id}/cancel`, { method: "POST" });
+    setCancelling(false);
+  }
 
   async function handleAddToCatalog() {
     setAddingToCatalog(true);
@@ -215,6 +222,18 @@ export function DesignView() {
             <p className="text-sm text-gray-500">{design.garmentType}</p>
           </div>
         </div>
+        {isRunning && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleCancel}
+            loading={cancelling}
+            className="gap-1.5 text-red-600 border-red-200 hover:bg-red-50"
+          >
+            <StopCircle className="h-3.5 w-3.5" />
+            Stop
+          </Button>
+        )}
         {design.stage === "completed" && (
           <div className="flex items-center gap-2">
             {catalogProductId ? (
