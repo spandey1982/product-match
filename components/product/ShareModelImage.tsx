@@ -93,7 +93,7 @@ export function ShareModelImage({ product }: Props) {
 
   // ── Render ───────────────────────────────────────────────────────────────
   return (
-    <div className="mt-3 space-y-2">
+    <div className="space-y-2">
 
       {/* ── Primary share button (idle / loading / success) ── */}
       {shareState !== "fallback" && (

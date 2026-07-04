@@ -334,8 +334,16 @@ export function ProductDetailView({
             </div>
           </div>
 
-          {product.modelImageUrl && <ShareModelImage product={product} />}
-          <TryOnQueueButton product={product} />
+          <div className="flex gap-2">
+            {product.modelImageUrl && (
+              <div className="flex-1 min-w-0">
+                <ShareModelImage product={product} />
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <TryOnQueueButton product={product} />
+            </div>
+          </div>
         </div>
 
         {/* RIGHT — Product details */}
