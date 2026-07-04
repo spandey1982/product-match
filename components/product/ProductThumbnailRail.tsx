@@ -45,10 +45,10 @@ export function ProductThumbnailRail({
           aria-label={`View ${labels[i] ?? `image ${i + 1}`}`}
           aria-current={i === activeIndex}
           className={cn(
-            "relative w-14 sm:w-16 aspect-[3/4] shrink-0 rounded-xl overflow-hidden bg-gray-50 border-2 transition-all",
+            "relative w-14 sm:w-16 aspect-[3/4] shrink-0 rounded-xl overflow-hidden bg-gray-50 border-2 transition-colors",
             i === activeIndex
               ? "border-indigo-500 ring-2 ring-indigo-100"
-              : "border-transparent opacity-60 hover:opacity-100"
+              : "border-transparent"
           )}
         >
           <ProductImage src={src} title={title} category={category} className="w-full h-full" />
