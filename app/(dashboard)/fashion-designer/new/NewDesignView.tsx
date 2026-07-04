@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Upload, Wand2, ChevronDown, ChevronUp, X } from "lucide-react";
+import { Upload, Wand2, ChevronDown, ChevronUp, X, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { templatesForCategory, defaultOptionsFor } from "@/lib/fashion-designer/templates";
 
@@ -208,6 +208,15 @@ export function NewDesignView() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-8 space-y-8">
+      {/* Back button */}
+      <button
+        onClick={() => router.push("/fashion-designer")}
+        className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 transition-colors"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Design Studio
+      </button>
+
       {/* Header */}
       <div className="text-center space-y-2">
         <div className="flex items-center justify-center gap-2">
