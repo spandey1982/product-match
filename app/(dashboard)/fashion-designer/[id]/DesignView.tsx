@@ -109,6 +109,8 @@ export function DesignView() {
   const [lightbox, setLightbox] = useState<{ url: string; label: string } | null>(null);
   const [addingToCatalog, setAddingToCatalog] = useState(false);
   const [catalogProductId, setCatalogProductId] = useState<string | null>(null);
+  const [showRegenerateModal, setShowRegenerateModal] = useState(false);
+  const [regenerateFeedback, setRegenerateFeedback] = useState("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const processingRef = useRef(false);
 
@@ -161,10 +163,16 @@ export function DesignView() {
   }
 
   async function handleRegenerate() {
+    setShowRegenerateModal(false);
     setRegenerating(true);
     startPolling();
-    await fetch(`/api/fashion-designer/designs/${id}/regenerate`, { method: "POST" });
+    await fetch(`/api/fashion-designer/designs/${id}/regenerate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ designNotes: regenerateFeedback.trim() || undefined }),
+    });
     setRegenerating(false);
+    setRegenerateFeedback("");
   }
 
   if (loading) {
@@ -234,7 +242,7 @@ export function DesignView() {
             <Button
               variant="outline"
               size="sm"
-              onClick={handleRegenerate}
+              onClick={() => setShowRegenerateModal(true)}
               loading={regenerating}
               className="gap-1.5"
             >
@@ -323,6 +331,50 @@ export function DesignView() {
 
         {/* Right: Generated images */}
         <div className="lg:col-span-2 space-y-4">
+          {/* Regenerate feedback modal */}
+          {showRegenerateModal && (
+            <div
+              className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
+              onClick={() => setShowRegenerateModal(false)}
+            >
+              <div
+                className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between">
+                  <h2 className="text-base font-semibold text-gray-900">Regeneration Instructions</h2>
+                  <button onClick={() => setShowRegenerateModal(false)} className="text-gray-400 hover:text-gray-600">
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+                <p className="text-sm text-gray-500">
+                  Describe what&apos;s wrong and what the AI should do differently. Leave blank to regenerate with the same settings.
+                </p>
+                <textarea
+                  autoFocus
+                  value={regenerateFeedback}
+                  onChange={(e) => setRegenerateFeedback(e.target.value)}
+                  placeholder="e.g. The sleeves should be 3/4 length, not full. The collar needs to be a mandarin style. The back should have a box pleat."
+                  rows={5}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none"
+                />
+                <div className="flex gap-2 justify-end">
+                  <Button variant="outline" size="sm" onClick={() => setShowRegenerateModal(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={handleRegenerate}
+                    className="gap-1.5 bg-purple-600 hover:bg-purple-700"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    Regenerate
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Lightbox */}
           {lightbox && (
             <div
