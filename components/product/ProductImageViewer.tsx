@@ -10,6 +10,13 @@ const SWIPE_THRESHOLD = 50;
 const EDGE_RESISTANCE = 0.18;
 const TAP_MOVE_MAX = 8; // movement under this on release = a tap (zoom toggle)
 const DEFAULT_MAX_ZOOM = 3;
+const DOUBLE_TAP_DELAY = 300; // ms between taps to count as a double-tap
+const DOUBLE_TAP_MAX_DIST = 40; // px — how close together the two taps must land
+
+/** Distance between two touch points — works for both React.Touch and native Touch. */
+function touchDistance(a: { clientX: number; clientY: number }, b: { clientX: number; clientY: number }): number {
+  return Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY);
+}
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -47,6 +54,12 @@ export function ProductImageViewer({ images, labels, maxZooms, initialIndex, onC
   const touchStartXRef = useRef<number | null>(null);
   const touchStartYRef = useRef<number | null>(null);
   const isHorizontalRef = useRef<boolean | null>(null);
+  const lastTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
+
+  // Pinch (two-finger zoom)
+  const isPinchingRef = useRef(false);
+  const pinchStartDistRef = useRef<number | null>(null);
+  const pinchStartScaleRef = useRef(1);
 
   // Mouse
   const isDraggingMouseRef = useRef(false);
@@ -78,6 +91,20 @@ export function ProductImageViewer({ images, labels, maxZooms, initialIndex, onC
 
   function toggleZoom(idx: number) {
     applyZoom(scaleRef.current > 1 ? 1 : maxZoomFor(idx), idx);
+  }
+
+  /** True when this tap lands soon enough after, and close enough to, the previous one. */
+  function isDoubleTap(x: number, y: number): boolean {
+    const now = Date.now();
+    const last = lastTapRef.current;
+    const isDouble =
+      !!last &&
+      now - last.time < DOUBLE_TAP_DELAY &&
+      Math.hypot(x - last.x, y - last.y) < DOUBLE_TAP_MAX_DIST;
+    // Consume the pair so a third quick tap starts a fresh count instead of
+    // chaining into another "double tap".
+    lastTapRef.current = isDouble ? null : { time: now, x, y };
+    return isDouble;
   }
 
   function resetZoom() {
@@ -164,6 +191,18 @@ export function ProductImageViewer({ images, labels, maxZooms, initialIndex, onC
     const el = trackRef.current;
     if (!el) return;
     function onTouchMove(e: TouchEvent) {
+      // Two fingers down → pinch-zoom. Handled entirely ourselves so it respects
+      // the same maxZoom cap as tap/wheel zoom, instead of falling through to
+      // the browser's own uncapped native pinch-to-zoom.
+      if (e.touches.length >= 2) {
+        if (pinchStartDistRef.current === null) return;
+        e.preventDefault();
+        const dist = touchDistance(e.touches[0], e.touches[1]);
+        const nextScale = pinchStartScaleRef.current * (dist / pinchStartDistRef.current);
+        applyZoom(nextScale, indexRef.current);
+        return;
+      }
+
       if (touchStartXRef.current === null || touchStartYRef.current === null) return;
       const dx = e.touches[0].clientX - touchStartXRef.current;
       const dy = e.touches[0].clientY - touchStartYRef.current;
@@ -251,6 +290,20 @@ export function ProductImageViewer({ images, labels, maxZooms, initialIndex, onC
   // ── Touch synthetic handlers ──────────────────────────────────────────────
 
   function handleTouchStart(e: React.TouchEvent) {
+    if (e.touches.length >= 2) {
+      // Second finger just landed — (re)start pinch tracking from here,
+      // whatever the current scale/pan happens to be.
+      isPinchingRef.current = true;
+      pinchStartDistRef.current = touchDistance(e.touches[0], e.touches[1]);
+      pinchStartScaleRef.current = scaleRef.current;
+      touchStartXRef.current = null;
+      touchStartYRef.current = null;
+      isHorizontalRef.current = null;
+      dxRef.current = 0;
+      movedRef.current = TAP_MOVE_MAX; // never mistake the settling fingers for a tap
+      return;
+    }
+    isPinchingRef.current = false;
     touchStartXRef.current = e.touches[0].clientX;
     touchStartYRef.current = e.touches[0].clientY;
     isHorizontalRef.current = null;
@@ -259,16 +312,31 @@ export function ProductImageViewer({ images, labels, maxZooms, initialIndex, onC
     panStartRef.current = { ...panRef.current };
   }
 
-  function handleTouchEnd() {
+  function handleTouchEnd(e: React.TouchEvent) {
+    if (isPinchingRef.current) {
+      // Pinch ends once fewer than two fingers remain — don't let the last
+      // lifted finger be read as a tap or a swipe.
+      if (e.touches.length < 2) {
+        isPinchingRef.current = false;
+        pinchStartDistRef.current = null;
+      }
+      touchStartXRef.current = null;
+      touchStartYRef.current = null;
+      return;
+    }
+
     const finalDx = dxRef.current;
     const moved = movedRef.current;
+    const endTouch = e.changedTouches[0];
     dxRef.current = 0;
     touchStartXRef.current = null;
     touchStartYRef.current = null;
     isHorizontalRef.current = null;
 
     if (scaleRef.current > 1) {
-      if (moved < TAP_MOVE_MAX) toggleZoom(indexRef.current);
+      if (moved < TAP_MOVE_MAX && endTouch && isDoubleTap(endTouch.clientX, endTouch.clientY)) {
+        toggleZoom(indexRef.current);
+      }
       return;
     }
     if (Math.abs(finalDx) > SWIPE_THRESHOLD) {
@@ -279,7 +347,9 @@ export function ProductImageViewer({ images, labels, maxZooms, initialIndex, onC
       navigate(target);
     } else {
       updateTransform(indexRef.current, 0, true);
-      if (moved < TAP_MOVE_MAX) toggleZoom(indexRef.current);
+      if (moved < TAP_MOVE_MAX && endTouch && isDoubleTap(endTouch.clientX, endTouch.clientY)) {
+        toggleZoom(indexRef.current);
+      }
     }
   }
 
@@ -334,7 +404,7 @@ export function ProductImageViewer({ images, labels, maxZooms, initialIndex, onC
       {/* Image track */}
       <div
         className={cn(
-          "flex-1 overflow-hidden relative",
+          "flex-1 overflow-hidden relative touch-none",
           zoomed ? "cursor-grab active:cursor-grabbing" : "cursor-zoom-in"
         )}
         onTouchStart={handleTouchStart}
