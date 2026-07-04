@@ -17,15 +17,10 @@ async function fetchImagePart(url: string): Promise<{ inline_data: { mime_type: 
 
 async function generateFlatImage(
   prompt: string,
-  referenceUrls: string[]
+  imageParts: Array<{ inline_data: { mime_type: string; data: string } }>
 ): Promise<string | null> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY not configured");
-
-  // Fetch up to 4 reference images to keep request size reasonable
-  const imageParts = (
-    await Promise.all(referenceUrls.slice(0, 4).map(fetchImagePart))
-  ).filter(Boolean);
 
   const parts: unknown[] = [
     ...imageParts,
@@ -86,9 +81,16 @@ export async function garmentConstructionAgent(
   plan: GenerationPlan,
   referenceUrls: string[] = [],
 ): Promise<{ flatFrontUrl: string | null; flatBackUrl: string | null }> {
+  // Fetch up to 4 reference images ONCE and reuse the same bytes for both the
+  // front and back calls — identical images either way, just without fetching
+  // and re-encoding each one twice.
+  const imageParts = (
+    await Promise.all(referenceUrls.slice(0, 4).map(fetchImagePart))
+  ).filter((p): p is { inline_data: { mime_type: string; data: string } } => p !== null);
+
   const [flatFrontUrl, flatBackUrl] = await Promise.all([
-    generateFlatImage(plan.flatFrontPrompt, referenceUrls),
-    generateFlatImage(plan.flatBackPrompt, referenceUrls),
+    generateFlatImage(plan.flatFrontPrompt, imageParts),
+    generateFlatImage(plan.flatBackPrompt, imageParts),
   ]);
 
   return { flatFrontUrl, flatBackUrl };
