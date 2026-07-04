@@ -322,31 +322,16 @@ export function ProductDetailView({
         {/* RIGHT — Product details */}
         <div className="space-y-5">
 
-          {/* Edit / Save / Cancel header */}
-          <div className="flex items-start justify-between gap-2">
+          {/* Title */}
+          <div>
             {editing ? (
-              <>
-                <input
-                  value={editFields.title}
-                  onChange={(e) => setEditFields((f) => ({ ...f, title: e.target.value }))}
-                  className="flex-1 text-2xl font-bold text-gray-900 border-b-2 border-purple-400 focus:outline-none bg-transparent"
-                />
-                <div className="flex gap-1.5 shrink-0">
-                  <Button size="sm" onClick={handleSave} loading={saving} className="gap-1 bg-purple-600 hover:bg-purple-700">
-                    <Check className="h-3.5 w-3.5" /> Save
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={cancelEdit} disabled={saving} className="gap-1">
-                    <X className="h-3.5 w-3.5" /> Cancel
-                  </Button>
-                </div>
-              </>
+              <input
+                value={editFields.title}
+                onChange={(e) => setEditFields((f) => ({ ...f, title: e.target.value }))}
+                className="w-full text-2xl font-bold text-gray-900 border-b-2 border-purple-400 focus:outline-none bg-transparent"
+              />
             ) : (
-              <>
-                <h1 className="text-2xl font-bold text-gray-900 leading-tight">{displayProduct.title}</h1>
-                <Button size="sm" variant="outline" onClick={() => setEditing(true)} className="gap-1.5 shrink-0">
-                  <Pencil className="h-3.5 w-3.5" /> Edit
-                </Button>
-              </>
+              <h1 className="text-2xl font-bold text-gray-900 leading-tight">{displayProduct.title}</h1>
             )}
           </div>
 
@@ -481,40 +466,65 @@ export function ProductDetailView({
             </div>
           )}
 
-          {/* Generate model image */}
-          <div className="pt-1 border-t border-gray-100 space-y-2">
-            <Button
-              variant="outline"
-              className="w-full gap-2"
-              onClick={handleGenerateModelImage}
-              disabled={generating}
-            >
-              {generating ? (
+          {/* ── Actions bar ── */}
+          <div className="border-t border-gray-100 pt-4 space-y-2">
+            {/* Row 1: Edit / Save+Cancel / Generate */}
+            <div className="flex gap-2">
+              {editing ? (
                 <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Generating model image…
+                  <Button
+                    className="flex-1 gap-1.5 bg-purple-600 hover:bg-purple-700"
+                    onClick={handleSave}
+                    loading={saving}
+                  >
+                    <Check className="h-4 w-4" /> Save Changes
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="flex-1 gap-1.5"
+                    onClick={cancelEdit}
+                    disabled={saving}
+                  >
+                    <X className="h-4 w-4" /> Cancel
+                  </Button>
                 </>
               ) : (
                 <>
-                  <ImagePlus className="h-4 w-4" />
-                  {hasModelImage ? "Regenerate Model Image" : "Generate Model Image"}
+                  <Button
+                    variant="outline"
+                    className="flex-1 gap-1.5"
+                    onClick={() => setEditing(true)}
+                  >
+                    <Pencil className="h-4 w-4" /> Edit Details
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="flex-1 gap-1.5"
+                    onClick={handleGenerateModelImage}
+                    disabled={generating}
+                  >
+                    {generating ? (
+                      <><Loader2 className="h-4 w-4 animate-spin" /> Generating…</>
+                    ) : (
+                      <><ImagePlus className="h-4 w-4" /> {hasModelImage ? "Regenerate Image" : "Generate Image"}</>
+                    )}
+                  </Button>
                 </>
               )}
-            </Button>
+            </div>
+
             {generating && (
               <p className="text-xs text-center text-gray-400">
-                This takes 30–90 seconds. The image will appear in the carousel automatically.
+                Takes 30–90 s · image appears in the carousel automatically
               </p>
             )}
-          </div>
 
-          {/* Delete */}
-          <div className="border-t border-gray-100 pt-2">
+            {/* Row 2: Delete */}
             <button
               onClick={handleDelete}
               disabled={deleting}
               onBlur={() => setConfirmDelete(false)}
-              className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium transition-all ${
+              className={`w-full flex items-center justify-center gap-2 py-2 rounded-xl text-sm font-medium transition-all ${
                 confirmDelete
                   ? "bg-red-600 text-white hover:bg-red-700"
                   : "text-red-400 hover:text-red-600 hover:bg-red-50"
