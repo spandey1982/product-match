@@ -29,7 +29,8 @@ import {
   Check,
 } from "lucide-react";
 import { ProductImageViewer } from "@/components/product/ProductImageViewer";
-import { displayUrl, masterUrl } from "@/lib/images/variants";
+import { ProductThumbnailRail } from "@/components/product/ProductThumbnailRail";
+import { displayUrl, masterUrl, thumbnailUrl } from "@/lib/images/variants";
 import { normalizeCatalogueUrl } from "@/lib/image-normalize";
 
 interface GeneratedImage {
@@ -87,6 +88,7 @@ export function ProductDetailView({
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
 
   const [genImages, setGenImages] = useState<GeneratedImage[]>(generatedImages);
   const [modelUrl, setModelUrl] = useState<string | null>(product.modelImageUrl ?? null);
@@ -115,17 +117,24 @@ export function ProductDetailView({
     (g) => g.objective === "catalogue" && g.view !== "on-model"
   );
 
+  // `modelUrl` (Product.modelImageUrl) is a legacy field kept in sync with the
+  // "front" ProductImage for backward compatibility (see persist.ts) — for any
+  // product generated through the current card-stack pipeline, catalogueImages
+  // already has that same shot as "front". Only synthesize the on-model
+  // fallback when there's no such entry, otherwise it duplicates the front shot.
+  const hasFrontInCatalogue = catalogueImages.some((g) => g.view === "front");
   const onModel: GeneratedImage[] =
     modelImages.length > 0
       ? modelImages
-      : modelUrl
+      : modelUrl && !hasFrontInCatalogue
       ? [{ url: modelUrl, view: "on-model" }]
       : [];
 
-  const hasModelImage = onModel.length > 0;
+  const hasModelImage = onModel.length > 0 || hasFrontInCatalogue;
   const [generating, setGenerating] = useState(initialGenerating && !hasModelImage);
 
-  // Carousel order: on-model first, then catalogue flat views, then raw imageUrl
+  // Carousel order: base + part-crop images (persisted card-stack order), then
+  // the retailer's raw uploaded product photo last.
   const allImages: GeneratedImage[] = [
     ...onModel,
     ...catalogueImages,
@@ -134,18 +143,35 @@ export function ProductDetailView({
     Boolean
   ) as string[];
 
+  // `allImages[i]` maps 1:1 onto `productImages[i]` for i < allImages.length;
+  // the final slot (when product.imageUrl is present) has no `view` — it's the
+  // retailer's raw upload, not one of the generated/cropped views.
+  const viewAt = (i: number): string | undefined => allImages[i]?.view;
+
   const FULL_VIEWS = new Set(["on-model", "front", "back"]);
-  const framedImages = productImages.map((url, i) =>
-    i > 0 && FULL_VIEWS.has(allImages[i - 1]?.view) ? normalizeCatalogueUrl(url) : url
-  );
+  const BASE_ZOOM = 3;
+  const CROP_ZOOM = BASE_ZOOM - 0.5;
+
+  const framedImages = productImages.map((url, i) => {
+    const view = viewAt(i);
+    return view && FULL_VIEWS.has(view) ? normalizeCatalogueUrl(url) : url;
+  });
   const displayImages = framedImages.map(displayUrl);
   const masterImages = framedImages.map(masterUrl);
-  const imageLabels = productImages.map((_, i) =>
-    i === 0 ? "Product" : allImages[i - 1]?.view === "on-model" ? "On model" : prettyView(allImages[i - 1].view)
-  );
-  const maxZooms = productImages.map((_, i) =>
-    i === 0 || FULL_VIEWS.has(allImages[i - 1]?.view) ? 2.5 : 2
-  );
+  const thumbImages = framedImages.map(thumbnailUrl);
+  const imageLabels = productImages.map((_, i) => {
+    const view = viewAt(i);
+    if (view === undefined) return "Product";
+    return view === "on-model" ? "On model" : prettyView(view);
+  });
+  const maxZooms = productImages.map((_, i) => {
+    const view = viewAt(i);
+    const isFullView = view === undefined || FULL_VIEWS.has(view);
+    return isFullView ? BASE_ZOOM : CROP_ZOOM;
+  });
+  // Clamp instead of an effect: safe even if the images array shrinks/grows
+  // between renders (e.g. model image generation completing).
+  const safeActiveIndex = Math.min(activeIndex, Math.max(displayImages.length - 1, 0));
 
   async function handleDelete() {
     if (!confirmDelete) { setConfirmDelete(true); return; }
@@ -301,35 +327,47 @@ export function ProductDetailView({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
         {/* LEFT — Image */}
         <div className="space-y-4">
-          <div
-            className="relative rounded-3xl overflow-hidden aspect-[3/4] bg-gray-50 shadow-sm border border-gray-100 cursor-zoom-in group"
-            onClick={() => setViewerIndex(0)}
-          >
-            <ImageCarousel
-              key={displayImages[0] ?? "no-image"}
-              images={displayImages}
+          <div className="flex flex-col-reverse lg:flex-row gap-3">
+            <ProductThumbnailRail
+              images={thumbImages}
               labels={imageLabels}
+              activeIndex={safeActiveIndex}
+              onSelect={setActiveIndex}
               title={product.title}
               category={product.category}
-              className="w-full h-full"
             />
-            {generating && (
-              <div className="absolute inset-x-0 top-0 z-30 flex items-center justify-center gap-2 bg-indigo-600/90 backdrop-blur-sm text-white text-xs font-medium py-2 px-3 pointer-events-none">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Generating model image… appears here automatically
+            <div
+              className="relative rounded-3xl overflow-hidden aspect-[3/4] bg-gray-50 shadow-sm border border-gray-100 cursor-zoom-in group flex-1 min-w-0"
+              onClick={() => setViewerIndex(safeActiveIndex)}
+            >
+              <ImageCarousel
+                key={displayImages[0] ?? "no-image"}
+                images={displayImages}
+                labels={imageLabels}
+                title={product.title}
+                category={product.category}
+                className="w-full h-full"
+                index={safeActiveIndex}
+                onIndexChange={setActiveIndex}
+              />
+              {generating && (
+                <div className="absolute inset-x-0 top-0 z-30 flex items-center justify-center gap-2 bg-indigo-600/90 backdrop-blur-sm text-white text-xs font-medium py-2 px-3 pointer-events-none">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Generating model image… appears here automatically
+                </div>
+              )}
+              <div className="absolute top-3 right-3 z-30 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                <div className="h-7 w-7 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center text-white">
+                  <Expand className="h-3.5 w-3.5" />
+                </div>
               </div>
-            )}
-            <div className="absolute top-3 right-3 z-30 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-              <div className="h-7 w-7 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center text-white">
-                <Expand className="h-3.5 w-3.5" />
-              </div>
-            </div>
-            <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/40 to-transparent p-4 z-20 pointer-events-none">
-              <div className="flex items-center gap-2">
-                <Badge variant="purple" className="bg-white/90 text-indigo-700 backdrop-blur-sm">
-                  {product.category}
-                </Badge>
-                {!product.inStock && <Badge variant="error">Out of Stock</Badge>}
+              <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/40 to-transparent p-4 z-20 pointer-events-none">
+                <div className="flex items-center gap-2">
+                  <Badge variant="purple" className="bg-white/90 text-indigo-700 backdrop-blur-sm">
+                    {product.category}
+                  </Badge>
+                  {!product.inStock && <Badge variant="error">Out of Stock</Badge>}
+                </div>
               </div>
             </div>
           </div>

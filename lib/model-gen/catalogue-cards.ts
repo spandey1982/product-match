@@ -8,19 +8,33 @@
  *   ai-base    → the generated base shot, as-is (front/back). The 3:4 uniform
  *                framing for these full-body views is applied at display
  *                (normalizeCatalogueUrl), so existing products get it too.
- *   model-crop → a crop of a base shot, padded to the 3:4 card (a detail that
- *                exists only on the model, e.g. saree pleats, kurti salwar).
+ *   model-crop → a native 3:4 crop of a base shot (a detail that exists only on
+ *                the model, e.g. saree pleats, kurti salwar) — see cropToCard.
  *   upload     → the retailer's uploaded image for the slot, enhanced + framed
- *                to 3:4 (non-AI). Falls back to a base-crop when absent; omitted
- *                entirely when there's no fallback (e.g. saree border).
+ *                to 3:4 (non-AI). Currently disabled (USE_UPLOADED_PART_IMAGES):
+ *                every upload-kind card falls back to its base-crop instead, or
+ *                is omitted when there's no fallback (e.g. saree border).
  *
  * Branding is applied LATER by the engine, on each final card — so a close-up is
  * never a crop of an already-branded base. Pure: returns URLs only.
  */
 import { catalogueCardsFor, type PartImage } from "@/lib/product/part-slots";
-import { cropRegionFor } from "./crop-templates";
+import { cropRegionFor, expandToAspectRatio } from "./crop-templates";
 import { enhanceUploadUrl } from "@/lib/images/enhance";
 import type { CropRegion } from "./crop-templates";
+
+// Gemini's imageConfig requests aspectRatio "3:4" (lib/model-gen/quality.ts), but
+// its actual 1K/2K output snaps to 896x1200 (ratio ~0.7467), not exactly 0.75.
+// Using the measured ratio here (rather than the idealized 3/4) keeps expanded
+// crops pixel-exact 3:4, matching the CARD_ASPECT delivered to the catalogue grid.
+const BASE_SHOT_ASPECT = 896 / 1200;
+const CARD_ASPECT = 3 / 4;
+
+// Temporarily disabled pending retailer feedback: catalogue cards always use
+// the base-shot crop for a slot, even when the retailer uploaded their own
+// part image for it. Do NOT delete the upload branch below — flip this back
+// to true to restore "retailer's upload wins" once a decision is made.
+const USE_UPLOADED_PART_IMAGES = false;
 
 /** A base shot available to the resolver. */
 interface BaseRef {
@@ -46,11 +60,26 @@ export interface ResolveStackInput {
   mainImageUrl: string;
 }
 
-/** Crop a base region, then pad the crop to the uniform 3:4 card. Verified 200. */
+const CARD_WIDTH = 1200;
+const CARD_HEIGHT = Math.round(CARD_WIDTH / CARD_ASPECT);
+
+/**
+ * Crop the base image directly to a native 3:4 window (no padding, no border
+ * extension): the subject region is expanded to 3:4 around its own center,
+ * then scaled to the uniform card delivery size.
+ *
+ * The final `c_scale,w_,h_` (both dimensions, not just width) is deliberate:
+ * Cloudinary's fractional c_crop rounds w/h to whole pixels independently, so
+ * the crop it actually produces can be a fraction of a percent off 3:4. Fixing
+ * both output dimensions absorbs that sub-pixel rounding instead of leaking it
+ * into the delivered aspect ratio — the resulting stretch is imperceptible
+ * (<1%), far below the gross distortion the old pad-based pipeline produced.
+ */
 function cropToCard(baseUrl: string, region: CropRegion): string {
+  const window = expandToAspectRatio(region, BASE_SHOT_ASPECT, CARD_ASPECT);
   const transform =
-    `c_crop,w_${region.w},h_${region.h},x_${region.x},y_${region.y}` +
-    `/c_pad,ar_3:4,w_1200,b_auto:border`;
+    `c_crop,w_${window.w},h_${window.h},x_${window.x},y_${window.y}` +
+    `/c_scale,w_${CARD_WIDTH},h_${CARD_HEIGHT}`;
   const marker = "/upload/";
   const idx = baseUrl.indexOf(marker);
   if (idx === -1) return baseUrl;
@@ -87,11 +116,14 @@ export function resolveCatalogueStack(input: ResolveStackInput): ResolvedCard[] 
       continue;
     }
 
-    // upload — the retailer's image for this slot, enhanced + framed.
-    const uploadUrl =
-      card.slot === "main"
+    // upload — the retailer's image for this slot, enhanced + framed. Disabled
+    // for now (see USE_UPLOADED_PART_IMAGES): falls through to the base-crop
+    // fallback below even when an upload exists for the slot.
+    const uploadUrl = USE_UPLOADED_PART_IMAGES
+      ? card.slot === "main"
         ? input.mainImageUrl
-        : input.partImages.find((p) => p.slot === card.slot)?.url;
+        : input.partImages.find((p) => p.slot === card.slot)?.url
+      : undefined;
     if (uploadUrl) {
       out.push({ url: enhanceUploadUrl(uploadUrl), view: card.id, source: "upload" });
     } else if (card.fallbackCropId) {

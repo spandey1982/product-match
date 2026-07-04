@@ -169,7 +169,10 @@ export function ProductCard({ product }: ProductCardProps) {
         {/* Info strip — `pt-6` gives the overlapping button room to breathe */}
         <div className="px-4 pb-4 pt-6">
           <div className="flex items-start justify-between gap-2 mb-2">
-            <h3 className="text-sm font-semibold text-gray-900 line-clamp-2 leading-tight group-hover:text-indigo-600 transition-colors">
+            <h3
+              title={product.title}
+              className="text-sm font-semibold text-gray-900 line-clamp-2 leading-tight min-h-[2.25rem] group-hover:text-indigo-600 transition-colors"
+            >
               {product.title}
             </h3>
           </div>

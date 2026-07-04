@@ -103,3 +103,46 @@ export function buildCropUrl(baseUrl: string, region: CropRegion): string {
   const at = idx + marker.length;
   return baseUrl.slice(0, at) + transform + "/" + baseUrl.slice(at);
 }
+
+/**
+ * Expand a subject bounding box to a target aspect ratio, growing only the
+ * shorter dimension (never shrinking, never distorting), anchored on the
+ * subject's original center, then shifted (not shrunk) to stay within the
+ * source image's [0,1] bounds.
+ *
+ * `region` is defined in the source image's coordinate space, so its aspect
+ * ratio in pixels is (region.w/region.h) * imageAspect, where imageAspect is
+ * the source image's width/height. Solving for the box's w/h ratio that makes
+ * the pixel aspect equal targetAspect gives targetAspect / imageAspect.
+ */
+export function expandToAspectRatio(
+  region: CropRegion,
+  imageAspect: number,
+  targetAspect: number
+): CropRegion {
+  const desiredRatio = targetAspect / imageAspect;
+  const currentRatio = region.w / region.h;
+  const cx = region.x + region.w / 2;
+  const cy = region.y + region.h / 2;
+
+  let { w, h } = region;
+  if (currentRatio < desiredRatio) {
+    w = h * desiredRatio;
+  } else if (currentRatio > desiredRatio) {
+    h = w / desiredRatio;
+  }
+
+  // Pathological fallback: subject already spans (near) the full image on
+  // one axis — clamp size rather than overflow. Rare with authored regions.
+  w = Math.min(w, 1);
+  h = Math.min(h, 1);
+
+  let x = cx - w / 2;
+  let y = cy - h / 2;
+  if (x < 0) x = 0;
+  if (y < 0) y = 0;
+  if (x + w > 1) x = 1 - w;
+  if (y + h > 1) y = 1 - h;
+
+  return { x, y, w, h };
+}

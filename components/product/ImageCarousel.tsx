@@ -13,14 +13,25 @@ interface ImageCarouselProps {
    * Falls back to "Product" for index 0 and "On model" for all others.
    */
   labels?: string[];
+  /** Controlled active slide index (e.g. driven by an external thumbnail rail). Uncontrolled (internal state) when omitted. */
+  index?: number;
+  /** Called whenever the active slide changes, controlled or not (swipe, arrows, dots). */
+  onIndexChange?: (index: number) => void;
 }
 
-export function ImageCarousel({ images, title, category, className, labels }: ImageCarouselProps) {
+export function ImageCarousel({ images, title, category, className, labels, index: controlledIndex, onIndexChange }: ImageCarouselProps) {
   const validImages = images.filter(Boolean) as string[];
   const hasMultiple = validImages.length > 1;
 
-  const [index, setIndex] = useState(0);
+  const [internalIndex, setInternalIndex] = useState(0);
+  const index = controlledIndex ?? internalIndex;
   const touchStartX = useRef<number | null>(null);
+
+  function setIndex(updater: number | ((i: number) => number)) {
+    const next = typeof updater === "function" ? (updater as (i: number) => number)(index) : updater;
+    setInternalIndex(next);
+    onIndexChange?.(next);
+  }
 
   function prev() { setIndex((i) => (i - 1 + validImages.length) % validImages.length); }
   function next() { setIndex((i) => (i + 1) % validImages.length); }
