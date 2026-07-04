@@ -24,6 +24,9 @@ import {
   Expand,
   Loader2,
   ImagePlus,
+  Pencil,
+  X,
+  Check,
 } from "lucide-react";
 import { ProductImageViewer } from "@/components/product/ProductImageViewer";
 import { displayUrl, masterUrl } from "@/lib/images/variants";
@@ -87,6 +90,22 @@ export function ProductDetailView({
   const [genImages, setGenImages] = useState<GeneratedImage[]>(generatedImages);
   const [modelUrl, setModelUrl] = useState<string | null>(product.modelImageUrl ?? null);
 
+  // Edit state
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editFields, setEditFields] = useState({
+    title: product.title,
+    description: product.description ?? "",
+    price: String(product.price),
+    color: product.color,
+    material: product.material ?? "",
+    subcategory: product.subcategory ?? "",
+    occasion: product.occasion.join(", "),
+    styleTags: product.styleTags.join(", "),
+  });
+  // Live display values (updated on save)
+  const [displayProduct, setDisplayProduct] = useState(product);
+
   const onModel: GeneratedImage[] =
     genImages.length > 0
       ? genImages
@@ -125,6 +144,46 @@ export function ProductDetailView({
       setDeleting(false);
       setConfirmDelete(false);
     }
+  }
+
+  function cancelEdit() {
+    setEditFields({
+      title: displayProduct.title,
+      description: displayProduct.description ?? "",
+      price: String(displayProduct.price),
+      color: displayProduct.color,
+      material: displayProduct.material ?? "",
+      subcategory: displayProduct.subcategory ?? "",
+      occasion: displayProduct.occasion.join(", "),
+      styleTags: displayProduct.styleTags.join(", "),
+    });
+    setEditing(false);
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    const split = (s: string) => s.split(",").map((v) => v.trim()).filter(Boolean);
+    const body = {
+      title: editFields.title.trim(),
+      description: editFields.description.trim() || null,
+      price: parseFloat(editFields.price) || 0,
+      color: editFields.color.trim(),
+      material: editFields.material.trim() || null,
+      subcategory: editFields.subcategory.trim() || null,
+      occasion: split(editFields.occasion),
+      styleTags: split(editFields.styleTags),
+    };
+    const res = await fetch(`/api/products/${product.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) {
+      const data = await res.json() as { product: Product };
+      setDisplayProduct(data.product);
+    }
+    setSaving(false);
+    setEditing(false);
   }
 
   async function handleGenerateModelImage() {
@@ -262,81 +321,161 @@ export function ProductDetailView({
 
         {/* RIGHT — Product details */}
         <div className="space-y-5">
-          {/* Title + price */}
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 leading-tight">
-              {product.title}
-            </h1>
-            {product.description && (
-              <p className="text-sm text-gray-500 mt-2 leading-relaxed">
-                {product.description}
-              </p>
+
+          {/* Edit / Save / Cancel header */}
+          <div className="flex items-start justify-between gap-2">
+            {editing ? (
+              <>
+                <input
+                  value={editFields.title}
+                  onChange={(e) => setEditFields((f) => ({ ...f, title: e.target.value }))}
+                  className="flex-1 text-2xl font-bold text-gray-900 border-b-2 border-purple-400 focus:outline-none bg-transparent"
+                />
+                <div className="flex gap-1.5 shrink-0">
+                  <Button size="sm" onClick={handleSave} loading={saving} className="gap-1 bg-purple-600 hover:bg-purple-700">
+                    <Check className="h-3.5 w-3.5" /> Save
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={cancelEdit} disabled={saving} className="gap-1">
+                    <X className="h-3.5 w-3.5" /> Cancel
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h1 className="text-2xl font-bold text-gray-900 leading-tight">{displayProduct.title}</h1>
+                <Button size="sm" variant="outline" onClick={() => setEditing(true)} className="gap-1.5 shrink-0">
+                  <Pencil className="h-3.5 w-3.5" /> Edit
+                </Button>
+              </>
             )}
           </div>
 
-          <div className="text-3xl font-bold text-gray-900 flex items-center gap-1">
-            <IndianRupee className="h-6 w-6" />
-            {product.price.toLocaleString("en-IN")}
-          </div>
+          {/* Description */}
+          {editing ? (
+            <div>
+              <label className="text-xs font-medium text-gray-400 mb-1 block">Description</label>
+              <textarea
+                value={editFields.description}
+                onChange={(e) => setEditFields((f) => ({ ...f, description: e.target.value }))}
+                rows={3}
+                placeholder="Product description…"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none"
+              />
+            </div>
+          ) : (
+            displayProduct.description && (
+              <p className="text-sm text-gray-500 leading-relaxed">{displayProduct.description}</p>
+            )
+          )}
 
-          {/* Meta grid */}
-          <div className="grid grid-cols-2 gap-2">
-            <MetaChip icon={Palette} label="Color" value={product.color} />
-            <MetaChip icon={Package} label="Category" value={product.category} />
-            {product.material && (
-              <MetaChip icon={Layers} label="Material" value={product.material} />
-            )}
-            {product.subcategory && (
-              <MetaChip icon={Tag} label="Subcategory" value={product.subcategory} />
-            )}
-          </div>
+          {/* Price */}
+          {editing ? (
+            <div>
+              <label className="text-xs font-medium text-gray-400 mb-1 block">Price (₹)</label>
+              <input
+                type="number"
+                value={editFields.price}
+                onChange={(e) => setEditFields((f) => ({ ...f, price: e.target.value }))}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+              />
+            </div>
+          ) : (
+            <div className="text-3xl font-bold text-gray-900 flex items-center gap-1">
+              <IndianRupee className="h-6 w-6" />
+              {displayProduct.price.toLocaleString("en-IN")}
+            </div>
+          )}
 
-          {/* Occasions */}
-          {product.occasion.length > 0 && (
+          {/* Meta grid — editable */}
+          {editing ? (
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { key: "color" as const, label: "Color", icon: Palette },
+                { key: "material" as const, label: "Material", icon: Layers },
+                { key: "subcategory" as const, label: "Subcategory", icon: Tag },
+              ].map(({ key, label }) => (
+                <div key={key} className="flex flex-col">
+                  <label className="text-xs font-medium text-gray-400 mb-1">{label}</label>
+                  <input
+                    value={editFields[key]}
+                    onChange={(e) => setEditFields((f) => ({ ...f, [key]: e.target.value }))}
+                    className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+                  />
+                </div>
+              ))}
+              <div className="flex flex-col">
+                <label className="text-xs font-medium text-gray-400 mb-1">Category</label>
+                <input
+                  value={displayProduct.category}
+                  disabled
+                  className="border border-gray-100 rounded-xl px-3 py-2 text-sm bg-gray-50 text-gray-400"
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              <MetaChip icon={Palette} label="Color" value={displayProduct.color} />
+              <MetaChip icon={Package} label="Category" value={displayProduct.category} />
+              {displayProduct.material && <MetaChip icon={Layers} label="Material" value={displayProduct.material} />}
+              {displayProduct.subcategory && <MetaChip icon={Tag} label="Subcategory" value={displayProduct.subcategory} />}
+            </div>
+          )}
+
+          {/* Occasion */}
+          {editing ? (
+            <div>
+              <label className="text-xs font-medium text-gray-400 mb-1 block">Occasions <span className="font-normal">(comma separated)</span></label>
+              <input
+                value={editFields.occasion}
+                onChange={(e) => setEditFields((f) => ({ ...f, occasion: e.target.value }))}
+                placeholder="Wedding, Casual, Festive"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+              />
+            </div>
+          ) : displayProduct.occasion.length > 0 ? (
             <div>
               <p className="text-xs font-medium text-gray-400 mb-2 flex items-center gap-1">
-                <Calendar className="h-3.5 w-3.5" />
-                Occasion
+                <Calendar className="h-3.5 w-3.5" /> Occasion
               </p>
               <div className="flex flex-wrap gap-1.5">
-                {product.occasion.map((occ) => (
-                  <Badge key={occ} variant="info" className="capitalize">
-                    {occ}
-                  </Badge>
+                {displayProduct.occasion.map((occ) => (
+                  <Badge key={occ} variant="info" className="capitalize">{occ}</Badge>
                 ))}
               </div>
             </div>
-          )}
+          ) : null}
 
           {/* Style tags */}
-          {product.styleTags.length > 0 && (
+          {editing ? (
+            <div>
+              <label className="text-xs font-medium text-gray-400 mb-1 block">Style Tags <span className="font-normal">(comma separated)</span></label>
+              <input
+                value={editFields.styleTags}
+                onChange={(e) => setEditFields((f) => ({ ...f, styleTags: e.target.value }))}
+                placeholder="Ethnic, Boho, Minimalist"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+              />
+            </div>
+          ) : displayProduct.styleTags.length > 0 ? (
             <div>
               <p className="text-xs font-medium text-gray-400 mb-2 flex items-center gap-1">
-                <Tag className="h-3.5 w-3.5" />
-                Style
+                <Tag className="h-3.5 w-3.5" /> Style
               </p>
               <div className="flex flex-wrap gap-1.5">
-                {product.styleTags.map((tag) => (
-                  <Badge key={tag} variant="outline" className="capitalize">
-                    {tag}
-                  </Badge>
+                {displayProduct.styleTags.map((tag) => (
+                  <Badge key={tag} variant="outline" className="capitalize">{tag}</Badge>
                 ))}
               </div>
             </div>
-          )}
+          ) : null}
 
-          {/* Colors */}
-          {product.colors.length > 1 && (
+          {/* Colors (read-only display) */}
+          {displayProduct.colors.length > 1 && (
             <div>
               <p className="text-xs font-medium text-gray-400 mb-2">Colors</p>
               <div className="flex gap-1.5 flex-wrap">
-                {product.colors.map((c) => (
-                  <span
-                    key={c}
-                    className="text-xs bg-gray-50 border border-gray-100 rounded-full px-2 py-0.5 capitalize"
-                  >
-                    {c}
-                  </span>
+                {displayProduct.colors.map((c) => (
+                  <span key={c} className="text-xs bg-gray-50 border border-gray-100 rounded-full px-2 py-0.5 capitalize">{c}</span>
                 ))}
               </div>
             </div>
