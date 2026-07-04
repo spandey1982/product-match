@@ -109,7 +109,19 @@ export function CatalogView() {
   );
 
   useEffect(() => {
-    if (!searchQuery) fetchProducts();
+    setTimeout(() => { if (!searchQuery) void fetchProducts(); }, 0);
+  }, [fetchProducts, searchQuery]);
+
+  // Refetch when the user navigates back to this tab/page so that model images
+  // generated on the product detail page show up immediately.
+  useEffect(() => {
+    function onVisible() {
+      if (document.visibilityState === "visible" && !searchQuery) {
+        void fetchProducts();
+      }
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
   }, [fetchProducts, searchQuery]);
 
   useEffect(() => {
