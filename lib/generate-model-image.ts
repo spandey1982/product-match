@@ -149,15 +149,23 @@ export async function runGeminiImageGen(
     const { buffer: modelInputBuffer, mime: modelInputMime } =
       await preprocessProductImage(productBuffer, productMime);
 
+    // Reference-model assets are static, curated photos stored well above the
+    // model's effective input resolution (e.g. up to ~1700px PNGs). Same
+    // preprocessing as the product image — Gemini's own internal cap makes the
+    // extra pixels pure token cost with no perceptible gain.
+    const processedReference = hasReference
+      ? await preprocessProductImage(referenceBuffer!, referenceMime!)
+      : null;
+
     const imageInputs = hasReference ? 2 : 1;
     const requestBytes =
-      modelInputBuffer.length + (hasReference ? referenceBuffer!.length : 0);
+      modelInputBuffer.length + (processedReference ? processedReference.buffer.length : 0);
 
     // Image parts: reference model first (if any), then the product garment.
     const parts: Array<Record<string, unknown>> = [];
-    if (hasReference) {
+    if (processedReference) {
       parts.push({
-        inline_data: { mime_type: referenceMime, data: referenceBuffer!.toString("base64") },
+        inline_data: { mime_type: processedReference.mime, data: processedReference.buffer.toString("base64") },
       });
     }
     parts.push({
@@ -280,10 +288,10 @@ export async function runGeminiImageGen(
 
     // ── Record AI usage (cost ledger) ───────────────────────────────────────
     const inputImages: Array<Record<string, unknown>> = [];
-    if (hasReference) {
-      const refDims = getImageDimensions(referenceBuffer!, referenceMime!);
+    if (processedReference) {
+      const refDims = getImageDimensions(processedReference.buffer, processedReference.mime);
       inputImages.push({
-        label: "reference-model", mime: referenceMime!, sizeBytes: referenceBuffer!.length,
+        label: "reference-model", mime: processedReference.mime, sizeBytes: processedReference.buffer.length,
         widthPx: refDims?.width ?? null, heightPx: refDims?.height ?? null,
       });
     }
