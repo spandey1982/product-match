@@ -6,6 +6,7 @@ import { Product } from "@/types";
 import { formatCurrency } from "@/lib/utils";
 import { ImageCarousel } from "@/components/product/ImageCarousel";
 import { thumbnailUrl } from "@/lib/images/variants";
+import { framedImageUrl } from "@/lib/image-normalize";
 import { Badge } from "@/components/ui/badge";
 import { Sparkles } from "lucide-react";
 import { useTrialRoom, TRYON_LIMIT } from "@/components/trial-room/TrialRoomProvider";
@@ -140,8 +141,10 @@ export function ProductCard({ product }: ProductCardProps) {
           <div className="absolute inset-0 overflow-hidden rounded-t-2xl bg-gray-50">
             <ImageCarousel
               images={[
-                product.modelImageUrl ? thumbnailUrl(product.modelImageUrl) : null,
-                ...(product.generatedImages?.map((gi) => thumbnailUrl(gi.url)) ?? []),
+                // Legacy top-level field always represents an on-model shot.
+                product.modelImageUrl ? thumbnailUrl(framedImageUrl(product.modelImageUrl, "on-model")) : null,
+                ...(product.generatedImages?.map((gi) => thumbnailUrl(framedImageUrl(gi.url, gi.view))) ?? []),
+                // Retailer's raw upload — no generated view, passes through as-is.
                 product.imageUrl ? thumbnailUrl(product.imageUrl) : null,
               ].filter(Boolean) as string[]}
               title={product.title}

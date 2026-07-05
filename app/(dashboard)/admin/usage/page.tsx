@@ -70,6 +70,23 @@ function usd(n: number | null | undefined): string {
 function num(n: number | null | undefined): string {
   return (n ?? 0).toLocaleString();
 }
+/**
+ * This page renders on the server, so a bare `toLocaleString()` uses the
+ * server process's own timezone (e.g. UTC on Railway) — not IST. Force it
+ * explicitly rather than relying on wherever this happens to be deployed.
+ */
+function formatIST(date: Date): string {
+  const formatted = date.toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+  return `${formatted} IST`;
+}
 
 export default async function AdminUsagePage() {
   const session = await getSession();
@@ -168,7 +185,7 @@ export default async function AdminUsagePage() {
         <Table
           head={["When", "Provider", "Model", "Feature", "Tokens", "Img", "ms", "Cost", "Status"]}
           rows={recent.map((r) => [
-            new Date(r.createdAt).toLocaleString(),
+            formatIST(new Date(r.createdAt)),
             r.provider, r.model, r.feature,
             num(r.totalTokens), num(r.imagesGenerated), num(r.durationMs),
             usd(r.estimatedCostUsd),
