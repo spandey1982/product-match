@@ -30,9 +30,9 @@ export interface ModelTypeOption {
 /** Visible store-model options. Extend here to add future model types. */
 export const MODEL_TYPES: ModelTypeOption[] = [
   { id: "woman", label: "Woman", thumbnailUrl: "/reference-models/woman-base-front.png" },
-  { id: "man",   label: "Man",   thumbnailUrl: "/reference-models/man-basic.jpg" },
-  { id: "girl",  label: "Girl",  thumbnailUrl: "/reference-models/girl-basic.jpg" },
-  { id: "boy",   label: "Boy",   thumbnailUrl: "/reference-models/boy-basic.jpg" },
+  { id: "man",   label: "Man",   thumbnailUrl: "/reference-models/man-base-front.png" },
+  { id: "girl",  label: "Girl",  thumbnailUrl: "/reference-models/girl-base-front.jpg" },
+  { id: "boy",   label: "Boy",   thumbnailUrl: "/reference-models/boy-base-front.jpg" },
 ];
 
 export const DEFAULT_MODEL_TYPE: ModelType = "woman";
