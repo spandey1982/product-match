@@ -26,6 +26,8 @@ export async function recordGenerations(params: {
   /** Provider to record when an image isn't individually tagged. */
   defaultProvider: string;
   images: GeneratedImage[];
+  /** Scenic Collection metadata for this generation; null when Studio was used. */
+  sceneMeta?: { sceneId: string; intensity: string; density: string } | null;
 }): Promise<RecordedGeneration[]> {
   if (params.images.length === 0) return [];
   const created: RecordedGeneration[] = [];
@@ -45,6 +47,9 @@ export async function recordGenerations(params: {
           width: img.width ?? null,
           height: img.height ?? null,
           fileSizeBytes: img.bytes ?? null,
+          sceneId: params.sceneMeta?.sceneId ?? null,
+          sceneIntensity: params.sceneMeta?.intensity ?? null,
+          sceneDensity: params.sceneMeta?.density ?? null,
         },
         select: { id: true, outputUrl: true, view: true },
       });

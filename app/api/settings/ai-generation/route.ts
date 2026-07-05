@@ -9,10 +9,12 @@ import {
   isCatalogueProvider,
   type AiGenSettings,
 } from "@/lib/model-gen/settings";
-import { isAiGenObjectivesEnabled } from "@/lib/model-gen/engine";
+import { isAiGenObjectivesEnabled, isScenicCollectionEnabled } from "@/lib/model-gen/engine";
 import { listObjectives, isGenerationObjective } from "@/lib/model-gen/objectives";
 import { MODEL_TYPES, isModelType } from "@/lib/model-gen/reference-models";
 import { listBackdropOptions, isBackdropSelection } from "@/lib/model-gen/backdrops";
+import { listSceneOptions, BRAND_PACKS } from "@/lib/model-gen/scenes/library";
+import { isBackdropSection, isScenicSelection } from "@/lib/model-gen/scenes/selection";
 import { isVertexTryOnEnabled, getVertexConfig } from "@/lib/tryon-vertex";
 
 /** Resolve the store logo's delivery URL from its public_id, if uploaded. */
@@ -39,6 +41,10 @@ function options() {
     backdrops: listBackdropOptions(),
     // Whether "Sharp Fit" (Vertex) is usable; "Natural Drape"/"Automatic" always are.
     vertexAvailable: isVertexTryOnEnabled() && getVertexConfig() !== null,
+    // Scenic Collection: scenes + their brand-pack grouping (CSS-rendered previews).
+    scenes: listSceneOptions(),
+    brandPacks: BRAND_PACKS,
+    scenicEnabled: isScenicCollectionEnabled(),
   };
 }
 
@@ -72,6 +78,8 @@ export async function PATCH(req: NextRequest) {
     const rawBrandingPosition = (body as { brandingPosition?: unknown }).brandingPosition;
     const rawCatalogueProvider = (body as { catalogueProvider?: unknown }).catalogueProvider;
     const rawBackdrop = (body as { backdrop?: unknown }).backdrop;
+    const rawBackdropSection = (body as { backdropSection?: unknown }).backdropSection;
+    const rawScenic = (body as { scenic?: unknown }).scenic;
 
     if (rawModelType !== undefined && !isModelType(rawModelType)) {
       return NextResponse.json(
@@ -109,6 +117,18 @@ export async function PATCH(req: NextRequest) {
         { status: 400 }
       );
     }
+    if (rawBackdropSection !== undefined && !isBackdropSection(rawBackdropSection)) {
+      return NextResponse.json(
+        { error: "Invalid backdrop section." },
+        { status: 400 }
+      );
+    }
+    if (rawScenic !== undefined && !isScenicSelection(rawScenic)) {
+      return NextResponse.json(
+        { error: "Invalid scenic selection." },
+        { status: 400 }
+      );
+    }
 
     // Merge onto the current (defaulted) settings so a partial update is safe.
     const current = await getAiGenSettings(session.id);
@@ -119,6 +139,8 @@ export async function PATCH(req: NextRequest) {
       brandingPosition: isBrandingPosition(rawBrandingPosition) ? rawBrandingPosition : current.brandingPosition,
       catalogueProvider: isCatalogueProvider(rawCatalogueProvider) ? rawCatalogueProvider : current.catalogueProvider,
       backdrop: isBackdropSelection(rawBackdrop) ? rawBackdrop : current.backdrop,
+      backdropSection: isBackdropSection(rawBackdropSection) ? rawBackdropSection : current.backdropSection,
+      scenic: isScenicSelection(rawScenic) ? rawScenic : current.scenic,
     };
 
     await db.user.update({
