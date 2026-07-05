@@ -1,19 +1,24 @@
 "use client";
 
 /**
- * Scenic Collection chooser — contextual environments grouped into Brand Pack
- * rows, with an Intensity/Density panel for the selected scene.
+ * Scenic chooser — contextual environments, browsed two levels deep so the
+ * control stays compact as the library grows past today's 8 scenes:
+ *  1. Collection (Brand Pack) — one row of chips, always visible. Switching
+ *     collections is how a retailer "goes back" — there's no hidden state.
+ *  2. Scene — one row of chips for the active collection only.
  *
- * Mirrors `BackdropSelect.tsx`'s visual language (chip styling, CSS-rendered
- * preview tiles, the amber `Tag` treatment) so it reads as a sibling of the
- * Studio chooser, not a new UI paradigm. Scenes are grouped into horizontally
- * scrollable Brand Pack rows so 8+ scenes stay compact instead of one long
- * grid; only the selected scene's Intensity/Density controls are shown, and
- * Density is hidden entirely for "consistent" scenes (Boutique/Corporate),
- * which always render their one curated layout.
+ * Each scene chip carries an icon + accent colour (there's no real photo to
+ * preview, so a rendered gradient tile wasn't a meaningful thumbnail) plus a
+ * label. A lightweight "Suggested" row above both levels surfaces the
+ * metadata-driven top pick directly — it has to be reachable in one tap even
+ * when it lives in a collection the retailer hasn't opened.
  */
 
-import type { ReactNode } from "react";
+import { useState } from "react";
+import {
+  Gem, Flame, Moon, Sun, Snowflake, ShoppingBag, Aperture, Briefcase, Sparkles,
+  type LucideIcon,
+} from "lucide-react";
 import type { SceneOptionView } from "@/lib/model-gen/scenes/library";
 import type { SceneDensity, SceneIntensity } from "@/lib/model-gen/scenes/types";
 import { recommendScenes, type SceneSignals } from "@/lib/model-gen/scenes/rule-engine";
@@ -35,124 +40,159 @@ interface Props {
   brandPacks: BrandPackMeta[];
   value: ScenicValue;
   onChange: (next: ScenicValue) => void;
-  /** Product signals — drives the lightweight "Suggested" badge (no AI call). */
+  /** Product signals — drives the lightweight "Suggested" row (no AI call). */
   productSignals: SceneSignals;
 }
 
-const TILE_SELECTED = "border-indigo-400 ring-2 ring-purple-200 scale-[1.02] shadow-sm";
-const TILE_IDLE = "border-gray-200 hover:border-gray-300";
+const SCENE_ICONS: Record<string, LucideIcon> = {
+  Gem, Flame, Moon, Sun, Snowflake, ShoppingBag, Aperture, Briefcase,
+};
 
-function Tag({ children }: { children: ReactNode }) {
-  return (
-    <span className="shrink-0 rounded-full bg-amber-50 px-1.5 py-px text-[10px] font-medium text-amber-700">
-      {children}
-    </span>
-  );
+/** Laymen-friendly copy for the technical SceneIntensity/SceneDensity values. */
+const PRESENCE_LABELS: Record<SceneIntensity, string> = {
+  minimal: "Subtle",
+  balanced: "Balanced",
+  editorial: "Bold",
+};
+const DETAIL_LABELS: Record<SceneDensity, string> = {
+  minimal: "Simple",
+  classic: "Classic",
+  rich: "Rich",
+};
+
+function hexToRgba(hex: string, alpha: number): string {
+  const n = parseInt(hex.replace("#", ""), 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-/** A miniature scene preview: two-tone gradient, no image assets. */
-function ScenePreview({ base, accent, className = "" }: { base: string; accent: string; className?: string }) {
-  return (
-    <div
-      className={`relative overflow-hidden ${className}`}
-      style={{ background: `linear-gradient(160deg, ${base} 0%, ${accent} 100%)` }}
-    >
-      <div
-        className="absolute -top-4 left-1/2 -translate-x-1/2"
-        style={{
-          width: "70%",
-          height: "60px",
-          borderRadius: "50%",
-          background: "radial-gradient(closest-side, rgba(255,255,255,0.35), rgba(255,255,255,0))",
-        }}
-      />
-    </div>
-  );
-}
-
-const segmentBtn = (active: boolean) =>
-  `flex-1 rounded-full px-3 py-1.5 text-xs font-medium capitalize transition-all ${
+const flatChip = (active: boolean) =>
+  `rounded-full border px-4 py-1.5 text-sm font-medium transition-all ${
     active
-      ? "bg-gradient-to-br from-indigo-50 to-purple-50 text-indigo-700 ring-1 ring-purple-200"
-      : "text-gray-500 hover:text-gray-700"
+      ? "border-indigo-300 bg-gradient-to-br from-indigo-50 to-purple-50 text-indigo-700 ring-1 ring-purple-200"
+      : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
   }`;
 
 export default function ScenicCollectionSelect({ scenes, brandPacks, value, onChange, productSignals }: Props) {
-  const selected = scenes.find((s) => s.id === value.sceneId) ?? scenes[0];
-  const selectedScene = SCENES.find((s) => s.id === selected?.id);
-  const recommended = new Set(recommendScenes(productSignals).slice(0, 2).map((r) => r.scene.id));
+  const selectedOption = scenes.find((s) => s.id === value.sceneId) ?? scenes[0];
+  const selectedScene = SCENES.find((s) => s.id === selectedOption?.id);
+  const [activePack, setActivePack] = useState(selectedOption?.brandPack ?? brandPacks[0]?.id);
+
+  const recommended = recommendScenes(productSignals).slice(0, 2);
+  const recommendedIds = new Set(recommended.map((r) => r.scene.id));
+  const packsWithSuggestion = new Set(recommended.map((r) => r.scene.brandPack));
+
+  function selectScene(scene: SceneOptionView) {
+    setActivePack(scene.brandPack);
+    onChange({ ...value, sceneId: scene.id });
+  }
+
+  const packScenes = scenes.filter((s) => s.brandPack === activePack);
 
   return (
     <div>
-      <p className="text-xs font-medium text-gray-500 mb-2">Scenic Collection</p>
+      {recommended.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-2.5">
+          {recommended.map(({ scene }) => {
+            const Icon = SCENE_ICONS[scene.theme.icon] ?? Sparkles;
+            return (
+              <button
+                key={scene.id}
+                type="button"
+                onClick={() => selectScene({ id: scene.id, label: scene.label, brandPack: scene.brandPack, variationPolicy: scene.variationPolicy, icon: scene.theme.icon, color: scene.theme.color })}
+                className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700 hover:border-amber-300"
+              >
+                <Sparkles className="h-3 w-3" />
+                Suggested: {scene.label}
+                <Icon className="h-3 w-3" />
+              </button>
+            );
+          })}
+        </div>
+      )}
 
-      <div className="space-y-3">
+      <div className="flex flex-wrap gap-2">
         {brandPacks.map((pack) => {
-          const packScenes = scenes.filter((s) => s.brandPack === pack.id);
-          if (packScenes.length === 0) return null;
+          const active = pack.id === activePack;
+          const hasSuggestion = !active && packsWithSuggestion.has(pack.id);
           return (
-            <div key={pack.id}>
-              <p className="text-[11px] font-medium text-gray-400 mb-1.5">{pack.label}</p>
-              <div className="flex gap-2.5 overflow-x-auto pb-1">
-                {packScenes.map((s) => {
-                  const active = s.id === value.sceneId;
-                  return (
-                    <button
-                      key={s.id}
-                      type="button"
-                      aria-pressed={active}
-                      onClick={() => onChange({ ...value, sceneId: s.id })}
-                      className="group shrink-0 text-left"
-                      style={{ width: "88px" }}
-                    >
-                      <ScenePreview
-                        base={s.swatchBase}
-                        accent={s.swatchAccent}
-                        className={`h-14 rounded-xl border-2 transition-all ${active ? TILE_SELECTED : TILE_IDLE}`}
-                      />
-                      <div className="mt-1.5 flex items-center gap-1 flex-wrap">
-                        <span className="truncate text-[11px] font-medium text-gray-700">{s.label}</span>
-                        {recommended.has(s.id) && <Tag>Suggested</Tag>}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+            <button
+              key={pack.id}
+              type="button"
+              aria-pressed={active}
+              onClick={() => {
+                setActivePack(pack.id);
+                const first = scenes.find((s) => s.brandPack === pack.id);
+                if (first && first.brandPack !== selectedOption?.brandPack) selectScene(first);
+              }}
+              className={`relative ${flatChip(active)}`}
+            >
+              {pack.label.replace(" Collection", "")}
+              {hasSuggestion && (
+                <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="mt-2.5 flex flex-wrap gap-2">
+        {packScenes.map((s) => {
+          const Icon = SCENE_ICONS[s.icon] ?? Sparkles;
+          const active = s.id === value.sceneId;
+          return (
+            <button
+              key={s.id}
+              type="button"
+              aria-pressed={active}
+              onClick={() => selectScene(s)}
+              style={
+                active
+                  ? { borderColor: s.color, background: hexToRgba(s.color, 0.08), color: s.color }
+                  : undefined
+              }
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs font-medium transition-all ${
+                active ? "" : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5" style={active ? { color: s.color } : undefined} />
+              {s.label}
+              {recommendedIds.has(s.id) && <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />}
+            </button>
           );
         })}
       </div>
 
       {selectedScene && (
-        <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50/60 p-3">
-          <p className="text-[11px] font-medium text-gray-500 mb-1.5">Intensity</p>
-          <div className="flex gap-1 rounded-full bg-white p-1 ring-1 ring-gray-200">
+        <div className="mt-4">
+          <p className="text-xs font-medium text-gray-500 mb-2">How much the scene shows</p>
+          <div className="flex flex-wrap gap-2">
             {(["minimal", "balanced", "editorial"] as SceneIntensity[]).map((level) => (
               <button
                 key={level}
                 type="button"
                 aria-pressed={value.intensity === level}
                 onClick={() => onChange({ ...value, intensity: level })}
-                className={segmentBtn(value.intensity === level)}
+                className={flatChip(value.intensity === level)}
               >
-                {level}
+                {PRESENCE_LABELS[level]}
               </button>
             ))}
           </div>
 
           {selectedScene.variationPolicy === "varies" && (
             <>
-              <p className="text-[11px] font-medium text-gray-500 mt-3 mb-1.5">Density</p>
-              <div className="flex gap-1 rounded-full bg-white p-1 ring-1 ring-gray-200">
+              <p className="text-xs font-medium text-gray-500 mt-3 mb-2">How much is going on in the scene</p>
+              <div className="flex flex-wrap gap-2">
                 {(["minimal", "classic", "rich"] as SceneDensity[]).map((level) => (
                   <button
                     key={level}
                     type="button"
                     aria-pressed={value.density === level}
                     onClick={() => onChange({ ...value, density: level })}
-                    className={segmentBtn(value.density === level)}
+                    className={flatChip(value.density === level)}
                   >
-                    {level}
+                    {DETAIL_LABELS[level]}
                   </button>
                 ))}
               </div>

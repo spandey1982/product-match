@@ -24,9 +24,7 @@ import {
 } from "./backdrops";
 import {
   DEFAULT_SCENIC_SELECTION,
-  isBackdropSection,
   parseScenicSelection,
-  type BackdropSection,
   type ScenicSelection,
 } from "./scenes/selection";
 
@@ -57,9 +55,12 @@ export interface AiGenSettings {
   catalogueProvider: CatalogueProvider;
   /** Studio backdrop for generated images (Smart match, or a chosen preset). */
   backdrop: BackdropSelection;
-  /** Top-level chooser: the plain Studio backdrop, or a Scenic Collection environment. */
-  backdropSection: BackdropSection;
-  /** Scenic Collection choice — read only when backdropSection === "scenic". */
+  /**
+   * Scenic scene/presence/detail choice. Persisted so it's remembered for
+   * next time — but whether Scenic is even USED for a given generation is a
+   * per-request choice (like generation quality), never a sticky default; see
+   * `backdropSection` on GenerateModelImagesInput in engine.ts.
+   */
   scenic: ScenicSelection;
 }
 
@@ -70,7 +71,6 @@ export const DEFAULT_AI_GEN_SETTINGS: AiGenSettings = {
   brandingPosition: "top-right",
   catalogueProvider: "auto",
   backdrop: { ...DEFAULT_BACKDROP_SELECTION },
-  backdropSection: "studio",
   scenic: { ...DEFAULT_SCENIC_SELECTION },
 };
 
@@ -97,9 +97,6 @@ export function parseAiGenSettings(raw: string | null | undefined): AiGenSetting
         ? parsed.catalogueProvider
         : DEFAULT_AI_GEN_SETTINGS.catalogueProvider,
       backdrop: parseBackdropSelection(parsed.backdrop),
-      backdropSection: isBackdropSection(parsed.backdropSection)
-        ? parsed.backdropSection
-        : DEFAULT_AI_GEN_SETTINGS.backdropSection,
       scenic: parseScenicSelection(parsed.scenic),
     };
   } catch {

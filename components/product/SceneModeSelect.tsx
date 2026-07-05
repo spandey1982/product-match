@@ -1,12 +1,15 @@
 "use client";
 
 /**
- * Top-level backdrop chooser: Studio (existing) vs Scenic Collection (new).
+ * Top-level Scene chooser: Studio (existing flat backdrops) vs Scenic (new
+ * contextual environments). "Scene" is the umbrella label explaining why this
+ * whole control exists — it's the environment behind the model in the shot,
+ * plain (Studio) or contextually designed (Scenic).
  *
  * Restructures the MOUNT POINT only — `BackdropSelect`'s three Studio chips
  * (Smart match / Choose / Custom) are unchanged, zero regression risk. When
- * Scenic Collection is disabled for this environment (`ENABLE_SCENIC_COLLECTION`
- * off), its chip is locked with a "Soon" badge, same treatment as the existing
+ * Scenic is disabled for this environment (`ENABLE_SCENIC_COLLECTION` off),
+ * its chip is locked with a "Soon" badge, same treatment as the existing
  * locked "Custom" chip.
  */
 
@@ -61,6 +64,7 @@ export default function SceneModeSelect({
 
   return (
     <div>
+      <p className="text-xs font-medium text-gray-500 mb-2">Scene</p>
       <div className="flex flex-wrap gap-2 mb-3">
         <button
           type="button"
@@ -79,7 +83,7 @@ export default function SceneModeSelect({
             className={chip(isScenic)}
           >
             <Mountain className="h-3.5 w-3.5" />
-            Scenic Collection
+            Scenic
           </button>
         ) : (
           <button
@@ -89,7 +93,7 @@ export default function SceneModeSelect({
             className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3.5 py-1.5 text-xs font-medium text-gray-400"
           >
             <Lock className="h-3.5 w-3.5" />
-            Scenic Collection
+            Scenic
             <span className="rounded-full border border-gray-200 bg-gray-50 px-1.5 py-px text-[10px] text-gray-400">Soon</span>
           </button>
         )}

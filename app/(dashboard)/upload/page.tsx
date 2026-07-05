@@ -64,7 +64,6 @@ interface AiGenConfig {
     brandingPosition: "top-left" | "top-right";
     catalogueProvider: "auto" | "gemini" | "vertex";
     backdrop: BackdropValue;
-    backdropSection: BackdropSection;
     scenic: ScenicValue;
   };
 }
@@ -142,7 +141,9 @@ export default function UploadPage() {
   // Studio backdrop (Phase 1: store-level setting only; no generation wiring yet).
   const [backdrops, setBackdrops] = useState<BackdropOption[]>([]);
   const [backdrop, setBackdrop] = useState<BackdropValue>({ mode: "smart", presetId: "reference-studio" });
-  // Scenic Collection: top-level Studio/Scenic Collection toggle + scene choice.
+  // Studio/Scenic toggle — like `quality`, a per-generation choice that always
+  // resets to Studio (never persisted/restored); the scene choice UNDER
+  // Scenic (`scenic` below) is still remembered between generations.
   const [backdropSection, setBackdropSection] = useState<BackdropSection>("studio");
   const [scenes, setScenes] = useState<SceneOptionView[]>([]);
   const [brandPacks, setBrandPacks] = useState<{ id: string; label: string }[]>([]);
@@ -191,7 +192,8 @@ export default function UploadPage() {
         setScenes(data.scenes ?? []);
         setBrandPacks(data.brandPacks ?? []);
         setScenicEnabled(Boolean(data.scenicEnabled));
-        if (data.settings.backdropSection) setBackdropSection(data.settings.backdropSection);
+        // backdropSection is intentionally NOT restored here — always starts
+        // on Studio, like `quality` always starts on Standard.
         if (data.settings.scenic) setScenic(data.settings.scenic);
         setLogoUrl(data.logoUrl);
       })
@@ -205,7 +207,6 @@ export default function UploadPage() {
     brandingPosition?: string;
     catalogueProvider?: string;
     backdrop?: BackdropValue;
-    backdropSection?: BackdropSection;
     scenic?: ScenicValue;
   }) {
     fetch("/api/settings/ai-generation", {
@@ -480,6 +481,7 @@ export default function UploadPage() {
             ? JSON.stringify({
                 objective,
                 quality,
+                backdropSection,
                 // Omit when "auto" so the engine selects the model per product.
                 ...(modelType && modelType !== "auto" ? { modelType } : {}),
               })
@@ -800,17 +802,18 @@ export default function UploadPage() {
                 </div>
               )}
 
-              {/* Backdrop / Scenic Collection — only for the prompt-based catalogue
+              {/* Scene (Studio / Scenic) — only for the prompt-based catalogue
                   path (Premium / Automatic). Quick listing and Sharp Fit
                   (Economy/Vertex) don't take a backdrop: they use the
-                  reference-model studios as-is. */}
+                  reference-model studios as-is. Studio/Scenic itself is a
+                  per-generation choice (like Quality below) — it's local state
+                  only and is never patched to settings; only the choices
+                  UNDER each mode (backdrop preset, scene/presence/detail) are
+                  saved. */}
               {objective === "catalogue" && catalogueProvider !== "vertex" && backdrops.length > 0 && (
                 <SceneModeSelect
                   section={backdropSection}
-                  onSectionChange={(next) => {
-                    setBackdropSection(next);
-                    patchBranding({ backdropSection: next });
-                  }}
+                  onSectionChange={setBackdropSection}
                   scenicEnabled={scenicEnabled}
                   backdrops={backdrops}
                   backdropValue={backdrop}

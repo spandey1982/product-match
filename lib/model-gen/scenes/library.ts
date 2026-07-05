@@ -129,6 +129,7 @@ export const SCENES: Scene[] = [
       },
     ],
     brandingHint: { preferredLogo: "light", brightness: 0.55 },
+    theme: { icon: "Gem", color: "#B8860B" },
     negativeExtras: ["no wedding guests or officiant in frame", "no bridal party other than the single model"],
     recommendFor: { occasion: ["Wedding", "Bridal", "Anniversary"], styleTags: ["Bridal", "Royal", "Traditional"] },
   },
@@ -221,6 +222,7 @@ export const SCENES: Scene[] = [
       },
     ],
     brandingHint: { preferredLogo: "light", brightness: 0.4 },
+    theme: { icon: "Flame", color: "#D97706" },
     negativeExtras: ["no visible flames beyond small diya lamps", "no fireworks or smoke"],
     recommendFor: { occasion: ["Festive", "Traditional", "Religious"], styleTags: ["Traditional", "Festive", "Ethnic"] },
   },
@@ -313,6 +315,7 @@ export const SCENES: Scene[] = [
       },
     ],
     brandingHint: { preferredLogo: "light", brightness: 0.45 },
+    theme: { icon: "Moon", color: "#2DBE9C" },
     negativeExtras: ["no religious text or calligraphy rendered as legible writing", "no crescent-moon iconography used as a literal graphic overlay"],
     recommendFor: { occasion: ["Religious", "Festive", "Traditional"], styleTags: ["Traditional", "Ethnic", "Festive"] },
   },
@@ -407,6 +410,7 @@ export const SCENES: Scene[] = [
       },
     ],
     brandingHint: { preferredLogo: "dark", brightness: 0.85 },
+    theme: { icon: "Sun", color: "#F2B705" },
     recommendFor: { season: ["Summer", "Spring", "All Season"], occasion: ["Casual", "Party"], styleTags: ["Casual", "Boho"] },
   },
   {
@@ -498,6 +502,7 @@ export const SCENES: Scene[] = [
       },
     ],
     brandingHint: { preferredLogo: "dark", brightness: 0.78 },
+    theme: { icon: "Snowflake", color: "#5B8DBE" },
     recommendFor: { season: ["Winter", "Autumn"], styleTags: ["Formal", "Contemporary"] },
   },
 
@@ -531,6 +536,7 @@ export const SCENES: Scene[] = [
       },
     ],
     brandingHint: { preferredLogo: "dark", brightness: 0.82 },
+    theme: { icon: "ShoppingBag", color: "#A9745B" },
     negativeExtras: ["no legible signage or price tags", "no other shoppers in frame"],
     recommendFor: { occasion: ["Casual", "Formal"], styleTags: ["Minimalist", "Contemporary"] },
   },
@@ -565,6 +571,7 @@ export const SCENES: Scene[] = [
       },
     ],
     brandingHint: { preferredLogo: "light", brightness: 0.35 },
+    theme: { icon: "Aperture", color: "#1F1F23" },
     negativeExtras: ["no busy or cluttered backdrop", "no more than one graphic element in frame"],
     recommendFor: { styleTags: ["Contemporary", "Fusion", "Boho"], occasion: ["Party"] },
   },
@@ -599,6 +606,7 @@ export const SCENES: Scene[] = [
       },
     ],
     brandingHint: { preferredLogo: "dark", brightness: 0.8 },
+    theme: { icon: "Briefcase", color: "#33415C" },
     negativeExtras: ["no legible screens, documents or signage"],
     recommendFor: { occasion: ["Office", "Formal"], styleTags: ["Minimalist", "Traditional"] },
   },
@@ -628,31 +636,18 @@ export const BRAND_PACKS: BrandPackMeta[] = [
   { id: "corporate", label: "Corporate Collection" },
 ];
 
-/** Lightweight view the chooser UI needs (no internal profiles). */
+/**
+ * Lightweight view the chooser UI needs (no internal profiles). There's no
+ * real photo to preview, so the identity is an icon + accent colour
+ * (`theme`) rather than a rendered thumbnail — see Scene.theme.
+ */
 export interface SceneOptionView {
   id: string;
   label: string;
   brandPack: string;
   variationPolicy: Scene["variationPolicy"];
-  /** A representative accent swatch for the CSS-rendered preview tile. */
-  swatchBase: string;
-  swatchAccent: string;
-}
-
-/** Rough CSS colour per named tone, just enough for a gradient preview tile. */
-const TONE_HEX: Record<string, string> = {
-  "warm ivory": "#f3ece0", "soft gold": "#e6cf9a", "champagne": "#efdcb8",
-  "warm amber": "#d9a256", "deep terracotta": "#b5623f", "burnished gold": "#c99a4a",
-  "soft moonlit silver": "#dfe3e6", "deep teal": "#2f5c5a",
-  "soft ivory": "#f2ece2", "sandy beige": "#e3cfae", "sky blue": "#bcd7ea",
-  "cool frost white": "#eef2f3", "soft slate grey": "#c7ccd1", "warm cocoa": "#7c5c47",
-  "warm taupe": "#c9b6a3", "brushed brass": "#b99a5b",
-  "seamless charcoal": "#3a3a3d", "seamless ivory": "#eee7da", "muted terracotta": "#b06a4d",
-  "cool slate grey": "#aeb4ba", "warm white": "#f4f2ee", "brushed steel": "#9fa6ab",
-};
-
-function toneHex(name: string, fallback: string): string {
-  return TONE_HEX[name] ?? fallback;
+  icon: string;
+  color: string;
 }
 
 export function listSceneOptions(): SceneOptionView[] {
@@ -661,7 +656,7 @@ export function listSceneOptions(): SceneOptionView[] {
     label: s.label,
     brandPack: s.brandPack,
     variationPolicy: s.variationPolicy,
-    swatchBase: toneHex(s.palette.base[0], "#e7dfce"),
-    swatchAccent: toneHex(s.palette.accent[0], "#a98f6b"),
+    icon: s.theme.icon,
+    color: s.theme.color,
   }));
 }

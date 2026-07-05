@@ -26,6 +26,7 @@ import { getScene, SCENES } from "./scenes/library";
 import { selectSceneVariation } from "./scenes/rule-engine";
 import { resolvePaletteAccent } from "./scenes/color-harmony";
 import { renderScenePrompt } from "./scenes/prompt-builder";
+import type { BackdropSection } from "./scenes/selection";
 import { persistGeneratedImages, type GeneratedImage } from "./persist";
 import { recordGenerations } from "./generation-record";
 import { maybeReviewGenerations } from "./ai-review";
@@ -45,10 +46,10 @@ export function isAiGenObjectivesEnabled(): boolean {
 }
 
 /**
- * Master switch for Scenic Collection (contextual scenes beyond plain Studio
- * backdrops). When OFF (default), the engine always resolves the Studio path
- * regardless of a retailer's stored `backdropSection` — so nothing changes
- * for existing retailers until this is explicitly enabled.
+ * Master switch for Scenic (contextual scenes beyond plain Studio backdrops).
+ * When OFF (default), the engine always resolves the Studio path regardless
+ * of a per-request `backdropSection` — so nothing changes for existing
+ * retailers until this is explicitly enabled.
  */
 export function isScenicCollectionEnabled(): boolean {
   return process.env.ENABLE_SCENIC_COLLECTION === "true";
@@ -67,6 +68,15 @@ export interface GenerateModelImagesInput {
    * persisted, the retailer chooses it fresh per generation (lib/model-gen/quality.ts).
    */
   quality?: GenerationQuality;
+  /**
+   * Studio (default) or Scenic for THIS run. Like `quality`, this is a
+   * per-generation choice, never a sticky default — Studio is always what
+   * runs unless a retailer explicitly opts into Scenic for that generation.
+   * The scene/presence/detail CHOICE underneath Scenic (settings.scenic) is
+   * still remembered between generations; only whether Scenic runs at all
+   * is not.
+   */
+  backdropSection?: BackdropSection;
 }
 
 export interface GenerateModelImagesResult {
@@ -141,7 +151,7 @@ export async function generateModelImages(
   // directly. Scenic Collection: the rule engine picks a curated variation +
   // colour-harmony accent, the Prompt Builder composes the fragment. Both
   // paths are pure/deterministic — zero extra AI calls in either case.
-  const useScenic = settings.backdropSection === "scenic" && isScenicCollectionEnabled();
+  const useScenic = (input.backdropSection ?? "studio") === "scenic" && isScenicCollectionEnabled();
 
   let backdrop: string;
   let brandingHint: { preferredLogo: "dark" | "light"; brightness: number };

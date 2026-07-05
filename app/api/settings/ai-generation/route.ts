@@ -14,7 +14,7 @@ import { listObjectives, isGenerationObjective } from "@/lib/model-gen/objective
 import { MODEL_TYPES, isModelType } from "@/lib/model-gen/reference-models";
 import { listBackdropOptions, isBackdropSelection } from "@/lib/model-gen/backdrops";
 import { listSceneOptions, BRAND_PACKS } from "@/lib/model-gen/scenes/library";
-import { isBackdropSection, isScenicSelection } from "@/lib/model-gen/scenes/selection";
+import { isScenicSelection } from "@/lib/model-gen/scenes/selection";
 import { isVertexTryOnEnabled, getVertexConfig } from "@/lib/tryon-vertex";
 
 /** Resolve the store logo's delivery URL from its public_id, if uploaded. */
@@ -78,7 +78,6 @@ export async function PATCH(req: NextRequest) {
     const rawBrandingPosition = (body as { brandingPosition?: unknown }).brandingPosition;
     const rawCatalogueProvider = (body as { catalogueProvider?: unknown }).catalogueProvider;
     const rawBackdrop = (body as { backdrop?: unknown }).backdrop;
-    const rawBackdropSection = (body as { backdropSection?: unknown }).backdropSection;
     const rawScenic = (body as { scenic?: unknown }).scenic;
 
     if (rawModelType !== undefined && !isModelType(rawModelType)) {
@@ -117,12 +116,6 @@ export async function PATCH(req: NextRequest) {
         { status: 400 }
       );
     }
-    if (rawBackdropSection !== undefined && !isBackdropSection(rawBackdropSection)) {
-      return NextResponse.json(
-        { error: "Invalid backdrop section." },
-        { status: 400 }
-      );
-    }
     if (rawScenic !== undefined && !isScenicSelection(rawScenic)) {
       return NextResponse.json(
         { error: "Invalid scenic selection." },
@@ -139,7 +132,6 @@ export async function PATCH(req: NextRequest) {
       brandingPosition: isBrandingPosition(rawBrandingPosition) ? rawBrandingPosition : current.brandingPosition,
       catalogueProvider: isCatalogueProvider(rawCatalogueProvider) ? rawCatalogueProvider : current.catalogueProvider,
       backdrop: isBackdropSelection(rawBackdrop) ? rawBackdrop : current.backdrop,
-      backdropSection: isBackdropSection(rawBackdropSection) ? rawBackdropSection : current.backdropSection,
       scenic: isScenicSelection(rawScenic) ? rawScenic : current.scenic,
     };
 

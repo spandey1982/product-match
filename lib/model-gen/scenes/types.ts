@@ -85,6 +85,12 @@ export interface Scene {
   variations: SceneVariation[];
   /** Feeds the branding-placement fallback (mirrors BackdropPreset.branding/color.brightness). */
   brandingHint: { preferredLogo: "dark" | "light"; brightness: number };
+  /**
+   * Chooser chip identity — an icon + accent colour instead of a rendered
+   * preview thumbnail (there's no real photo to preview against). `icon` is a
+   * lucide-react component name, resolved by the UI's icon lookup map.
+   */
+  theme: { icon: string; color: string };
   /** Scene-specific additions to the core negative-prompt library. */
   negativeExtras?: string[];
   /** Deterministic recommendation signal — matched against Product metadata
