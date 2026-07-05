@@ -35,8 +35,8 @@ export function TryOnQueueButton({ product }: Props) {
         <button
           onClick={() => setSetupModalOpen(true)}
           className={cn(
-            "w-full flex items-center justify-center gap-2 py-2 rounded-xl",
-            "text-xs font-semibold",
+            "w-full flex items-center justify-center gap-2 h-12 rounded-2xl",
+            "text-sm font-semibold",
             "bg-gradient-to-r from-indigo-500 to-purple-600 text-white",
             "shadow-md shadow-indigo-200/50 hover:opacity-90 active:scale-[0.98] transition-all"
           )}
@@ -57,7 +57,7 @@ export function TryOnQueueButton({ product }: Props) {
     return (
       <button
         disabled
-        className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-semibold bg-indigo-50 text-indigo-400 cursor-not-allowed"
+        className="w-full flex items-center justify-center gap-2 h-12 rounded-2xl text-sm font-semibold bg-indigo-50 text-indigo-400 cursor-not-allowed"
       >
         <Loader2 className="h-4 w-4 animate-spin" />
         Generating try-on…
@@ -91,8 +91,8 @@ export function TryOnQueueButton({ product }: Props) {
         <button
           onClick={() => retryTryOn(entry.id)}
           className={cn(
-            "w-full flex items-center justify-center gap-2 py-2 rounded-xl",
-            "text-xs font-semibold",
+            "w-full flex items-center justify-center gap-2 h-12 rounded-2xl",
+            "text-sm font-semibold",
             "bg-gradient-to-r from-indigo-500 to-purple-600 text-white",
             "shadow-md shadow-indigo-200/50 hover:opacity-90 active:scale-[0.98] transition-all"
           )}
@@ -111,13 +111,13 @@ export function TryOnQueueButton({ product }: Props) {
   if (isAtLimit) {
     return (
       <div className="space-y-2">
-        <div className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-sm font-medium bg-amber-50 border border-amber-200 text-amber-700">
+        <div className="w-full flex items-center justify-center gap-2 h-12 rounded-2xl text-sm font-medium bg-amber-50 border border-amber-200 text-amber-700">
           <HangerPlusIcon className="h-4 w-4" />
           Try-on limit reached (5/5)
         </div>
         <Link
           href="/my-try-ons"
-          className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold text-indigo-600 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 transition-colors"
+          className="w-full flex items-center justify-center gap-1.5 h-12 rounded-2xl text-sm font-semibold text-indigo-600 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 transition-colors"
         >
           Manage Try-Ons to free up a slot
           <ExternalLink className="h-3.5 w-3.5" />
@@ -131,8 +131,8 @@ export function TryOnQueueButton({ product }: Props) {
     <button
       onClick={() => addToQueue(product)}
       className={cn(
-        "w-full flex items-center justify-center gap-2 py-2 rounded-xl",
-        "text-xs font-semibold",
+        "w-full flex items-center justify-center gap-2 h-12 rounded-2xl",
+        "text-sm font-semibold",
         "bg-gradient-to-r from-indigo-500 to-purple-600 text-white",
         "shadow-md shadow-indigo-200/50 hover:opacity-90 active:scale-[0.98] transition-all"
       )}
