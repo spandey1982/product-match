@@ -9,7 +9,10 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { categorySlotsFor, partSlotsFor } from "@/lib/product/part-slots";
-import BackdropSelect, { type BackdropOption, type BackdropValue } from "@/components/product/BackdropSelect";
+import { type BackdropOption, type BackdropValue } from "@/components/product/BackdropSelect";
+import SceneModeSelect, { type BackdropSection } from "@/components/product/SceneModeSelect";
+import type { ScenicValue } from "@/components/product/ScenicCollectionSelect";
+import type { SceneOptionView } from "@/lib/model-gen/scenes/library";
 import { listQualityProfiles, DEFAULT_GENERATION_QUALITY, type GenerationQuality } from "@/lib/model-gen/quality";
 
 const CATEGORIES = [
@@ -51,6 +54,9 @@ interface AiGenConfig {
   backdrops: BackdropOption[];
   logoUrl: string | null;
   vertexAvailable: boolean;
+  scenes: SceneOptionView[];
+  brandPacks: { id: string; label: string }[];
+  scenicEnabled: boolean;
   settings: {
     defaultModelType: string;
     defaultObjective: string;
@@ -58,6 +64,7 @@ interface AiGenConfig {
     brandingPosition: "top-left" | "top-right";
     catalogueProvider: "auto" | "gemini" | "vertex";
     backdrop: BackdropValue;
+    scenic: ScenicValue;
   };
 }
 
@@ -134,6 +141,14 @@ export default function UploadPage() {
   // Studio backdrop (Phase 1: store-level setting only; no generation wiring yet).
   const [backdrops, setBackdrops] = useState<BackdropOption[]>([]);
   const [backdrop, setBackdrop] = useState<BackdropValue>({ mode: "smart", presetId: "reference-studio" });
+  // Studio/Scenic toggle — like `quality`, a per-generation choice that always
+  // resets to Studio (never persisted/restored); the scene choice UNDER
+  // Scenic (`scenic` below) is still remembered between generations.
+  const [backdropSection, setBackdropSection] = useState<BackdropSection>("studio");
+  const [scenes, setScenes] = useState<SceneOptionView[]>([]);
+  const [brandPacks, setBrandPacks] = useState<{ id: string; label: string }[]>([]);
+  const [scenicEnabled, setScenicEnabled] = useState(false);
+  const [scenic, setScenic] = useState<ScenicValue>({ sceneId: "wedding", intensity: "balanced", density: "classic" });
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [logoBusy, setLogoBusy] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -174,6 +189,12 @@ export default function UploadPage() {
         setCatalogueProvider(data.settings.catalogueProvider);
         setBackdrops(data.backdrops ?? []);
         if (data.settings.backdrop) setBackdrop(data.settings.backdrop);
+        setScenes(data.scenes ?? []);
+        setBrandPacks(data.brandPacks ?? []);
+        setScenicEnabled(Boolean(data.scenicEnabled));
+        // backdropSection is intentionally NOT restored here — always starts
+        // on Studio, like `quality` always starts on Standard.
+        if (data.settings.scenic) setScenic(data.settings.scenic);
         setLogoUrl(data.logoUrl);
       })
       .catch(() => {/* chooser stays hidden; legacy toggle still works */});
@@ -186,6 +207,7 @@ export default function UploadPage() {
     brandingPosition?: string;
     catalogueProvider?: string;
     backdrop?: BackdropValue;
+    scenic?: ScenicValue;
   }) {
     fetch("/api/settings/ai-generation", {
       method: "PATCH",
@@ -459,6 +481,7 @@ export default function UploadPage() {
             ? JSON.stringify({
                 objective,
                 quality,
+                backdropSection,
                 // Omit when "auto" so the engine selects the model per product.
                 ...(modelType && modelType !== "auto" ? { modelType } : {}),
               })
@@ -779,17 +802,40 @@ export default function UploadPage() {
                 </div>
               )}
 
-              {/* Backdrop — only for the prompt-based catalogue path (Premium /
-                  Automatic). Quick listing and Sharp Fit (Economy/Vertex) don't
-                  take a backdrop: they use the reference-model studios as-is. */}
+              {/* Scene (Studio / Scenic) — only for the prompt-based catalogue
+                  path (Premium / Automatic). Quick listing and Sharp Fit
+                  (Economy/Vertex) don't take a backdrop: they use the
+                  reference-model studios as-is. Studio/Scenic itself is a
+                  per-generation choice (like Quality below) — it's local state
+                  only and is never patched to settings; only the choices
+                  UNDER each mode (backdrop preset, scene/presence/detail) are
+                  saved. */}
               {objective === "catalogue" && catalogueProvider !== "vertex" && backdrops.length > 0 && (
-                <BackdropSelect
-                  presets={backdrops}
-                  value={backdrop}
-                  productColor={form.color}
-                  onChange={(next) => {
+                <SceneModeSelect
+                  section={backdropSection}
+                  onSectionChange={setBackdropSection}
+                  scenicEnabled={scenicEnabled}
+                  backdrops={backdrops}
+                  backdropValue={backdrop}
+                  onBackdropChange={(next) => {
                     setBackdrop(next);
                     patchBranding({ backdrop: next });
+                  }}
+                  productColor={form.color}
+                  scenes={scenes}
+                  brandPacks={brandPacks}
+                  scenicValue={scenic}
+                  onScenicChange={(next) => {
+                    setScenic(next);
+                    patchBranding({ scenic: next });
+                  }}
+                  productSignals={{
+                    category: form.category,
+                    color: form.color,
+                    pattern: form.pattern,
+                    occasion: selectedOccasions,
+                    styleTags: selectedStyles,
+                    season: selectedSeasons,
                   }}
                 />
               )}

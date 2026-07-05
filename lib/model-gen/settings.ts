@@ -22,6 +22,11 @@ import {
   parseBackdropSelection,
   type BackdropSelection,
 } from "./backdrops";
+import {
+  DEFAULT_SCENIC_SELECTION,
+  parseScenicSelection,
+  type ScenicSelection,
+} from "./scenes/selection";
 
 /** Where the brand watermark sits on generated model images. */
 export type BrandingPosition = "top-left" | "top-right";
@@ -50,6 +55,13 @@ export interface AiGenSettings {
   catalogueProvider: CatalogueProvider;
   /** Studio backdrop for generated images (Smart match, or a chosen preset). */
   backdrop: BackdropSelection;
+  /**
+   * Scenic scene/presence/detail choice. Persisted so it's remembered for
+   * next time — but whether Scenic is even USED for a given generation is a
+   * per-request choice (like generation quality), never a sticky default; see
+   * `backdropSection` on GenerateModelImagesInput in engine.ts.
+   */
+  scenic: ScenicSelection;
 }
 
 export const DEFAULT_AI_GEN_SETTINGS: AiGenSettings = {
@@ -59,6 +71,7 @@ export const DEFAULT_AI_GEN_SETTINGS: AiGenSettings = {
   brandingPosition: "top-right",
   catalogueProvider: "auto",
   backdrop: { ...DEFAULT_BACKDROP_SELECTION },
+  scenic: { ...DEFAULT_SCENIC_SELECTION },
 };
 
 /** Parse raw aiGenSettings JSON into a fully-populated, validated object. */
@@ -84,6 +97,7 @@ export function parseAiGenSettings(raw: string | null | undefined): AiGenSetting
         ? parsed.catalogueProvider
         : DEFAULT_AI_GEN_SETTINGS.catalogueProvider,
       backdrop: parseBackdropSelection(parsed.backdrop),
+      scenic: parseScenicSelection(parsed.scenic),
     };
   } catch {
     return { ...DEFAULT_AI_GEN_SETTINGS };

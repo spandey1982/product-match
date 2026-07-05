@@ -22,6 +22,11 @@ import { resolveAutoProvider } from "@/lib/providers/auto-routing";
 import { getBrandingConfig, applyBranding, resolveBrandingPlacement } from "./branding";
 import { resolveBackdropPreset, renderBackdropPrompt } from "./backdrops";
 import { pickSmartBackdrop } from "./backdrop-match";
+import { getScene, SCENES } from "./scenes/library";
+import { selectSceneVariation } from "./scenes/rule-engine";
+import { resolvePaletteAccent } from "./scenes/color-harmony";
+import { renderScenePrompt } from "./scenes/prompt-builder";
+import type { BackdropSection } from "./scenes/selection";
 import { persistGeneratedImages, type GeneratedImage } from "./persist";
 import { recordGenerations } from "./generation-record";
 import { maybeReviewGenerations } from "./ai-review";
@@ -40,6 +45,16 @@ export function isAiGenObjectivesEnabled(): boolean {
   return process.env.ENABLE_AI_GEN_SETTINGS === "true";
 }
 
+/**
+ * Master switch for Scenic (contextual scenes beyond plain Studio backdrops).
+ * When OFF (default), the engine always resolves the Studio path regardless
+ * of a per-request `backdropSection` — so nothing changes for existing
+ * retailers until this is explicitly enabled.
+ */
+export function isScenicCollectionEnabled(): boolean {
+  return process.env.ENABLE_SCENIC_COLLECTION === "true";
+}
+
 export interface GenerateModelImagesInput {
   productId: string;
   /** The retailer who owns the product — used to resolve stored defaults. */
@@ -53,6 +68,15 @@ export interface GenerateModelImagesInput {
    * persisted, the retailer chooses it fresh per generation (lib/model-gen/quality.ts).
    */
   quality?: GenerationQuality;
+  /**
+   * Studio (default) or Scenic for THIS run. Like `quality`, this is a
+   * per-generation choice, never a sticky default — Studio is always what
+   * runs unless a retailer explicitly opts into Scenic for that generation.
+   * The scene/presence/detail CHOICE underneath Scenic (settings.scenic) is
+   * still remembered between generations; only whether Scenic runs at all
+   * is not.
+   */
+  backdropSection?: BackdropSection;
 }
 
 export interface GenerateModelImagesResult {
@@ -119,22 +143,51 @@ export async function generateModelImages(
       ? resolveAutoProvider({ category: product.category })
       : settings.catalogueProvider;
 
-  // Resolve the backdrop preset: Smart match scores presets against the product
-  // (Phase 3, deterministic — no AI call); an explicit choice resolves directly.
-  const backdropPreset =
-    settings.backdrop.mode === "smart"
-      ? pickSmartBackdrop({
-          color: product.color,
-          category: product.category,
-          pattern: product.pattern,
-        })
-      : resolveBackdropPreset(settings.backdrop);
+  // Resolve the backdrop/scene fragment. Two peer sections, same output shape
+  // (a single deterministic prompt string + a branding fallback hint) so
+  // everything downstream — buildViewPrompt, branding placement, recording —
+  // is identical either way. Studio: Smart match scores presets against the
+  // product (deterministic — no AI call); an explicit choice resolves
+  // directly. Scenic Collection: the rule engine picks a curated variation +
+  // colour-harmony accent, the Prompt Builder composes the fragment. Both
+  // paths are pure/deterministic — zero extra AI calls in either case.
+  const useScenic = (input.backdropSection ?? "studio") === "scenic" && isScenicCollectionEnabled();
 
-  // One deterministic studio prompt, reused for every view so the generated set
-  // looks like a single studio (Phase 2). Applies to the prompt-based (Gemini /
-  // Natural Drape) path; the Vertex (Sharp Fit) VTO path inherits the reference
-  // model's studio instead.
-  const backdrop = renderBackdropPrompt(backdropPreset);
+  let backdrop: string;
+  let brandingHint: { preferredLogo: "dark" | "light"; brightness: number };
+  let sceneMeta: { sceneId: string; intensity: string; density: string } | null = null;
+
+  if (useScenic) {
+    const scene = getScene(settings.scenic.sceneId) ?? SCENES[0];
+    const variation = selectSceneVariation(scene, {
+      color: product.color,
+      category: product.category,
+      pattern: product.pattern,
+    });
+    const accent = resolvePaletteAccent(scene, product.color);
+    backdrop = renderScenePrompt(scene, variation, settings.scenic.intensity, settings.scenic.density, accent);
+    brandingHint = scene.brandingHint;
+    sceneMeta = {
+      sceneId: scene.id,
+      intensity: settings.scenic.intensity,
+      density: settings.scenic.density,
+    };
+  } else {
+    const backdropPreset =
+      settings.backdrop.mode === "smart"
+        ? pickSmartBackdrop({
+            color: product.color,
+            category: product.category,
+            pattern: product.pattern,
+          })
+        : resolveBackdropPreset(settings.backdrop);
+    // One deterministic studio prompt, reused for every view so the generated
+    // set looks like a single studio. Applies to the prompt-based (Gemini /
+    // Natural Drape) path; the Vertex (Sharp Fit) VTO path inherits the
+    // reference model's studio instead.
+    backdrop = renderBackdropPrompt(backdropPreset);
+    brandingHint = { preferredLogo: backdropPreset.branding.preferredLogo, brightness: backdropPreset.color.brightness };
+  }
 
   const { images } =
     objective === "quick_listing"
@@ -163,8 +216,8 @@ export async function generateModelImages(
   // provider. The preset hint is only a fallback if sampling fails.
   const branding = await getBrandingConfig(input.userId);
   const fallbackAdapt = {
-    mark: backdropPreset.branding.preferredLogo,
-    brightness: backdropPreset.color.brightness,
+    mark: brandingHint.preferredLogo,
+    brightness: brandingHint.brightness,
   };
   const willBrand =
     branding.enabled && (Boolean(branding.logoPublicId) || Boolean(branding.storeName?.trim()));
@@ -189,6 +242,7 @@ export async function generateModelImages(
       objective,
       defaultProvider: objective === "quick_listing" ? "vertex" : catalogueProvider,
       images: generated,
+      sceneMeta,
     });
     // Fire-and-forget AI review (flag- + sample-gated); never blocks the response.
     maybeReviewGenerations(records, { productImageUrl: product.imageUrl });

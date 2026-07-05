@@ -131,6 +131,13 @@ model GenerationRecord {
   generationMs Int?
   tokensTotal  Int?
 
+  // Scenic Collection metadata (nullable — null when the Studio backdrop path
+  // was used). No FK, same durable-snapshot rationale as the rest of this
+  // table. Feeds future data-driven scene recommendations/AI review scoring.
+  sceneId        String?
+  sceneIntensity String? // "minimal" | "balanced" | "editorial"
+  sceneDensity   String? // "minimal" | "classic" | "rich"
+
   // AI review scores (1–5), null until reviewed
   aiAuthenticity        Float?
   aiRealism             Float?

@@ -9,7 +9,7 @@
 > re-running one. That work happens on the local-only `rnd/image-pipeline-benchmarks`
 > branch (never pushed); only approved results land here.
 >
-> Last updated: 2026-07-03
+> Last updated: 2026-07-06
 
 ---
 
@@ -190,6 +190,7 @@ Schema changes: `npx prisma generate` then restart dev server.
 | Model-gen strategies | `lib/model-gen/strategies/{quick-listing,catalogue}.ts` |
 | AI-gen settings (storage accessor + API) | `lib/model-gen/settings.ts`, `app/api/settings/ai-generation/route.ts` |
 | Store branding overlay | `lib/model-gen/branding.ts` |
+| Scenic Collection (Scene Library, rule engine, Prompt Builder, negative prompts) | `lib/model-gen/scenes/{types,library,rule-engine,color-harmony,prompt-builder,negative-prompts,selection}.ts` (§12) |
 | Logo upload/delete | `app/api/settings/logo/route.ts` (`User.logoPublicId`) |
 | Reference-model generator (offline team tool) | `scripts/generate-reference-models.ts` (`npm run gen:reference-models`) |
 | Reference assets | `public/reference-models/` (see its README) |
@@ -372,6 +373,142 @@ generated **on-model image** (`modelImageUrl`) as the garment reference for
 drape-heavy categories; (2) feed catalogue **metadata** (material/occasion/
 subcategory) into the Gemini try-on prompt (Vertex is image-only); (3) multi-
 reference (front+back) once catalogue multi-view exists. Schedule separately.
+
+## 12. Scenic Collection (contextual scenes)
+
+**Principle.** The backdrop chooser is now two peer sections: **Studio** (the
+existing flat backdrop presets, §11's `backdrops.ts`/`backdrop-match.ts`,
+unchanged) and **Scenic Collection** — the product placed in a designed,
+contextual environment (Wedding, Diwali, Boutique, Editorial, …) while the
+garment stays the unambiguous hero. Both sections are peers producing the same
+`backdrop: string` prompt fragment consumed by `prompt-sets.ts#buildViewPrompt`
+— the engine branches on which section a retailer has selected, but nothing
+downstream (prompt assembly, branding, persistence) needs to know which one
+ran. Feature-flagged `ENABLE_SCENIC_COLLECTION` (off by default — the Studio
+path is unchanged either way).
+
+**Scene Library architecture** (`lib/model-gen/scenes/`) — structured
+definitions, not prose, exactly mirroring `backdrops.ts`'s pattern:
+- `types.ts` — `Scene` (id, brandPack, variationPolicy, cameraStyles, palette,
+  variations, brandingHint, negativeExtras, recommendFor), `SceneVariation`
+  (environment + `DepthLayers` foreground/midground/background + decor lists
+  per density), `SceneIntensity` (minimal/balanced/editorial — how prominent
+  the environment reads), `SceneDensity` (minimal/classic/rich — how many
+  environmental elements appear), `CameraStyle` (morning/golden-hour/
+  soft-daylight/evening/night/indoor-studio/outdoor).
+- `library.ts` — `SCENES: Scene[]`, the launch content. **Adding a scene is
+  pure data, zero code changes** — see the recipe/template in that file's
+  header comment. This is the entire point of the pattern.
+- `rule-engine.ts` — `selectSceneVariation` (deterministic pick of one curated
+  variation per product, stable hash of category/color/pattern — same product
+  always renders the same variation; different products spread across the
+  pool) and `recommendScenes` (deterministic occasion/styleTag/season → scene
+  affinity, mirrors `lib/providers/auto-routing.ts`'s table-driven category
+  routing — e.g. a Bridal-tagged product surfaces "Suggested: Wedding", not
+  Corporate).
+- `color-harmony.ts` — `resolvePaletteAccent` reuses `getColorCompatibility`
+  from `lib/matching-engine/color-harmony` (the same core IP `backdrop-match.ts`
+  already reuses) to pick the scene's best-fit accent colour for the garment,
+  steering away from tonal clashes (e.g. a deep-red bridal outfit won't get a
+  red-dominated Wedding accent).
+- `prompt-builder.ts` — `renderScenePrompt` composes environment + depth +
+  camera style + intensity-scaled prominence language + density-gated decor +
+  the resolved palette accent + the negative clause into ONE deterministic
+  fragment. Pure, no AI call — same contract as `renderBackdropPrompt`.
+- `negative-prompts.ts` — first-class, reusable **Negative Prompt Library**
+  (`CORE_NEGATIVE_CONSTRAINTS` + optional per-scene `negativeExtras`). Gemini's
+  `generateContent` has no separate negative-prompt parameter, so this is
+  prose appended to the same single request — zero extra cost.
+- `selection.ts` — `ScenicSelection` (sceneId/intensity/density) + parse/
+  validate, mirrors `backdrops.ts`'s `BackdropSelection`.
+
+**Save vs Variation.** `Scene.variationPolicy` is explicit per scene:
+`"varies"` (Wedding/Diwali/Eid/Summer/Winter — 4-5 curated environments,
+rule-engine picks one deterministically per product) vs `"consistent"`
+(Boutique/Editorial/Corporate — exactly one curated layout, always). The UI
+hides the Density control entirely for `"consistent"` scenes — there's nothing
+to vary.
+
+**Storage (decisions, all additive):**
+- `User.aiGenSettings` (existing nullable JSON column) gains `backdropSection:
+  "studio" | "scenic"` (default `"studio"`) and `scenic: ScenicSelection`.
+  Zero migration — same "one column, no churn" pattern as the rest of
+  `AiGenSettings`. Missing keys on old stored JSON parse to the Studio default,
+  fully backward compatible.
+- `GenerationRecord` gains nullable `sceneId` / `sceneIntensity` / `sceneDensity`
+  columns (migration `20260705213521_add_scene_tracking_to_generation_record`)
+  — additive, no FK, same durable-analytics-snapshot rationale as the rest of
+  that table. Null for Studio-path generations. This is the queryable store a
+  future data-driven scene recommender (see below) would read from, mirroring
+  the existing "data-driven Auto routing" note in §8.
+
+**UI** (`components/product/SceneModeSelect.tsx` + `ScenicCollectionSelect.tsx`):
+top-level Studio/Scenic Collection segmented chips (same visual language as
+`BackdropSelect`'s existing chips); Scenic Collection groups scenes into
+horizontally-scrollable **Brand Pack** rows (Festive/Nature/Boutique/Editorial/
+Corporate) so 8+ scenes stay compact; each scene is a CSS-gradient preview tile
+(no image assets, zero cost — same technique as `BackdropSelect`'s
+`StudioPreview`); the top `recommendScenes()` pick(s) get a lightweight
+"Suggested" tag. Selecting a scene reveals Intensity (always) and Density (only
+for `"varies"` scenes) as 3-segment controls. No dropdowns.
+
+**Cost philosophy — zero additional AI calls.** Scene resolution (variation
+pick, colour-harmony accent, prompt composition) is 100% deterministic, exactly
+like Smart Match backdrop scoring. Still one Gemini call per view either way.
+
+**Launch content (8 scenes, 5 Brand Packs):** Wedding, Diwali, Eid (Festive) ·
+Summer, Winter (Nature) · Boutique (Boutique) · Editorial (Editorial) ·
+Corporate (Corporate). Chosen to prove both `"varies"` and `"consistent"`
+scene categories end-to-end.
+
+**Future scene roster (documented, not yet authored).** Naming one of these
+to a future session, with the recipe in `library.ts`'s header comment, is
+enough context to author it with no other architecture changes:
+
+| Scene | Proposed Brand Pack |
+|---|---|
+| Luxury Store | boutique |
+| Resort | nature |
+| Café | boutique |
+| Street Fashion | editorial |
+| Office | corporate |
+| Runway | editorial |
+| Heritage Architecture | festive |
+| Beach | nature |
+| Temple | festive |
+| Garden | nature |
+| Studio Interior | boutique |
+
+**Scene Preview.** Static/CSS-rendered for launch (no Gemini calls, no cost) —
+satisfies "generate once, reuse" trivially since there's nothing to generate.
+Real photographed/AI-generated scene previews are a deferred, explicitly
+out-of-runtime-path future step: a one-time batch job per scene × variation,
+stored permanently (Cloudinary), never generated at request time.
+
+**Future extensibility (recorded here as chosen alternatives, not built):**
+- **Retailer-specific scene libraries** — per-retailer custom scene sets,
+  additive to the shared `SCENES` array (a `RetailerScene` table keyed by
+  user, surfaced alongside the shared library).
+- **Saved custom scenes** — a retailer composes and names their own
+  Scene/variation combination for reuse across products.
+- **Campaign templates / marketplace-specific presets / seasonal collections**
+  — bundles of scene + intensity + density + branding presets for a
+  time-boxed campaign, orthogonal to the per-generation chooser.
+- **Provider-specific scene optimization** — if a second image-gen provider
+  is ever added to the model-gen axis (§3 currently keeps it Gemini-only), the
+  Prompt Builder can gain a provider-aware rendering branch without touching
+  `Scene` data.
+- **AI-assisted scene recommendations** — once `GenerationRecord.sceneId` has
+  volume, `recommendScenes`' deterministic table can be supplemented (never
+  replaced) with observed performance data, exactly like the Task 4 →
+  data-driven-Auto-routing path already planned for try-on (§8).
+- **Custom retailer identity packs** — a Brand Pack scoped to one retailer's
+  own house style (their store's real interiors/props), sitting alongside the
+  shared Festive/Nature/Boutique/Editorial/Corporate packs.
+- **User-selectable camera style** — `Scene.cameraStyles` already lists every
+  allowed option per scene (index 0 = default); a picker in
+  `ScenicCollectionSelect.tsx` is a small additive UI change whenever it's
+  wanted, no data model change.
 
 ### Future extensibility (recorded here as chosen alternatives)
 - **Reference asset hosting → Cloudinary.** v1 is bundled-static for speed/cost/

@@ -10,6 +10,7 @@ import {
 import { isGenerationObjective } from "@/lib/model-gen/objectives";
 import { isModelType } from "@/lib/model-gen/reference-models";
 import { isGenerationQuality } from "@/lib/model-gen/quality";
+import { isBackdropSection } from "@/lib/model-gen/scenes/selection";
 
 export async function POST(
   req: NextRequest,
@@ -35,6 +36,10 @@ export async function POST(
     const modelType = (body as { modelType?: unknown }).modelType;
     const qualityRaw = (body as { quality?: unknown }).quality;
     const quality = isGenerationQuality(qualityRaw) ? qualityRaw : undefined;
+    // Studio vs Scenic for THIS run only — a per-generation choice like
+    // `quality`, never a sticky default. Absent/invalid → Studio.
+    const backdropSectionRaw = (body as { backdropSection?: unknown }).backdropSection;
+    const backdropSection = isBackdropSection(backdropSectionRaw) ? backdropSectionRaw : undefined;
 
     if (isAiGenObjectivesEnabled() && isGenerationObjective(objective)) {
       await generateModelImages({
@@ -43,6 +48,7 @@ export async function POST(
         objective,
         modelType: isModelType(modelType) ? modelType : undefined,
         quality,
+        backdropSection,
       });
     } else {
       await generateModelImage(id, quality);
