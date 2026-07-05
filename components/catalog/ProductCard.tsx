@@ -141,8 +141,15 @@ export function ProductCard({ product }: ProductCardProps) {
           <div className="absolute inset-0 overflow-hidden rounded-t-2xl bg-gray-50">
             <ImageCarousel
               images={[
-                // Legacy top-level field always represents an on-model shot.
-                product.modelImageUrl ? thumbnailUrl(framedImageUrl(product.modelImageUrl, "on-model")) : null,
+                // Legacy top-level field is kept in sync with the "front" ProductImage
+                // for backward compatibility (see persist.ts) — for any product
+                // generated through the current card-stack pipeline, generatedImages
+                // already has that same shot as "front". Only synthesize the on-model
+                // fallback when there's no such entry, otherwise it duplicates the
+                // front shot as the first two thumbnails.
+                product.modelImageUrl && !product.generatedImages?.some((gi) => gi.view === "front")
+                  ? thumbnailUrl(framedImageUrl(product.modelImageUrl, "on-model"))
+                  : null,
                 ...(product.generatedImages?.map((gi) => thumbnailUrl(framedImageUrl(gi.url, gi.view))) ?? []),
                 // Retailer's raw upload — no generated view, passes through as-is.
                 product.imageUrl ? thumbnailUrl(product.imageUrl) : null,
