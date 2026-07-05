@@ -11,7 +11,11 @@
  *   npx tsx scripts/generate-reference-models.ts --force         # regenerate all
  *   npx tsx scripts/generate-reference-models.ts --only=woman-basic
  *
- * Output files follow lib/model-gen/reference-models.ts: {type}-{variant}.{ext}.
+ * Output files follow the legacy {type}-{variant}.{ext} scheme — a single shot
+ * used for both front and back lookups. Curated front/back pairs
+ * ({type}-{variant}-front/back.{ext}, see public/reference-models/README.md)
+ * take priority over these when both exist; this script doesn't produce that
+ * pair format itself, so replace its output with a curated pair when you have one.
  * The models wear plain, form-fitting light-grey clothing so they work as a
  * clean "person" for Vertex try-on AND a neutral reference for Gemini.
  */

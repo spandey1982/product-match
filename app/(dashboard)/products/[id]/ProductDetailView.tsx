@@ -41,7 +41,7 @@ import {
 import { ProductImageViewer } from "@/components/product/ProductImageViewer";
 import { ProductThumbnailRail } from "@/components/product/ProductThumbnailRail";
 import { displayUrl, masterUrl, thumbnailUrl } from "@/lib/images/variants";
-import { normalizeCatalogueUrl } from "@/lib/image-normalize";
+import { framedImageUrl, FULL_MODEL_VIEWS } from "@/lib/image-normalize";
 import { formatLabel } from "@/lib/product-detail/format";
 import { colorSwatchHex, colorDescriptor, pairingSuggestions, pairingNote } from "@/lib/product-detail/color-presentation";
 import { materialDescriptor, occasionDescriptor, categoryDescriptor, styleValue } from "@/lib/product-detail/descriptors";
@@ -200,14 +200,10 @@ export function ProductDetailView({
   // retailer's raw upload, not one of the generated/cropped views.
   const viewAt = (i: number): string | undefined => allImages[i]?.view;
 
-  const FULL_VIEWS = new Set(["on-model", "front", "back"]);
   const BASE_ZOOM = 3;
   const CROP_ZOOM = BASE_ZOOM - 0.5;
 
-  const framedImages = productImages.map((url, i) => {
-    const view = viewAt(i);
-    return view && FULL_VIEWS.has(view) ? normalizeCatalogueUrl(url) : url;
-  });
+  const framedImages = productImages.map((url, i) => framedImageUrl(url, viewAt(i)));
   const displayImages = framedImages.map(displayUrl);
   const masterImages = framedImages.map(masterUrl);
   const thumbImages = framedImages.map(thumbnailUrl);
@@ -218,7 +214,7 @@ export function ProductDetailView({
   });
   const maxZooms = productImages.map((_, i) => {
     const view = viewAt(i);
-    const isFullView = view === undefined || FULL_VIEWS.has(view);
+    const isFullView = view === undefined || FULL_MODEL_VIEWS.has(view);
     return isFullView ? BASE_ZOOM : CROP_ZOOM;
   });
   // Clamp instead of an effect: safe even if the images array shrinks/grows
