@@ -358,6 +358,56 @@ fabric/length facts — effectively the roadmap's "AI Design Highlights",
 reading the same row generation uses. Not implemented; needs a product
 decision on placement/visibility (retailer-only vs end-customer-visible).
 
+## 2026-07-14 — Round-2 retailer testing: two defects found and fixed
+
+Retailer generated two real catalogue sets with the flag on. Both surfaced
+real defects:
+
+### Defect 1 — sleeve length inconsistent between front and back views
+
+A women's kurti (sleeves hard to see in the source photo) generated with
+DIFFERENT sleeve lengths on the front and back shots. Root cause is
+architectural, confirmed in `strategies/catalogue.ts`: front and back are two
+fully independent generations — the back never sees the front image (only a
+sampled backdrop colour) — so cross-view consistency can only come from
+SHARED PROMPT TEXT. The round-2 length/sleeves sentence was rendered only
+into the FRONT notes; the back view got back-notes without structure (or,
+with no back image, no notes at all). Each view answered "how long are the
+sleeves?" independently.
+
+**Fixes (all deterministic, zero new AI calls):**
+- `structureClause` extracted in `render.ts` and now rendered VERBATIM into
+  both the front fragment and every back fragment.
+- New `renderBackFallbackNotes`: products with no back image now still get
+  GI back-notes (plain-or-continues guard + the same structure sentence)
+  instead of nothing.
+- The overview prompt now demands a best-estimate for occluded/hard-to-see
+  sleeves and hems — an empty field lets every view invent its own answer,
+  so a consistent estimate beats honesty-by-omission.
+- Cache-hit reads now RE-RENDER notes from the stored structure (pure
+  function) instead of serving stored text — renderer fixes like this one
+  reach already-analyzed products without a paid re-analysis. Stored columns
+  remain the audit trail of the last write.
+
+### Defect 2 — Scenic "editorial" front generation rendered a back view
+
+A Scenic Collection (editorial intensity) run produced BOTH base shots as
+back profiles — the front generation showed the model from behind, so there
+was no front image at all. Code audit confirmed reference routing is correct
+(front reference + front modifier went to the front call); this is a
+prompt-adherence failure: the view modifier ("Full-length front view…") is
+one early sentence in a now-long prompt (GI notes + scene fragment +
+negative constraints), and the Scenic editorial language ("magazine-quality,
+editorial composition") biases exactly toward walking-away/over-the-shoulder
+poses. The orientation instruction lost to recency.
+
+**Fix:** `orientationClause` in `buildViewPrompt` — every front/back view
+prompt now ENDS with a mandatory camera-orientation sentence ("the model
+faces the camera directly… never shown from behind" / "seen from directly
+behind"). Applies to Studio and Scenic, both flag states. Deterministic.
+n=1 incident; whether recency-hardening fully suppresses the editorial pose
+bias needs observation over the next few Scenic runs.
+
 ## Limitations (current prototype)
 
 - **Prompt-level lever only.** GI tells the generator what the work IS; the

@@ -16,6 +16,21 @@ import type { BackIntelligence, GarmentIntelligence, SurfaceTechnique } from "./
 /** Hard cap on the rendered fragment (chars). */
 const MAX_LENGTH = 900;
 
+/**
+ * The length/sleeves requirement sentence. Shared VERBATIM by the front and
+ * back prompt fragments — front and back are two independent generations that
+ * never see each other, so identical prompt text is the only mechanism that
+ * keeps hem and sleeve length consistent across the set.
+ */
+function structureClause(gi: GarmentIntelligence): string {
+  const bits: string[] = [];
+  if (gi.construction.length) bits.push(`the garment ends exactly ${gi.construction.length}`);
+  if (gi.construction.sleeves) bits.push(`${gi.construction.sleeves} exactly as shown`);
+  return bits.length > 0
+    ? `Length and sleeves: ${bits.join(", ")} — reproduce both precisely, never longer or shorter`
+    : "";
+}
+
 function renderTechnique(t: SurfaceTechnique): string {
   const bits: string[] = [];
   const density = t.density && t.density !== "medium" ? `${t.density} ` : "";
@@ -69,12 +84,8 @@ export function renderPromptNotes(gi: GarmentIntelligence): string {
   // 4. Garment structure — length + sleeves are generation-critical (there is
   //    no universal kurta length; generations routinely invent one) so they
   //    render as exact requirements, never trimmed.
-  const structureBits: string[] = [];
-  if (gi.construction.length) structureBits.push(`the garment ends exactly ${gi.construction.length}`);
-  if (gi.construction.sleeves) structureBits.push(`${gi.construction.sleeves} exactly as shown`);
-  if (structureBits.length > 0) {
-    mandatory.push(`Length and sleeves: ${structureBits.join(", ")} — reproduce both precisely, never longer or shorter`);
-  }
+  const structure = structureClause(gi);
+  if (structure) mandatory.push(structure);
 
   // 5. Pattern structure.
   const patternBits: string[] = [];
@@ -115,11 +126,13 @@ export function renderPromptNotes(gi: GarmentIntelligence): string {
 }
 
 /**
- * Render the BACK-view fragment from a real back-image analysis. Always ends
- * with the no-front-copy guard — the analyzed truth plus the instruction is
- * stronger than either alone.
+ * Render the BACK-view fragment from a real back-image analysis. Includes the
+ * same structure (length/sleeves) sentence as the front fragment — the two
+ * views are independent generations, so shared text is what keeps them
+ * consistent — and always ends with the no-front-copy guard: the analyzed
+ * truth plus the instruction is stronger than either alone.
  */
-export function renderBackPromptNotes(back: BackIntelligence): string {
+export function renderBackPromptNotes(back: BackIntelligence, gi: GarmentIntelligence): string {
   const bits: string[] = [];
   if (back.plain) {
     bits.push("The back of the garment is plain, unadorned fabric");
@@ -128,6 +141,27 @@ export function renderBackPromptNotes(back: BackIntelligence): string {
     if (back.techniques.length > 0) bits.push(`back surface work: ${back.techniques.slice(0, 3).join(", ")}`);
   }
   if (back.neckline) bits.push(`back neckline: ${back.neckline}`);
+  const structure = structureClause(gi);
+  if (structure) bits.push(structure);
+  bits.push(
+    "Never duplicate the front neckline, yoke, placket or chest ornamentation on the back"
+  );
+  return bits.join(". ") + ".";
+}
+
+/**
+ * Back-view fragment when NO back image exists: the plain-or-continues guard
+ * plus the SAME structure sentence the front fragment carries. Without this,
+ * a back view generated from an unphotographed back had no length/sleeve
+ * information at all while the front did — the exact recipe for a set whose
+ * two views disagree about sleeve length.
+ */
+export function renderBackFallbackNotes(gi: GarmentIntelligence): string {
+  const bits: string[] = [
+    "The back of this garment is not photographed: render it plain or simply continuing the garment's overall body pattern",
+  ];
+  const structure = structureClause(gi);
+  if (structure) bits.push(structure);
   bits.push(
     "Never duplicate the front neckline, yoke, placket or chest ornamentation on the back"
   );

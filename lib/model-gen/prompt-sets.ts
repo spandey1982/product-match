@@ -114,6 +114,26 @@ function backGuardClause(viewId: string, detailNotes?: string | null): string {
 }
 
 /**
+ * Hard camera-orientation contract, appended as the LAST sentence of front
+ * and back view prompts. The view modifier ("Full-length front view…") is one
+ * early sentence in what is now a long prompt (detail notes + backdrop/scene
+ * fragments); observed in retailer testing (2026-07-14): a Scenic
+ * "editorial" front generation rendered the model from BEHIND — editorial
+ * fashion language biases toward walking-away poses, and the buried modifier
+ * lost. Ending the prompt with an unambiguous orientation line leverages
+ * recency to make the pose non-negotiable. Deterministic, zero AI calls.
+ */
+function orientationClause(viewId: string): string {
+  if (viewId === "front") {
+    return "Camera orientation (mandatory): the model faces the camera directly, front of the garment fully visible — never shown from behind, over-the-shoulder, or walking away.";
+  }
+  if (viewId === "back") {
+    return "Camera orientation (mandatory): the model is seen from directly behind, back of the garment fully visible.";
+  }
+  return "";
+}
+
+/**
  * Compose the full prompt for one view. When a reference model image is
  * supplied it is sent as the first image and the prompt instructs the model to
  * dress that exact person (improving draping consistency); otherwise a fresh
@@ -133,6 +153,7 @@ export function buildViewPrompt(input: ViewPromptInput): string {
   const detail = detailClause(detailNotes);
   const backGuard = backGuardClause(view.id, detailNotes);
   const anchor = anchorClause(studioAnchor);
+  const orientation = orientationClause(view.id);
 
   if (hasReference) {
     return [
@@ -144,6 +165,7 @@ export function buildViewPrompt(input: ViewPromptInput): string {
       backGuard,
       backdrop,
       anchor,
+      orientation,
     ].filter(Boolean).join(" ");
   }
 
@@ -154,5 +176,6 @@ export function buildViewPrompt(input: ViewPromptInput): string {
     backGuard,
     backdrop,
     anchor,
+    orientation,
   ].filter(Boolean).join(" ");
 }

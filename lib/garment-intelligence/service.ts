@@ -18,7 +18,7 @@ import { db } from "@/lib/db";
 import { fetchProductImageBuffer } from "@/lib/generate-model-image";
 import { parsePartImages, findBackPart } from "@/lib/product/part-slots";
 import { analyzeGarment, analyzeGarmentBack, GARMENT_INTELLIGENCE_MODEL } from "./analyze";
-import { renderPromptNotes, renderBackPromptNotes } from "./render";
+import { renderPromptNotes, renderBackPromptNotes, renderBackFallbackNotes } from "./render";
 import type { GarmentIntelligence, GarmentIntelligenceRecord } from "./types";
 
 export function isGarmentIntelligenceEnabled(): boolean {
@@ -65,6 +65,10 @@ export async function ensureGarmentIntelligence(
 
   // 1. Fresh cache hit — the reuse path every repeat consumer lands on.
   //    Valid only while BOTH source images are unchanged (null-safe compare).
+  //    Notes are RE-RENDERED from the stored structure (pure, zero AI calls)
+  //    rather than served from the stored text, so renderer improvements
+  //    reach already-analyzed products without a re-analysis; the stored
+  //    columns remain the audit trail of what the last write rendered.
   const cached = await db.garmentIntelligence.findUnique({ where: { productId } });
   if (
     cached &&
@@ -75,8 +79,10 @@ export async function ensureGarmentIntelligence(
     if (intelligence) {
       return {
         intelligence,
-        promptNotes: cached.promptNotes,
-        backPromptNotes: cached.backPromptNotes ?? null,
+        promptNotes: renderPromptNotes(intelligence),
+        backPromptNotes: intelligence.back
+          ? renderBackPromptNotes(intelligence.back, intelligence)
+          : renderBackFallbackNotes(intelligence),
         model: cached.model,
         analyzedImageUrl: cached.analyzedImageUrl,
       };
@@ -112,8 +118,11 @@ export async function ensureGarmentIntelligence(
   });
   if (!intelligence) return null;
 
-  // Back analysis (one extra call, only when a back image exists).
-  let backPromptNotes: string | null = null;
+  // Back analysis (one extra call, only when a back image exists). When no
+  // back image exists (or the analysis fails), the back view still gets
+  // fallback notes — plain-or-continues guard + the SAME length/sleeves
+  // sentence as the front — so the two independently generated views can
+  // never disagree about garment structure.
   if (backImageUrl) {
     const backSource = await fetchProductImageBuffer(backImageUrl);
     if (backSource) {
@@ -122,12 +131,12 @@ export async function ensureGarmentIntelligence(
         mime: backSource.mime,
         ...analyzeCtx,
       });
-      if (back) {
-        intelligence.back = back;
-        backPromptNotes = renderBackPromptNotes(back);
-      }
+      if (back) intelligence.back = back;
     }
   }
+  const backPromptNotes = intelligence.back
+    ? renderBackPromptNotes(intelligence.back, intelligence)
+    : renderBackFallbackNotes(intelligence);
 
   const promptNotes = renderPromptNotes(intelligence);
   const data = JSON.stringify(intelligence);
