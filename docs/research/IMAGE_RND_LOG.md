@@ -430,3 +430,20 @@ one), and visually inspected the stored result — clean, no artifacts.
 Gemini's response before it's stored. The existing delivery-variant system
 (`f_auto,q_auto` in `lib/images/variants.ts`) is unchanged and still does its
 job; it now just starts from a smaller, more efficient base file.
+
+---
+
+## 2026-07-13 — Garment Intelligence pipeline stage (see dedicated doc)
+
+The craftsmanship-fidelity thread running through this log (flat "printed"
+embroidery in generations; the manual detail-notes injection experiment that
+significantly improved it) has graduated into its own R&D track: a dedicated
+**Garment Intelligence** stage between metadata extraction and the prompt
+builder — hierarchical (whole-image + region close-ups) Gemini Vision
+analysis producing structured, cached, reusable garment understanding,
+rendered deterministically into the existing `detailNotes` prompt channel.
+
+Full architecture, decisions, Claude Vision discussion and roadmap:
+[`GARMENT_INTELLIGENCE_RND.md`](GARMENT_INTELLIGENCE_RND.md). Branch:
+`rnd/garment-intelligence`, flag-gated by `ENABLE_GARMENT_INTELLIGENCE`
+(default off — no behavior change until enabled).

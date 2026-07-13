@@ -34,6 +34,7 @@ import { runQuickListingStrategy } from "./strategies/quick-listing";
 import { runCatalogueStrategy, type StrategyProduct } from "./strategies/catalogue";
 import type { GenerationQuality } from "./quality";
 import { ensureDetailNotes, ensureBackDetailNotes } from "@/lib/metadata/detail-notes";
+import { ensureGarmentIntelligence, isGarmentIntelligenceEnabled } from "@/lib/garment-intelligence/service";
 import { parsePartImages } from "@/lib/product/part-slots";
 
 /**
@@ -117,8 +118,19 @@ export async function generateModelImages(
   // prompt so the model is told which fine specifics to preserve. Back notes are
   // only extracted when a back image exists (catalogue back view uses them;
   // quick-listing is front-only and never sees them).
+  //
+  // Garment Intelligence (R&D, flag-gated): the structured hierarchical
+  // analysis renders a far richer fragment than detail-notes v1 through the
+  // SAME detailNotes channel — buildViewPrompt and the strategies are
+  // untouched. Falls back to v1 on any failure, so the flag can never make
+  // generation worse than today.
   const ctx = { storeId: input.userId, userId: input.userId };
-  const detailNotes = await ensureDetailNotes(product.id, product.imageUrl, product.category, ctx);
+  const garmentIntel = isGarmentIntelligenceEnabled()
+    ? await ensureGarmentIntelligence(product.id, ctx)
+    : null;
+  const detailNotes =
+    garmentIntel?.promptNotes ||
+    (await ensureDetailNotes(product.id, product.imageUrl, product.category, ctx));
   const backDetailNotes = backImageUrl
     ? await ensureBackDetailNotes(product.id, backImageUrl, product.category, ctx)
     : null;
