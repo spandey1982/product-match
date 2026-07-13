@@ -98,6 +98,22 @@ function detailClause(detailNotes?: string | null): string {
 }
 
 /**
+ * Deterministic guard for BACK views generated without any real back
+ * information (no back image, no back notes). Counters the generator's
+ * documented habit of duplicating the front design — neckline/yoke/placket
+ * embroidery — onto an invented back: no kurta/kurti/similar garment carries
+ * its front chest design on the back. Worded garment-agnostically so it
+ * holds for every category with this failure mode.
+ */
+const BACK_FALLBACK_CLAUSE =
+  "The garment's back is plain or simply continues the garment's overall body pattern — never duplicate the front neckline, yoke, placket or chest ornamentation on the back.";
+
+/** The back guard, only for back views that have no real back notes. */
+function backGuardClause(viewId: string, detailNotes?: string | null): string {
+  return viewId === "back" && !detailNotes?.trim() ? BACK_FALLBACK_CLAUSE : "";
+}
+
+/**
  * Compose the full prompt for one view. When a reference model image is
  * supplied it is sent as the first image and the prompt instructs the model to
  * dress that exact person (improving draping consistency); otherwise a fresh
@@ -115,6 +131,7 @@ function anchorClause(studioAnchor?: string | null): string {
 export function buildViewPrompt(input: ViewPromptInput): string {
   const { category, color, gender, view, hasReference, detailNotes, backdrop, studioAnchor } = input;
   const detail = detailClause(detailNotes);
+  const backGuard = backGuardClause(view.id, detailNotes);
   const anchor = anchorClause(studioAnchor);
 
   if (hasReference) {
@@ -124,6 +141,7 @@ export function buildViewPrompt(input: ViewPromptInput): string {
       "Preserve the model's face, body and skin tone from Image 1, and the garment's exact colour, print and texture from Image 2.",
       view.modifier,
       detail,
+      backGuard,
       backdrop,
       anchor,
     ].filter(Boolean).join(" ");
@@ -133,6 +151,7 @@ export function buildViewPrompt(input: ViewPromptInput): string {
     `Full-body fashion photograph of ${subjectFor(gender)} wearing this ${color} ${category}.`,
     view.modifier,
     detail,
+    backGuard,
     backdrop,
     anchor,
   ].filter(Boolean).join(" ");

@@ -264,6 +264,100 @@ a second provider.
 
 ---
 
+## 2026-07-14 — Round 2: back analysis, part-image evidence, precision fixes, v1 retirement
+
+Retailer validated the extraction on real products ("intense and detailed
+report") and approved productionizing with additions. Decisions and changes:
+
+### Call-consolidation analysis (retailer questions, answered)
+
+- **Merge metadata + detail-notes + GI into one call? NO.** Metadata runs at
+  upload to prefill the form and must stay grounded by the retailer's
+  CONFIRMED category (the anti-reclassification convention); merging would
+  force GI to trust an unconfirmed guess, move GI's cost from
+  only-products-that-generate to every upload, and mix an easy flash-lite
+  task with the hard relief-judgment task. The only saving would be one
+  image's input tokens (fractions of a cent).
+- **Why two GI calls? The second call IS the feature.** Pass 1 sees a ~1024px
+  whole image where raised-vs-printed is not resolvable; pass 2 sends
+  close-ups with real pixel density. Crop locations are an OUTPUT of pass 1,
+  so one call can't do both. Plain garments stop at 1 call; pass 2 is always
+  one batched request.
+- **Is the full structure needed if promptNotes uses a subset? YES.** The
+  renderer is the filter (surface work + close-ups + highlights lead; the
+  rest is capped); the untrimmed structure is the reuse asset for
+  descriptions/search/highlights later, at ~$0.001 marginal output-token
+  cost in a call already looking at the image.
+
+### Extra-upload (part image) slots — KEPT, now GI's best evidence
+
+Question was whether GI's ROI crops make the retailer detail-upload slots
+redundant. **No — the dependency runs the other way.** A crop of the main
+photo can never exceed the main photo's pixel density; a real macro close-up
+carries native detail the main image physically lacks (the original manual
+benchmark's winning description came from exactly such a zoomed shot). New
+behavior: retailer part close-ups (minus the back part) fill pass-2 evidence
+slots FIRST; model-proposed ROI crops only fill what remains (cap 4 total).
+**Calls do not scale with image count** — evidence ships in the single
+batched pass-2 request; each extra image costs only input tokens.
+
+### Back-image analysis + the "back copies the front design" fix
+
+Two layers, matching the two failure cases:
+1. **Back image exists** → new `analyzeGarmentBack` (one extra call, cached
+   like everything else): plain-or-not, actual back design, back techniques,
+   back neckline → rendered into `backPromptNotes` → the catalogue back-view
+   prompt. Retires detail-notes v1's back path on the GI-enabled flow.
+2. **No back information at all** → deterministic `BACK_FALLBACK_CLAUSE` in
+   `buildViewPrompt` (zero AI calls, applies in BOTH flag states — it fixes
+   a live production bug): the back is plain or continues the overall body
+   pattern, and the front neckline/yoke/placket/chest ornamentation is never
+   duplicated onto the back.
+
+### Length + sleeve precision
+
+`construction.length` (hem level in body landmarks: hip/mid-thigh/knee/
+mid-shin/ankle) and precise `construction.sleeves` (sleeveless → full) are
+now explicitly demanded by the overview prompt and rendered as a MANDATORY
+prompt sentence ("reproduce both precisely, never longer or shorter") that
+survives budget trimming — previously construction was lowest priority and
+often trimmed, which is exactly where the wrong-length generations came
+from. Garment-agnostic: applies to any category with a hem/sleeves.
+
+### detail-notes v1 retirement status
+
+With `ENABLE_GARMENT_INTELLIGENCE=true`, v1 (`lib/metadata/detail-notes.ts`)
+is **not called at all** — not even as a failure fallback (GI failure →
+null notes → generation proceeds unenriched; back views still get the guard
+clause). v1 remains solely for the flag-OFF path; delete the module outright
+when the flag becomes default-on.
+
+### Data shape v2
+
+`GarmentIntelligence.version` bumped to 2 (`construction.length`, `back`,
+part-sourced regions). Version-strict parsing: v1 cached rows re-analyze on
+next use rather than serving stale structure. Cache validity now also keyed
+on the back image URL.
+
+### Cost shape after round 2 (per product, one-time, cached)
+
+| Garment | Calls | Notes |
+|---|---|---|
+| Plain, no back image | 1 | overview only |
+| Embellished, no back image | 2 | overview + batched close-ups |
+| Embellished + back image | 3 | + one back call |
+
+vs. v1's 1–2 flash-lite calls. Still well under one image generation's cost.
+
+### Product detail page — PROPOSAL ONLY (awaiting retailer decision)
+
+The cached structure could power a retailer-facing "Craftsmanship" section
+on `ProductDetailView` at zero AI cost: technique chips (type + relief +
+density), the highlights list ("what makes this piece special"), and
+fabric/length facts — effectively the roadmap's "AI Design Highlights",
+reading the same row generation uses. Not implemented; needs a product
+decision on placement/visibility (retailer-only vs end-customer-visible).
+
 ## Limitations (current prototype)
 
 - **Prompt-level lever only.** GI tells the generator what the work IS; the

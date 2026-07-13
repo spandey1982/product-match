@@ -35,7 +35,7 @@ import { runCatalogueStrategy, type StrategyProduct } from "./strategies/catalog
 import type { GenerationQuality } from "./quality";
 import { ensureDetailNotes, ensureBackDetailNotes } from "@/lib/metadata/detail-notes";
 import { ensureGarmentIntelligence, isGarmentIntelligenceEnabled } from "@/lib/garment-intelligence/service";
-import { parsePartImages } from "@/lib/product/part-slots";
+import { parsePartImages, findBackPart } from "@/lib/product/part-slots";
 
 /**
  * Master switch for the objective-based generation UI + routing. When OFF
@@ -106,34 +106,35 @@ export async function generateModelImages(
   // Back image for the catalogue back view: any uploaded detail card whose slot
   // is a "back" of the product (blouse-back, kurta-back, coat-back, choli-back,
   // trouser-back, …) feeds back-profile generation. Falls back to the legacy
-  // Product.backImageUrl, else null (model invents the back, as before).
+  // Product.backImageUrl, else null (model invents the back, guarded by the
+  // deterministic back clause in buildViewPrompt).
   const partImages = parsePartImages(product.partImages);
-  const backPart = partImages.find(
-    (p) => /back/i.test(p.slot) || /back/i.test(p.label)
-  );
-  const backImageUrl = backPart?.url ?? product.backImageUrl ?? null;
+  const backImageUrl = findBackPart(partImages)?.url ?? product.backImageUrl ?? null;
 
-  // Prompt enrichment: concise, category-grounded detail hints, extracted once
-  // and cached. Non-fatal — null when unavailable. Threaded per-view into the
-  // prompt so the model is told which fine specifics to preserve. Back notes are
-  // only extracted when a back image exists (catalogue back view uses them;
-  // quick-listing is front-only and never sees them).
+  // Prompt enrichment, extracted once and cached, non-fatal.
   //
-  // Garment Intelligence (R&D, flag-gated): the structured hierarchical
-  // analysis renders a far richer fragment than detail-notes v1 through the
-  // SAME detailNotes channel — buildViewPrompt and the strategies are
-  // untouched. Falls back to v1 on any failure, so the flag can never make
-  // generation worse than today.
+  // Garment Intelligence ON: the structured hierarchical analysis is the ONLY
+  // extractor — front notes AND back notes both come from it (part close-ups
+  // feed its evidence pass; the back image feeds its back analysis). The v1
+  // extractor (lib/metadata/detail-notes.ts) is deliberately NOT a fallback
+  // here: on GI failure notes are simply null and generation proceeds
+  // unenriched (back views still get the deterministic guard clause).
+  //
+  // Garment Intelligence OFF (default): detail-notes v1 runs exactly as it
+  // always has.
   const ctx = { storeId: input.userId, userId: input.userId };
-  const garmentIntel = isGarmentIntelligenceEnabled()
-    ? await ensureGarmentIntelligence(product.id, ctx)
-    : null;
-  const detailNotes =
-    garmentIntel?.promptNotes ||
-    (await ensureDetailNotes(product.id, product.imageUrl, product.category, ctx));
-  const backDetailNotes = backImageUrl
-    ? await ensureBackDetailNotes(product.id, backImageUrl, product.category, ctx)
-    : null;
+  let detailNotes: string | null;
+  let backDetailNotes: string | null;
+  if (isGarmentIntelligenceEnabled()) {
+    const garmentIntel = await ensureGarmentIntelligence(product.id, ctx);
+    detailNotes = garmentIntel?.promptNotes || null;
+    backDetailNotes = garmentIntel?.backPromptNotes ?? null;
+  } else {
+    detailNotes = await ensureDetailNotes(product.id, product.imageUrl, product.category, ctx);
+    backDetailNotes = backImageUrl
+      ? await ensureBackDetailNotes(product.id, backImageUrl, product.category, ctx)
+      : null;
+  }
 
   const strategyProduct: StrategyProduct = {
     id: product.id,

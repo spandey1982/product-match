@@ -42,6 +42,7 @@ export async function GET(
       version: row.version,
       analyzedImageUrl: row.analyzedImageUrl,
       promptNotes: row.promptNotes,
+      backPromptNotes: row.backPromptNotes,
       intelligence: JSON.parse(row.data),
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
@@ -86,6 +87,7 @@ export async function POST(
       model: record.model,
       analyzedImageUrl: record.analyzedImageUrl,
       promptNotes: record.promptNotes,
+      backPromptNotes: record.backPromptNotes,
       intelligence: record.intelligence,
     });
   } catch (err) {

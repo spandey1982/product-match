@@ -22,6 +22,7 @@
 import sharp from "sharp";
 import { recordAiUsage } from "@/lib/ai-usage/record";
 import type {
+  BackIntelligence,
   GarmentIntelligence,
   RegionObservation,
   RegionOfInterest,
@@ -44,6 +45,14 @@ export interface AnalyzeGarmentInput {
   mime: string;
   /** Retailer-confirmed category — asserted, never reclassified. */
   category: string;
+  /**
+   * Retailer-uploaded detail close-ups (pallu/border/yoke/…) — the BEST
+   * close-up evidence available: real macro photos with native pixel density
+   * a crop of the main image can never match. When present they take the
+   * pass-2 evidence slots first; model-proposed ROI crops only fill what
+   * remains. Adds input tokens, never extra calls.
+   */
+  partImages?: Array<{ buffer: Buffer; mime: string; label: string }>;
   /** Cost attribution. */
   productId?: string | null;
   storeId?: string | null;
@@ -150,7 +159,7 @@ function overviewPrompt(category: string): string {
   return `You are a senior fashion merchandiser analyzing a ${category} (Indian ethnic fashion) for catalogue reproduction. This product IS a ${category} — never reclassify it.
 Study the garment and return JSON with EXACTLY this shape:
 {
- "construction": {"silhouette": "", "neckline": "", "sleeves": "", "details": []},
+ "construction": {"silhouette": "", "length": "", "neckline": "", "sleeves": "", "details": []},
  "surfaceTechniques": [{"type": "", "relief": "flat|low|raised|layered", "density": "sparse|scattered|medium|dense|all-over", "handcrafted": true, "colors": [], "placement": "", "stitchCharacteristics": ""}],
  "pattern": {"motifs": [], "layout": "", "scale": ""},
  "texture": {"baseFabric": "", "finish": "", "drape": ""},
@@ -159,22 +168,43 @@ Study the garment and return JSON with EXACTLY this shape:
  "confidence": "high|medium|low"
 }
 Rules:
+- construction.length: the garment's PRECISE hem level in body-landmark terms — "hip-length", "mid-thigh", "knee-length", "mid-shin", "ankle-length"... There is no universal ${category} length; state exactly where THIS one ends. construction.sleeves: the PRECISE sleeve length — "sleeveless", "cap sleeves", "half sleeves", "elbow-length", "three-quarter sleeves", "full sleeves". Both are mandatory whenever the garment has a hem/sleeves; a wrong guess here ruins the generated image.
 - surfaceTechniques: name the SPECIFIC technique (chikankari, zari, mirror work, sequins, bead work, applique, lace, crochet, jacquard, quilting, smocking, block print, digital print...) — never just "embroidery" if a more precise name applies. Distinguish printed/flat work from dimensional stitched work; "relief" and "handcrafted" must reflect the physical surface, not the visual pattern.
 - craftsmanship.highlights: the 2-4 things a generated catalogue image must NOT lose.
 - regionsOfInterest: up to ${MAX_REGIONS} regions where surface work/craftsmanship is best visible and deserves close-up analysis (x,y,width,height normalized 0..1 on this image, garment areas only — skip faces/background). Empty array if the garment is plain.
 - Report only what is clearly visible. Unknown fields: empty string/array.`;
 }
 
-function regionPrompt(category: string, regions: RegionOfInterest[]): string {
-  const list = regions.map((r, i) => `Image ${i + 1}: "${r.label}" — ${r.reason}`).join("\n");
-  return `These are close-up crops from the SAME ${category} you would analyze as a fashion merchandiser. For each crop, describe the surface work at stitch level.
+function backPrompt(category: string): string {
+  return `This is the BACK view photo of the same ${category} (Indian ethnic fashion). Describe ONLY what is visible in THIS back photo — never assume the front design repeats on the back.
+Return JSON with EXACTLY this shape:
+{"plain": false, "design": "", "techniques": [], "neckline": ""}
+Rules:
+- "plain": true when the back is essentially unadorned fabric.
+- "design": what is actually on the back — e.g. "plain solid fabric", "continues the all-over butti pattern", "embroidered back yoke with plain body".
+- "techniques": specific surface techniques visible on the back (often fewer than the front; empty when plain).
+- "neckline": the back neckline shape/detail.`;
+}
+
+/** One close-up evidence image for pass 2 — a retailer macro photo or an ROI crop. */
+interface EvidenceImage {
+  label: string;
+  /** How the image was obtained — phrased into the prompt for context. */
+  provenance: string;
+  mime: string;
+  data: Buffer;
+}
+
+function regionPrompt(category: string, evidence: EvidenceImage[]): string {
+  const list = evidence.map((e, i) => `Image ${i + 1}: "${e.label}" — ${e.provenance}`).join("\n");
+  return `These are close-up views of the SAME ${category} you would analyze as a fashion merchandiser. For each image, describe the surface work at stitch level.
 ${list}
 Return JSON: an array with EXACTLY one object per image, in order:
 [{"label": "", "technique": "", "relief": "flat|low|raised|layered", "detail": "", "motif": ""}]
 Rules:
 - "detail": the stitch/work characteristics visible at THIS scale — thread thickness, stitch length and separation, knots, layering, shadows cast by raised threads, irregularity that signals handwork. Be concrete and physical ("individually visible 2-3mm running stitches sitting proud of the fabric"), never generic ("nice embroidery").
-- "motif": the geometric structure inside the crop (lattice, boxes, flower centers, arcs...).
-- If a crop shows printed/flat work, say so plainly — relief "flat", detail describing the printed appearance.`;
+- "motif": the geometric structure inside the image (lattice, boxes, flower centers, arcs...).
+- If an image shows printed/flat work, say so plainly — relief "flat", detail describing the printed appearance.`;
 }
 
 /** Clamp an ROI to sane normalized bounds; null when degenerate. */
@@ -249,9 +279,10 @@ export async function analyzeGarment(
   const craftsmanship = overview.craftsmanship ?? {};
 
   const intelligence: GarmentIntelligence = {
-    version: 1,
+    version: 2,
     construction: {
       silhouette: str(construction.silhouette),
+      length: str(construction.length),
       neckline: str(construction.neckline),
       sleeves: str(construction.sleeves),
       details: strArr(construction.details),
@@ -276,23 +307,44 @@ export async function analyzeGarment(
       highlights: strArr(craftsmanship.highlights),
     },
     regions: [],
+    back: null,
     confidence: str(overview.confidence) || "medium",
   };
 
-  // ── Pass 2: crop ROIs from the ORIGINAL buffer, one batched call ────────
-  const regions = (overview.regionsOfInterest ?? [])
-    .map(clampRegion)
-    .filter((r): r is RegionOfInterest => r !== null)
-    .slice(0, MAX_REGIONS);
+  // ── Pass 2: close-up evidence, one batched call ─────────────────────────
+  // Retailer part close-ups first (real macro photos — the best evidence);
+  // model-proposed ROI crops of the original buffer fill the remaining slots.
+  try {
+    const evidence: EvidenceImage[] = [];
 
-  if (regions.length > 0) {
-    try {
+    for (const part of (input.partImages ?? []).slice(0, MAX_REGIONS)) {
+      try {
+        const resized = await sharp(part.buffer)
+          .rotate()
+          .resize({ width: CROP_MAX_PX, height: CROP_MAX_PX, fit: "inside", withoutEnlargement: true })
+          .jpeg({ quality: 90 })
+          .toBuffer();
+        evidence.push({
+          label: part.label || "detail close-up",
+          provenance: "a real close-up photo of this area uploaded by the retailer",
+          mime: "image/jpeg",
+          data: resized,
+        });
+      } catch {
+        /* skip a bad part image; the rest still run */
+      }
+    }
+
+    const regions = (overview.regionsOfInterest ?? [])
+      .map(clampRegion)
+      .filter((r): r is RegionOfInterest => r !== null)
+      .slice(0, Math.max(0, MAX_REGIONS - evidence.length));
+
+    if (regions.length > 0) {
       const meta = await sharp(input.buffer).rotate().metadata();
       const W = meta.width ?? 0;
       const H = meta.height ?? 0;
       if (W > 0 && H > 0) {
-        const crops: Array<{ mime: string; data: Buffer }> = [];
-        const kept: RegionOfInterest[] = [];
         for (const r of regions) {
           try {
             const crop = await sharp(input.buffer)
@@ -306,44 +358,79 @@ export async function analyzeGarment(
               .resize({ width: CROP_MAX_PX, height: CROP_MAX_PX, fit: "inside", withoutEnlargement: true })
               .jpeg({ quality: 90 })
               .toBuffer();
-            crops.push({ mime: "image/jpeg", data: crop });
-            kept.push(r);
+            evidence.push({
+              label: r.label,
+              provenance: `a crop of the main photo — ${r.reason || "flagged for close-up analysis"}`,
+              mime: "image/jpeg",
+              data: crop,
+            });
           } catch {
             /* skip a bad crop; the rest still run */
           }
         }
-
-        if (crops.length > 0) {
-          const regionRes = await callGeminiVision(
-            crops,
-            regionPrompt(input.category, kept),
-            "regions",
-            input
-          );
-          const observations = parseJson<unknown[]>(regionRes.text);
-          if (Array.isArray(observations)) {
-            intelligence.regions = observations
-              .slice(0, kept.length)
-              .map((obs, i): RegionObservation | null => {
-                if (!obs || typeof obs !== "object") return null;
-                const o = obs as Record<string, unknown>;
-                return {
-                  label: str(o.label) || kept[i].label,
-                  technique: str(o.technique),
-                  relief: str(o.relief),
-                  detail: str(o.detail),
-                  motif: str(o.motif),
-                };
-              })
-              .filter((o): o is RegionObservation => o !== null);
-          }
-        }
       }
-    } catch (err) {
-      // Pass-2 failure is non-fatal: keep the pass-1 intelligence.
-      console.error("[garment-intelligence] region pass failed:", err);
     }
+
+    if (evidence.length > 0) {
+      const regionRes = await callGeminiVision(
+        evidence.map((e) => ({ mime: e.mime, data: e.data })),
+        regionPrompt(input.category, evidence),
+        "regions",
+        input
+      );
+      const observations = parseJson<unknown[]>(regionRes.text);
+      if (Array.isArray(observations)) {
+        intelligence.regions = observations
+          .slice(0, evidence.length)
+          .map((obs, i): RegionObservation | null => {
+            if (!obs || typeof obs !== "object") return null;
+            const o = obs as Record<string, unknown>;
+            return {
+              label: str(o.label) || evidence[i].label,
+              technique: str(o.technique),
+              relief: str(o.relief),
+              detail: str(o.detail),
+              motif: str(o.motif),
+            };
+          })
+          .filter((o): o is RegionObservation => o !== null);
+      }
+    }
+  } catch (err) {
+    // Pass-2 failure is non-fatal: keep the pass-1 intelligence.
+    console.error("[garment-intelligence] region pass failed:", err);
   }
 
   return intelligence;
+}
+
+/**
+ * Analyze the BACK image (one call, no region pass — backs are usually far
+ * simpler than fronts). Null on any failure; callers fall back to the
+ * deterministic back guard clause in the prompt builder.
+ */
+export async function analyzeGarmentBack(
+  input: AnalyzeGarmentInput
+): Promise<BackIntelligence | null> {
+  const backImage = await sharp(input.buffer)
+    .rotate()
+    .resize({ width: OVERVIEW_MAX_PX, height: OVERVIEW_MAX_PX, fit: "inside", withoutEnlargement: true })
+    .jpeg({ quality: 88 })
+    .toBuffer();
+
+  const res = await callGeminiVision(
+    [{ mime: "image/jpeg", data: backImage }],
+    backPrompt(input.category),
+    "back",
+    input
+  );
+  const parsed = parseJson<Record<string, unknown>>(res.text);
+  if (!parsed) return null;
+
+  return {
+    plain: parsed.plain === true,
+    design: str(parsed.design),
+    techniques: strArr(parsed.techniques),
+    neckline: str(parsed.neckline),
+  };
 }

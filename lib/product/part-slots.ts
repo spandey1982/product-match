@@ -179,6 +179,16 @@ export interface PartImage {
   url: string;
 }
 
+/**
+ * The uploaded part that shows the BACK of the product, if any (blouse-back,
+ * kurta-back, coat-back, …). Single source of truth for "which upload is the
+ * back" — used by both the generation engine (back-view source image) and
+ * garment intelligence (back analysis input).
+ */
+export function findBackPart(parts: PartImage[]): PartImage | null {
+  return parts.find((p) => /back/i.test(p.slot) || /back/i.test(p.label)) ?? null;
+}
+
 /** Parse the stored partImages JSON to a typed array (never throws). */
 export function parsePartImages(raw: string | null | undefined): PartImage[] {
   if (!raw) return [];

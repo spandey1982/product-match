@@ -30,7 +30,7 @@ interface RegionObservation {
   motif: string;
 }
 interface Intelligence {
-  construction: { silhouette: string; neckline: string; sleeves: string; details: string[] };
+  construction: { silhouette: string; length?: string; neckline: string; sleeves: string; details: string[] };
   surfaceTechniques: SurfaceTechnique[];
   pattern: { motifs: string[]; layout: string; scale: string };
   texture: { baseFabric: string; finish: string; drape: string };
@@ -41,6 +41,7 @@ interface Intelligence {
 interface AnalysisResult {
   model: string;
   promptNotes: string;
+  backPromptNotes?: string | null;
   intelligence: Intelligence;
   productId?: string;
 }
@@ -170,6 +171,15 @@ export function GarmentIntelligenceView({ products }: { products: ProductRow[] }
             <p className="text-sm text-emerald-900 whitespace-pre-wrap">{result.promptNotes || "(empty — nothing worth noting was detected)"}</p>
           </div>
 
+          {result.backPromptNotes && (
+            <div className="mt-3 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3">
+              <p className="text-[11px] font-semibold text-violet-700 uppercase tracking-wide mb-1">
+                Back-view prompt notes — from the analyzed back image
+              </p>
+              <p className="text-sm text-violet-900 whitespace-pre-wrap">{result.backPromptNotes}</p>
+            </div>
+          )}
+
           {result.intelligence.surfaceTechniques.length > 0 && (
             <Block title="Surface techniques">
               <div className="grid sm:grid-cols-2 gap-2">
@@ -213,6 +223,7 @@ export function GarmentIntelligenceView({ products }: { products: ProductRow[] }
             </Block>
             <Block title="Construction">
               <KV k="Silhouette" v={result.intelligence.construction.silhouette} />
+              <KV k="Length" v={result.intelligence.construction.length ?? ""} />
               <KV k="Neckline" v={result.intelligence.construction.neckline} />
               <KV k="Sleeves" v={result.intelligence.construction.sleeves} />
               <KV k="Details" v={result.intelligence.construction.details.join(", ")} />
