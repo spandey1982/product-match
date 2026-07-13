@@ -175,13 +175,26 @@ work first): techniques → close-up region evidence → the "dimensional
 handcrafted, not printed" contract sentence → pattern → highlights → texture
 → construction, capped ~900 chars.
 
-### R&D inspection endpoint
+### R&D inspection endpoint + UI
 
 `/api/admin/garment-intelligence/[productId]` (admin-gated, unlinked):
 - `GET` — cached row, never triggers an AI call.
 - `POST` — deliberately runs/refreshes the analysis (a paid call) and
   returns the full structure + rendered notes, so extraction quality can be
   inspected **without paying for an image generation**.
+
+**Inspection UI: `/admin/garment-intelligence`** (admin-gated, not linked in
+navigation — same convention as `/admin/benchmark`). Two ways to test:
+- **Catalogue products grid** — click any product: cached results open free
+  ("Analyzed — view (free)"); unanalyzed ones run the paid analysis once.
+  A "Re-analyze (paid)" action forces a refresh.
+- **Ad-hoc photo upload** — analyze any garment photo + category WITHOUT
+  creating a product (nothing persisted; backed by
+  `POST /api/admin/garment-intelligence`), for testing new clothing before
+  it enters the catalogue.
+The result panel shows the rendered **prompt notes** (the exact text
+generation receives) first, then surface techniques, close-up region
+observations, pattern/texture/construction/craftsmanship and confidence.
 
 ---
 
