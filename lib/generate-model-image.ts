@@ -1,7 +1,7 @@
 import { readFile } from "fs/promises";
 import { join } from "path";
 import { db } from "@/lib/db";
-import { cloudinary } from "@/lib/cloudinary";
+import { uploadWithRetry } from "@/lib/cloudinary";
 import { getImageDimensions, fmtBytes } from "@/lib/image-utils";
 import { recordAiUsage, type AiUsageContext } from "@/lib/ai-usage/record";
 import { getBrandingConfig, applyBranding } from "@/lib/model-gen/branding";
@@ -300,20 +300,14 @@ export async function runGeminiImageGen(
     };
     let uploaded: { secure_url: string } | null = null;
     let uploadError: unknown = null;
-    for (let attempt = 1; attempt <= 2 && !uploaded; attempt++) {
-      try {
-        uploaded = await cloudinary.uploader.upload(dataUri, uploadOptions);
-      } catch (err) {
-        uploadError = err;
-        console.error(
-          `[model-image] Cloudinary upload attempt ${attempt}/2 failed (Gemini generation itself SUCCEEDED):`,
-          err
-        );
-        // Brief backoff before the retry — DNS flaps fail in milliseconds,
-        // so an immediate retry would land on the same flap (2026-07-14:
-        // intermittent ENOTFOUND for api.cloudinary.com on the dev network).
-        if (attempt === 1) await new Promise((r) => setTimeout(r, 3000));
-      }
+    try {
+      uploaded = await uploadWithRetry(dataUri, uploadOptions);
+    } catch (err) {
+      uploadError = err;
+      console.error(
+        "[model-image] Cloudinary upload failed after retries (Gemini generation itself SUCCEEDED):",
+        err
+      );
     }
     if (!uploaded) {
       const e = uploadError as { error?: { message?: string; http_code?: number } ; message?: string } | null;
