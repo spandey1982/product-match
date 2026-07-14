@@ -184,6 +184,9 @@ export function ProductDetailView({
 
   const hasModelImage = onModel.length > 0 || hasFrontInCatalogue;
   const [generating, setGenerating] = useState(initialGenerating && !hasModelImage);
+  // Retailer-facing generation failure message (from the route, or the poll
+  // giving up) — replaces the old behavior of spinning silently to nothing.
+  const [genError, setGenError] = useState<string | null>(null);
 
   // Carousel order: base + part-crop images (persisted card-stack order), then
   // the retailer's raw uploaded product photo last.
@@ -288,7 +291,18 @@ export function ProductDetailView({
 
   async function handleGenerateModelImage() {
     setGenerating(true);
-    await fetch(`/api/products/${product.id}/generate-model-image`, { method: "POST" });
+    setGenError(null);
+    try {
+      const res = await fetch(`/api/products/${product.id}/generate-model-image`, { method: "POST" });
+      const data = (await res.json().catch(() => ({}))) as { failureMessage?: string };
+      if (!res.ok || data.failureMessage) {
+        setGenerating(false);
+        setGenError(data.failureMessage ?? "Image generation didn't complete. Please try again in a few minutes.");
+      }
+    } catch {
+      setGenerating(false);
+      setGenError("Couldn't reach the server. Please check your connection and try again.");
+    }
   }
 
   async function fetchRecommendations(refresh = false) {
@@ -344,6 +358,7 @@ export function ProductDetailView({
             setGenImages(data.generatedImages ?? []);
             setModelUrl(data.modelImageUrl ?? null);
             setGenerating(false);
+            setGenError(null);
             router.refresh();
             return;
           }
@@ -352,8 +367,14 @@ export function ProductDetailView({
         // transient — keep polling
       }
       if (active) {
-        if (attempts >= MAX_ATTEMPTS) setGenerating(false);
-        else timer = setTimeout(poll, 3000);
+        if (attempts >= MAX_ATTEMPTS) {
+          setGenerating(false);
+          setGenError(
+            "Image generation is taking longer than expected or didn't complete. You can retry from the ⋯ menu."
+          );
+        } else {
+          timer = setTimeout(poll, 3000);
+        }
       }
     }
 
@@ -478,6 +499,19 @@ export function ProductDetailView({
                 <div className="absolute inset-x-0 top-0 z-30 flex items-center justify-center gap-2 bg-indigo-600/90 backdrop-blur-sm text-white text-xs font-medium py-2 px-3 pointer-events-none">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   Generating model image… appears here automatically
+                </div>
+              )}
+              {!generating && genError && (
+                <div className="absolute inset-x-0 top-0 z-30 flex items-start justify-between gap-2 bg-amber-500/95 backdrop-blur-sm text-white text-xs font-medium py-2 px-3">
+                  <span>{genError}</span>
+                  <button
+                    type="button"
+                    aria-label="Dismiss"
+                    onClick={() => setGenError(null)}
+                    className="shrink-0 font-bold hover:opacity-70"
+                  >
+                    ✕
+                  </button>
                 </div>
               )}
 

@@ -11,6 +11,7 @@
  * teardown. See docs/IMAGE_AI_ROADMAP.md §3, §8.
  */
 import { db } from "@/lib/db";
+import { checkCloudinaryReachable } from "@/lib/cloudinary";
 import {
   DEFAULT_OBJECTIVE,
   type GenerationObjective,
@@ -84,6 +85,13 @@ export interface GenerateModelImagesResult {
   objective: GenerationObjective;
   modelType: ModelType;
   images: GeneratedImage[];
+  /**
+   * Why no images were generated, when that's the case.
+   * - "storage_unreachable": pre-flight found image storage down — NOTHING
+   *   was attempted or spent; retrying later is free and safe.
+   * - "generation_failed": generation ran but produced no stored images.
+   */
+  failure?: "storage_unreachable" | "generation_failed";
 }
 
 export async function generateModelImages(
@@ -101,6 +109,17 @@ export async function generateModelImages(
 
   if (!product?.imageUrl) {
     return { objective, modelType, images: [] };
+  }
+
+  // Pre-flight: generated images are only worth paying for if they can be
+  // STORED. When image storage is unreachable (2026-07-14: DNS/latency
+  // degradation to api.cloudinary.com timed out every upload after Gemini
+  // had already billed the generations), abort BEFORE any paid call — the
+  // caller surfaces "try again later" and nothing is spent. GI analysis is
+  // also skipped: its result is DB-cached, so deferring it costs nothing.
+  if (!(await checkCloudinaryReachable())) {
+    console.error("[model-gen] image storage unreachable — aborting before any paid call");
+    return { objective, modelType, images: [], failure: "storage_unreachable" };
   }
 
   // Back image for the catalogue back view: any uploaded detail card whose slot
@@ -261,7 +280,16 @@ export async function generateModelImages(
     maybeReviewGenerations(records, { productImageUrl: product.imageUrl });
   }
 
-  return { objective, modelType, images: branded };
+  // No AI-generated image survived (upload-sourced cards don't count) —
+  // e.g. every upload failed after generation. Callers tell the retailer to
+  // retry instead of silently showing nothing.
+  const generatedCount = branded.filter((img) => img.source !== "upload").length;
+  return {
+    objective,
+    modelType,
+    images: branded,
+    ...(generatedCount === 0 ? { failure: "generation_failed" as const } : {}),
+  };
 }
 
 export { DEFAULT_OBJECTIVE, DEFAULT_MODEL_TYPE };

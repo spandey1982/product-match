@@ -47,8 +47,9 @@ export async function POST(
     const backdropSectionRaw = (body as { backdropSection?: unknown }).backdropSection;
     const backdropSection = isBackdropSection(backdropSectionRaw) ? backdropSectionRaw : undefined;
 
+    let failure: "storage_unreachable" | "generation_failed" | undefined;
     if (isAiGenObjectivesEnabled()) {
-      await generateModelImages({
+      const result = await generateModelImages({
         productId: id,
         userId: session.id,
         objective: isGenerationObjective(objective) ? objective : undefined,
@@ -56,6 +57,7 @@ export async function POST(
         quality,
         backdropSection,
       });
+      failure = result.failure;
     } else {
       await generateModelImage(id, quality);
     }
@@ -76,9 +78,20 @@ export async function POST(
       select: { id: true, url: true, view: true, objective: true, isPrimary: true },
     });
 
+    // Retailer-facing failure messaging: honest about what happened AND what
+    // it cost. storage_unreachable is pre-flight (nothing attempted, nothing
+    // spent); generation_failed means the run produced no stored images.
+    const failureMessage =
+      failure === "storage_unreachable"
+        ? "Image storage is temporarily unreachable, so generation was not started — no AI usage was spent. Please try again in a few minutes."
+        : failure === "generation_failed"
+          ? "Image generation didn't complete this time. Please try again in a few minutes."
+          : undefined;
+
     return NextResponse.json({
       product: deserializeProduct(updated),
       generatedImages,
+      ...(failure ? { failure, failureMessage } : {}),
     });
   } catch (err) {
     if ((err as Error).message === "Unauthorized") {
