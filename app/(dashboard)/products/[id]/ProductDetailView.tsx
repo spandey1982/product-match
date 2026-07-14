@@ -125,6 +125,16 @@ function FieldRow({ children, last }: { children: React.ReactNode; last?: boolea
 const editInputClass =
   "w-full border-b border-gray-200 focus:outline-none focus:border-purple-400 text-sm font-medium bg-transparent py-0.5 font-body";
 
+// Progressive generation status shown in the hero banner while images are
+// being generated — advanced on a timer, last phase holds until images land.
+const GEN_PHASES = [
+  "Generating model images…",
+  "Adding fine details…",
+  "Almost done…",
+  "Final tweaks…",
+  "Polishing… hang tight",
+];
+
 export function ProductDetailView({
   product,
   generatedImages = [],
@@ -184,6 +194,24 @@ export function ProductDetailView({
 
   const hasModelImage = onModel.length > 0 || hasFrontInCatalogue;
   const [generating, setGenerating] = useState(initialGenerating && !hasModelImage);
+  // Retailer-facing generation failure message. Reserved for ABSOLUTE
+  // failures only (route reported failure, network error, or the poll truly
+  // exhausted) — normal long runs show progressive status, never a warning.
+  const [genError, setGenError] = useState<string | null>(null);
+  // Progressive status shown while generating — advances on a timer through
+  // GEN_PHASES (like model-thinking indicators), staying on the last one
+  // until images actually arrive. Purely cosmetic pacing: the real "done"
+  // signal is the poll below / the generate request resolving. Reset happens
+  // at the trigger (handleGenerateModelImage), not in the effect.
+  const [genPhase, setGenPhase] = useState(0);
+  useEffect(() => {
+    if (!generating) return;
+    const t = setInterval(
+      () => setGenPhase((p) => Math.min(p + 1, GEN_PHASES.length - 1)),
+      18000
+    );
+    return () => clearInterval(t);
+  }, [generating]);
 
   // Carousel order: base + part-crop images (persisted card-stack order), then
   // the retailer's raw uploaded product photo last.
@@ -288,7 +316,32 @@ export function ProductDetailView({
 
   async function handleGenerateModelImage() {
     setGenerating(true);
-    await fetch(`/api/products/${product.id}/generate-model-image`, { method: "POST" });
+    setGenPhase(0);
+    setGenError(null);
+    try {
+      // The route AWAITS generation server-side, so a successful response
+      // already carries the finished images — apply them immediately instead
+      // of waiting for the next poll tick.
+      const res = await fetch(`/api/products/${product.id}/generate-model-image`, { method: "POST" });
+      const data = (await res.json().catch(() => ({}))) as {
+        failureMessage?: string;
+        product?: { modelImageUrl?: string | null };
+        generatedImages?: GeneratedImage[];
+      };
+      if (!res.ok || data.failureMessage) {
+        setGenerating(false);
+        setGenError(data.failureMessage ?? "Image generation didn't complete. Please try again in a few minutes.");
+        return;
+      }
+      if (data.generatedImages) setGenImages(data.generatedImages);
+      if (data.product?.modelImageUrl !== undefined) setModelUrl(data.product.modelImageUrl ?? null);
+      setGenerating(false);
+      setGenError(null);
+      router.refresh();
+    } catch {
+      setGenerating(false);
+      setGenError("Couldn't reach the server. Please check your connection and try again.");
+    }
   }
 
   async function fetchRecommendations(refresh = false) {
@@ -325,7 +378,13 @@ export function ProductDetailView({
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
     let attempts = 0;
-    const MAX_ATTEMPTS = 30;
+    // 100 × 3s = 5 minutes. A full catalogue run (garment-intelligence
+    // analysis on first generation + two sequential base shots + reviews +
+    // branding) legitimately exceeds the old 90s window — which made the poll
+    // give up moments before success and never show the finished images.
+    // Progressive status keeps the retailer informed meanwhile; the error
+    // banner is reserved for a genuine 5-minute halt.
+    const MAX_ATTEMPTS = 100;
 
     async function poll() {
       attempts += 1;
@@ -344,6 +403,7 @@ export function ProductDetailView({
             setGenImages(data.generatedImages ?? []);
             setModelUrl(data.modelImageUrl ?? null);
             setGenerating(false);
+            setGenError(null);
             router.refresh();
             return;
           }
@@ -352,8 +412,12 @@ export function ProductDetailView({
         // transient — keep polling
       }
       if (active) {
-        if (attempts >= MAX_ATTEMPTS) setGenerating(false);
-        else timer = setTimeout(poll, 3000);
+        if (attempts >= MAX_ATTEMPTS) {
+          setGenerating(false);
+          setGenError("Image generation didn't complete. Please retry from the ⋯ menu.");
+        } else {
+          timer = setTimeout(poll, 3000);
+        }
       }
     }
 
@@ -477,7 +541,20 @@ export function ProductDetailView({
               {generating && (
                 <div className="absolute inset-x-0 top-0 z-30 flex items-center justify-center gap-2 bg-indigo-600/90 backdrop-blur-sm text-white text-xs font-medium py-2 px-3 pointer-events-none">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Generating model image… appears here automatically
+                  {GEN_PHASES[genPhase]}
+                </div>
+              )}
+              {!generating && genError && (
+                <div className="absolute inset-x-0 top-0 z-30 flex items-start justify-between gap-2 bg-amber-500/95 backdrop-blur-sm text-white text-xs font-medium py-2 px-3">
+                  <span>{genError}</span>
+                  <button
+                    type="button"
+                    aria-label="Dismiss"
+                    onClick={() => setGenError(null)}
+                    className="shrink-0 font-bold hover:opacity-70"
+                  >
+                    ✕
+                  </button>
                 </div>
               )}
 

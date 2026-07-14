@@ -84,10 +84,61 @@ model Product {
 
   generatedImages ProductImage[]
 
+  // Structured garment intelligence (R&D) — one deep vision analysis per
+  // product, reused everywhere. Nullable → existing rows unaffected.
+  garmentIntelligence GarmentIntelligence?
+
   @@index([category])
   @@index([userId])
   @@index([color])
   @@map("products")
+}
+
+// Structured Garment Intelligence (R&D — docs/research/GARMENT_INTELLIGENCE_RND.md).
+//
+// One row per product: the persisted result of the hierarchical vision
+// analysis ("what makes this garment unique?" — construction, surface
+// techniques, pattern, texture, craftsmanship). Deliberately separate from
+// metadata extraction ("what is this product?"). Extracted once, then reused
+// by every consumer (generation prompts today; descriptions/search/
+// recommendations later) — the cost-philosophy contract.
+model GarmentIntelligence {
+  id        String  @id @default(cuid())
+  productId String  @unique
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  // Full structured intelligence as a JSON string (lib/garment-intelligence/
+  // types.ts is the source of truth for its shape; parse with the service,
+  // never by hand).
+  data String
+
+  // Deterministically rendered prompt fragment (cached so generation never
+  // re-renders, and so the exact text fed to the generator is auditable).
+  promptNotes String
+
+  // Rendered BACK-view prompt fragment, when a back image was analyzed.
+  // Null → no back image existed (the back-view prompt falls back to the
+  // deterministic "plain or continues the body pattern" guard clause).
+  backPromptNotes String?
+
+  // The product image URL this analysis was computed from — when the product's
+  // image changes, the mismatch invalidates the cache and triggers re-analysis.
+  analyzedImageUrl String
+
+  // Same for the back image (null when none existed at analysis time).
+  analyzedBackImageUrl String?
+
+  // Vision model that produced the analysis (provider benchmarking later).
+  model String
+
+  // Schema version of `data` — bump when the structured shape changes so old
+  // rows can be migrated or lazily re-analyzed.
+  version Int @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("garment_intelligence")
 }
 
 model ProductImage {

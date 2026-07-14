@@ -11,6 +11,7 @@
  * teardown. See docs/IMAGE_AI_ROADMAP.md §3, §8.
  */
 import { db } from "@/lib/db";
+import { checkCloudinaryReachable } from "@/lib/cloudinary";
 import {
   DEFAULT_OBJECTIVE,
   type GenerationObjective,
@@ -34,7 +35,8 @@ import { runQuickListingStrategy } from "./strategies/quick-listing";
 import { runCatalogueStrategy, type StrategyProduct } from "./strategies/catalogue";
 import type { GenerationQuality } from "./quality";
 import { ensureDetailNotes, ensureBackDetailNotes } from "@/lib/metadata/detail-notes";
-import { parsePartImages } from "@/lib/product/part-slots";
+import { ensureGarmentIntelligence, isGarmentIntelligenceEnabled } from "@/lib/garment-intelligence/service";
+import { parsePartImages, findBackPart } from "@/lib/product/part-slots";
 
 /**
  * Master switch for the objective-based generation UI + routing. When OFF
@@ -83,6 +85,13 @@ export interface GenerateModelImagesResult {
   objective: GenerationObjective;
   modelType: ModelType;
   images: GeneratedImage[];
+  /**
+   * Why no images were generated, when that's the case.
+   * - "storage_unreachable": pre-flight found image storage down — NOTHING
+   *   was attempted or spent; retrying later is free and safe.
+   * - "generation_failed": generation ran but produced no stored images.
+   */
+  failure?: "storage_unreachable" | "generation_failed";
 }
 
 export async function generateModelImages(
@@ -102,26 +111,49 @@ export async function generateModelImages(
     return { objective, modelType, images: [] };
   }
 
+  // Pre-flight: generated images are only worth paying for if they can be
+  // STORED. When image storage is unreachable (2026-07-14: DNS/latency
+  // degradation to api.cloudinary.com timed out every upload after Gemini
+  // had already billed the generations), abort BEFORE any paid call — the
+  // caller surfaces "try again later" and nothing is spent. GI analysis is
+  // also skipped: its result is DB-cached, so deferring it costs nothing.
+  if (!(await checkCloudinaryReachable())) {
+    console.error("[model-gen] image storage unreachable — aborting before any paid call");
+    return { objective, modelType, images: [], failure: "storage_unreachable" };
+  }
+
   // Back image for the catalogue back view: any uploaded detail card whose slot
   // is a "back" of the product (blouse-back, kurta-back, coat-back, choli-back,
   // trouser-back, …) feeds back-profile generation. Falls back to the legacy
-  // Product.backImageUrl, else null (model invents the back, as before).
+  // Product.backImageUrl, else null (model invents the back, guarded by the
+  // deterministic back clause in buildViewPrompt).
   const partImages = parsePartImages(product.partImages);
-  const backPart = partImages.find(
-    (p) => /back/i.test(p.slot) || /back/i.test(p.label)
-  );
-  const backImageUrl = backPart?.url ?? product.backImageUrl ?? null;
+  const backImageUrl = findBackPart(partImages)?.url ?? product.backImageUrl ?? null;
 
-  // Prompt enrichment: concise, category-grounded detail hints, extracted once
-  // and cached. Non-fatal — null when unavailable. Threaded per-view into the
-  // prompt so the model is told which fine specifics to preserve. Back notes are
-  // only extracted when a back image exists (catalogue back view uses them;
-  // quick-listing is front-only and never sees them).
+  // Prompt enrichment, extracted once and cached, non-fatal.
+  //
+  // Garment Intelligence ON: the structured hierarchical analysis is the ONLY
+  // extractor — front notes AND back notes both come from it (part close-ups
+  // feed its evidence pass; the back image feeds its back analysis). The v1
+  // extractor (lib/metadata/detail-notes.ts) is deliberately NOT a fallback
+  // here: on GI failure notes are simply null and generation proceeds
+  // unenriched (back views still get the deterministic guard clause).
+  //
+  // Garment Intelligence OFF (default): detail-notes v1 runs exactly as it
+  // always has.
   const ctx = { storeId: input.userId, userId: input.userId };
-  const detailNotes = await ensureDetailNotes(product.id, product.imageUrl, product.category, ctx);
-  const backDetailNotes = backImageUrl
-    ? await ensureBackDetailNotes(product.id, backImageUrl, product.category, ctx)
-    : null;
+  let detailNotes: string | null;
+  let backDetailNotes: string | null;
+  if (isGarmentIntelligenceEnabled()) {
+    const garmentIntel = await ensureGarmentIntelligence(product.id, ctx);
+    detailNotes = garmentIntel?.promptNotes || null;
+    backDetailNotes = garmentIntel?.backPromptNotes ?? null;
+  } else {
+    detailNotes = await ensureDetailNotes(product.id, product.imageUrl, product.category, ctx);
+    backDetailNotes = backImageUrl
+      ? await ensureBackDetailNotes(product.id, backImageUrl, product.category, ctx)
+      : null;
+  }
 
   const strategyProduct: StrategyProduct = {
     id: product.id,
@@ -248,7 +280,16 @@ export async function generateModelImages(
     maybeReviewGenerations(records, { productImageUrl: product.imageUrl });
   }
 
-  return { objective, modelType, images: branded };
+  // No AI-generated image survived (upload-sourced cards don't count) —
+  // e.g. every upload failed after generation. Callers tell the retailer to
+  // retry instead of silently showing nothing.
+  const generatedCount = branded.filter((img) => img.source !== "upload").length;
+  return {
+    objective,
+    modelType,
+    images: branded,
+    ...(generatedCount === 0 ? { failure: "generation_failed" as const } : {}),
+  };
 }
 
 export { DEFAULT_OBJECTIVE, DEFAULT_MODEL_TYPE };

@@ -28,9 +28,15 @@ export async function POST(
       return NextResponse.json({ error: "Product not found" }, { status: 404 });
     }
 
-    // Objective-based generation is opt-in via the feature flag AND an explicit
-    // objective in the body. Without both, we run the original single-image flow
-    // so existing callers (and the legacy upload toggle) behave exactly as before.
+    // Objective-based generation is used whenever the feature flag is on: an
+    // explicit objective in the body wins, otherwise the engine resolves the
+    // retailer's stored default. This keeps regeneration entry points that
+    // send no objective (e.g. the product-page menu) on the SAME pipeline as
+    // the upload flow — cached garment intelligence, prompt enrichment, view
+    // sets — instead of silently dropping to the legacy single-image flow
+    // (observed 2026-07-14: a product-page regeneration ran detail-notes v1
+    // and skipped GI entirely). With the flag off, the original single-image
+    // flow runs exactly as before.
     const body = await req.json().catch(() => ({}));
     const objective = (body as { objective?: unknown }).objective;
     const modelType = (body as { modelType?: unknown }).modelType;
@@ -41,15 +47,17 @@ export async function POST(
     const backdropSectionRaw = (body as { backdropSection?: unknown }).backdropSection;
     const backdropSection = isBackdropSection(backdropSectionRaw) ? backdropSectionRaw : undefined;
 
-    if (isAiGenObjectivesEnabled() && isGenerationObjective(objective)) {
-      await generateModelImages({
+    let failure: "storage_unreachable" | "generation_failed" | undefined;
+    if (isAiGenObjectivesEnabled()) {
+      const result = await generateModelImages({
         productId: id,
         userId: session.id,
-        objective,
+        objective: isGenerationObjective(objective) ? objective : undefined,
         modelType: isModelType(modelType) ? modelType : undefined,
         quality,
         backdropSection,
       });
+      failure = result.failure;
     } else {
       await generateModelImage(id, quality);
     }
@@ -70,9 +78,20 @@ export async function POST(
       select: { id: true, url: true, view: true, objective: true, isPrimary: true },
     });
 
+    // Retailer-facing failure messaging: honest about what happened AND what
+    // it cost. storage_unreachable is pre-flight (nothing attempted, nothing
+    // spent); generation_failed means the run produced no stored images.
+    const failureMessage =
+      failure === "storage_unreachable"
+        ? "Image storage is temporarily unreachable, so generation was not started — no AI usage was spent. Please try again in a few minutes."
+        : failure === "generation_failed"
+          ? "Image generation didn't complete this time. Please try again in a few minutes."
+          : undefined;
+
     return NextResponse.json({
       product: deserializeProduct(updated),
       generatedImages,
+      ...(failure ? { failure, failureMessage } : {}),
     });
   } catch (err) {
     if ((err as Error).message === "Unauthorized") {
