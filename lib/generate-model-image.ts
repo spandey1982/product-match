@@ -273,9 +273,16 @@ export async function runGeminiImageGen(
     const outDims = getImageDimensions(storedBuffer, storedMime);
     console.log(`[model-image] Output (re-encoded, stored): ${fmtBytes(storedBuffer.length)}  mime=${storedMime}  ${outDims ? `${outDims.width}×${outDims.height}px` : "dims=unknown"}`);
 
+    // Store the result. This runs AFTER the generation is already paid for, so
+    // it gets its own error handling: an extended timeout (observed 2026-07-14:
+    // Cloudinary API degradation pushed a trivial ping to ~17s, blowing the
+    // 60s SDK default on real uploads), one retry for transient failures, and
+    // — if it still fails — a usage record with the real token counts so the
+    // paid generation never vanishes from the cost ledger.
     const dataUri = `data:${storedMime};base64,${storedBuffer.toString("base64")}`;
-    const uploaded = await cloudinary.uploader.upload(dataUri, {
+    const uploadOptions = {
       folder,
+      timeout: 120_000,
       tags: [
         `product:${productId}`,
         `category:${productCategory}`,
@@ -290,7 +297,48 @@ export async function runGeminiImageGen(
         view,
         generated_at:  new Date().toISOString(),
       },
-    });
+    };
+    let uploaded: { secure_url: string } | null = null;
+    let uploadError: unknown = null;
+    for (let attempt = 1; attempt <= 2 && !uploaded; attempt++) {
+      try {
+        uploaded = await cloudinary.uploader.upload(dataUri, uploadOptions);
+      } catch (err) {
+        uploadError = err;
+        console.error(
+          `[model-image] Cloudinary upload attempt ${attempt}/2 failed (Gemini generation itself SUCCEEDED):`,
+          err
+        );
+        // Brief backoff before the retry — DNS flaps fail in milliseconds,
+        // so an immediate retry would land on the same flap (2026-07-14:
+        // intermittent ENOTFOUND for api.cloudinary.com on the dev network).
+        if (attempt === 1) await new Promise((r) => setTimeout(r, 3000));
+      }
+    }
+    if (!uploaded) {
+      const e = uploadError as { error?: { message?: string; http_code?: number } ; message?: string } | null;
+      const detail = e?.error?.message ?? e?.message ?? String(uploadError);
+      void recordAiUsage({
+        provider: "gemini",
+        model: GEMINI_MODEL,
+        feature,
+        operation: view,
+        inputTokens: tokenInput,
+        outputTokens: tokenOutput,
+        totalTokens: tokenTotal,
+        imagesGenerated: 1,
+        imageInputs,
+        requestBytes,
+        responseBytes: outBuffer.length,
+        durationMs: generationMs,
+        storeId,
+        userId: usageUserId,
+        productId,
+        status: "error",
+        errorMessage: `cloudinary_upload: ${String(detail).slice(0, 250)}`,
+      });
+      return null;
+    }
     console.log(`[model-image] Uploaded: ${uploaded.secure_url}`);
 
     // ── Record AI usage (cost ledger) ───────────────────────────────────────
@@ -348,7 +396,12 @@ export async function runGeminiImageGen(
       model: GEMINI_MODEL,
     };
   } catch (err) {
-    console.error("[model-image] Gemini gen error:", err);
+    // Upload failures are handled (and usage-recorded) above and no longer
+    // reach here — anything landing in this catch is a genuine generation /
+    // preprocessing failure. Observed 2026-07-14: a Cloudinary upload timeout
+    // surfacing through this catch was misread as a Gemini failure, hence the
+    // explicit label.
+    console.error("[model-image] generation failed (before upload stage):", err);
     return null;
   }
 }
