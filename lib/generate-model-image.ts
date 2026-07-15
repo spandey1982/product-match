@@ -113,6 +113,15 @@ export interface GeminiImageGenInput {
   usage?: AiUsageContext;
   /** Native output quality. Defaults to "standard" (1K, 3:4) — see lib/model-gen/quality.ts. */
   quality?: GenerationQuality;
+  /**
+   * Additional labelled reference images (region close-ups — pallu, border,
+   * …) shown to the generator so it reproduces those regions from PIXELS, not
+   * only the text note. Preprocessed and appended AFTER the product image in
+   * order; the prompt (buildViewPrompt) enumerates them starting at Image 3
+   * (with a reference model) or Image 2 (without). Keep the count small — each
+   * adds input tokens.
+   */
+  extraReferences?: Array<{ buffer: Buffer; mime: string; label: string }>;
 }
 
 /**
@@ -134,6 +143,7 @@ export async function runGeminiImageGen(
     productId, productTitle, productCategory, productColor,
     productBuffer, productMime, referenceBuffer, referenceMime,
     prompt, folder = "product-match/models", view = "model", usage, quality,
+    extraReferences = [],
   } = input;
   const qualityProfile = getQualityProfile(quality);
 
@@ -158,11 +168,28 @@ export async function runGeminiImageGen(
       ? await preprocessProductImage(referenceBuffer!, referenceMime!)
       : null;
 
-    const imageInputs = hasReference ? 2 : 1;
-    const requestBytes =
-      modelInputBuffer.length + (processedReference ? processedReference.buffer.length : 0);
+    // Region reference close-ups (pallu/border/…), same preprocessing. Shown to
+    // the generator so distinctive regions are reproduced from pixels, not just
+    // the note. Non-fatal per image — a bad one is skipped, generation proceeds.
+    const processedExtras: Array<{ mime: string; buffer: Buffer }> = [];
+    for (const ref of extraReferences) {
+      try {
+        const p = await preprocessProductImage(ref.buffer, ref.mime);
+        processedExtras.push({ mime: p.mime, buffer: p.buffer });
+      } catch {
+        /* skip a bad reference image */
+      }
+    }
 
-    // Image parts: reference model first (if any), then the product garment.
+    const imageInputs = (hasReference ? 2 : 1) + processedExtras.length;
+    const requestBytes =
+      modelInputBuffer.length +
+      (processedReference ? processedReference.buffer.length : 0) +
+      processedExtras.reduce((n, e) => n + e.buffer.length, 0);
+
+    // Image parts, in the SAME order the prompt enumerates them: reference model
+    // first (if any), then the product garment, then region reference close-ups
+    // (Image 3+). Text last.
     const parts: Array<Record<string, unknown>> = [];
     if (processedReference) {
       parts.push({
@@ -172,6 +199,9 @@ export async function runGeminiImageGen(
     parts.push({
       inline_data: { mime_type: modelInputMime, data: modelInputBuffer.toString("base64") },
     });
+    for (const e of processedExtras) {
+      parts.push({ inline_data: { mime_type: e.mime, data: e.buffer.toString("base64") } });
+    }
     parts.push({ text: prompt });
 
     const inputDims = getImageDimensions(modelInputBuffer, modelInputMime);

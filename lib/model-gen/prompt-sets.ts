@@ -97,6 +97,13 @@ export interface ViewPromptInput {
    * the whole image.
    */
   studioAnchor?: string | null;
+  /**
+   * Region reference close-ups accompanying this generation (pallu, border, …),
+   * in the SAME order runGeminiImageGen appends their image parts. Each is
+   * enumerated in the prompt so the model reproduces that region from the real
+   * photo. Empty/absent → no roll-call change (current behaviour).
+   */
+  extraReferences?: Array<{ label: string; placement: string }>;
 }
 
 /** "Preserve these product specifics: …" clause, or "" when no notes. */
@@ -156,18 +163,41 @@ function anchorClause(studioAnchor?: string | null): string {
     : "";
 }
 
+/**
+ * Enumerate region reference images starting at `startIndex`, plus the
+ * same-garment guard. "" when there are none. Indices MUST match the image
+ * part order runGeminiImageGen appends (model?, product, extras…).
+ */
+function extraImageClause(
+  refs: Array<{ label: string; placement: string }> | undefined,
+  startIndex: number
+): string {
+  if (!refs || refs.length === 0) return "";
+  const lines = refs.map(
+    (r, i) =>
+      `Image ${startIndex + i} is a real close-up photo of ${r.label} of this exact same garment — faithfully reproduce its exact design, motif, colour and surface texture on ${r.placement}.`
+  );
+  lines.push(
+    "These extra images are detail views of the SAME single garment, not separate items — use them only to render those regions accurately, never add any additional garment, panel, or duplicate them elsewhere."
+  );
+  return lines.join(" ");
+}
+
 export function buildViewPrompt(input: ViewPromptInput): string {
-  const { category, color, gender, view, hasReference, detailNotes, backdrop, studioAnchor } = input;
+  const { category, color, gender, view, hasReference, detailNotes, backdrop, studioAnchor, extraReferences } = input;
   const detail = detailClause(detailNotes);
   const backGuard = backGuardClause(view.id, detailNotes);
   const anchor = anchorClause(studioAnchor);
   const orientation = orientationClause(view.id);
+  const extraCount = extraReferences?.length ?? 0;
 
   if (hasReference) {
+    const total = 2 + extraCount; // model + product + extras
     return [
-      "You are given two images. Image 1 is the reference fashion model. Image 2 is the product garment.",
+      `You are given ${total} images. Image 1 is the reference fashion model. Image 2 is the product garment.`,
       `Generate a photorealistic photograph of the model in Image 1 wearing this ${color} ${category} from Image 2.`,
       "Preserve the model's face, body and skin tone from Image 1, and the garment's exact colour, print and texture from Image 2.",
+      extraImageClause(extraReferences, 3),
       view.modifier,
       detail,
       backGuard,
@@ -179,6 +209,8 @@ export function buildViewPrompt(input: ViewPromptInput): string {
 
   return [
     `Full-body fashion photograph of ${subjectFor(gender)} wearing this ${color} ${category}.`,
+    extraCount > 0 ? "Image 1 is the product garment." : "",
+    extraImageClause(extraReferences, 2),
     view.modifier,
     detail,
     backGuard,
