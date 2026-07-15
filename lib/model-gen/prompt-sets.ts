@@ -17,9 +17,17 @@ export interface PromptView {
   modifier: string;
 }
 
+// Saree drape is deterministic and IDENTICAL in intent across front and back
+// (only the camera side differs) — retailer testing (2026-07-15) found the
+// model otherwise improvised the pallu differently per view (front bunched/
+// short, back floor-length/spread). We standardize on the spread-open,
+// floor-length pallu because it shows the most surface area and craftsmanship.
+const SAREE_DRAPE =
+  "The pallu is spread fully open and cascades straight down to floor length, displayed flat and wide with its entire design and border visible edge-to-edge — never bunched, folded, tucked or shortened. The saree is draped in a neat, elegant, presentable style that maximises the visible embroidered surface.";
+
 const SAREE: PromptView[] = [
-  { id: "front",  label: "Front View",       modifier: "Full-length front view, the saree draped elegantly with the pallu visible over the shoulder." },
-  { id: "back",   label: "Back View",        modifier: "Full-length back view showing the blouse back and the fall of the pallu." },
+  { id: "front",  label: "Front View",       modifier: `Full-length front view of the draped saree. ${SAREE_DRAPE}` },
+  { id: "back",   label: "Back View",        modifier: `Full-length back view of the draped saree, showing the blouse back. ${SAREE_DRAPE}` },
   { id: "pallu",  label: "Pallu Close-Up",   modifier: "Close-up of the pallu, highlighting its print, weave and embellishment in sharp focus." },
   { id: "border", label: "Border Close-Up",  modifier: "Close-up of the saree border, showing the zari and edge detailing crisply." },
 ];
