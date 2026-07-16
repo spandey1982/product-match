@@ -59,14 +59,10 @@ export interface BrandingAdapt {
   brightness: number;
 }
 
-// Frosted-glass wordmark tokens:
-//  • INK — a calm, soothing near-black (Onyx #353839): softer than flat #000,
-//    with a faint cool cast, but NOT grey. Reads as intentional, not harsh.
-//  • GLASS — a warm off-white tint held translucent over a BLURRED patch of the
-//    image, so the chip looks like frosted glass (the image shows through,
-//    muted) rather than a solid plate sitting on top.
-const WORDMARK_INK = "rgb:353839";
-const WORDMARK_GLASS = "rgb:f6f4ef";
+// Wordmark ink — soft premium tones (never flat #fff/#000), chosen against the
+// real background. Ivory on dark/medium, calm Onyx-ish near-black on light.
+const LIGHT_MARK_COLOR = "rgb:f7f4ee"; // warm ivory, for dark/medium backgrounds
+const DARK_MARK_COLOR = "rgb:353839"; // calm Onyx near-black, for light backgrounds
 
 /**
  * Perceived luminance 0 (black) … 1 (white). Below ~0.6 a light mark reads
@@ -132,20 +128,21 @@ function buildOverlayTransform(config: BrandingConfig, placement?: BrandingPlace
 
   const name = config.storeName?.trim();
   if (name) {
-    // A refined wordmark on a FROSTED-GLASS chip: the small area behind the text
-    // is blurred (e_blur_region) and given a translucent warm off-white tint, so
-    // the image shows through softened rather than a solid plate sitting on top.
-    // Kept small (hugs the text) and low-contrast; the ink is a calm Onyx, not
-    // flat black. Sizing is RELATIVE so base shots and smaller crops match.
-    //   • e_blur_region … → frost the patch behind the mark
-    //   • b_/bo_ (glass)  → translucent tint + even padding = the chip
-    //   • r_14, o_        → soft rounded corners, held translucent
-    const blur = "e_blur_region:1200,fl_region_relative,g_north_west,x_0.04,y_0.04,w_0.205,h_0.066";
-    const label = `l_text:Arial_46_letter_spacing_2:${escapeText(name)}`;
-    const chip = `co_${WORDMARK_INK},b_${WORDMARK_GLASS},bo_11px_solid_${WORDMARK_GLASS},r_14,o_64`;
+    // Wordmark on TRANSLUCENT GLASS: the patch behind the text is simply blurred
+    // (e_blur_region) — no fill colour, no border — so the image shows through
+    // like frosted glass. The text itself is EXACTLY the previous, well-liked
+    // treatment (Arial 50 bold, letter-spacing 3, w_0.2, adaptive ink + soft
+    // shadow) so its size and letter width are unchanged from before — only the
+    // glass backing is new. fl_relative keeps it a consistent fraction on crops.
+    const blur = "e_blur_region:1000,fl_region_relative,g_north_west,x_0.035,y_0.035,w_0.215,h_0.072";
+    const label = `l_text:Arial_50_bold_letter_spacing_3:${escapeText(name)}`;
     const sizing = "fl_relative,w_0.2";
     const place = `g_${gravity},x_0.04,y_0.04`;
-    return `${blur}/${label},${chip},${sizing},${place}`;
+    const text =
+      (placement?.mark ?? "light") === "light"
+        ? `${label},${sizing},co_${LIGHT_MARK_COLOR},e_shadow:30,o_92,${place}`
+        : `${label},${sizing},co_${DARK_MARK_COLOR},o_90,${place}`;
+    return `${blur}/${text}`;
   }
 
   return null;
