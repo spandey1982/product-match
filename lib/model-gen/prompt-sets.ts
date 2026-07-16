@@ -143,6 +143,19 @@ function blouseClause(category: string, color: string): string {
 }
 
 /**
+ * Front and back are INDEPENDENT generations, so every element that is not the
+ * product itself — footwear, any complementary top or bottoms (a bottom for a
+ * top-wear product, a top for a bottom-wear product), and any jewellery or
+ * accessories — is otherwise invented afresh per view and can disagree
+ * (different shoes, different trousers, a necklace on one view only). This
+ * pins all of them to "simple, neutral and IDENTICAL across views" so a single
+ * product's catalogue set reads as one coherent shoot. Deterministic,
+ * category-agnostic; the product garment itself is unaffected.
+ */
+const STYLING_CONSISTENCY_CLAUSE =
+  "Every element that is not the product garment itself — footwear, any complementary top or bottoms worn with the product, and any jewellery or accessories — must be simple, understated, and kept exactly identical in colour and style across all views, so the front and back read as the same outfit photographed in one session.";
+
+/**
  * Hard camera-orientation contract, appended as the LAST sentence of front
  * and back view prompts. The view modifier ("Full-length front view…") is one
  * early sentence in what is now a long prompt (detail notes + backdrop/scene
@@ -203,6 +216,7 @@ export function buildViewPrompt(input: ViewPromptInput): string {
   const backGuard = backGuardClause(view.id, detailNotes);
   const blouse = blouseClause(category, color);
   const anchor = anchorClause(studioAnchor);
+  const styling = STYLING_CONSISTENCY_CLAUSE;
   const orientation = orientationClause(view.id);
   const extraCount = extraReferences?.length ?? 0;
   // When reference close-ups are supplied, the model is prone to compositing
@@ -225,6 +239,7 @@ export function buildViewPrompt(input: ViewPromptInput): string {
       detail,
       backGuard,
       blouse,
+      styling,
       backdrop,
       anchor,
       orientation,
