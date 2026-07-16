@@ -35,9 +35,9 @@ const STYLE_OPTIONS = [
 
 const SEASONS = ["Spring", "Summer", "Autumn", "Winter", "All Season"];
 const MATERIALS = [
-  "Silk", "Cotton", "Chiffon", "Georgette", "Velvet",
-  "Banarasi", "Kanjeevaram", "Linen", "Crepe", "Net",
-  "Satin", "Polyester", "Organza", "Khadi", "Wool", "Gold",
+  "Silk", "Cotton/Cotton-Blend", "Chiffon", "Georgette", "Velvet",
+  "Brocade", "Linen/Linen-Blend", "Crepe", "Net",
+  "Satin", "Polyester", "Organza", "Khadi", "Wool", "Viscose", "Muslin",
 ];
 const PATTERNS = [
   "Solid", "Floral", "Paisley", "Geometric", "Striped", "Checked",

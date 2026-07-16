@@ -56,7 +56,7 @@ function buildAnalysisPrompt(knownCategory?: string): string {
     : "";
   return `Indian ethnic fashion product image. ${categoryAssertion}
 Return raw JSON only, no markdown:
-{"title":"","description":"2-3 sentences","category":"Saree|Lehenga|Blouse|Dupatta|Kurta|Salwar|Anarkali|Sharara|Palazzo|Jewellery|Footwear|Clutch|Handbag|Suit|Tie|Other","subcategory":"or empty string","color":"primary color","pattern":"Solid|Floral|Paisley|Geometric|Striped|Polka|Checked|Embroidered|Printed|Woven|Zari|Bandhani|Block Print|Abstract|other","material":"Silk|Cotton|Chiffon|Georgette|Velvet|Banarasi|Kanjeevaram|Linen|Crepe|Net|Satin|Polyester|Organza|Khadi|Wool|Gold|best guess","gender":"WOMEN|MEN|UNISEX|GIRLS|BOYS","occasion":[],"styleTags":[],"season":[],"price":0}
+{"title":"","description":"2-3 sentences","category":"Saree|Lehenga|Blouse|Dupatta|Kurta|Salwar|Anarkali|Sharara|Palazzo|Jewellery|Footwear|Clutch|Handbag|Suit|Tie|Other","subcategory":"or empty string","color":"primary color","pattern":"Solid|Floral|Paisley|Geometric|Striped|Polka|Checked|Embroidered|Printed|Woven|Zari|Bandhani|Block Print|Abstract|other","material":"Silk|Cotton/Cotton-Blend|Chiffon|Georgette|Velvet|Brocade|Linen/Linen-Blend|Crepe|Net|Satin|Polyester|Organza|Khadi|Wool|Viscose|Muslin|best guess","gender":"WOMEN|MEN|UNISEX|GIRLS|BOYS","occasion":[],"styleTags":[],"season":[],"price":0}
 occasion options: Wedding Bridal Festive Party Casual Formal Office Traditional Religious Anniversary
 styleTags options: Ethnic Boho Minimalist Traditional Contemporary Fusion Royal Bridal Casual Festive
 season options: Spring Summer Autumn Winter All Season
