@@ -128,21 +128,27 @@ function buildOverlayTransform(config: BrandingConfig, placement?: BrandingPlace
 
   const name = config.storeName?.trim();
   if (name) {
-    // Wordmark on TRANSLUCENT GLASS: the patch behind the text is simply blurred
-    // (e_blur_region) — no fill colour, no border — so the image shows through
-    // like frosted glass. The text itself is EXACTLY the previous, well-liked
-    // treatment (Arial 50 bold, letter-spacing 3, w_0.2, adaptive ink + soft
-    // shadow) so its size and letter width are unchanged from before — only the
-    // glass backing is new. fl_relative keeps it a consistent fraction on crops.
-    const blur = "e_blur_region:1000,fl_region_relative,g_north_west,x_0.035,y_0.035,w_0.215,h_0.072";
-    const label = `l_text:Arial_50_bold_letter_spacing_3:${escapeText(name)}`;
-    const sizing = "fl_relative,w_0.2";
-    const place = `g_${gravity},x_0.04,y_0.04`;
-    const text =
-      (placement?.mark ?? "light") === "light"
-        ? `${label},${sizing},co_${LIGHT_MARK_COLOR},e_shadow:30,o_92,${place}`
-        : `${label},${sizing},co_${DARK_MARK_COLOR},o_90,${place}`;
-    return `${blur}/${text}`;
+    // Wordmark on a TRANSLUCENT GLASS CHIP, built as TWO stacked layers so the
+    // chip can be see-through WHILE the text stays crisp (a single text layer
+    // shares one opacity between its background and its text — that forced faded
+    // text before, and a plain blur is invisible on a flat studio corner):
+    //   1. chip  — the store name rendered as a rounded, translucent solid block
+    //              (text colour == background colour, so only the block shows).
+    //   2. text  — the same name on top, fully opaque, in the contrasting ink.
+    // Both layers share identical font/sizing/position (Arial 50 bold,
+    // letter-spacing 3, w_0.2) so they align exactly and the mark's size + letter
+    // width match the previous well-liked wordmark. Adaptive so the chip always
+    // contrasts the background (light glass on dark/medium, dark glass on light)
+    // and the ink always contrasts the chip.
+    const esc = escapeText(name);
+    const font = "Arial_50_bold_letter_spacing_3";
+    const box = `fl_relative,w_0.2,g_${gravity},x_0.04,y_0.04`;
+    const darkBg = (placement?.mark ?? "light") === "light"; // "light mark" ⇒ dark/medium bg
+    const glass = darkBg ? "rgb:f4f2ee" : "rgb:2b2723"; // light chip on dark bg, dark chip on light bg
+    const ink = darkBg ? DARK_MARK_COLOR : LIGHT_MARK_COLOR; // contrasting ink on the chip
+    const chip = `l_text:${font}:${esc},co_${glass},b_${glass},r_20,${box},o_46`;
+    const text = `l_text:${font}:${esc},co_${ink},${box},o_96`;
+    return `${chip}/${text}`;
   }
 
   return null;
