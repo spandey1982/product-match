@@ -67,16 +67,23 @@ Metadata Extraction        (lib/metadata/analyze.ts — "what IS this product?")
    ↓
 Garment Intelligence       (lib/garment-intelligence — "what makes it UNIQUE?")  ← NEW
    ↓
-Prompt Builder             (lib/model-gen/prompt-sets.ts — unchanged)
+Prompt Builder             (lib/model-gen/prompt-sets.ts)
    ↓
-Gemini Image Generation    (lib/generate-model-image.ts — unchanged)
+Gemini Image Generation    (lib/generate-model-image.ts + region image conditioning)
 ```
 
 Metadata Extraction and Garment Intelligence stay **separate services**:
 different questions, different consumers, different cost profiles, different
-cache lifetimes. GI does not replace `lib/metadata/detail-notes.ts` (v1
-one-line enrichment); v1 remains the fallback whenever GI is disabled or
-fails, so the flag can never make generation worse than today.
+cache lifetimes.
+
+**Note (updated 2026-07-16):** GI's relationship to `detail-notes.ts` (v1)
+evolved after the initial write-up. When `ENABLE_GARMENT_INTELLIGENCE` is ON,
+GI is the SOLE prompt-note source (front + back) — v1 is **not** a fallback on
+that path (GI failure → null notes → generation proceeds unenriched, back
+views still get the deterministic guard). v1 runs only on the flag-OFF path.
+See the 2026-07-14 round-2 section for the rationale. Separately, the prompt
+builder and generator are **no longer "unchanged"**: image conditioning
+(2026-07-16) feeds region uploads to the generator — the diagram reflects this.
 
 ### Structured intelligence over prose — decision: YES
 

@@ -3,10 +3,11 @@
  *
  * Each category defines a PRIMARY card (the main product photo used for metadata
  * extraction + generation) and zero-or-more OTHER cards — fixed detail/part
- * shots. The "other" images are EXTRACTION-ONLY: they enrich the generation
- * prompt (added to the one-time detail extraction) but are never sent to the
- * image generator, so generation token cost is unchanged. Pure data + lookups;
- * safe to import on client and server.
+ * shots. By default the "other" images are extraction-only (they enrich the
+ * detail/GI notes, not the generator). EXCEPTION: when region image
+ * conditioning is enabled (see `genReferencesFor` + ENABLE_REGION_CONDITIONING),
+ * the slots mapped in `GEN_REFERENCES` ARE sent to the generator as labelled
+ * visual references. Pure data + lookups; safe to import on client and server.
  */
 export interface PartSlot {
   id: string;

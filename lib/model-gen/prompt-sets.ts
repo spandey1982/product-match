@@ -178,7 +178,7 @@ function extraImageClause(
       `Image ${startIndex + i} is a real close-up photo of ${r.label} of this exact same garment — faithfully reproduce its exact design, motif, colour and surface texture on ${r.placement}.`
   );
   lines.push(
-    "These extra images are detail views of the SAME single garment, not separate items — use them only to render those regions accurately, never add any additional garment, panel, or duplicate them elsewhere."
+    "These extra images are reference photos of the SAME single garment, provided ONLY so you reproduce those regions accurately on the worn garment — never display, paste, inset, tile, float or show these reference images, or any swatch, cut-out, panel or copy of them, anywhere in the output."
   );
   return lines.join(" ");
 }
@@ -190,6 +190,14 @@ export function buildViewPrompt(input: ViewPromptInput): string {
   const anchor = anchorClause(studioAnchor);
   const orientation = orientationClause(view.id);
   const extraCount = extraReferences?.length ?? 0;
+  // When reference close-ups are supplied, the model is prone to compositing
+  // them into the frame as floating swatches/detail panels (an e-commerce
+  // collage convention). This LAST-sentence guard leverages recency — the same
+  // lever that made the orientation clause stick — to forbid it outright.
+  const swatchGuard =
+    extraCount > 0
+      ? "Absolute final requirement: the output is exactly ONE continuous studio photograph of the model wearing the garment against the plain backdrop — do not render, paste, inset, float or tile any reference image, swatch, fabric cut-out or detail panel anywhere in the frame; nothing else may appear besides the model and the garment."
+      : "";
 
   if (hasReference) {
     const total = 2 + extraCount; // model + product + extras
@@ -204,6 +212,7 @@ export function buildViewPrompt(input: ViewPromptInput): string {
       backdrop,
       anchor,
       orientation,
+      swatchGuard,
     ].filter(Boolean).join(" ");
   }
 
@@ -217,5 +226,6 @@ export function buildViewPrompt(input: ViewPromptInput): string {
     backdrop,
     anchor,
     orientation,
+    swatchGuard,
   ].filter(Boolean).join(" ");
 }
