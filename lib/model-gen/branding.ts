@@ -13,7 +13,7 @@
  */
 import { db } from "@/lib/db";
 import { getAiGenSettings, type BrandingPosition } from "./settings";
-import { sampleRegionStat, type Rgb, type RegionStat } from "./studio-anchor";
+import { sampleRegionStat, type Rgb } from "./studio-anchor";
 
 export interface BrandingConfig {
   enabled: boolean;
@@ -45,11 +45,6 @@ export async function getBrandingConfig(userId: string): Promise<BrandingConfig>
   }
 }
 
-const GRAVITY: Record<BrandingPosition, string> = {
-  "top-left": "north_west",
-  "top-right": "north_east",
-};
-
 /**
  * How the watermark should render against the ACTUAL area it sits on. Resolved
  * per image by sampling the real corner pixels (resolveBrandingAdapt) — not the
@@ -68,6 +63,11 @@ export interface BrandingAdapt {
 const LIGHT_MARK_COLOR = "rgb:f7f4ee"; // warm ivory, for dark/medium backgrounds
 const DARK_MARK_COLOR = "rgb:2b2723"; // warm near-black, for light backgrounds
 
+// Scrim/plate tones — the soft translucent panel the wordmark sits on so it
+// always reads cleanly and looks intentional, tinted to match the background.
+const DARK_PLATE = "rgb:1f1b18"; // charcoal plate, under an ivory mark (dark/medium bg)
+const LIGHT_PLATE = "rgb:f4efe7"; // ivory plate, under a charcoal mark (light bg)
+
 /**
  * Perceived luminance 0 (black) … 1 (white). Below ~0.6 a light mark reads
  * best; medium-grey studios (≈0.5) therefore get the ivory mark + soft shadow.
@@ -82,39 +82,27 @@ export interface BrandingPlacement extends BrandingAdapt {
   gravity: string;
 }
 
-const PLACEMENT_GRAVITIES: string[] = ["north_east", "north_west", "south_east", "south_west"];
+/** Branding always sits in the top-left corner (retailer positioning removed). */
+const BRAND_GRAVITY = "north_west";
 
 /**
- * Coverage-aware placement (R3): sample all four corners of THIS image and put
- * the mark in the calmest one (lowest luminance variance = most likely
- * backdrop, least product), with the adaptive colour for that corner. The
- * retailer's configured corner wins when it's nearly as calm, so we only
- * relocate to avoid genuine product overlap. Falls back to the configured
- * corner + preset adapt if sampling fails. Never throws.
+ * Resolve the watermark treatment for THIS image. Branding position is fixed
+ * to the top-left corner (a single, predictable, professional placement — the
+ * old "calmest corner" search confused flat product/skin areas with backdrop
+ * and had no good answer on busy Scenic frames). We still sample the top-left
+ * area to choose the mark TONE so the scrim/plate reads well and feels tinted
+ * to the background rather than pasted on. Falls back to the preset adapt if
+ * sampling fails. Never throws.
  */
 export async function resolveBrandingPlacement(
   secureUrl: string,
-  preferredPosition: BrandingPosition,
+  _preferredPosition: BrandingPosition, // retained for signature stability; ignored
   fallback: BrandingAdapt
 ): Promise<BrandingPlacement> {
-  const preferredGravity = GRAVITY[preferredPosition];
-  const stats = await Promise.all(
-    PLACEMENT_GRAVITIES.map((g) => sampleRegionStat(secureUrl, g, 0.3, 0.2))
-  );
-  const scored = PLACEMENT_GRAVITIES
-    .map((gravity, i) => ({ gravity, stat: stats[i] }))
-    .filter((c): c is { gravity: string; stat: RegionStat } => c.stat !== null);
-
-  if (scored.length === 0) return { ...fallback, gravity: preferredGravity };
-
-  scored.sort((a, b) => a.stat.variance - b.stat.variance);
-  const calmest = scored[0];
-  const preferred = scored.find((c) => c.gravity === preferredGravity);
-  const chosen =
-    preferred && preferred.stat.variance <= calmest.stat.variance * 1.25 ? preferred : calmest;
-
-  const lum = luminance(chosen.stat.rgb);
-  return { mark: lum < 0.6 ? "light" : "dark", brightness: lum, gravity: chosen.gravity };
+  const stat = await sampleRegionStat(secureUrl, BRAND_GRAVITY, 0.34, 0.22);
+  if (!stat) return { ...fallback, gravity: BRAND_GRAVITY };
+  const lum = luminance(stat.rgb);
+  return { mark: lum < 0.58 ? "light" : "dark", brightness: lum, gravity: BRAND_GRAVITY };
 }
 
 /** Logo opacity tuned to the corner: lighter background → subtler mark. */
@@ -132,8 +120,9 @@ function escapeText(text: string): string {
 
 /** Build the overlay transformation segment, or null if nothing to overlay. */
 function buildOverlayTransform(config: BrandingConfig, placement?: BrandingPlacement): string | null {
-  // Gravity = the coverage-aware corner when resolved, else the configured one.
-  const gravity = placement?.gravity ?? GRAVITY[config.position];
+  // Branding is always top-left now (retailer positioning removed).
+  const gravity = BRAND_GRAVITY;
+  const isLight = (placement?.mark ?? "light") === "light";
 
   if (config.logoPublicId) {
     // Logo image overlay. Public-id path separators become ":" in a layer ref.
@@ -144,20 +133,24 @@ function buildOverlayTransform(config: BrandingConfig, placement?: BrandingPlace
 
   const name = config.storeName?.trim();
   if (name) {
-    // A refined wordmark: medium weight + letter-spacing for an intentional,
-    // boutique feel, in a soft premium tone chosen for the real background.
-    // Size + offset are RELATIVE (fl_relative) so the mark is a consistent
-    // FRACTION of each image — base shots and the smaller close-up crops render
-    // it at the same proportional size, not a fixed px that balloons on crops.
-    const label = `l_text:Arial_50_bold_letter_spacing_3:${escapeText(name)}`;
-    const sizing = "fl_relative,w_0.2";
-    const place = `g_${gravity},x_0.04,y_0.04`;
-    if ((placement?.mark ?? "light") === "light") {
-      // Ivory mark + soft shadow → legible on dark/medium/vignetted corners.
-      return `${label},${sizing},co_${LIGHT_MARK_COLOR},e_shadow:30,o_92,${place}`;
-    }
-    // Warm near-black mark → clean and legible on genuinely light backdrops.
-    return `${label},${sizing},co_${DARK_MARK_COLOR},o_88,${place}`;
+    // A refined wordmark on a soft, rounded translucent SCRIM PLATE, so it
+    // always reads cleanly and looks intentional on any background — studio or
+    // busy Scenic — instead of flat text pasted on top. The plate is tinted to
+    // the background (dark plate + ivory ink on dark/medium areas; ivory plate
+    // + charcoal ink on light ones) so it feels integrated, not tacky.
+    //   • b_<plate>          → the plate fill behind the text
+    //   • bo_<n>px_solid_<plate> → matched border = even padding around the text
+    //   • r_14               → soft rounded corners
+    //   • fl_relative,w_     → mark is a consistent FRACTION of each image, so
+    //                          base shots and smaller close-up crops match
+    //   • o_                 → whole layer kept subtle, not overpowering
+    const label = `l_text:Arial_42_bold_letter_spacing_2:${escapeText(name)}`;
+    const ink = isLight ? LIGHT_MARK_COLOR : DARK_MARK_COLOR;
+    const plate = isLight ? DARK_PLATE : LIGHT_PLATE;
+    const style = `co_${ink},b_${plate},bo_16px_solid_${plate},r_14`;
+    const sizing = "fl_relative,w_0.22";
+    const place = `g_${gravity},x_0.03,y_0.03,o_80`;
+    return `${label},${style},${sizing},${place}`;
   }
 
   return null;

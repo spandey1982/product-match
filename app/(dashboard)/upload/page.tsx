@@ -136,7 +136,7 @@ export default function UploadPage() {
 
   // Store branding for generated images (persisted immediately on change).
   const [brandingEnabled, setBrandingEnabled] = useState(true);
-  const [brandingPosition, setBrandingPosition] = useState<"top-left" | "top-right">("top-right");
+  // Branding position is fixed to top-left (picker removed) — no state needed.
   const [catalogueProvider, setCatalogueProvider] = useState<"auto" | "gemini" | "vertex">("auto");
   // Studio backdrop (Phase 1: store-level setting only; no generation wiring yet).
   const [backdrops, setBackdrops] = useState<BackdropOption[]>([]);
@@ -185,7 +185,6 @@ export default function UploadPage() {
         setObjective(data.settings.defaultObjective);
         // Leave modelType on "auto" — the system picks per product by default.
         setBrandingEnabled(data.settings.brandingEnabled);
-        setBrandingPosition(data.settings.brandingPosition);
         setCatalogueProvider(data.settings.catalogueProvider);
         setBackdrops(data.backdrops ?? []);
         if (data.settings.backdrop) setBackdrop(data.settings.backdrop);
@@ -944,28 +943,9 @@ export default function UploadPage() {
                       </div>
                     </div>
 
-                    {/* Position */}
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-gray-400">Position</span>
-                      {(["top-left", "top-right"] as const).map((pos) => (
-                        <button
-                          key={pos}
-                          type="button"
-                          onClick={() => {
-                            setBrandingPosition(pos);
-                            patchBranding({ brandingPosition: pos });
-                          }}
-                          aria-pressed={brandingPosition === pos}
-                          className={`rounded-full border px-3 py-1 text-xs font-medium transition-all ${
-                            brandingPosition === pos
-                              ? "border-indigo-300 bg-gradient-to-br from-indigo-50 to-purple-50 text-indigo-700 ring-1 ring-purple-200"
-                              : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
-                          }`}
-                        >
-                          {pos === "top-left" ? "Top left" : "Top right"}
-                        </button>
-                      ))}
-                    </div>
+                    {/* Branding is always placed top-left now — the position
+                        picker was removed for a single, consistent, polished
+                        placement across every card. */}
                   </div>
                 )}
               </div>
