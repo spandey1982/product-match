@@ -27,10 +27,19 @@ export interface GeneratedImage {
   bytes?: number | null;
 }
 
-/** Pick the primary image: a "front" view if present, else the first one. */
+/**
+ * Pick the primary image: a "front" view if present, else the first NON-back
+ * view, else the first. The non-back guard prevents a back shot from ever being
+ * promoted into the primary/modelImageUrl slot (which the legacy UI renders as
+ * the hero/front) when a set somehow arrives without a front — a back image
+ * labelled as the front misrepresents the product. Catalogue runs already fail
+ * fast on a missing front (strategies/catalogue.ts); this is defense in depth.
+ */
 function primaryIndex(images: GeneratedImage[]): number {
   const front = images.findIndex((i) => i.view === "front");
-  return front >= 0 ? front : 0;
+  if (front >= 0) return front;
+  const nonBack = images.findIndex((i) => i.view !== "back");
+  return nonBack >= 0 ? nonBack : 0;
 }
 
 export async function persistGeneratedImages(

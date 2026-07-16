@@ -225,6 +225,20 @@ export async function runCatalogueStrategy(opts: {
     }
   }
 
+  // The front is the catalogue hero. If it failed (observed with Scenic
+  // themed scenes — editorial, Eid — occasionally tripping a provider content
+  // filter on one view) while the back succeeded, do NOT persist the partial
+  // set: the legacy modelImageUrl sync (persist.ts) would otherwise promote the
+  // BACK image into the front/primary slot, showing a back shot labelled as the
+  // front. Discard the run so the engine reports a clean failure and the
+  // retailer regenerates. (The opposite — front present, back missing — is a
+  // usable front-only set and proceeds normally.)
+  const wantedFront = baseViews.some((v) => v.id === "front");
+  if (wantedFront && !baseShots.front) {
+    console.error("[catalogue] front base shot failed — discarding partial set to avoid a back-as-front mislabel");
+    return { images: [] };
+  }
+
   // Build the display card stack: AI base shots, model-crops, and the retailer's
   // enhanced uploaded detail images (with base-crop fallback). Branding is
   // applied later by the engine, on each final card.
