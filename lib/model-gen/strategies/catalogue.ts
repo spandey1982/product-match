@@ -19,7 +19,7 @@ import { resolveReferenceVariant } from "../reference-selection";
 import { loadReferenceImage, type ModelType, type ReferenceImage } from "../reference-models";
 import { sampleStudioColor } from "../studio-anchor";
 import { resolveCatalogueStack } from "../catalogue-cards";
-import type { PartImage } from "@/lib/product/part-slots";
+import { genReferencesFor, type PartImage } from "@/lib/product/part-slots";
 import type { GeneratedImage } from "../persist";
 import type { GenerationQuality } from "../quality";
 
@@ -66,6 +66,10 @@ export async function runCatalogueStrategy(opts: {
   const { product, modelType, provider = "gemini", userId, backdrop, partImages = [], quality } = opts;
   // Same store + acting user for every call in this run; feature is "catalogue".
   const usage = { feature: "catalogue", storeId: userId ?? null, userId: userId ?? null };
+  // Region image conditioning (R&D) — feed labelled part uploads (pallu/border)
+  // to the generator as visual references. Default OFF; independent of GI so it
+  // can be A/B'd on its own.
+  const regionConditioningEnabled = process.env.ENABLE_REGION_CONDITIONING === "true";
 
   const source = await fetchProductImageBuffer(product.imageUrl);
   if (!source) return { images: [] };
@@ -101,7 +105,8 @@ export async function runCatalogueStrategy(opts: {
     promptText: string,
     reference: ReferenceImage | null,
     productSource: { buffer: Buffer; mime: string },
-    productUrl: string
+    productUrl: string,
+    extraReferences: Array<{ buffer: Buffer; mime: string; label: string }> = []
   ): Promise<BaseShot | null> {
     // Vertex (Sharp Fit): VTO with the reference model as the person. Needs a
     // reference; back views need the back reference. Falls back to Gemini.
@@ -145,6 +150,10 @@ export async function runCatalogueStrategy(opts: {
       view: viewId,
       usage,
       quality,
+      // Region references (pallu/border/…) — Gemini path only; Vertex VTO has
+      // no equivalent. Empty unless region conditioning is enabled + uploads
+      // matched a category's generation references.
+      extraReferences,
     });
     return result
       ? {
@@ -166,6 +175,23 @@ export async function runCatalogueStrategy(opts: {
     const productSource = isBack && backSource ? backSource : source;
     const productUrl = isBack && product.backImageUrl ? product.backImageUrl : product.imageUrl;
 
+    // Region conditioning (flag-gated): match this view's generation references
+    // to the retailer's uploaded part images, fetch the pixels, and pass them
+    // to BOTH the prompt roll-call and the generator — in the same order. Gemini
+    // path only. Absent uploads → no conditioning for that region (unchanged).
+    const promptRefs: Array<{ label: string; placement: string }> = [];
+    const imageRefs: Array<{ buffer: Buffer; mime: string; label: string }> = [];
+    if (regionConditioningEnabled && provider === "gemini") {
+      for (const ref of genReferencesFor(product.category, view.id as "front" | "back")) {
+        const part = partImages.find((p) => p.slot === ref.slot);
+        if (!part) continue;
+        const buf = await fetchProductImageBuffer(part.url);
+        if (!buf) continue;
+        imageRefs.push({ buffer: buf.buffer, mime: buf.mime, label: ref.label });
+        promptRefs.push({ label: ref.label, placement: ref.placement });
+      }
+    }
+
     const prompt = buildViewPrompt({
       category: product.category,
       color: product.color,
@@ -178,6 +204,7 @@ export async function runCatalogueStrategy(opts: {
       backdrop,
       // Pin the back to the front's realized backdrop colour (front defines it).
       studioAnchor: isBack ? studioAnchor : null,
+      extraReferences: promptRefs,
     });
 
     const shot = await generateBaseShot(
@@ -185,7 +212,8 @@ export async function runCatalogueStrategy(opts: {
       prompt,
       reference,
       productSource,
-      productUrl
+      productUrl,
+      imageRefs
     );
     if (shot) {
       baseShots[view.id as "front" | "back"] = shot;

@@ -17,9 +17,17 @@ export interface PromptView {
   modifier: string;
 }
 
+// Saree drape is deterministic and IDENTICAL in intent across front and back
+// (only the camera side differs) — retailer testing (2026-07-15) found the
+// model otherwise improvised the pallu differently per view (front bunched/
+// short, back floor-length/spread). We standardize on the spread-open,
+// floor-length pallu because it shows the most surface area and craftsmanship.
+const SAREE_DRAPE =
+  "The pallu is spread fully open and cascades straight down to floor length, displayed flat and wide with its entire design and border visible edge-to-edge — never bunched, folded, tucked or shortened. The saree is draped in a neat, elegant, presentable style that maximises the visible embroidered surface.";
+
 const SAREE: PromptView[] = [
-  { id: "front",  label: "Front View",       modifier: "Full-length front view, the saree draped elegantly with the pallu visible over the shoulder." },
-  { id: "back",   label: "Back View",        modifier: "Full-length back view showing the blouse back and the fall of the pallu." },
+  { id: "front",  label: "Front View",       modifier: `Full-length front view of the draped saree. ${SAREE_DRAPE}` },
+  { id: "back",   label: "Back View",        modifier: `Full-length back view of the draped saree, showing the blouse back. ${SAREE_DRAPE}` },
   { id: "pallu",  label: "Pallu Close-Up",   modifier: "Close-up of the pallu, highlighting its print, weave and embellishment in sharp focus." },
   { id: "border", label: "Border Close-Up",  modifier: "Close-up of the saree border, showing the zari and edge detailing crisply." },
 ];
@@ -89,6 +97,13 @@ export interface ViewPromptInput {
    * the whole image.
    */
   studioAnchor?: string | null;
+  /**
+   * Region reference close-ups accompanying this generation (pallu, border, …),
+   * in the SAME order runGeminiImageGen appends their image parts. Each is
+   * enumerated in the prompt so the model reproduces that region from the real
+   * photo. Empty/absent → no roll-call change (current behaviour).
+   */
+  extraReferences?: Array<{ label: string; placement: string }>;
 }
 
 /** "Preserve these product specifics: …" clause, or "" when no notes. */
@@ -111,6 +126,20 @@ const BACK_FALLBACK_CLAUSE =
 /** The back guard, only for back views that have no real back notes. */
 function backGuardClause(viewId: string, detailNotes?: string | null): string {
   return viewId === "back" && !detailNotes?.trim() ? BACK_FALLBACK_CLAUSE : "";
+}
+
+/**
+ * A saree is worn with a SEPARATE blouse the model otherwise invents freshly
+ * per view — retailer testing (2026-07-16) got a red blouse on the front and a
+ * navy one on the back of the same generation. Pin the blouse deterministically
+ * to the saree's own colour, worded IDENTICALLY for front and back so the two
+ * independent generations agree. Derived from the product colour (no extra
+ * data); only for saree-like drapes.
+ */
+function blouseClause(category: string, color: string): string {
+  const cat = category.trim().toLowerCase();
+  if (cat !== "saree" && cat !== "dupatta") return "";
+  return `The saree is worn with a simple well-fitted plain ${color} blouse — keep the blouse this exact same ${color} colour and plain style identical in every view.`;
 }
 
 /**
@@ -148,34 +177,71 @@ function anchorClause(studioAnchor?: string | null): string {
     : "";
 }
 
+/**
+ * Enumerate region reference images starting at `startIndex`, plus the
+ * same-garment guard. "" when there are none. Indices MUST match the image
+ * part order runGeminiImageGen appends (model?, product, extras…).
+ */
+function extraImageClause(
+  refs: Array<{ label: string; placement: string }> | undefined,
+  startIndex: number
+): string {
+  if (!refs || refs.length === 0) return "";
+  const lines = refs.map(
+    (r, i) =>
+      `Image ${startIndex + i} is a real close-up photo of ${r.label} of this exact same garment — faithfully reproduce its exact design, motif, colour and surface texture on ${r.placement}.`
+  );
+  lines.push(
+    "These extra images are reference photos of the SAME single garment, provided ONLY so you reproduce those regions accurately on the worn garment — never display, paste, inset, tile, float or show these reference images, or any swatch, cut-out, panel or copy of them, anywhere in the output."
+  );
+  return lines.join(" ");
+}
+
 export function buildViewPrompt(input: ViewPromptInput): string {
-  const { category, color, gender, view, hasReference, detailNotes, backdrop, studioAnchor } = input;
+  const { category, color, gender, view, hasReference, detailNotes, backdrop, studioAnchor, extraReferences } = input;
   const detail = detailClause(detailNotes);
   const backGuard = backGuardClause(view.id, detailNotes);
+  const blouse = blouseClause(category, color);
   const anchor = anchorClause(studioAnchor);
   const orientation = orientationClause(view.id);
+  const extraCount = extraReferences?.length ?? 0;
+  // When reference close-ups are supplied, the model is prone to compositing
+  // them into the frame as floating swatches/detail panels (an e-commerce
+  // collage convention). This LAST-sentence guard leverages recency — the same
+  // lever that made the orientation clause stick — to forbid it outright.
+  const swatchGuard =
+    extraCount > 0
+      ? "Absolute final requirement: the output is exactly ONE continuous studio photograph of the model wearing the garment against the plain backdrop — do not render, paste, inset, float or tile any reference image, swatch, fabric cut-out or detail panel anywhere in the frame; nothing else may appear besides the model and the garment."
+      : "";
 
   if (hasReference) {
+    const total = 2 + extraCount; // model + product + extras
     return [
-      "You are given two images. Image 1 is the reference fashion model. Image 2 is the product garment.",
+      `You are given ${total} images. Image 1 is the reference fashion model. Image 2 is the product garment.`,
       `Generate a photorealistic photograph of the model in Image 1 wearing this ${color} ${category} from Image 2.`,
       "Preserve the model's face, body and skin tone from Image 1, and the garment's exact colour, print and texture from Image 2.",
+      extraImageClause(extraReferences, 3),
       view.modifier,
       detail,
       backGuard,
+      blouse,
       backdrop,
       anchor,
       orientation,
+      swatchGuard,
     ].filter(Boolean).join(" ");
   }
 
   return [
     `Full-body fashion photograph of ${subjectFor(gender)} wearing this ${color} ${category}.`,
+    extraCount > 0 ? "Image 1 is the product garment." : "",
+    extraImageClause(extraReferences, 2),
     view.modifier,
     detail,
     backGuard,
     backdrop,
     anchor,
     orientation,
+    swatchGuard,
   ].filter(Boolean).join(" ");
 }

@@ -3,10 +3,11 @@
  *
  * Each category defines a PRIMARY card (the main product photo used for metadata
  * extraction + generation) and zero-or-more OTHER cards — fixed detail/part
- * shots. The "other" images are EXTRACTION-ONLY: they enrich the generation
- * prompt (added to the one-time detail extraction) but are never sent to the
- * image generator, so generation token cost is unchanged. Pure data + lookups;
- * safe to import on client and server.
+ * shots. By default the "other" images are extraction-only (they enrich the
+ * detail/GI notes, not the generator). EXCEPTION: when region image
+ * conditioning is enabled (see `genReferencesFor` + ENABLE_REGION_CONDITIONING),
+ * the slots mapped in `GEN_REFERENCES` ARE sent to the generator as labelled
+ * visual references. Pure data + lookups; safe to import on client and server.
  */
 export interface PartSlot {
   id: string;
@@ -187,6 +188,53 @@ export interface PartImage {
  */
 export function findBackPart(parts: PartImage[]): PartImage | null {
   return parts.find((p) => /back/i.test(p.slot) || /back/i.test(p.label)) ?? null;
+}
+
+// ── Region conditioning references (R&D — image conditioning) ────────────────
+// Which uploaded part slots are fed to the IMAGE GENERATOR as visual references
+// (not just to detail/GI analysis), so the model reproduces a region from real
+// PIXELS instead of only a text description. Two roles:
+//   layout  → a whole-part shot teaching a distinctive region's design/placement
+//             (fixes "pallu missing / wrong").
+//   texture → a close-up teaching stitch-level surface/relief (fixes the flat,
+//             "2D print" look on heavy work).
+// Retailer-labelled uploads are GROUND TRUTH for which region is which — far
+// more reliable than the vision model guessing part identity from one flat-lay.
+
+export interface GenReference {
+  /** Upload slot id this reference comes from (matches `others[].id`). */
+  slot: string;
+  role: "layout" | "texture";
+  /** Prompt-facing name of the region. */
+  label: string;
+  /** Where the generator must reproduce it, in drape terms. */
+  placement: string;
+  /** Which base views this reference informs. */
+  views: Array<"front" | "back">;
+}
+
+const GEN_REFERENCES: Record<string, GenReference[]> = {
+  saree: [
+    { slot: "pallu",  role: "layout",  label: "the pallu (decorative saree end-piece)", placement: "the pallu draped over the shoulder and cascading down", views: ["front", "back"] },
+    { slot: "border", role: "texture", label: "the saree border",                        placement: "the border running along every edge of the saree",     views: ["front", "back"] },
+  ],
+  lehenga: [
+    { slot: "choli-front", role: "layout",  label: "the choli / blouse front", placement: "the blouse worn on the upper body", views: ["front"] },
+    { slot: "dupatta",     role: "texture", label: "the dupatta",              placement: "the draped dupatta",                 views: ["front", "back"] },
+  ],
+};
+
+/**
+ * Ordered generation references for a category + base view, capped at 2 to keep
+ * per-generation token cost bounded ("necessary but minimum"). Empty for
+ * categories without distinctive region uploads.
+ */
+export function genReferencesFor(
+  category: string | null | undefined,
+  view: "front" | "back"
+): GenReference[] {
+  const all = GEN_REFERENCES[normalize(category)] ?? [];
+  return all.filter((r) => r.views.includes(view)).slice(0, 2);
 }
 
 /** Parse the stored partImages JSON to a typed array (never throws). */

@@ -394,6 +394,8 @@ export function ProductDetailView({
           const data = (await res.json()) as {
             modelImageUrl: string | null;
             generatedImages: GeneratedImage[];
+            failed?: boolean;
+            failureMessage?: string | null;
           };
           const hasOnModel = data.generatedImages?.some(
             (g) => g.objective === "model" || g.view === "on-model"
@@ -405,6 +407,14 @@ export function ProductDetailView({
             setGenerating(false);
             setGenError(null);
             router.refresh();
+            return;
+          }
+          // Server reports the run errored (out of credits, network, storage…)
+          // — stop spinning immediately and show the specific reason instead of
+          // waiting out the full poll window.
+          if (active && data.failed) {
+            setGenerating(false);
+            setGenError(data.failureMessage ?? "Image generation didn't complete. Please try again in a few minutes.");
             return;
           }
         }
