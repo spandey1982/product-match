@@ -11,6 +11,7 @@ import { isGenerationObjective } from "@/lib/model-gen/objectives";
 import { isModelType } from "@/lib/model-gen/reference-models";
 import { isGenerationQuality } from "@/lib/model-gen/quality";
 import { isBackdropSection } from "@/lib/model-gen/scenes/selection";
+import { categorizeGenerationError, genericFailureMessage } from "@/lib/model-gen/failure-message";
 
 export async function POST(
   req: NextRequest,
@@ -80,13 +81,27 @@ export async function POST(
 
     // Retailer-facing failure messaging: honest about what happened AND what
     // it cost. storage_unreachable is pre-flight (nothing attempted, nothing
-    // spent); generation_failed means the run produced no stored images.
-    const failureMessage =
-      failure === "storage_unreachable"
-        ? "Image storage is temporarily unreachable, so generation was not started — no AI usage was spent. Please try again in a few minutes."
-        : failure === "generation_failed"
-          ? "Image generation didn't complete this time. Please try again in a few minutes."
-          : undefined;
+    // spent). generation_failed means the run produced no stored images — read
+    // the just-recorded error to say WHY (out of credits, network, server…).
+    let failureMessage: string | undefined;
+    if (failure === "storage_unreachable") {
+      failureMessage =
+        "Image storage is temporarily unreachable, so generation was not started — no AI usage was spent. Please try again in a few minutes.";
+    } else if (failure === "generation_failed") {
+      const lastGen = await db.aiUsageEvent.findFirst({
+        where: {
+          productId: id,
+          feature: { in: ["catalogue", "model_gen", "quick_listing"] },
+          createdAt: { gte: new Date(Date.now() - 10 * 60 * 1000) },
+        },
+        orderBy: { createdAt: "desc" },
+        select: { status: true, errorMessage: true },
+      });
+      failureMessage =
+        lastGen?.status === "error"
+          ? categorizeGenerationError(lastGen.errorMessage).message
+          : genericFailureMessage();
+    }
 
     return NextResponse.json({
       product: deserializeProduct(updated),

@@ -129,6 +129,20 @@ function backGuardClause(viewId: string, detailNotes?: string | null): string {
 }
 
 /**
+ * A saree is worn with a SEPARATE blouse the model otherwise invents freshly
+ * per view — retailer testing (2026-07-16) got a red blouse on the front and a
+ * navy one on the back of the same generation. Pin the blouse deterministically
+ * to the saree's own colour, worded IDENTICALLY for front and back so the two
+ * independent generations agree. Derived from the product colour (no extra
+ * data); only for saree-like drapes.
+ */
+function blouseClause(category: string, color: string): string {
+  const cat = category.trim().toLowerCase();
+  if (cat !== "saree" && cat !== "dupatta") return "";
+  return `The saree is worn with a simple well-fitted plain ${color} blouse — keep the blouse this exact same ${color} colour and plain style identical in every view.`;
+}
+
+/**
  * Hard camera-orientation contract, appended as the LAST sentence of front
  * and back view prompts. The view modifier ("Full-length front view…") is one
  * early sentence in what is now a long prompt (detail notes + backdrop/scene
@@ -187,6 +201,7 @@ export function buildViewPrompt(input: ViewPromptInput): string {
   const { category, color, gender, view, hasReference, detailNotes, backdrop, studioAnchor, extraReferences } = input;
   const detail = detailClause(detailNotes);
   const backGuard = backGuardClause(view.id, detailNotes);
+  const blouse = blouseClause(category, color);
   const anchor = anchorClause(studioAnchor);
   const orientation = orientationClause(view.id);
   const extraCount = extraReferences?.length ?? 0;
@@ -209,6 +224,7 @@ export function buildViewPrompt(input: ViewPromptInput): string {
       view.modifier,
       detail,
       backGuard,
+      blouse,
       backdrop,
       anchor,
       orientation,
