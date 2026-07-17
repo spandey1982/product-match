@@ -268,9 +268,33 @@ Cloudinary transformation spliced into the delivery URL at the persist boundary,
 so it covers both backends (Gemini catalogue + Vertex quick-listing) and the
 legacy single-image path, and flows automatically to display/share/download — the
 shared try-on upload path is untouched. Stored on `User.logoPublicId` (+ logo
-upload/delete at `/api/settings/logo`); on/off + position (`top-left`/`top-right`,
-default `top-right`) live in `aiGenSettings` (`brandingEnabled`, `brandingPosition`).
-No-op when disabled or when there's no logo and no store name.
+upload/delete at `/api/settings/logo`); on/off lives in `aiGenSettings`
+(`brandingEnabled`). No-op when disabled or when there's no logo and no store name.
+
+**Watermark placement + style (updated 2026-07-16).** Placement is now fixed
+**top-left** on every card — the retailer position picker and the coverage-aware
+"calmest corner" search were removed (the variance heuristic mistook flat
+product/skin for backdrop and had no good answer on busy Scenic frames). The
+store-name wordmark has two retailer-selectable looks, stored in `aiGenSettings`
+as `brandingStyle` (`"classic" | "glass"`, default `"classic"`), chosen via the
+**Style** toggle under Image branding:
+- **Classic** — the adaptive text wordmark (Arial bold, adaptive ivory/Onyx tone
+  + soft shadow), pure Cloudinary URL transform.
+- **Glass** — the wordmark centred on a **designed translucent frosted-glass chip
+  PNG** overlaid behind it (gloss + rounded ends baked into the asset, since URL
+  params can't produce them). Text offsets were *measured* (not guessed) to
+  centre the mark in the chip — see `scratchpad/measure-chip.js` for the method.
+  - **Asset dependency:** the Glass style overlays the Cloudinary asset
+    `product-match/brand/glass-chip-2` (`GLASS_CHIP_ID` in `branding.ts`). It
+    must exist in the Cloudinary account the app delivers from. It was uploaded
+    to the account in `CLOUDINARY_CLOUD_NAME`; if a different account is ever
+    used for production, re-upload the chip there (regenerate via
+    `scratchpad/make-glass-chip.js`) or Glass branding will render without its
+    chip. `brandingPosition` remains in the settings schema for back-compat but
+    is ignored.
+
+The old two `brandingPosition` values (`top-left`/`top-right`) are no longer used
+for placement.
 
 **Settings surface placement:** the chooser (objective + store model + branding)
 lives in the
