@@ -49,8 +49,11 @@ export function TryOnQueueButton({ product, iconOnly = false }: Props) {
 
     if (!photo) {
       iconNode = <HangerPlusIcon size={20} />;
+      // Disabled/initial (no photo yet) — theme-coloured border + indigo-tinted
+      // icon so it reads as a live affordance for setting up the Trial Room,
+      // not a dead grey control.
       variantClass =
-        "bg-white/95 text-gray-500 border border-gray-200 backdrop-blur-sm hover:bg-white hover:text-indigo-600";
+        "bg-white/95 text-indigo-500 border-2 border-indigo-300 backdrop-blur-sm hover:bg-white hover:text-indigo-600 hover:border-indigo-400";
       label = "Set up Trial Room to try this on";
       onClick = () => setSetupModalOpen(true);
     } else if (entry?.status === "generating") {
