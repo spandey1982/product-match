@@ -36,6 +36,16 @@ export function isBrandingPosition(v: unknown): v is BrandingPosition {
 }
 
 /**
+ * Watermark look: "classic" = the refined adaptive text wordmark; "glass" = the
+ * wordmark on a translucent frosted-glass chip. Retailer choice.
+ */
+export type BrandingStyle = "classic" | "glass";
+
+export function isBrandingStyle(v: unknown): v is BrandingStyle {
+  return v === "classic" || v === "glass";
+}
+
+/**
  * Catalogue generation backend — independent of the try-on provider.
  * "auto" routes by category (drape→Natural Drape, structured→Sharp Fit).
  */
@@ -51,6 +61,8 @@ export interface AiGenSettings {
   /** Overlay the store logo (or name) on generated model images. */
   brandingEnabled: boolean;
   brandingPosition: BrandingPosition;
+  /** Watermark look — classic text wordmark, or the frosted-glass chip. */
+  brandingStyle: BrandingStyle;
   /** Backend for the Catalogue & Social objective (independent of try-on). */
   catalogueProvider: CatalogueProvider;
   /** Studio backdrop for generated images (Smart match, or a chosen preset). */
@@ -69,6 +81,7 @@ export const DEFAULT_AI_GEN_SETTINGS: AiGenSettings = {
   defaultObjective: DEFAULT_OBJECTIVE,
   brandingEnabled: true,
   brandingPosition: "top-right",
+  brandingStyle: "classic",
   catalogueProvider: "auto",
   backdrop: { ...DEFAULT_BACKDROP_SELECTION },
   scenic: { ...DEFAULT_SCENIC_SELECTION },
@@ -93,6 +106,9 @@ export function parseAiGenSettings(raw: string | null | undefined): AiGenSetting
       brandingPosition: isBrandingPosition(parsed.brandingPosition)
         ? parsed.brandingPosition
         : DEFAULT_AI_GEN_SETTINGS.brandingPosition,
+      brandingStyle: isBrandingStyle(parsed.brandingStyle)
+        ? parsed.brandingStyle
+        : DEFAULT_AI_GEN_SETTINGS.brandingStyle,
       catalogueProvider: isCatalogueProvider(parsed.catalogueProvider)
         ? parsed.catalogueProvider
         : DEFAULT_AI_GEN_SETTINGS.catalogueProvider,

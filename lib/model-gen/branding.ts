@@ -12,12 +12,14 @@
  * upload path. A no-op when branding is disabled or there's nothing to show.
  */
 import { db } from "@/lib/db";
-import { getAiGenSettings, type BrandingPosition } from "./settings";
+import { getAiGenSettings, type BrandingPosition, type BrandingStyle } from "./settings";
 import { sampleRegionStat, type Rgb } from "./studio-anchor";
 
 export interface BrandingConfig {
   enabled: boolean;
   position: BrandingPosition;
+  /** Watermark look — classic text wordmark, or the frosted-glass chip. */
+  style: BrandingStyle;
   /** Cloudinary public_id of the store logo, if uploaded. */
   logoPublicId: string | null;
   /** Store name, used as a text watermark when there is no logo. */
@@ -37,11 +39,12 @@ export async function getBrandingConfig(userId: string): Promise<BrandingConfig>
     return {
       enabled: settings.brandingEnabled,
       position: settings.brandingPosition,
+      style: settings.brandingStyle,
       logoPublicId: user?.logoPublicId ?? null,
       storeName: user?.storeName ?? null,
     };
   } catch {
-    return { enabled: false, position: "top-right", logoPublicId: null, storeName: null };
+    return { enabled: false, position: "top-right", style: "classic", logoPublicId: null, storeName: null };
   }
 }
 
@@ -80,6 +83,9 @@ export interface BrandingPlacement extends BrandingAdapt {
 
 /** Branding always sits in the top-left corner (retailer positioning removed). */
 const BRAND_GRAVITY = "north_west";
+
+/** Cloudinary public_id (":"-joined) of the frosted-glass chip asset. */
+const GLASS_CHIP_ID = "product-match:brand:glass-chip-2";
 
 /**
  * Resolve the watermark treatment for THIS image. Branding position is fixed
@@ -128,11 +134,20 @@ function buildOverlayTransform(config: BrandingConfig, placement?: BrandingPlace
 
   const name = config.storeName?.trim();
   if (name) {
-    // Clean wordmark: the well-liked pre-existing treatment — Arial 50 bold,
-    // letter-spacing 3, sized to a consistent fraction (w_0.2), in an adaptive
-    // premium tone with a soft shadow so it reads on any background without a
-    // chip. (A designed translucent glass-chip variant is in progress as a
-    // separate asset-backed overlay; this stays the default until it lands.)
+    // GLASS style: the wordmark on a designed translucent glass-chip PNG asset
+    // (gloss + rounded ends baked in — URL params can't produce that), with the
+    // name in calm Onyx centred on top. The chip + text sizing/offsets are tuned
+    // to sit with modest even padding; both are relative fractions so base shots
+    // and smaller crops match. Onyx reads on the light frosted glass on any bg.
+    if (config.style === "glass") {
+      const chip = `l_${GLASS_CHIP_ID},fl_relative,w_0.2,g_${gravity},x_0.04,y_0.04`;
+      const text = `l_text:Arial_50_bold_letter_spacing_3:${escapeText(name)},co_${DARK_MARK_COLOR},fl_relative,w_0.165,g_${gravity},x_0.0575,y_0.049`;
+      return `${chip}/${text}`;
+    }
+
+    // CLASSIC style: the refined adaptive text wordmark — Arial 50 bold,
+    // letter-spacing 3, w_0.2, adaptive premium tone + soft shadow so it reads
+    // on any background without a chip.
     const label = `l_text:Arial_50_bold_letter_spacing_3:${escapeText(name)}`;
     const sizing = "fl_relative,w_0.2";
     const place = `g_${gravity},x_0.04,y_0.04`;
