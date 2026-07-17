@@ -7,16 +7,16 @@
  * no pose and no body. Pose/body/drape come from the existing variant reference
  * (see reference-selection.ts). This split is the whole point of AI Casting —
  * face identity stays locked across every catalogue shot while pose/drape can
- * change per category (see docs/IMAGE_AI_ROADMAP.md — Casting).
+ * change per category.
  *
- * Assets live in `public/reference-models/faces/{id}.{ext}` and are read
- * server-side as buffers. Registry-first: adding or removing a face is a code
- * change (deterministic, versioned) — the retailer never uploads to this
- * library. Retailer-owned Signature Models reference one of these entries by
- * id; they do not add to the library.
+ * This module is CLIENT-SAFE — only pure data + type-narrowing helpers. The
+ * server-side asset loader lives in faces-loader.ts so `fs/promises` never
+ * pollutes a client bundle (Model Studio imports FACE_LIBRARY straight into
+ * a "use client" component). Registry-first: adding or removing a face is a
+ * code change (deterministic, versioned) — the retailer never uploads to
+ * this library. Retailer-owned Signature Models reference one of these
+ * entries by id; they do not add to the library.
  */
-import { access, readFile } from "fs/promises";
-import { join } from "path";
 
 /** India-region grouping used by the casting scorer and the Studio picker. */
 export type FaceRegion =
@@ -75,42 +75,4 @@ export function facesForSex(sex: FaceSex): FaceEntry[] {
 
 export function isFaceId(v: unknown): v is string {
   return typeof v === "string" && FACE_LIBRARY.some((f) => f.id === v);
-}
-
-// ── Asset loader ────────────────────────────────────────────────────────────
-
-const FACES_DIR = join(process.cwd(), "public", "reference-models", "faces");
-const FACE_EXTS = ["webp", "png", "jpg", "jpeg"] as const;
-const EXT_MIME: Record<string, string> = {
-  webp: "image/webp",
-  png: "image/png",
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-};
-
-export interface FaceImage {
-  buffer: Buffer;
-  mime: string;
-  faceId: string;
-}
-
-/**
- * Load a face reference asset as a Buffer for generation. Tries each accepted
- * extension in preference order (webp → png → jpg → jpeg). Returns null if no
- * asset exists yet — callers must degrade gracefully (fall back to the fused
- * variant reference, which behaves like today). Never throws.
- */
-export async function loadFaceImage(faceId: string): Promise<FaceImage | null> {
-  if (!getFace(faceId)) return null;
-  for (const ext of FACE_EXTS) {
-    const p = join(FACES_DIR, `${faceId}.${ext}`);
-    try {
-      await access(p);
-      const buffer = await readFile(p);
-      return { buffer, mime: EXT_MIME[ext], faceId };
-    } catch {
-      // try next extension
-    }
-  }
-  return null;
 }

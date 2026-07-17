@@ -24,7 +24,7 @@ import { loadReferenceImage, type ModelType } from "../reference-models";
 import type { GeneratedImage } from "../persist";
 import type { StrategyProduct } from "./catalogue";
 import type { GenerationQuality } from "../quality";
-import { loadFaceImage } from "../faces";
+import { loadFaceImage } from "../faces-loader";
 import { renderCastingSuffix, IDENTITY_FACE_LABEL } from "../casting-prompt";
 import type { CastingResult } from "../casting-match";
 

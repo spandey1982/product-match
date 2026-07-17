@@ -22,7 +22,7 @@ import { resolveCatalogueStack } from "../catalogue-cards";
 import { genReferencesFor, type PartImage } from "@/lib/product/part-slots";
 import type { GeneratedImage } from "../persist";
 import type { GenerationQuality } from "../quality";
-import { loadFaceImage } from "../faces";
+import { loadFaceImage } from "../faces-loader";
 import { renderCastingSuffix, IDENTITY_FACE_LABEL } from "../casting-prompt";
 import type { CastingResult } from "../casting-match";
 

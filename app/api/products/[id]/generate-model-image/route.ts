@@ -47,6 +47,15 @@ export async function POST(
     // `quality`, never a sticky default. Absent/invalid → Studio.
     const backdropSectionRaw = (body as { backdropSection?: unknown }).backdropSection;
     const backdropSection = isBackdropSection(backdropSectionRaw) ? backdropSectionRaw : undefined;
+    // AI Casting — Signature Model id (optional). Format is validated
+    // shallowly here; ownership + soft-delete are checked inside the engine
+    // via getModelProfile, so a stale id degrades to auto-pick rather than
+    // erroring the request.
+    const signatureProfileIdRaw = (body as { signatureProfileId?: unknown }).signatureProfileId;
+    const signatureProfileId =
+      typeof signatureProfileIdRaw === "string" && signatureProfileIdRaw
+        ? signatureProfileIdRaw
+        : undefined;
 
     let failure: "storage_unreachable" | "generation_failed" | undefined;
     if (isAiGenObjectivesEnabled()) {
@@ -57,6 +66,7 @@ export async function POST(
         modelType: isModelType(modelType) ? modelType : undefined,
         quality,
         backdropSection,
+        signatureProfileId,
       });
       failure = result.failure;
     } else {

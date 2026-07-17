@@ -7,7 +7,7 @@ import {
   Package,
   Upload,
   Bot,
-  Wand2,
+  FolderOpen,
   Search,
   LogOut,
   ChevronDown,
@@ -145,12 +145,12 @@ export function Navbar({ user }: NavbarProps) {
                     Autonomous Catalog
                   </Link>
                   <Link
-                    href="/fashion-designer"
+                    href="/assets"
                     onClick={() => setUserMenuOpen(false)}
                     className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                   >
-                    <Wand2 className="h-4 w-4 text-indigo-400" />
-                    Design Studio
+                    <FolderOpen className="h-4 w-4 text-indigo-400" />
+                    Assets
                   </Link>
                   {/* Trial Room shortcut */}
                   <Link
