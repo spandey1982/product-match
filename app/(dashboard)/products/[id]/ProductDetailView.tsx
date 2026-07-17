@@ -436,7 +436,10 @@ export function ProductDetailView({
   }, [generating, product.id, router]);
 
   return (
-    <div className="space-y-8">
+    // Mobile: reserve space at the bottom for the floating Trial Room FAB so
+    // the AI Matching Suggestions grid can be scrolled fully clear of it.
+    // md and up: no FAB, so no extra padding.
+    <div className="space-y-8 [padding-bottom:calc(4.5rem+env(safe-area-inset-bottom))] md:pb-0">
       {/* Full-screen product image viewer */}
       {viewerIndex !== null && productImages.length > 0 && (
         <ProductImageViewer
@@ -578,13 +581,7 @@ export function ProductDetailView({
               </div>
 
               {product.modelImageUrl && (
-                // Below `md`: share sits at top-left so it doesn't collide with
-                // the wishlist (top-right) or the try-on FAB (bottom-right).
-                // `md` and up: original bottom-right position, unchanged.
-                <div
-                  className="absolute top-3 left-3 md:top-auto md:left-auto md:bottom-3 md:right-3 z-30 pointer-events-auto"
-                  onClick={(e) => e.stopPropagation()}
-                >
+                <div className="absolute bottom-3 right-3 z-30 pointer-events-auto" onClick={(e) => e.stopPropagation()}>
                   <ShareModelImage product={product} iconOnly />
                 </div>
               )}
@@ -610,16 +607,6 @@ export function ProductDetailView({
               >
                 <Heart className={cn("h-5 w-5", wishlisted && "fill-current")} strokeWidth={1.75} />
               </button>
-
-              {/* Mobile-only: icon-only Trial Room FAB at bottom-right of the
-                  image card. Mirrors the below-image button's state machine
-                  (setup modal, generating, done, failed, at-limit, add). */}
-              <div
-                className="md:hidden absolute bottom-3 right-3 z-30 pointer-events-auto"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <TryOnQueueButton product={product} iconOnly />
-              </div>
             </div>
           </div>
 
@@ -943,6 +930,17 @@ export function ProductDetailView({
             Ranked by weighted compatibility score · Category 40% · Color 30% · Occasion 20% · Style 10%
           </p>
         )}
+      </div>
+
+      {/* ── Mobile-only: floating Trial Room FAB ──
+          Fixed to the viewport, not the image card, so it stays reachable
+          while scrolling through Product Information / Pairings / AI
+          Matching Suggestions. Uses the same safe-area rule as the catalog
+          FAB so it always clears the iOS home indicator and the mobile
+          browser's auto-hiding bottom chrome. Hidden at md and up — the
+          below-image action bar covers desktop / tablet. */}
+      <div className="md:hidden fixed right-6 z-30 [bottom:max(1.5rem,calc(env(safe-area-inset-bottom)+0.75rem))]">
+        <TryOnQueueButton product={product} iconOnly />
       </div>
     </div>
   );
