@@ -51,11 +51,11 @@ export function Navbar({ user }: NavbarProps) {
     router.push("/login");
   }
 
+  // Primary nav — kept lean so the bar doesn't overflow on narrow mobile.
+  // Autonomous Catalog and Design Studio moved into the account dropdown.
   const navItems = [
     { href: "/catalog", label: "Catalog", icon: Package, badge: 0 },
     { href: "/upload", label: "Add Product", icon: Upload, badge: 0 },
-    { href: "/auto-catalog", label: "Autonomous Catalog", icon: Bot, badge: 0 },
-    { href: "/fashion-designer", label: "Design Studio", icon: Wand2, badge: 0 },
     { href: "/my-try-ons", label: "My Try-Ons", icon: HangerPlusIcon, badge: tryOnCount },
     { href: "/wishlist", label: "Wishlist", icon: Heart, badge: wishlistCount },
   ];
@@ -135,6 +135,23 @@ export function Navbar({ user }: NavbarProps) {
                     <p className="text-xs text-gray-400 truncate">{user.email}</p>
                   </div>
                   <div className="h-px bg-gray-100 mx-1 my-1" />
+                  {/* Secondary tools — moved out of the main nav to keep it lean on mobile */}
+                  <Link
+                    href="/auto-catalog"
+                    onClick={() => setUserMenuOpen(false)}
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    <Bot className="h-4 w-4 text-indigo-400" />
+                    Autonomous Catalog
+                  </Link>
+                  <Link
+                    href="/fashion-designer"
+                    onClick={() => setUserMenuOpen(false)}
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    <Wand2 className="h-4 w-4 text-indigo-400" />
+                    Design Studio
+                  </Link>
                   {/* Trial Room shortcut */}
                   <Link
                     href="/trial-room"

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Cormorant_Garamond, Poppins } from "next/font/google";
 import "./globals.css";
 
@@ -23,6 +23,15 @@ const poppins = Poppins({
   subsets: ["latin"],
   weight: ["300", "400", "500", "600"],
 });
+
+// viewport-fit=cover lets iOS populate env(safe-area-inset-*), so the
+// floating Trial Room FAB on /catalog can clear the home indicator and the
+// mobile browser's auto-hiding bottom chrome instead of sitting behind them.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+};
 
 export const metadata: Metadata = {
   title: "Mentis — AI Commerce Infrastructure for Fashion Retail",

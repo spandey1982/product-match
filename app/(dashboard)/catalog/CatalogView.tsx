@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import {
-  Search, SlidersHorizontal, Package, Plus, X,
+  Search, SlidersHorizontal, Plus, X,
   Sparkles, Mic, Loader2, MicOff, AlertCircle, Trash2,
 } from "lucide-react";
 import { HangerPlusIcon } from "@/components/icons/HangerPlusIcon";
@@ -26,7 +26,14 @@ const OCCASIONS = ["Wedding", "Festive", "Bridal", "Party", "Casual", "Formal"];
 
 type VoiceState = "idle" | "listening" | "processing";
 
-export function CatalogView() {
+interface CatalogViewProps {
+  /** Retailer's store name — falls back to nothing if unset. */
+  storeName?: string | null;
+  /** Cloudinary delivery URL for the retailer's uploaded logo. */
+  logoUrl?: string | null;
+}
+
+export function CatalogView({ storeName, logoUrl }: CatalogViewProps = {}) {
   // ── catalog state ──────────────────────────────────────────────────────────
   const [products, setProducts] = useState<Product[]>([]);
   const [pagination, setPagination] = useState<Pagination | null>(null);
@@ -244,17 +251,26 @@ export function CatalogView() {
   return (
     // Bottom padding so the last row / pagination clears the floating Trial
     // Room button (fixed bottom-right) — critical on narrow mobile layouts.
-    <div className="pb-28 md:pb-8">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-8">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <Package className="h-6 w-6 text-indigo-500" />
-            Catalog
-          </h1>
-          {pagination && (
-            <p className="text-sm text-gray-500 mt-1">{pagination.total} products</p>
-          )}
+    // env(safe-area-inset-bottom) adds the iOS home-indicator / auto-hiding
+    // browser-chrome inset so content never sits behind them.
+    <div className="[padding-bottom:calc(7rem+env(safe-area-inset-bottom))] md:[padding-bottom:2rem]">
+      {/* Header — retailer's logo if uploaded, otherwise store name.
+          Product count intentionally omitted; the tightened bottom margin
+          trims the white space that used to sit under the old title/count. */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
+        <div className="min-w-0">
+          {logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={logoUrl}
+              alt={storeName ?? "Store"}
+              className="h-8 sm:h-10 w-auto max-w-[220px] object-contain"
+            />
+          ) : storeName ? (
+            <h1 className="font-heading text-2xl sm:text-3xl font-medium text-gray-900 truncate">
+              {storeName}
+            </h1>
+          ) : null}
         </div>
         <div className="flex-1" />
 
@@ -547,8 +563,12 @@ export function CatalogView() {
         </>
       )}
 
-      {/* ── Floating Trial Room button ── */}
-      <div className="fixed bottom-6 right-6 z-30 flex flex-col items-end gap-2">
+      {/* ── Floating Trial Room button ──
+          `bottom` uses max(1.5rem, env(safe-area-inset-bottom) + 0.75rem) so
+          the FAB always clears the iOS home indicator and any auto-hiding
+          mobile browser chrome, instead of being tucked behind them at the
+          top of the page. Falls back to 1.5rem on desktop / non-notched. */}
+      <div className="fixed right-6 z-30 flex flex-col items-end gap-2 [bottom:max(1.5rem,calc(env(safe-area-inset-bottom)+0.75rem))]">
         {/* Contextual hint — shown when user taps Add-to-Trial-Room without a photo */}
         {setupHintActive && !photo && (
           <div className="flex items-center gap-2 px-3 py-2 bg-white border border-indigo-200 rounded-2xl shadow-lg text-sm text-indigo-800 max-w-[220px] animate-in fade-in slide-in-from-bottom-2 duration-200">
@@ -608,9 +628,10 @@ export function CatalogView() {
         </div>
       </div>
 
-      {/* Empty Trial Room confirmation toast */}
+      {/* Empty Trial Room confirmation toast — sits above the FAB, so its
+          bottom offset follows the same safe-area rule + FAB clearance. */}
       {emptyToast && (
-        <div className="fixed bottom-24 inset-x-0 flex justify-center z-40 px-4 pointer-events-none">
+        <div className="fixed inset-x-0 flex justify-center z-40 px-4 pointer-events-none [bottom:calc(6rem+env(safe-area-inset-bottom))]">
           <div className="pointer-events-auto flex items-center gap-3 px-4 py-3 bg-gray-900 text-white rounded-2xl shadow-xl animate-in fade-in slide-in-from-bottom-3 duration-200 max-w-sm w-full">
             <Trash2 className="h-4 w-4 text-red-400 shrink-0" />
             <p className="flex-1 text-sm font-medium">Clear all try-ons?</p>

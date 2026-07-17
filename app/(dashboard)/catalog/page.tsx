@@ -1,14 +1,39 @@
 import { Suspense } from "react";
+import { redirect } from "next/navigation";
+import { getSession } from "@/lib/auth";
+import { db } from "@/lib/db";
 import { CatalogView } from "./CatalogView";
 
 export const metadata = {
   title: "Catalog — Mentis",
 };
 
-export default function CatalogPage() {
+/**
+ * Build a lightweight delivery URL for the retailer's uploaded logo.
+ * Height-capped + f_auto,q_auto so the header request stays tiny.
+ */
+function logoUrlFromPublicId(publicId: string): string | null {
+  const cloud = process.env.CLOUDINARY_CLOUD_NAME;
+  if (!cloud) return null;
+  return `https://res.cloudinary.com/${cloud}/image/upload/f_auto,q_auto,h_96/${publicId}`;
+}
+
+export default async function CatalogPage() {
+  // Layout already guarantees a session; this call is here to fetch the
+  // logo public_id (JWT doesn't carry it) and to keep types honest.
+  const session = await getSession();
+  if (!session) redirect("/login");
+
+  const user = await db.user.findUnique({
+    where: { id: session.id },
+    select: { logoPublicId: true },
+  });
+
+  const logoUrl = user?.logoPublicId ? logoUrlFromPublicId(user.logoPublicId) : null;
+
   return (
     <Suspense fallback={<CatalogSkeleton />}>
-      <CatalogView />
+      <CatalogView storeName={session.storeName ?? null} logoUrl={logoUrl} />
     </Suspense>
   );
 }
