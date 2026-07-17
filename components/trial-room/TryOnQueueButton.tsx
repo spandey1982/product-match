@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Check, Loader2, RotateCcw, ExternalLink } from "lucide-react";
 import { HangerPlusIcon } from "@/components/icons/HangerPlusIcon";
 import { TrialRoomSetupModal } from "@/components/trial-room/TrialRoomSetupModal";
@@ -11,6 +12,13 @@ import type { Product } from "@/types";
 
 interface Props {
   product: Product;
+  /**
+   * Render as a circular icon-only FAB instead of the full-width button.
+   * Used on the mobile product detail page where the CTA sits directly on
+   * the image card. State machine and click behavior are identical to the
+   * default render — only the visual condenses.
+   */
+  iconOnly?: boolean;
 }
 
 /**
@@ -20,13 +28,90 @@ interface Props {
  * modal in-place so the user never has to leave the product page.
  * After uploading a photo they can immediately add the product for try-on.
  */
-export function TryOnQueueButton({ product }: Props) {
+export function TryOnQueueButton({ product, iconOnly = false }: Props) {
+  const router = useRouter();
   const { photo, addToQueue, retryTryOn, findActiveTryOn, isAtLimit } = useTrialRoom();
   const [setupModalOpen, setSetupModalOpen] = useState(false);
 
   if (!product.imageUrl) return null;
 
   const entry = findActiveTryOn(product.id);
+
+  // ── Icon-only FAB (mobile product detail) ─────────────────────────────────
+  // Mirrors the state machine below in a compact circular button. Kept in the
+  // same component so context wiring + modal management stay in one place.
+  if (iconOnly) {
+    let iconNode: React.ReactNode;
+    let variantClass: string;
+    let label: string;
+    let onClick: () => void = () => {};
+    let disabled = false;
+
+    if (!photo) {
+      iconNode = <HangerPlusIcon size={20} />;
+      variantClass =
+        "bg-white/95 text-gray-500 border border-gray-200 backdrop-blur-sm hover:bg-white hover:text-indigo-600";
+      label = "Set up Trial Room to try this on";
+      onClick = () => setSetupModalOpen(true);
+    } else if (entry?.status === "generating") {
+      iconNode = <Loader2 size={20} className="animate-spin" />;
+      variantClass = "bg-indigo-500 text-white shadow-indigo-300/50";
+      label = "Generating try-on…";
+      disabled = true;
+    } else if (entry?.status === "done") {
+      iconNode = <Check size={20} />;
+      variantClass =
+        "bg-emerald-500 text-white shadow-emerald-300/50 hover:bg-emerald-600";
+      label = "Try-on ready — tap to view";
+      onClick = () => router.push("/my-try-ons");
+    } else if (entry?.status === "failed") {
+      iconNode = <RotateCcw size={20} />;
+      variantClass =
+        "bg-white/95 text-red-500 border border-red-200 backdrop-blur-sm hover:bg-white";
+      label = entry.errorMessage ?? "Try-on failed — tap to retry";
+      onClick = () => retryTryOn(entry.id);
+    } else if (isAtLimit) {
+      iconNode = <HangerPlusIcon size={20} />;
+      variantClass =
+        "bg-amber-50 text-amber-600 border border-amber-200 hover:bg-amber-100";
+      label = "Try-on limit reached — tap to manage";
+      onClick = () => router.push("/my-try-ons");
+    } else {
+      iconNode = <HangerPlusIcon size={20} />;
+      variantClass =
+        "bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-indigo-300/50 hover:opacity-90";
+      label = "Add for Virtual Try-On";
+      onClick = () => addToQueue(product);
+    }
+
+    return (
+      <>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onClick();
+          }}
+          disabled={disabled}
+          aria-label={label}
+          title={label}
+          className={cn(
+            "h-12 w-12 rounded-full flex items-center justify-center shadow-lg",
+            "transition-all duration-150 active:scale-90",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2",
+            "disabled:cursor-not-allowed",
+            variantClass
+          )}
+        >
+          {iconNode}
+        </button>
+        {setupModalOpen && (
+          <TrialRoomSetupModal onClose={() => setSetupModalOpen(false)} />
+        )}
+      </>
+    );
+  }
 
   // ── No photo: open setup modal inline ─────────────────────────────────────
   if (!photo) {

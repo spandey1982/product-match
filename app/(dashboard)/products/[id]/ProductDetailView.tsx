@@ -578,17 +578,57 @@ export function ProductDetailView({
               </div>
 
               {product.modelImageUrl && (
-                <div className="absolute bottom-3 right-3 z-30 pointer-events-auto" onClick={(e) => e.stopPropagation()}>
+                // Below `md`: share sits at top-left so it doesn't collide with
+                // the wishlist (top-right) or the try-on FAB (bottom-right).
+                // `md` and up: original bottom-right position, unchanged.
+                <div
+                  className="absolute top-3 left-3 md:top-auto md:left-auto md:bottom-3 md:right-3 z-30 pointer-events-auto"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <ShareModelImage product={product} iconOnly />
                 </div>
               )}
+
+              {/* Mobile-only: wishlist heart at top-right of the image card.
+                  Replaces the wishlist button that used to sit below the image
+                  in the action bar (now `hidden md:flex`). */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setWishlisted((w) => !w);
+                }}
+                aria-label={wishlisted ? "Remove from wishlist" : "Add to wishlist"}
+                className={cn(
+                  "md:hidden absolute top-3 right-3 z-30 h-10 w-10 rounded-full",
+                  "flex items-center justify-center backdrop-blur-sm shadow-md transition-all active:scale-90",
+                  wishlisted
+                    ? "bg-rose-500 text-white"
+                    : "bg-white/90 text-gray-600 hover:text-rose-500"
+                )}
+              >
+                <Heart className={cn("h-5 w-5", wishlisted && "fill-current")} strokeWidth={1.75} />
+              </button>
+
+              {/* Mobile-only: icon-only Trial Room FAB at bottom-right of the
+                  image card. Mirrors the below-image button's state machine
+                  (setup modal, generating, done, failed, at-limit, add). */}
+              <div
+                className="md:hidden absolute bottom-3 right-3 z-30 pointer-events-auto"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <TryOnQueueButton product={product} iconOnly />
+              </div>
             </div>
           </div>
 
-          {/* ── Action bar — under the image, spaced to roughly land at the same height as "Pairs beautifully with" ── */}
+          {/* ── Action bar — under the image, spaced to roughly land at the same height as "Pairs beautifully with".
+              Hidden on mobile: those actions move onto the image card as the
+              top-right wishlist heart and the bottom-right icon-only FAB. */}
           <div
             className={cn(
-              "flex items-center gap-3 mt-4",
+              "hidden md:flex items-center gap-3 mt-4",
               // Offset to match where the image itself starts once the thumbnail
               // rail (w-16 + gap-3 = 76px) sits to its left at the lg breakpoint.
               thumbImages.length >= 2 && "lg:pl-[76px]"
