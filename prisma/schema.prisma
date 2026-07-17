@@ -21,7 +21,8 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  products Product[]
+  products      Product[]
+  modelProfiles ModelProfile[]
 
   @@map("users")
 }
@@ -273,6 +274,50 @@ model AiUsageEvent {
   @@index([storeId, createdAt])
   @@index([createdAt])
   @@map("ai_usage_events")
+}
+
+// ── AI Casting — Signature Models ────────────────────────────────────────────
+
+// A retailer's Signature Model — a saved *casting brief*, not a stored image.
+// Pins one face-library entry (see lib/model-gen/faces.ts) and optionally
+// overrides any subset of appearance/style metadata; every unset field is
+// smart-picked per product at generation time (lib/model-gen/casting-match.ts).
+// This is why no Cloudinary URL lives here: nothing is generated up front, so
+// there is nothing to store or clean up.
+//
+// Delete policy: soft delete only. Historical GenerationRecord rows reference
+// this row by id for explainability and audit; the UI hides soft-deleted rows
+// and slot counting ignores them. Past catalogue images stay valid forever.
+model ModelProfile {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Retailer-facing name (e.g. "Priya — bridal", "Rohan — formal").
+  name String
+
+  // Face-library entry id (lib/model-gen/faces.ts). Not a foreign key because
+  // the library is code-defined, not a table. Validated at write time.
+  faceId String
+
+  // Casting brief — JSON string via lib/model-gen/casting-types.ts. Every
+  // field is nullable so retailers explicitly opt into each override; unset
+  // fields smart-pick at generation time.
+  metadata String
+
+  // "studio" | "editorial" | null. Null defaults to "studio" (catalogue-safe:
+  // pose locked by the variant reference). "editorial" drops the variant
+  // reference and lets the AI vary pose from occasion + persona.
+  poseMode String?
+
+  // Soft delete — never hard-delete or null out. See policy comment above.
+  deletedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, deletedAt])
+  @@map("model_profiles")
 }
 
 // ── Autonomous AI Catalog Pipeline ──────────────────────────────────────────
