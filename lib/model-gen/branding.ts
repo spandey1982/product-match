@@ -140,8 +140,11 @@ function buildOverlayTransform(config: BrandingConfig, placement?: BrandingPlace
     // to sit with modest even padding; both are relative fractions so base shots
     // and smaller crops match. Onyx reads on the light frosted glass on any bg.
     if (config.style === "glass") {
+      // Text offsets measured (not guessed) to centre the wordmark in the chip:
+      // rendered at a known size, the text bbox vs chip centre were aligned to
+      // within ~3px. See scratchpad/measure-chip.js for the method.
       const chip = `l_${GLASS_CHIP_ID},fl_relative,w_0.2,g_${gravity},x_0.04,y_0.04`;
-      const text = `l_text:Arial_50_bold_letter_spacing_3:${escapeText(name)},co_${DARK_MARK_COLOR},fl_relative,w_0.165,g_${gravity},x_0.0575,y_0.049`;
+      const text = `l_text:Arial_50_bold_letter_spacing_3:${escapeText(name)},co_${DARK_MARK_COLOR},fl_relative,w_0.165,g_${gravity},x_0.0683,y_0.0566`;
       return `${chip}/${text}`;
     }
 
