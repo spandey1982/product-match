@@ -48,6 +48,53 @@ Open [http://localhost:3000](http://localhost:3000).
 | Email    | `demo@productmatch.ai` |
 | Password | `demo1234`             |
 
+## Mobile / real-device testing
+
+Two ways to open the local dev build on a phone before merging. Both require
+this dev machine's LAN IP and the phone-side origin to be in
+`allowedDevOrigins` in `next.config.ts` (see the block at the top of that
+file) — Next.js blocks `/_next/*` dev assets from other origins by default.
+
+### Option 1 — Same Wi-Fi (fastest; layout / nav / FAB positioning)
+
+Good for verifying responsive breakpoints, mobile nav overflow, safe-area
+insets, and the icon-only Trial Room FAB. **Cannot** exercise the camera /
+photo-upload flow — iOS Safari + Chrome refuse camera access on plain
+`http://`. Use Option 2 for that.
+
+```bash
+# 1. Start the dev server bound to all interfaces:
+  npm run dev -- -H 0.0.0.0
+# 2. Get this machine's LAN IP:
+  ipconfig    # look for IPv4 Address under the active Wi-Fi adapter
+```
+3. On the phone (same Wi-Fi), open http://<that-ip>:3000.
+4. First run, Windows Firewall will prompt — allow Node.js on Private networks. 
+```bash
+# 5. If it silently blocks instead, from an admin PowerShell once:
+  New-NetFirewallRule -DisplayName "Next dev 3000" -Direction Inbound -LocalPort 3000 -Protocol TCP -Action Allow
+```
+6. If the IP changes on a future DHCP lease, either update the specific entry in allowedDevOrigins or rely on the 192.168.1.* wildcard.
+
+### Option 2 — Cloudflared HTTPS tunnel (needed for camera / VTO)
+
+Required for anything that touches getUserMedia() — Trial Room photo upload, try-on setup modal, etc.
+```bash
+# 1. Terminal A (in this repo): 
+  npm run dev (no -H flag needed)
+# 2. Terminal B (any directory, normal PowerShell — no admin):
+  npx cloudflared tunnel --url http://localhost:3000
+```
+3. Cloudflared prints a fresh URL like: https://<random-words>.trycloudflare.com. Open that on the phone.
+4. The URL rerolls every restart of the tunnel — the *.trycloudflare.com wildcard in allowedDevOrigins covers all of them, so no config change needed between runs.
+5. Ctrl+C in Terminal B tears the tunnel down cleanly.
+
+### Notes
+- The allowedDevOrigins field is dev-only; production builds ignore it, so committing these entries is safe.
+- Other contributors on different subnets will need to add their own LAN entry — 192.168.1.* only matches the maintainer's home network.
+- For a stable Cloudflare URL across sessions (not needed for occasional testing), set up a named tunnel: 
+  cloudflared tunnel login → cloudflared tunnel create <name> → route DNS. One-time setup, permanent hostname.
+
 ## Features
 
 - **Product Catalog** — Upload and browse 15-field product metadata with grid view, filters, and search
