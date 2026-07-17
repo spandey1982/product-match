@@ -67,16 +67,23 @@ Metadata Extraction        (lib/metadata/analyze.ts — "what IS this product?")
    ↓
 Garment Intelligence       (lib/garment-intelligence — "what makes it UNIQUE?")  ← NEW
    ↓
-Prompt Builder             (lib/model-gen/prompt-sets.ts — unchanged)
+Prompt Builder             (lib/model-gen/prompt-sets.ts)
    ↓
-Gemini Image Generation    (lib/generate-model-image.ts — unchanged)
+Gemini Image Generation    (lib/generate-model-image.ts + region image conditioning)
 ```
 
 Metadata Extraction and Garment Intelligence stay **separate services**:
 different questions, different consumers, different cost profiles, different
-cache lifetimes. GI does not replace `lib/metadata/detail-notes.ts` (v1
-one-line enrichment); v1 remains the fallback whenever GI is disabled or
-fails, so the flag can never make generation worse than today.
+cache lifetimes.
+
+**Note (updated 2026-07-16):** GI's relationship to `detail-notes.ts` (v1)
+evolved after the initial write-up. When `ENABLE_GARMENT_INTELLIGENCE` is ON,
+GI is the SOLE prompt-note source (front + back) — v1 is **not** a fallback on
+that path (GI failure → null notes → generation proceeds unenriched, back
+views still get the deterministic guard). v1 runs only on the flag-OFF path.
+See the 2026-07-14 round-2 section for the rationale. Separately, the prompt
+builder and generator are **no longer "unchanged"**: image conditioning
+(2026-07-16) feeds region uploads to the generator — the diagram reflects this.
 
 ### Structured intelligence over prose — decision: YES
 
@@ -449,3 +456,65 @@ bias needs observation over the next few Scenic runs.
   chikankari kurta product, `POST /api/admin/garment-intelligence/<id>`,
   inspect the structure + rendered notes against the manual description that
   worked, then A/B a generation with the flag on vs off.
+
+---
+
+## 2026-07-16 — Image conditioning (region references) + deterministic saree drape
+
+Three real-product tests (kurti + saree ×2, deployed) showed the text-note
+path plateauing on SURFACE FIDELITY: chikankari softened, zardozi border
+flattened into a woven-brocade lookalike (motif changed), and — critically —
+the retailer's uploaded **pallu was ignored entirely** because part images
+were **extraction-only and never sent to the generator**. Conclusion: surface
+fidelity is an IMAGE-CONDITIONING problem, not a text problem. Text (GI) is
+the right tool for ATTRIBUTES (colour/technique/length → descriptions/search);
+pixels are the right tool for surface/placement.
+
+**Why images >> text here (mechanism):** Gemini does not caption-then-generate
+— it encodes each input image into visual tokens and attends to them directly.
+A text note is a few hundred tokens; the actual region crop is hundreds of
+visual tokens carrying exact spacing/texture/relief. Text is a narrow straw,
+the image a firehose of the same information — so showing the model the pallu
+beats describing it. (Still conditioning, not copying: output is much closer
+but not pixel-identical — compositing remains the reserve for metallic work.)
+
+**Shipped (flag-gated, branch `rnd/garment-intelligence`):**
+- **Phase 1 — deterministic saree drape** (`prompt-sets.ts`): one shared
+  `SAREE_DRAPE` clause (spread-open, floor-length pallu, displayed flat) on
+  both front and back, so the two independent generations render a consistent,
+  surface-maximising drape. Fixes the front-bunched/back-spread inconsistency.
+  No flag — it's a strict improvement to the saree prompt.
+- **Phase 2 — region image conditioning** (`ENABLE_REGION_CONDITIONING`, default
+  OFF):
+  - `part-slots.ts` — `GenReference` region map (role `layout` = whole-part
+    placement, `texture` = surface close-up) + `genReferencesFor(category,
+    view)` capped at 2/view. Saree: pallu (layout) + border (texture). Lehenga:
+    choli + dupatta. Retailer-labelled uploads are ground truth for part
+    identity (vs the vision model guessing from one flat-lay).
+  - `runGeminiImageGen` — `extraReferences[]`: preprocessed and appended as
+    image parts after the product, in prompt order; `imageInputs`/`requestBytes`
+    updated so cost logging stays accurate.
+  - `buildViewPrompt` — dynamic image roll-call ("You are given N images …
+    Image 3 is a real close-up of the pallu — reproduce it on the pallu draped
+    over the shoulder …") + same-garment guard (don't add/duplicate garments).
+  - `catalogue.ts` — matches this view's references to uploaded parts, fetches
+    the pixels, threads them to BOTH the prompt and the generator (Gemini path
+    only; Vertex VTO has no equivalent). Absent uploads → no conditioning for
+    that region (unchanged behaviour).
+
+**Cost (from the real ledger):** catalogue generations already send 2 images
+(~800–1,070 input tokens) vs ~2,000–2,860 output. Each region reference ≈
+250–350 input tokens; +2 ≈ +500–700 input (+~10–20% total, output-dominated).
+Exact delta measurable from `ai_usage_events` after a live test — no guessing.
+
+**Validation:** tsc + lint clean; extended pure-logic smoke test (roll-call
+indices, same-garment guard, no-ref path, saree drape) all pass. **No paid
+live generation yet — gated on retailer approval.** First test: one saree WITH
+a pallu upload, flag on, compare pallu/border fidelity vs the earlier run and
+read the token delta from the ledger.
+
+**Still open / reserve:** dedicated macro "craft close-up" upload slot (chosen
+to defer — validate conditioning with existing uploads first); compositing real
+pixels for metallic work past the model ceiling; length fix (retailer dropdown
++ proportional estimate); cross-view visual consistency via conditioning the
+back generation on the finished front image.

@@ -6,6 +6,7 @@ import {
   getAiGenSettings,
   serializeAiGenSettings,
   isBrandingPosition,
+  isBrandingStyle,
   isCatalogueProvider,
   type AiGenSettings,
 } from "@/lib/model-gen/settings";
@@ -76,6 +77,7 @@ export async function PATCH(req: NextRequest) {
     const rawObjective = (body as { defaultObjective?: unknown }).defaultObjective;
     const rawBrandingEnabled = (body as { brandingEnabled?: unknown }).brandingEnabled;
     const rawBrandingPosition = (body as { brandingPosition?: unknown }).brandingPosition;
+    const rawBrandingStyle = (body as { brandingStyle?: unknown }).brandingStyle;
     const rawCatalogueProvider = (body as { catalogueProvider?: unknown }).catalogueProvider;
     const rawBackdrop = (body as { backdrop?: unknown }).backdrop;
     const rawScenic = (body as { scenic?: unknown }).scenic;
@@ -101,6 +103,12 @@ export async function PATCH(req: NextRequest) {
     if (rawBrandingPosition !== undefined && !isBrandingPosition(rawBrandingPosition)) {
       return NextResponse.json(
         { error: "Invalid branding position." },
+        { status: 400 }
+      );
+    }
+    if (rawBrandingStyle !== undefined && !isBrandingStyle(rawBrandingStyle)) {
+      return NextResponse.json(
+        { error: "Invalid branding style." },
         { status: 400 }
       );
     }
@@ -130,6 +138,7 @@ export async function PATCH(req: NextRequest) {
       defaultObjective: isGenerationObjective(rawObjective) ? rawObjective : current.defaultObjective,
       brandingEnabled: typeof rawBrandingEnabled === "boolean" ? rawBrandingEnabled : current.brandingEnabled,
       brandingPosition: isBrandingPosition(rawBrandingPosition) ? rawBrandingPosition : current.brandingPosition,
+      brandingStyle: isBrandingStyle(rawBrandingStyle) ? rawBrandingStyle : current.brandingStyle,
       catalogueProvider: isCatalogueProvider(rawCatalogueProvider) ? rawCatalogueProvider : current.catalogueProvider,
       backdrop: isBackdropSelection(rawBackdrop) ? rawBackdrop : current.backdrop,
       scenic: isScenicSelection(rawScenic) ? rawScenic : current.scenic,

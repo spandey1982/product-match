@@ -62,6 +62,7 @@ interface AiGenConfig {
     defaultObjective: string;
     brandingEnabled: boolean;
     brandingPosition: "top-left" | "top-right";
+    brandingStyle: "classic" | "glass";
     catalogueProvider: "auto" | "gemini" | "vertex";
     backdrop: BackdropValue;
     scenic: ScenicValue;
@@ -136,7 +137,8 @@ export default function UploadPage() {
 
   // Store branding for generated images (persisted immediately on change).
   const [brandingEnabled, setBrandingEnabled] = useState(true);
-  const [brandingPosition, setBrandingPosition] = useState<"top-left" | "top-right">("top-right");
+  const [brandingStyle, setBrandingStyle] = useState<"classic" | "glass">("classic");
+  // Branding position is fixed to top-left (picker removed) — no state needed.
   const [catalogueProvider, setCatalogueProvider] = useState<"auto" | "gemini" | "vertex">("auto");
   // Studio backdrop (Phase 1: store-level setting only; no generation wiring yet).
   const [backdrops, setBackdrops] = useState<BackdropOption[]>([]);
@@ -185,7 +187,7 @@ export default function UploadPage() {
         setObjective(data.settings.defaultObjective);
         // Leave modelType on "auto" — the system picks per product by default.
         setBrandingEnabled(data.settings.brandingEnabled);
-        setBrandingPosition(data.settings.brandingPosition);
+        setBrandingStyle(data.settings.brandingStyle ?? "classic");
         setCatalogueProvider(data.settings.catalogueProvider);
         setBackdrops(data.backdrops ?? []);
         if (data.settings.backdrop) setBackdrop(data.settings.backdrop);
@@ -205,6 +207,7 @@ export default function UploadPage() {
   function patchBranding(patch: {
     brandingEnabled?: boolean;
     brandingPosition?: string;
+    brandingStyle?: "classic" | "glass";
     catalogueProvider?: string;
     backdrop?: BackdropValue;
     scenic?: ScenicValue;
@@ -944,25 +947,29 @@ export default function UploadPage() {
                       </div>
                     </div>
 
-                    {/* Position */}
+                    {/* Watermark style — Classic wordmark or the frosted-glass
+                        chip. Always placed top-left. */}
                     <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-gray-400">Position</span>
-                      {(["top-left", "top-right"] as const).map((pos) => (
+                      <span className="text-[11px] text-gray-400">Style</span>
+                      {([
+                        { id: "classic", label: "Classic" },
+                        { id: "glass", label: "Glass" },
+                      ] as const).map((s) => (
                         <button
-                          key={pos}
+                          key={s.id}
                           type="button"
                           onClick={() => {
-                            setBrandingPosition(pos);
-                            patchBranding({ brandingPosition: pos });
+                            setBrandingStyle(s.id);
+                            patchBranding({ brandingStyle: s.id });
                           }}
-                          aria-pressed={brandingPosition === pos}
+                          aria-pressed={brandingStyle === s.id}
                           className={`rounded-full border px-3 py-1 text-xs font-medium transition-all ${
-                            brandingPosition === pos
+                            brandingStyle === s.id
                               ? "border-indigo-300 bg-gradient-to-br from-indigo-50 to-purple-50 text-indigo-700 ring-1 ring-purple-200"
                               : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
                           }`}
                         >
-                          {pos === "top-left" ? "Top left" : "Top right"}
+                          {s.label}
                         </button>
                       ))}
                     </div>

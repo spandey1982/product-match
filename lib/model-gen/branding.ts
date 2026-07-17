@@ -12,12 +12,14 @@
  * upload path. A no-op when branding is disabled or there's nothing to show.
  */
 import { db } from "@/lib/db";
-import { getAiGenSettings, type BrandingPosition } from "./settings";
-import { sampleRegionStat, type Rgb, type RegionStat } from "./studio-anchor";
+import { getAiGenSettings, type BrandingPosition, type BrandingStyle } from "./settings";
+import { sampleRegionStat, type Rgb } from "./studio-anchor";
 
 export interface BrandingConfig {
   enabled: boolean;
   position: BrandingPosition;
+  /** Watermark look — classic text wordmark, or the frosted-glass chip. */
+  style: BrandingStyle;
   /** Cloudinary public_id of the store logo, if uploaded. */
   logoPublicId: string | null;
   /** Store name, used as a text watermark when there is no logo. */
@@ -37,18 +39,14 @@ export async function getBrandingConfig(userId: string): Promise<BrandingConfig>
     return {
       enabled: settings.brandingEnabled,
       position: settings.brandingPosition,
+      style: settings.brandingStyle,
       logoPublicId: user?.logoPublicId ?? null,
       storeName: user?.storeName ?? null,
     };
   } catch {
-    return { enabled: false, position: "top-right", logoPublicId: null, storeName: null };
+    return { enabled: false, position: "top-right", style: "classic", logoPublicId: null, storeName: null };
   }
 }
-
-const GRAVITY: Record<BrandingPosition, string> = {
-  "top-left": "north_west",
-  "top-right": "north_east",
-};
 
 /**
  * How the watermark should render against the ACTUAL area it sits on. Resolved
@@ -64,9 +62,10 @@ export interface BrandingAdapt {
   brightness: number;
 }
 
-/** Premium mark tones — soft, never flat #fff / #000, so it reads as designed. */
+// Wordmark ink — soft premium tones (never flat #fff/#000), chosen against the
+// real background. Ivory on dark/medium, calm Onyx-ish near-black on light.
 const LIGHT_MARK_COLOR = "rgb:f7f4ee"; // warm ivory, for dark/medium backgrounds
-const DARK_MARK_COLOR = "rgb:2b2723"; // warm near-black, for light backgrounds
+const DARK_MARK_COLOR = "rgb:353839"; // calm Onyx near-black, for light backgrounds
 
 /**
  * Perceived luminance 0 (black) … 1 (white). Below ~0.6 a light mark reads
@@ -82,39 +81,30 @@ export interface BrandingPlacement extends BrandingAdapt {
   gravity: string;
 }
 
-const PLACEMENT_GRAVITIES: string[] = ["north_east", "north_west", "south_east", "south_west"];
+/** Branding always sits in the top-left corner (retailer positioning removed). */
+const BRAND_GRAVITY = "north_west";
+
+/** Cloudinary public_id (":"-joined) of the frosted-glass chip asset. */
+const GLASS_CHIP_ID = "product-match:brand:glass-chip-2";
 
 /**
- * Coverage-aware placement (R3): sample all four corners of THIS image and put
- * the mark in the calmest one (lowest luminance variance = most likely
- * backdrop, least product), with the adaptive colour for that corner. The
- * retailer's configured corner wins when it's nearly as calm, so we only
- * relocate to avoid genuine product overlap. Falls back to the configured
- * corner + preset adapt if sampling fails. Never throws.
+ * Resolve the watermark treatment for THIS image. Branding position is fixed
+ * to the top-left corner (a single, predictable, professional placement — the
+ * old "calmest corner" search confused flat product/skin areas with backdrop
+ * and had no good answer on busy Scenic frames). We still sample the top-left
+ * area to choose the mark TONE so the scrim/plate reads well and feels tinted
+ * to the background rather than pasted on. Falls back to the preset adapt if
+ * sampling fails. Never throws.
  */
 export async function resolveBrandingPlacement(
   secureUrl: string,
-  preferredPosition: BrandingPosition,
+  _preferredPosition: BrandingPosition, // retained for signature stability; ignored
   fallback: BrandingAdapt
 ): Promise<BrandingPlacement> {
-  const preferredGravity = GRAVITY[preferredPosition];
-  const stats = await Promise.all(
-    PLACEMENT_GRAVITIES.map((g) => sampleRegionStat(secureUrl, g, 0.3, 0.2))
-  );
-  const scored = PLACEMENT_GRAVITIES
-    .map((gravity, i) => ({ gravity, stat: stats[i] }))
-    .filter((c): c is { gravity: string; stat: RegionStat } => c.stat !== null);
-
-  if (scored.length === 0) return { ...fallback, gravity: preferredGravity };
-
-  scored.sort((a, b) => a.stat.variance - b.stat.variance);
-  const calmest = scored[0];
-  const preferred = scored.find((c) => c.gravity === preferredGravity);
-  const chosen =
-    preferred && preferred.stat.variance <= calmest.stat.variance * 1.25 ? preferred : calmest;
-
-  const lum = luminance(chosen.stat.rgb);
-  return { mark: lum < 0.6 ? "light" : "dark", brightness: lum, gravity: chosen.gravity };
+  const stat = await sampleRegionStat(secureUrl, BRAND_GRAVITY, 0.34, 0.22);
+  if (!stat) return { ...fallback, gravity: BRAND_GRAVITY };
+  const lum = luminance(stat.rgb);
+  return { mark: lum < 0.58 ? "light" : "dark", brightness: lum, gravity: BRAND_GRAVITY };
 }
 
 /** Logo opacity tuned to the corner: lighter background → subtler mark. */
@@ -132,8 +122,8 @@ function escapeText(text: string): string {
 
 /** Build the overlay transformation segment, or null if nothing to overlay. */
 function buildOverlayTransform(config: BrandingConfig, placement?: BrandingPlacement): string | null {
-  // Gravity = the coverage-aware corner when resolved, else the configured one.
-  const gravity = placement?.gravity ?? GRAVITY[config.position];
+  // Branding is always top-left now (retailer positioning removed).
+  const gravity = BRAND_GRAVITY;
 
   if (config.logoPublicId) {
     // Logo image overlay. Public-id path separators become ":" in a layer ref.
@@ -144,20 +134,29 @@ function buildOverlayTransform(config: BrandingConfig, placement?: BrandingPlace
 
   const name = config.storeName?.trim();
   if (name) {
-    // A refined wordmark: medium weight + letter-spacing for an intentional,
-    // boutique feel, in a soft premium tone chosen for the real background.
-    // Size + offset are RELATIVE (fl_relative) so the mark is a consistent
-    // FRACTION of each image — base shots and the smaller close-up crops render
-    // it at the same proportional size, not a fixed px that balloons on crops.
+    // GLASS style: the wordmark on a designed translucent glass-chip PNG asset
+    // (gloss + rounded ends baked in — URL params can't produce that), with the
+    // name in calm Onyx centred on top. The chip + text sizing/offsets are tuned
+    // to sit with modest even padding; both are relative fractions so base shots
+    // and smaller crops match. Onyx reads on the light frosted glass on any bg.
+    if (config.style === "glass") {
+      // Text offsets measured (not guessed) to centre the wordmark in the chip:
+      // rendered at a known size, the text bbox vs chip centre were aligned to
+      // within ~3px. See scratchpad/measure-chip.js for the method.
+      const chip = `l_${GLASS_CHIP_ID},fl_relative,w_0.2,g_${gravity},x_0.04,y_0.04`;
+      const text = `l_text:Arial_50_bold_letter_spacing_3:${escapeText(name)},co_${DARK_MARK_COLOR},fl_relative,w_0.165,g_${gravity},x_0.0683,y_0.0566`;
+      return `${chip}/${text}`;
+    }
+
+    // CLASSIC style: the refined adaptive text wordmark — Arial 50 bold,
+    // letter-spacing 3, w_0.2, adaptive premium tone + soft shadow so it reads
+    // on any background without a chip.
     const label = `l_text:Arial_50_bold_letter_spacing_3:${escapeText(name)}`;
     const sizing = "fl_relative,w_0.2";
     const place = `g_${gravity},x_0.04,y_0.04`;
-    if ((placement?.mark ?? "light") === "light") {
-      // Ivory mark + soft shadow → legible on dark/medium/vignetted corners.
-      return `${label},${sizing},co_${LIGHT_MARK_COLOR},e_shadow:30,o_92,${place}`;
-    }
-    // Warm near-black mark → clean and legible on genuinely light backdrops.
-    return `${label},${sizing},co_${DARK_MARK_COLOR},o_88,${place}`;
+    return (placement?.mark ?? "light") === "light"
+      ? `${label},${sizing},co_${LIGHT_MARK_COLOR},e_shadow:30,o_92,${place}`
+      : `${label},${sizing},co_${DARK_MARK_COLOR},o_90,${place}`;
   }
 
   return null;

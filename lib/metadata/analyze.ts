@@ -56,11 +56,12 @@ function buildAnalysisPrompt(knownCategory?: string): string {
     : "";
   return `Indian ethnic fashion product image. ${categoryAssertion}
 Return raw JSON only, no markdown:
-{"title":"","description":"2-3 sentences","category":"Saree|Lehenga|Blouse|Dupatta|Kurta|Salwar|Anarkali|Sharara|Palazzo|Jewellery|Footwear|Clutch|Handbag|Suit|Tie|Other","subcategory":"or empty string","color":"primary color","pattern":"Solid|Floral|Paisley|Geometric|Striped|Polka|Checked|Embroidered|Printed|Woven|Zari|Bandhani|Block Print|Abstract|other","material":"Silk|Cotton/Cotton-Blend|Chiffon|Georgette|Velvet|Brocade|Linen/Linen-Blend|Crepe|Net|Satin|Polyester|Organza|Khadi|Wool|Viscose|Muslin|best guess","gender":"WOMEN|MEN|UNISEX|GIRLS|BOYS","occasion":[],"styleTags":[],"season":[],"price":0}
+{"title":"","description":"2-3 sentences","category":"Saree|Lehenga|Blouse|Dupatta|Kurta|Salwar|Anarkali|Sharara|Palazzo|Jewellery|Footwear|Clutch|Handbag|Suit|Tie|Other","subcategory":"or empty string","color":"primary color","pattern":"Solid|Floral|Paisley|Geometric|Striped|Polka|Checked|Embroidered|Printed|Woven|Zari|Bandhani|Block Print|Abstract|other","material":"Silk|Cotton/Cotton-Blend|Chiffon|Georgette|Velvet|Brocade|Linen/Linen-Blend|Crepe|Net|Satin|Polyester|Organza|Khadi|Wool|Viscose|Muslin","gender":"WOMEN|MEN|UNISEX|GIRLS|BOYS","occasion":[],"styleTags":[],"season":[],"price":0}
 occasion options: Wedding Bridal Festive Party Casual Formal Office Traditional Religious Anniversary
 styleTags options: Ethnic Boho Minimalist Traditional Contemporary Fusion Royal Bridal Casual Festive
 season options: Spring Summer Autumn Winter All Season
-price: integer INR estimate based on quality. Arrays may be empty. Use "Other" for unknown category. "pattern" is the dominant visual print/motif.`;
+price: integer INR estimate based on quality. Arrays may be empty. Use "Other" for unknown category. "pattern" is the dominant visual print/motif.
+"material": pick the SINGLE closest fabric from the list above; if uncertain, choose the most likely one — NEVER output the literal words "best guess", and never leave it blank.`;
 }
 
 /**
@@ -181,7 +182,12 @@ export async function analyzeProductImage(
     subcategory: String(parsed.subcategory || ""),
     color: String(parsed.color || ""),
     pattern: String(parsed.pattern || ""),
-    material: String(parsed.material || ""),
+    // Defensive guard: the model occasionally echoes the prompt's fallback
+    // instruction ("best guess") as a literal material value — drop it so the
+    // field stays empty (retailer picks) rather than showing a nonsense fabric.
+    material: /^best\s*guess$/i.test(String(parsed.material || "").trim())
+      ? ""
+      : String(parsed.material || ""),
     gender: String(parsed.gender || "WOMEN"),
     occasion: Array.isArray(parsed.occasion) ? parsed.occasion.map(String) : [],
     styleTags: Array.isArray(parsed.styleTags) ? parsed.styleTags.map(String) : [],
