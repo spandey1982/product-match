@@ -22,6 +22,9 @@ import { resolveCatalogueStack } from "../catalogue-cards";
 import { genReferencesFor, type PartImage } from "@/lib/product/part-slots";
 import type { GeneratedImage } from "../persist";
 import type { GenerationQuality } from "../quality";
+import { loadFaceImage } from "../faces";
+import { renderCastingSuffix, IDENTITY_FACE_LABEL } from "../casting-prompt";
+import type { CastingResult } from "../casting-match";
 
 export interface StrategyProduct {
   id: string;
@@ -62,8 +65,16 @@ export async function runCatalogueStrategy(opts: {
   partImages?: PartImage[];
   /** Native Gemini output quality for this run. Defaults to "standard". */
   quality?: GenerationQuality;
+  /**
+   * AI Casting result (null = legacy path, no face-decoupling). Non-null adds
+   * the face identity reference and appends appearance/persona tokens to the
+   * prompt on the Gemini path only; the Vertex VTO path always uses the
+   * legacy fused reference (VTO needs a full person). Editorial pose mode
+   * drops the drape reference on the Gemini path so the AI can vary pose.
+   */
+  casting?: CastingResult | null;
 }): Promise<{ images: GeneratedImage[] }> {
-  const { product, modelType, provider = "gemini", userId, backdrop, partImages = [], quality } = opts;
+  const { product, modelType, provider = "gemini", userId, backdrop, partImages = [], quality, casting = null } = opts;
   // Same store + acting user for every call in this run; feature is "catalogue".
   const usage = { feature: "catalogue", storeId: userId ?? null, userId: userId ?? null };
   // Region image conditioning (R&D) — feed labelled part uploads (pallu/border)
@@ -86,6 +97,17 @@ export async function runCatalogueStrategy(opts: {
   // legacy single image, then to the basic model, then to null.
   const frontRef = await loadReferenceImage(modelType, variant, { profile: "front" });
   const backRef = await loadReferenceImage(modelType, variant, { profile: "back" });
+
+  // AI Casting — load the face identity reference (Gemini path only). If the
+  // face asset is missing on disk the loader returns null and the flow
+  // degrades transparently to the legacy fused-reference behaviour — nothing
+  // breaks before the 12 curated face assets ship.
+  const faceRef = casting?.face ? await loadFaceImage(casting.face.id) : null;
+  const castingSuffix = casting ? renderCastingSuffix(casting.metadata, casting.poseMode) : "";
+  // Editorial pose drops the drape reference on the Gemini side so the AI can
+  // vary the pose per persona/occasion; Vertex VTO is unaffected (it needs a
+  // person image regardless — always Studio-equivalent).
+  const editorial = casting?.poseMode === "editorial";
 
   const vertexReady = isVertexTryOnEnabled() && getVertexConfig() !== null;
 
@@ -136,6 +158,9 @@ export async function runCatalogueStrategy(opts: {
       }
     }
     // Gemini (Natural Drape): prompt-based with the reference in context.
+    // Editorial pose mode drops the drape reference on this path so pose can
+    // vary; the face identity reference (when present) still anchors identity.
+    const geminiDrapeRef = editorial ? null : reference;
     const result = await runGeminiImageGen({
       productId: product.id,
       productTitle: product.title,
@@ -143,8 +168,8 @@ export async function runCatalogueStrategy(opts: {
       productColor: product.color,
       productBuffer: productSource.buffer,
       productMime: productSource.mime,
-      referenceBuffer: reference?.buffer ?? null,
-      referenceMime: reference?.mime ?? null,
+      referenceBuffer: geminiDrapeRef?.buffer ?? null,
+      referenceMime: geminiDrapeRef?.mime ?? null,
       prompt: promptText,
       folder: "product-match/catalogue",
       view: viewId,
@@ -152,7 +177,8 @@ export async function runCatalogueStrategy(opts: {
       quality,
       // Region references (pallu/border/…) — Gemini path only; Vertex VTO has
       // no equivalent. Empty unless region conditioning is enabled + uploads
-      // matched a category's generation references.
+      // matched a category's generation references. AI Casting adds the face
+      // identity reference at the front of this list.
       extraReferences,
     });
     return result
@@ -175,12 +201,22 @@ export async function runCatalogueStrategy(opts: {
     const productSource = isBack && backSource ? backSource : source;
     const productUrl = isBack && product.backImageUrl ? product.backImageUrl : product.imageUrl;
 
+    const promptRefs: Array<{ label: string; placement: string }> = [];
+    const imageRefs: Array<{ buffer: Buffer; mime: string; label: string }> = [];
+
+    // AI Casting — the face identity reference goes FIRST so it takes the
+    // lowest extra-image index (Image 3 with a drape ref, Image 2 without).
+    // Only the Gemini path consumes extraReferences; Vertex VTO ignores them,
+    // so this is safe under all provider branches.
+    if (faceRef) {
+      imageRefs.push({ buffer: faceRef.buffer, mime: faceRef.mime, label: IDENTITY_FACE_LABEL });
+      promptRefs.push({ label: IDENTITY_FACE_LABEL, placement: "" });
+    }
+
     // Region conditioning (flag-gated): match this view's generation references
     // to the retailer's uploaded part images, fetch the pixels, and pass them
     // to BOTH the prompt roll-call and the generator — in the same order. Gemini
     // path only. Absent uploads → no conditioning for that region (unchanged).
-    const promptRefs: Array<{ label: string; placement: string }> = [];
-    const imageRefs: Array<{ buffer: Buffer; mime: string; label: string }> = [];
     if (regionConditioningEnabled && provider === "gemini") {
       for (const ref of genReferencesFor(product.category, view.id as "front" | "back")) {
         const part = partImages.find((p) => p.slot === ref.slot);
@@ -192,12 +228,18 @@ export async function runCatalogueStrategy(opts: {
       }
     }
 
-    const prompt = buildViewPrompt({
+    // Editorial pose mode drops the drape reference from the Gemini path so
+    // the AI can vary pose per persona/occasion — the prompt must reflect
+    // that. Vertex still receives the drape reference (VTO needs a person)
+    // and does not consume this prompt text.
+    const geminiHasReference = Boolean(reference) && !editorial;
+
+    const basePrompt = buildViewPrompt({
       category: product.category,
       color: product.color,
       gender: product.gender,
       view,
-      hasReference: Boolean(reference),
+      hasReference: geminiHasReference,
       // Back view uses back-image notes; all other views use front notes.
       detailNotes: isBack ? product.backDetailNotes : product.detailNotes,
       // Same studio for front + back; the crop-derived close-ups inherit it.
@@ -205,7 +247,13 @@ export async function runCatalogueStrategy(opts: {
       // Pin the back to the front's realized backdrop colour (front defines it).
       studioAnchor: isBack ? studioAnchor : null,
       extraReferences: promptRefs,
+      // Tell the prompt when face identity comes from the identity ref rather
+      // than the drape ref — resolves the "preserve face" ambiguity.
+      hasIdentityReference: Boolean(faceRef),
     });
+    // Append the casting appearance/persona/pose-freedom suffix. Empty string
+    // when Casting is off, so the legacy prompt is byte-identical.
+    const prompt = castingSuffix ? `${basePrompt} ${castingSuffix}` : basePrompt;
 
     const shot = await generateBaseShot(
       view.id as "front" | "back",
