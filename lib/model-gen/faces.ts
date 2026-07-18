@@ -45,29 +45,34 @@ export interface FaceEntry {
  * The registry. Order here is the order Model Studio renders them; keep
  * female and male grouped for scan-ability.
  *
- * Labels are DELIBERATELY neutral ("Model 1", "Model 2", …). We source models
- * with regional inspiration for inclusivity, but the retailer-facing surface
- * treats them as fashion models first — the same way a real casting sheet
- * doesn't sort humans by region. Region is retained as *metadata* only
- * because the scorer's regionAffinity heuristic uses it to bias the
- * auto-picker (e.g. "kanjivaram" → South-inspired face). Never surfaced in
- * copy.
+ * Labels are DELIBERATELY non-sequential identity names (Amber, Onyx,
+ * Jade, …) rather than "Model 1..6". Two reasons:
+ *   1. If only 3 of 6 faces have shipped for a sex, sequential labels
+ *      would produce a visible gap ("Model 1, 2, 4"); identity names
+ *      don't imply an ordering, so the retailer just sees "Amber, Coral,
+ *      Sage" and nothing looks missing.
+ *   2. Distinct names give each face its own presence in the picker,
+ *      unlike the factory-line "Model 1..6" feel.
+ * Naming scheme: nature/mineral/stone words — neutral, non-cultural, no
+ * gender or region implied. Region is retained as *metadata* only because
+ * the scorer's regionAffinity heuristic uses it (e.g. "kanjivaram" →
+ * South-inspired face). Never surfaced in retailer copy.
  */
 export const FACE_LIBRARY: readonly FaceEntry[] = [
-  // Female — six inspirations
-  { id: "north-f-1",      label: "Model 1", region: "north",      sex: "female", thumbnailUrl: "/reference-models/faces/north-f-1.webp" },
-  { id: "south-f-1",      label: "Model 2", region: "south",      sex: "female", thumbnailUrl: "/reference-models/faces/south-f-1.webp" },
-  { id: "east-f-1",       label: "Model 3", region: "east",       sex: "female", thumbnailUrl: "/reference-models/faces/east-f-1.webp" },
-  { id: "west-f-1",       label: "Model 4", region: "west",       sex: "female", thumbnailUrl: "/reference-models/faces/west-f-1.webp" },
-  { id: "north-east-f-1", label: "Model 5", region: "north-east", sex: "female", thumbnailUrl: "/reference-models/faces/north-east-f-1.webp" },
-  { id: "global-f-1",     label: "Model 6", region: "global",     sex: "female", thumbnailUrl: "/reference-models/faces/global-f-1.webp" },
-  // Male — six inspirations
-  { id: "north-m-1",      label: "Model 1", region: "north",      sex: "male",   thumbnailUrl: "/reference-models/faces/north-m-1.webp" },
-  { id: "south-m-1",      label: "Model 2", region: "south",      sex: "male",   thumbnailUrl: "/reference-models/faces/south-m-1.webp" },
-  { id: "east-m-1",       label: "Model 3", region: "east",       sex: "male",   thumbnailUrl: "/reference-models/faces/east-m-1.webp" },
-  { id: "west-m-1",       label: "Model 4", region: "west",       sex: "male",   thumbnailUrl: "/reference-models/faces/west-m-1.webp" },
-  { id: "north-east-m-1", label: "Model 5", region: "north-east", sex: "male",   thumbnailUrl: "/reference-models/faces/north-east-m-1.webp" },
-  { id: "global-m-1",     label: "Model 6", region: "global",     sex: "male",   thumbnailUrl: "/reference-models/faces/global-m-1.webp" },
+  // Female
+  { id: "north-f-1",      label: "Amber",  region: "north",      sex: "female", thumbnailUrl: "/reference-models/faces/north-f-1.webp" },
+  { id: "south-f-1",      label: "Coral",  region: "south",      sex: "female", thumbnailUrl: "/reference-models/faces/south-f-1.webp" },
+  { id: "east-f-1",       label: "Pearl",  region: "east",       sex: "female", thumbnailUrl: "/reference-models/faces/east-f-1.webp" },
+  { id: "west-f-1",       label: "Ivory",  region: "west",       sex: "female", thumbnailUrl: "/reference-models/faces/west-f-1.webp" },
+  { id: "north-east-f-1", label: "Jade",   region: "north-east", sex: "female", thumbnailUrl: "/reference-models/faces/north-east-f-1.webp" },
+  { id: "global-f-1",     label: "Willow", region: "global",     sex: "female", thumbnailUrl: "/reference-models/faces/global-f-1.webp" },
+  // Male
+  { id: "north-m-1",      label: "Ash",    region: "north",      sex: "male",   thumbnailUrl: "/reference-models/faces/north-m-1.webp" },
+  { id: "south-m-1",      label: "Onyx",   region: "south",      sex: "male",   thumbnailUrl: "/reference-models/faces/south-m-1.webp" },
+  { id: "east-m-1",       label: "Slate",  region: "east",       sex: "male",   thumbnailUrl: "/reference-models/faces/east-m-1.webp" },
+  { id: "west-m-1",       label: "Ember",  region: "west",       sex: "male",   thumbnailUrl: "/reference-models/faces/west-m-1.webp" },
+  { id: "north-east-m-1", label: "Ridge",  region: "north-east", sex: "male",   thumbnailUrl: "/reference-models/faces/north-east-m-1.webp" },
+  { id: "global-m-1",     label: "Cove",   region: "global",     sex: "male",   thumbnailUrl: "/reference-models/faces/global-m-1.webp" },
 ];
 
 /** Lookup a face by id. Returns null on unknown id (never throws). */

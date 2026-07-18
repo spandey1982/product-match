@@ -17,9 +17,14 @@ import {
   parseCastingMetadata,
   serializeCastingMetadata,
   isPoseMode,
+  MAX_SIGNATURE_MODELS,
   type CastingMetadata,
   type PoseMode,
 } from "./casting-types";
+
+// Re-export so server callers that already import from casting.ts don't need
+// to know the constant lives in casting-types.
+export { MAX_SIGNATURE_MODELS };
 
 /**
  * Master switch for AI Casting UI + engine wiring. When OFF (default), the
@@ -30,6 +35,7 @@ import {
 export function isAiCastingEnabled(): boolean {
   return process.env.ENABLE_AI_CASTING === "true";
 }
+
 
 /** Deserialized Signature Model — never leaks the raw JSON string. */
 export interface ModelProfile {
@@ -140,6 +146,18 @@ export async function createModelProfile(
   const name = validateName(input.name);
   validateFaceId(input.faceId);
   const poseMode = validatePoseMode(input.poseMode);
+
+  // Cap check — soft-deleted rows don't count toward the limit. Editing an
+  // existing profile does NOT go through this path, so retailers at the
+  // cap can still refine what they already have; only new creates block.
+  const activeCount = await db.modelProfile.count({
+    where: { userId, deletedAt: null },
+  });
+  if (activeCount >= MAX_SIGNATURE_MODELS) {
+    throw new Error(
+      `Maximum ${MAX_SIGNATURE_MODELS} Signature Models. Delete one before adding another.`
+    );
+  }
 
   const row = await db.modelProfile.create({
     data: {

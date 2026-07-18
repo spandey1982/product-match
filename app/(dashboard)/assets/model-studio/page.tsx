@@ -39,6 +39,12 @@ export default async function ModelStudioPage() {
   }
   const faces = [...availableFaces, ...referencedFaces];
 
+  // Real thumbnail URLs (with correct extension) come from listAvailableFaces.
+  // Fall back to the registry's hardcoded .webp only when the id isn't
+  // available on disk — the card will render a broken image, which is the
+  // correct signal that the underlying asset is gone.
+  const urlByFaceId = new Map(availableFaces.map((f) => [f.id, f.thumbnailUrl]));
+
   const initial: SignatureModelSummary[] = profiles.map((p) => {
     const face = getFace(p.faceId);
     return {
@@ -46,7 +52,7 @@ export default async function ModelStudioPage() {
       name: p.name,
       faceId: p.faceId,
       faceLabel: face?.label ?? null,
-      faceThumbnailUrl: face?.thumbnailUrl ?? null,
+      faceThumbnailUrl: urlByFaceId.get(p.faceId) ?? face?.thumbnailUrl ?? null,
       metadata: p.metadata,
       poseMode: p.poseMode,
     };

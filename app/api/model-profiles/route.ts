@@ -97,7 +97,12 @@ export async function POST(req: NextRequest) {
     }
     // Validation errors from the DB layer surface as 400s rather than 500s.
     const message = (err as Error).message;
-    if (message.startsWith("Signature Model") || message.startsWith("Unknown face") || message.startsWith("Name must")) {
+    if (
+      message.startsWith("Signature Model") ||
+      message.startsWith("Unknown face") ||
+      message.startsWith("Name must") ||
+      message.startsWith("Maximum ")
+    ) {
       return NextResponse.json({ error: message }, { status: 400 });
     }
     console.error(err);

@@ -48,29 +48,38 @@ export async function loadFaceImage(faceId: string): Promise<FaceImage | null> {
 }
 
 /**
- * Check-only: does an asset exist on disk for this face id? Skips reading
- * the buffer — used by Model Studio to render only the faces that actually
- * ship. Never throws.
+ * Check-only: return the on-disk extension for this face id, or null when
+ * no asset ships yet. Skips reading the buffer — used by Model Studio to
+ * render only the faces that actually exist AND to hand back the correct
+ * URL (FACE_LIBRARY's thumbnailUrl assumes .webp, but the generator may
+ * write .jpg/.png depending on what Gemini returns).
  */
-async function hasAsset(faceId: string): Promise<boolean> {
+async function assetExt(faceId: string): Promise<string | null> {
   for (const ext of FACE_EXTS) {
     try {
       await access(join(FACES_DIR, `${faceId}.${ext}`));
-      return true;
+      return ext;
     } catch {
       // try next extension
     }
   }
-  return false;
+  return null;
 }
 
 /**
  * Return the subset of FACE_LIBRARY whose portrait assets are actually on
- * disk. Model Studio calls this so the picker shows N cards when N faces
- * ship — not 12 gradient-only placeholders. Order is preserved from
- * FACE_LIBRARY (female group before male group). Runs once per page load.
+ * disk. Each returned entry has its `thumbnailUrl` overridden to the real
+ * on-disk extension so the browser fetches the file that exists, not the
+ * .webp the registry hardcodes. Model Studio calls this so the picker
+ * shows N cards when N faces ship — not 12 gradient-only placeholders.
+ * Order is preserved from FACE_LIBRARY (female group before male group).
+ * Runs once per page load.
  */
 export async function listAvailableFaces(): Promise<FaceEntry[]> {
-  const results = await Promise.all(FACE_LIBRARY.map(async (f) => ({ f, ok: await hasAsset(f.id) })));
-  return results.filter((r) => r.ok).map((r) => r.f);
+  const results = await Promise.all(
+    FACE_LIBRARY.map(async (f) => ({ f, ext: await assetExt(f.id) }))
+  );
+  return results
+    .filter((r): r is { f: FaceEntry; ext: string } => r.ext !== null)
+    .map(({ f, ext }) => ({ ...f, thumbnailUrl: `/reference-models/faces/${f.id}.${ext}` }));
 }

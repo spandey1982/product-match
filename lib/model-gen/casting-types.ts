@@ -15,6 +15,17 @@
  */
 
 /**
+ * Maximum active Signature Models per retailer. Configs cost nothing to
+ * store, but a bounded set keeps the Add Product dropdown scannable and the
+ * Model Studio gallery readable. Editing an existing profile is always
+ * allowed at the cap; only new-create is blocked. Deleting a profile
+ * (soft-delete) frees a slot immediately. Lives here (not casting.ts) so
+ * both server (createModelProfile) and client (ModelStudioView) can import
+ * it without pulling the Prisma client into the client bundle.
+ */
+export const MAX_SIGNATURE_MODELS = 5;
+
+/**
  * How much pose freedom the generation is allowed. Persisted on ModelProfile
  * (Signature Models) and defaulted to "studio" for AI Casting.
  *
