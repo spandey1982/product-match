@@ -516,12 +516,17 @@ function FacePickerGroup({
   return (
     <div>
       <p className="text-xs font-medium text-gray-500 mb-1.5">{title}</p>
-      <div className="grid grid-cols-6 gap-2">
+      {/* Horizontal scroll — a fixed 6-column grid would wrap the moment the
+          library grows past 6. Flex row + overflow-x-auto keeps the picker a
+          single scrollable row regardless of how many faces exist. Bleed the
+          rail to the section edges (-mx-6 px-6) so the last visible card
+          doesn't look cropped mid-scroll. */}
+      <div className="flex gap-2 overflow-x-auto pb-1 -mx-6 px-6 [scrollbar-width:thin]">
         {faces.map((face) => (
           <button
             key={face.id}
             onClick={() => onChange(face.id)}
-            className="group flex flex-col items-center gap-1"
+            className="group shrink-0 flex flex-col items-center gap-1 w-[76px]"
             title={face.label}
           >
             <div
@@ -537,7 +542,7 @@ function FacePickerGroup({
                 alt={face.label}
                 fill
                 className="object-cover"
-                sizes="80px"
+                sizes="76px"
                 unoptimized
               />
             </div>
