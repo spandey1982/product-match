@@ -66,52 +66,61 @@ const EXT_BY_MIME: Record<string, string> = {
 const TRY_EXTS = ["webp", "png", "jpg", "jpeg"];
 
 /**
- * Feature descriptor for a region. Model-quality is asserted separately by
- * the prompt scaffold; this only carries the visual cues (complexion, hair,
- * bone structure) that vary by region. Deliberately restrained — the goal
- * is representative regional inspiration for a fashion catalogue, not
- * stereotype. "Global" is a fair-tone international look for retailers
- * whose audience isn't India-specific.
+ * Regional heritage descriptor. Anchors identity at the STATE/heritage level
+ * rather than feature-listing (v2 leaned on "elegant bone structure" /
+ * "high cheekbones" style words and pulled the model straight into Western
+ * catalogue archetypes — see comparison in commit history). Model quality
+ * is asserted subtly by the prompt scaffold, NOT by decoration here.
+ *
+ * Northeast carries an explicit negative — without it Gemini defaults to a
+ * generic South-Asian face, which is South-Indian looking, not Northeast.
  */
 function regionDescriptor(region: FaceRegion, sex: FaceSex): string {
-  const hairFem = "long silky dark hair styled naturally";
-  const hairMasc = "short neatly-styled dark hair";
-  const hair = sex === "female" ? hairFem : hairMasc;
+  const hair = sex === "female"
+    ? "thick long dark hair, styled naturally"
+    : "short neatly-styled thick dark hair";
   switch (region) {
     case "north":
-      return `fair-to-wheatish complexion, oval face with defined cheekbones, ${hair}`;
+      return `from North India (Punjabi, Delhi or Uttar Pradesh heritage), warm wheatish complexion, softly rounded face, ${hair}`;
     case "south":
-      return `warm medium complexion, expressive eyes, high cheekbones, ${hair}`;
+      return `from South India (Tamil, Kannadiga, Malayali, or Telugu heritage), warm deep-medium brown complexion, softly expressive dark eyes, ${hair}`;
     case "east":
-      return `medium complexion with soft, delicate features and refined jawline, ${hair}`;
+      return `from East India (Bengali heritage), warm medium complexion, soft delicate rounded features, ${hair}`;
     case "west":
-      return `wheatish complexion, angular jawline, strong cheekbones, ${hair}`;
+      return `from West India (Gujarati or Rajasthani heritage), warm wheatish complexion, softly rounded face, ${hair}`;
     case "north-east":
-      return `medium complexion, elegant almond-shaped eyes, high cheekbones, ${sex === "female" ? "silky mid-length dark hair" : hairMasc}`;
+      return `from Northeast India (Assamese, Manipuri, Naga, or Meghalayan heritage), warm medium complexion, distinctive Northeast Indian facial features characteristic of the region — softly slanted almond eyes, rounded cheekbones, softer facial contours typical of people from Assam, Manipur or Nagaland. Explicitly NOT South Indian, NOT Hispanic, NOT generic international — this is specifically a Northeast Indian face, similar to Assamese or Nepali-heritage people, ${hair}`;
     case "global":
-      return `fair complexion, versatile international look, ${sex === "female" ? "mid-length soft brown hair" : "short neatly-styled brown hair"}`;
+      return `with an international look (Western or European heritage), fair complexion, ${sex === "female" ? "mid-length soft brown hair" : "short neatly-styled brown hair"}`;
   }
 }
 
 /**
- * Prompt shape — the fashion-model anchor is the FIRST clause so the
- * generator prioritises "editorial model quality" over anything else, with
- * regional features arriving as descriptive detail. Head-and-shoulders, 4:5
- * (set via imageConfig, not prompt), neutral wardrobe + expression +
- * background so downstream generation isn't fighting the ref for lighting
- * or mood.
+ * Prompt shape (v3) — Indian identity is the FIRST clause and repeats through
+ * the prompt; model-quality is a subtle qualifier, not the anchor. This is
+ * the correction after v2 pulled every face toward Western/Hispanic
+ * archetypes by leading with "polished camera-confident model" and
+ * decorating with Western-editorial vocabulary ("elegant bone structure",
+ * "refined presence", "editorial"). Head-and-shoulders, 4:5 via imageConfig,
+ * neutral wardrobe + expression + background so downstream generation isn't
+ * fighting the ref for lighting or mood.
  */
 function buildPrompt(target: FaceTarget): string {
-  const persona = target.sex === "female"
-    ? "a polished, camera-confident female fashion model"
-    : "a polished, camera-confident male fashion model";
+  const subject = target.sex === "female" ? "woman" : "man";
+  const isGlobal = target.region === "global";
+  const anchor = isGlobal
+    ? `Portrait fashion e-commerce photograph of a young ${subject}, late twenties, ${regionDescriptor(target.region, target.sex)}.`
+    : `Portrait fashion e-commerce photograph of a young Indian ${subject}, late twenties, ${regionDescriptor(target.region, target.sex)}.`;
+  const identityLine = isGlobal
+    ? "A professional fashion model — natural, warm, catalogue-ready."
+    : "A professional Indian fashion model with authentic Indian features — the warm-toned everyday Indian face of a real Indian catalogue campaign, NOT a Westernised, Hispanic, Mediterranean or generic international model.";
   return [
-    `Editorial fashion portrait of ${persona} — a working catalogue model with the elegant bone structure, radiant natural skin and refined presence expected of a premium ethnic-wear campaign.`,
-    `The model has ${regionDescriptor(target.region, target.sex)}.`,
-    "Head-and-shoulders framing, subject centred, looking directly at the camera. Neutral warm expression, closed lips with a subtle smile.",
-    "Wearing a plain neutral crew-neck top in a soft grey or beige — no patterns, no jewelry, no logos.",
-    "Plain light-beige seamless studio background, soft even fashion-studio lighting with no harsh directional shadow.",
-    "Natural skin texture, realistic tones (no exaggerated saturation), sharp focus, photorealistic.",
+    anchor,
+    identityLine,
+    "Head-and-shoulders framing, subject centred, looking directly at the camera. Natural warm expression, closed lips with a subtle smile.",
+    "Wearing a plain neutral crew-neck top in soft grey or beige — no patterns, no jewelry, no logos.",
+    "Plain light-beige seamless studio background, soft even studio lighting with no harsh directional shadow.",
+    "Natural warm skin tone typical of the heritage described, natural skin texture, sharp focus, photorealistic — avoid pale, cool-toned or over-defined-jawline features.",
     "Head-and-shoulders only — no props, no accessories, no text, no watermark.",
   ].join(" ");
 }
