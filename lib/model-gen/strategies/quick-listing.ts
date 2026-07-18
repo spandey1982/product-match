@@ -50,7 +50,11 @@ export async function runQuickListingStrategy(opts: {
 
   const variant = resolveReferenceVariant(product.category);
   // Quick Listing is a single front-facing shot → use the front reference.
-  const reference = await loadReferenceImage(modelType, variant, { profile: "front" });
+  // Prefer the face-masked drape variant when AI Casting has a face ref
+  // (Gemini fallback path); degrades to unmasked when a masked asset hasn't
+  // shipped for this tuple.
+  const preferMasked = Boolean(casting?.face);
+  const reference = await loadReferenceImage(modelType, variant, { profile: "front", preferMasked });
 
   // AI Casting — face identity reference for the Gemini fallback (Vertex VTO
   // ignores extraReferences). Missing asset → null → legacy behaviour intact.

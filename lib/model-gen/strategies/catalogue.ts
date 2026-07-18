@@ -95,8 +95,13 @@ export async function runCatalogueStrategy(opts: {
   const variant = resolveReferenceVariant(product.category);
   // Load front + back reference profiles once; each gracefully falls back to the
   // legacy single image, then to the basic model, then to null.
-  const frontRef = await loadReferenceImage(modelType, variant, { profile: "front" });
-  const backRef = await loadReferenceImage(modelType, variant, { profile: "back" });
+  // When AI Casting is active with a face reference, prefer the face-masked
+  // variant so the drape ref's own face doesn't fight the identity face ref.
+  // preferMasked degrades to the unmasked asset transparently when a masked
+  // variant hasn't shipped for that (type, variant, profile) tuple.
+  const preferMasked = Boolean(casting?.face);
+  const frontRef = await loadReferenceImage(modelType, variant, { profile: "front", preferMasked });
+  const backRef = await loadReferenceImage(modelType, variant, { profile: "back", preferMasked });
 
   // AI Casting — load the face identity reference (Gemini path only). If the
   // face asset is missing on disk the loader returns null and the flow
