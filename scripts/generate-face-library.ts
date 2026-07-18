@@ -66,61 +66,70 @@ const EXT_BY_MIME: Record<string, string> = {
 const TRY_EXTS = ["webp", "png", "jpg", "jpeg"];
 
 /**
- * Regional heritage descriptor. Anchors identity at the STATE/heritage level
- * rather than feature-listing (v2 leaned on "elegant bone structure" /
- * "high cheekbones" style words and pulled the model straight into Western
- * catalogue archetypes — see comparison in commit history). Model quality
- * is asserted subtly by the prompt scaffold, NOT by decoration here.
+ * Regional heritage descriptor (v4). Anchors identity at the STATE/heritage
+ * level. Two words that were poisoning v3 are removed:
+ *   - "rounded" (softly rounded face / rounded features) → produced chubby,
+ *     un-refined faces because Gemini took it literally.
+ *   - "soft delicate" without a refinement counterweight → same issue.
+ * v4 uses "refined <region-adjective> features" — "refined" stays safely
+ * Indian because the sentence around it names the region. Model quality
+ * comes from the identity line's Indian-industry references, not decoration
+ * here.
  *
- * Northeast carries an explicit negative — without it Gemini defaults to a
- * generic South-Asian face, which is South-Indian looking, not Northeast.
+ * Northeast keeps its explicit negative — without it Gemini's default
+ * South-Asian face wins.
  */
 function regionDescriptor(region: FaceRegion, sex: FaceSex): string {
   const hair = sex === "female"
     ? "thick long dark hair, styled naturally"
-    : "short neatly-styled thick dark hair";
+    : "short well-styled dark hair";
   switch (region) {
     case "north":
-      return `from North India (Punjabi, Delhi or Uttar Pradesh heritage), warm wheatish complexion, softly rounded face, ${hair}`;
+      return `from North India (Delhi, Uttar Pradesh or Punjabi heritage), warm wheatish complexion, refined and well-defined North Indian facial features, ${hair}`;
     case "south":
-      return `from South India (Tamil, Kannadiga, Malayali, or Telugu heritage), warm deep-medium brown complexion, softly expressive dark eyes, ${hair}`;
+      return `from South India (Tamil, Kannadiga, Malayali, or Telugu heritage), warm medium-deep brown complexion, refined South Indian features with expressive dark eyes, ${hair}`;
     case "east":
-      return `from East India (Bengali heritage), warm medium complexion, soft delicate rounded features, ${hair}`;
+      return `from East India (Bengali heritage), warm medium complexion, refined delicate Bengali features, ${hair}`;
     case "west":
-      return `from West India (Gujarati or Rajasthani heritage), warm wheatish complexion, softly rounded face, ${hair}`;
+      return `from West India (Gujarati or Rajasthani heritage), warm wheatish complexion, refined West Indian facial features, ${hair}`;
     case "north-east":
-      return `from Northeast India (Assamese, Manipuri, Naga, or Meghalayan heritage), warm medium complexion, distinctive Northeast Indian facial features characteristic of the region — softly slanted almond eyes, rounded cheekbones, softer facial contours typical of people from Assam, Manipur or Nagaland. Explicitly NOT South Indian, NOT Hispanic, NOT generic international — this is specifically a Northeast Indian face, similar to Assamese or Nepali-heritage people, ${hair}`;
+      return `from Northeast India (Assamese, Manipuri, Naga, or Meghalayan heritage), warm medium complexion, distinctive Northeast Indian facial features characteristic of the region — softly slanted almond eyes and refined features typical of people from Assam, Manipur or Nagaland. Explicitly NOT South Indian, NOT Hispanic, NOT generic international — this is specifically a Northeast Indian face, similar to Assamese or Nepali-heritage people, ${hair}`;
     case "global":
       return `with an international look (Western or European heritage), fair complexion, ${sex === "female" ? "mid-length soft brown hair" : "short neatly-styled brown hair"}`;
   }
 }
 
 /**
- * Prompt shape (v3) — Indian identity is the FIRST clause and repeats through
- * the prompt; model-quality is a subtle qualifier, not the anchor. This is
- * the correction after v2 pulled every face toward Western/Hispanic
- * archetypes by leading with "polished camera-confident model" and
- * decorating with Western-editorial vocabulary ("elegant bone structure",
- * "refined presence", "editorial"). Head-and-shoulders, 4:5 via imageConfig,
- * neutral wardrobe + expression + background so downstream generation isn't
- * fighting the ref for lighting or mood.
+ * Prompt shape (v4) — Indian identity remains the primary anchor, but model
+ * refinement is restored using INDIAN fashion industry references (Bollywood
+ * editorial, Lakmé Fashion Week, Indian ethnic-wear catalogue). This gives
+ * Gemini a way to render "polished model" without leaking into Western /
+ * Hispanic archetypes (v2's failure) while keeping v3's Indian anchor and
+ * fixing the "chubby everyday" drift (v3's failure).
+ *
+ * The negatives in the identity line list ALL prior known failure modes:
+ * Westernised (v2), Hispanic (v2), Mediterranean (v2), overly rounded /
+ * chubby (v3). Adding a failure mode here is how we prevent regressions.
+ *
+ * Head-and-shoulders, 4:5 via imageConfig, neutral wardrobe + expression +
+ * background so downstream generation isn't fighting the ref.
  */
 function buildPrompt(target: FaceTarget): string {
   const subject = target.sex === "female" ? "woman" : "man";
   const isGlobal = target.region === "global";
   const anchor = isGlobal
-    ? `Portrait fashion e-commerce photograph of a young ${subject}, late twenties, ${regionDescriptor(target.region, target.sex)}.`
-    : `Portrait fashion e-commerce photograph of a young Indian ${subject}, late twenties, ${regionDescriptor(target.region, target.sex)}.`;
+    ? `Portrait fashion e-commerce photograph of a young ${subject}, mid twenties, ${regionDescriptor(target.region, target.sex)}.`
+    : `Portrait fashion e-commerce photograph of a young Indian ${subject}, mid twenties, ${regionDescriptor(target.region, target.sex)}.`;
   const identityLine = isGlobal
     ? "A professional fashion model — natural, warm, catalogue-ready."
-    : "A professional Indian fashion model with authentic Indian features — the warm-toned everyday Indian face of a real Indian catalogue campaign, NOT a Westernised, Hispanic, Mediterranean or generic international model.";
+    : "An Indian fashion model with the refined features and model-caliber presence you'd see in a Bollywood editorial, a Lakmé Fashion Week campaign or a premium Indian ethnic-wear catalogue (Sabyasachi / Manish Malhotra aesthetic). Distinctly Indian facial features combined with the polish, grooming and clean bone structure of a professional working Indian fashion model. NOT Westernised, NOT Hispanic or Mediterranean, NOT overly rounded or chubby, NOT everyday-plain — an authentic polished Indian model.";
   return [
     anchor,
     identityLine,
     "Head-and-shoulders framing, subject centred, looking directly at the camera. Natural warm expression, closed lips with a subtle smile.",
     "Wearing a plain neutral crew-neck top in soft grey or beige — no patterns, no jewelry, no logos.",
     "Plain light-beige seamless studio background, soft even studio lighting with no harsh directional shadow.",
-    "Natural warm skin tone typical of the heritage described, natural skin texture, sharp focus, photorealistic — avoid pale, cool-toned or over-defined-jawline features.",
+    "Natural warm skin tone typical of the heritage described, natural skin texture, sharp focus, photorealistic — avoid pale features, cool skin tones, or Westernised model archetypes.",
     "Head-and-shoulders only — no props, no accessories, no text, no watermark.",
   ].join(" ");
 }
