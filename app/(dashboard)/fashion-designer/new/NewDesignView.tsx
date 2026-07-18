@@ -63,7 +63,7 @@ function DropZone({
     <div className="space-y-2">
       <div className="flex items-center gap-1.5">
         <span className="text-sm font-medium text-gray-700">{label}</span>
-        {required && <span className="text-xs text-red-500 font-semibold">Required</span>}
+        {required && <span className="text-xs text-indigo-500 font-semibold">Required</span>}
         {hint && <span className="text-xs text-gray-400">— {hint}</span>}
       </div>
 

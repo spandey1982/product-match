@@ -17,6 +17,8 @@ import { listBackdropOptions, isBackdropSelection } from "@/lib/model-gen/backdr
 import { listSceneOptions, BRAND_PACKS } from "@/lib/model-gen/scenes/library";
 import { isScenicSelection } from "@/lib/model-gen/scenes/selection";
 import { isVertexTryOnEnabled, getVertexConfig } from "@/lib/tryon-vertex";
+import { isAiCastingEnabled, listModelProfiles } from "@/lib/model-gen/casting";
+import { getFace } from "@/lib/model-gen/faces";
 
 /** Resolve the store logo's delivery URL from its public_id, if uploaded. */
 async function logoUrl(userId: string): Promise<string | null> {
@@ -53,11 +55,26 @@ function options() {
 export async function GET() {
   try {
     const session = await requireAuth();
-    const [settings, logo] = await Promise.all([
+    const castingOn = isAiCastingEnabled();
+    const [settings, logo, signatureProfiles] = await Promise.all([
       getAiGenSettings(session.id),
       logoUrl(session.id),
+      // Only fetch signature models when the flag is on — otherwise it's dead
+      // weight on every page load. When off, the array is always empty.
+      castingOn ? listModelProfiles(session.id) : Promise.resolve([]),
     ]);
-    return NextResponse.json({ settings, logoUrl: logo, ...options() });
+    const signatureModels = signatureProfiles.map((p) => ({
+      id: p.id,
+      name: p.name,
+      faceLabel: getFace(p.faceId)?.label ?? null,
+    }));
+    return NextResponse.json({
+      settings,
+      logoUrl: logo,
+      ...options(),
+      castingEnabled: castingOn,
+      signatureModels,
+    });
   } catch (err) {
     if ((err as Error).message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

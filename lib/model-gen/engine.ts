@@ -37,6 +37,9 @@ import type { GenerationQuality } from "./quality";
 import { ensureDetailNotes, ensureBackDetailNotes } from "@/lib/metadata/detail-notes";
 import { ensureGarmentIntelligence, isGarmentIntelligenceEnabled } from "@/lib/garment-intelligence/service";
 import { parsePartImages, findBackPart } from "@/lib/product/part-slots";
+import { isAiCastingEnabled, getModelProfile, listModelProfiles } from "./casting";
+import { resolveCasting, type CastingResult, type CastingProfileInput } from "./casting-match";
+import { parseArray } from "@/lib/serialize";
 
 /**
  * Master switch for the objective-based generation UI + routing. When OFF
@@ -79,6 +82,14 @@ export interface GenerateModelImagesInput {
    * is not.
    */
   backdropSection?: BackdropSection;
+  /**
+   * AI Casting — retailer's Signature Model for this generation. When set,
+   * the resolver pins the face + brief from this profile; unset falls back
+   * to AI Casting's auto-pick. Ignored entirely when ENABLE_AI_CASTING is
+   * off (legacy behaviour). Never throws on stale/unknown ids — the flow
+   * transparently degrades to auto-pick.
+   */
+  signatureProfileId?: string;
 }
 
 export interface GenerateModelImagesResult {
@@ -167,6 +178,55 @@ export async function generateModelImages(
     backDetailNotes,
   };
 
+  // AI Casting — resolve the signature-model brief (or auto-pick) BEFORE
+  // strategy dispatch so the strategy layer can add the face reference and
+  // append prompt tokens. When the flag is off, `casting` stays null and
+  // strategies fall through to the legacy fused-reference path unchanged.
+  // A kids product resolves to face=null (Casting does not apply) and is
+  // likewise treated as legacy.
+  let casting: CastingResult | null = null;
+  if (isAiCastingEnabled()) {
+    const profileRow = input.signatureProfileId
+      ? await getModelProfile(input.signatureProfileId, input.userId)
+      : null;
+    // When no explicit Signature Model was chosen, load the retailer's active
+    // ones so the resolver can auto-select a fitting one (category/style/
+    // persona match). Skipped when the retailer picked a specific model —
+    // that request is authoritative and needs no scoring.
+    const retailerProfiles: CastingProfileInput[] = profileRow
+      ? []
+      : (await listModelProfiles(input.userId)).map((p) => ({
+          id: p.id,
+          faceId: p.faceId,
+          metadata: p.metadata,
+          poseMode: p.poseMode,
+        }));
+    const resolved = resolveCasting({
+      product: {
+        id: product.id,
+        category: product.category,
+        gender: product.gender,
+        color: product.color,
+        colors: parseArray(product.colors),
+        occasion: parseArray(product.occasion),
+        styleTags: parseArray(product.styleTags),
+        pattern: product.pattern,
+      },
+      fallbackModelType: settings.defaultModelType,
+      profile: profileRow
+        ? {
+            id: profileRow.id,
+            faceId: profileRow.faceId,
+            metadata: profileRow.metadata,
+            poseMode: profileRow.poseMode,
+          }
+        : null,
+      retailerProfiles,
+    });
+    // Kids bypass (or any resolve that returned face=null) → legacy path.
+    if (resolved.face) casting = resolved;
+  }
+
   // Catalogue backend: explicit setting, or category-routed when "auto"
   // (drape→Natural Drape/Gemini, structured→Sharp Fit/Vertex). The strategy
   // applies per-view capability fallback to Gemini if Vertex is unavailable.
@@ -229,6 +289,7 @@ export async function generateModelImages(
           userId: input.userId,
           backdrop,
           quality: input.quality,
+          casting,
         })
       : await runCatalogueStrategy({
           product: strategyProduct,
@@ -238,6 +299,7 @@ export async function generateModelImages(
           backdrop,
           partImages,
           quality: input.quality,
+          casting,
         });
 
   // Brand each image (store logo, or store name) before persisting, so the

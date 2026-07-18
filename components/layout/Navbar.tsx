@@ -5,9 +5,8 @@ import { useState } from "react";
 import {
   Sparkles,
   Package,
-  Upload,
   Bot,
-  Wand2,
+  FolderOpen,
   Search,
   LogOut,
   ChevronDown,
@@ -16,6 +15,7 @@ import {
   Settings,
 } from "lucide-react";
 import { HangerPlusIcon } from "@/components/icons/HangerPlusIcon";
+import { TagPlusIcon } from "@/components/icons/TagPlusIcon";
 import { cn } from "@/lib/utils";
 import { useTrialRoom } from "@/components/trial-room/TrialRoomProvider";
 
@@ -55,7 +55,7 @@ export function Navbar({ user }: NavbarProps) {
   // Autonomous Catalog and Design Studio moved into the account dropdown.
   const navItems = [
     { href: "/catalog", label: "Catalog", icon: Package, badge: 0 },
-    { href: "/upload", label: "Add Product", icon: Upload, badge: 0 },
+    { href: "/upload", label: "Add Product", icon: TagPlusIcon, badge: 0 },
     { href: "/my-try-ons", label: "My Try-Ons", icon: HangerPlusIcon, badge: tryOnCount },
     { href: "/wishlist", label: "Wishlist", icon: Heart, badge: wishlistCount },
   ];
@@ -145,12 +145,12 @@ export function Navbar({ user }: NavbarProps) {
                     Autonomous Catalog
                   </Link>
                   <Link
-                    href="/fashion-designer"
+                    href="/assets"
                     onClick={() => setUserMenuOpen(false)}
                     className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                   >
-                    <Wand2 className="h-4 w-4 text-indigo-400" />
-                    Design Studio
+                    <FolderOpen className="h-4 w-4 text-indigo-400" />
+                    Assets
                   </Link>
                   {/* Trial Room shortcut */}
                   <Link

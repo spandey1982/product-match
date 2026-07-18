@@ -47,6 +47,7 @@ const PATTERNS = [
 
 interface AiGenObjective { id: string; label: string; description: string; }
 interface AiGenModelType { id: string; label: string; thumbnailUrl: string; }
+interface AiGenSignatureModel { id: string; name: string; faceLabel: string | null; }
 interface AiGenConfig {
   enabled: boolean;
   objectives: AiGenObjective[];
@@ -57,6 +58,10 @@ interface AiGenConfig {
   scenes: SceneOptionView[];
   brandPacks: { id: string; label: string }[];
   scenicEnabled: boolean;
+  /** AI Casting — flag from the server. When false, hide the casting toggle. */
+  castingEnabled?: boolean;
+  /** Retailer's active Signature Models; empty when castingEnabled is false. */
+  signatureModels?: AiGenSignatureModel[];
   settings: {
     defaultModelType: string;
     defaultObjective: string;
@@ -129,6 +134,10 @@ export default function UploadPage() {
   // Model is auto-selected from the product (category + detected gender) for now;
   // an explicit picker is planned. Kept in state so the gen request can pass it.
   const [modelType] = useState<string>("auto");
+  // AI Casting — per-generation choice. "auto" (default) = AI Casting picks a
+  // face + brief per product; a specific id = use that Signature Model. Never
+  // persisted — matches the "quality" pattern (resets per product).
+  const [castingSelection, setCastingSelection] = useState<string>("auto");
   // Native generation quality — deliberately NOT persisted (no localStorage, no
   // profile setting). Plain component state resets to the default on every visit
   // to this page, so each new product starts on Standard until the retailer
@@ -487,6 +496,11 @@ export default function UploadPage() {
                 backdropSection,
                 // Omit when "auto" so the engine selects the model per product.
                 ...(modelType && modelType !== "auto" ? { modelType } : {}),
+                // AI Casting Signature Model — omit on "auto" so the engine
+                // smart-picks; a specific id pins the retailer's saved brief.
+                ...(castingSelection && castingSelection !== "auto"
+                  ? { signatureProfileId: castingSelection }
+                  : {}),
               })
             : undefined;
         fetch(`/api/products/${data.product.id}/generate-model-image`, {
@@ -558,7 +572,7 @@ export default function UploadPage() {
             mis-classification) and the category-specific image guidance below. */}
         <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm">
           <h2 className="text-sm font-semibold text-gray-900 mb-1">
-            Product category <span className="text-red-500">*</span>
+            Product category <span className="text-indigo-500">*</span>
           </h2>
           <p className="text-xs text-gray-400 mb-4">
             Select this first — it&apos;s used to recognise your product correctly and guide the image analysis.
@@ -768,6 +782,48 @@ export default function UploadPage() {
                   );
                 })}
               </div>
+
+              {/* AI Casting — Signature Model chooser. Only when the flag is on;
+                  a single row with the "AI Casting" auto-pick default plus
+                  whatever Signature Models the retailer has saved. */}
+              {aiGen.castingEnabled && (
+                <div>
+                  <p className="text-xs font-medium text-gray-500 mb-2">Cast the model</p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setCastingSelection("auto")}
+                      className={`rounded-full border px-3.5 py-1.5 text-xs font-medium transition-all ${
+                        castingSelection === "auto"
+                          ? "border-indigo-300 bg-indigo-50 text-indigo-700"
+                          : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
+                      }`}
+                    >
+                      AI Casting
+                    </button>
+                    {(aiGen.signatureModels ?? []).map((sm) => (
+                      <button
+                        key={sm.id}
+                        type="button"
+                        onClick={() => setCastingSelection(sm.id)}
+                        className={`rounded-full border px-3.5 py-1.5 text-xs font-medium transition-all ${
+                          castingSelection === sm.id
+                            ? "border-indigo-300 bg-indigo-50 text-indigo-700"
+                            : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
+                        }`}
+                      >
+                        {sm.name}
+                      </button>
+                    ))}
+                  </div>
+                  <Link
+                    href="/assets/model-studio"
+                    className="inline-block text-xs text-indigo-600 hover:text-indigo-800 mt-2"
+                  >
+                    Manage in Model Studio →
+                  </Link>
+                </div>
+              )}
 
               {/* Catalogue style — only for the Catalogue objective. Store-level
                   setting; persisted immediately. Provider names never shown. */}
