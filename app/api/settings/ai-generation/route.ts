@@ -19,6 +19,7 @@ import { isScenicSelection } from "@/lib/model-gen/scenes/selection";
 import { isVertexTryOnEnabled, getVertexConfig } from "@/lib/tryon-vertex";
 import { isAiCastingEnabled, listModelProfiles } from "@/lib/model-gen/casting";
 import { getFace } from "@/lib/model-gen/faces";
+import { isGenerationQuality } from "@/lib/model-gen/quality";
 
 /** Resolve the store logo's delivery URL from its public_id, if uploaded. */
 async function logoUrl(userId: string): Promise<string | null> {
@@ -96,6 +97,7 @@ export async function PATCH(req: NextRequest) {
     const rawBrandingPosition = (body as { brandingPosition?: unknown }).brandingPosition;
     const rawBrandingStyle = (body as { brandingStyle?: unknown }).brandingStyle;
     const rawCatalogueProvider = (body as { catalogueProvider?: unknown }).catalogueProvider;
+    const rawQuality = (body as { quality?: unknown }).quality;
     const rawBackdrop = (body as { backdrop?: unknown }).backdrop;
     const rawScenic = (body as { scenic?: unknown }).scenic;
 
@@ -135,6 +137,12 @@ export async function PATCH(req: NextRequest) {
         { status: 400 }
       );
     }
+    if (rawQuality !== undefined && !isGenerationQuality(rawQuality)) {
+      return NextResponse.json(
+        { error: "Invalid generation quality." },
+        { status: 400 }
+      );
+    }
     if (rawBackdrop !== undefined && !isBackdropSelection(rawBackdrop)) {
       return NextResponse.json(
         { error: "Invalid backdrop." },
@@ -157,6 +165,7 @@ export async function PATCH(req: NextRequest) {
       brandingPosition: isBrandingPosition(rawBrandingPosition) ? rawBrandingPosition : current.brandingPosition,
       brandingStyle: isBrandingStyle(rawBrandingStyle) ? rawBrandingStyle : current.brandingStyle,
       catalogueProvider: isCatalogueProvider(rawCatalogueProvider) ? rawCatalogueProvider : current.catalogueProvider,
+      quality: isGenerationQuality(rawQuality) ? rawQuality : current.quality,
       backdrop: isBackdropSelection(rawBackdrop) ? rawBackdrop : current.backdrop,
       scenic: isScenicSelection(rawScenic) ? rawScenic : current.scenic,
     };

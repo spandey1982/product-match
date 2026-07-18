@@ -19,7 +19,8 @@ import {
 import { DEFAULT_MODEL_TYPE, type ModelType } from "./reference-models";
 import { resolveModelType } from "./model-selection";
 import { getAiGenSettings } from "./settings";
-import { resolveAutoProvider } from "@/lib/providers/auto-routing";
+// resolveAutoProvider was used when catalogueProvider had an "auto" tier
+// (retired). Kept out of imports now — the setting is explicit.
 import { getBrandingConfig, applyBranding, resolveBrandingPlacement } from "./branding";
 import { resolveBackdropPreset, renderBackdropPrompt } from "./backdrops";
 import { pickSmartBackdrop } from "./backdrop-match";
@@ -178,14 +179,24 @@ export async function generateModelImages(
     backDetailNotes,
   };
 
+  // Catalogue backend — retailer's explicit Premium/Economy choice; this
+  // is resolved BEFORE casting so the Vertex guard below can short-circuit
+  // casting resolution entirely (Vertex VTO can't consume a face+prompt
+  // brief; running the resolver would waste work and risk leaking metadata
+  // into the request if a downstream caller ever forwarded it).
+  const catalogueProvider = settings.catalogueProvider;
+
   // AI Casting — resolve the signature-model brief (or auto-pick) BEFORE
   // strategy dispatch so the strategy layer can add the face reference and
   // append prompt tokens. When the flag is off, `casting` stays null and
   // strategies fall through to the legacy fused-reference path unchanged.
   // A kids product resolves to face=null (Casting does not apply) and is
-  // likewise treated as legacy.
+  // likewise treated as legacy. VERTEX GUARD: skip resolution outright when
+  // the effective provider is Vertex — its VTO input surface can't consume
+  // the resulting face/persona brief anyway, and honoring a stale client
+  // request would let casting metadata slip through the API boundary.
   let casting: CastingResult | null = null;
-  if (isAiCastingEnabled()) {
+  if (isAiCastingEnabled() && catalogueProvider === "gemini") {
     const profileRow = input.signatureProfileId
       ? await getModelProfile(input.signatureProfileId, input.userId)
       : null;
@@ -227,14 +238,6 @@ export async function generateModelImages(
     if (resolved.face) casting = resolved;
   }
 
-  // Catalogue backend: explicit setting, or category-routed when "auto"
-  // (drape→Natural Drape/Gemini, structured→Sharp Fit/Vertex). The strategy
-  // applies per-view capability fallback to Gemini if Vertex is unavailable.
-  const catalogueProvider =
-    settings.catalogueProvider === "auto"
-      ? resolveAutoProvider({ category: product.category })
-      : settings.catalogueProvider;
-
   // Resolve the backdrop/scene fragment. Two peer sections, same output shape
   // (a single deterministic prompt string + a branding fallback hint) so
   // everything downstream — buildViewPrompt, branding placement, recording —
@@ -243,7 +246,19 @@ export async function generateModelImages(
   // directly. Scenic Collection: the rule engine picks a curated variation +
   // colour-harmony accent, the Prompt Builder composes the fragment. Both
   // paths are pure/deterministic — zero extra AI calls in either case.
-  const useScenic = (input.backdropSection ?? "studio") === "scenic" && isScenicCollectionEnabled();
+  // VERTEX GUARD: Vertex ignores our backdrop/scene fragment (VTO inherits
+  // the reference model's studio). Force Studio here so recorded metadata
+  // matches what actually happened — a stale client can't get us to log a
+  // scenic run against a Vertex generation.
+  const useScenic =
+    catalogueProvider === "gemini" &&
+    (input.backdropSection ?? "studio") === "scenic" &&
+    isScenicCollectionEnabled();
+
+  // Quality: per-request override wins; otherwise use the retailer's
+  // remembered setting. Vertex ignores the field internally (single output
+  // size) so this only affects the Gemini path.
+  const effectiveQuality = input.quality ?? settings.quality;
 
   let backdrop: string;
   let brandingHint: { preferredLogo: "dark" | "light"; brightness: number };
@@ -288,7 +303,11 @@ export async function generateModelImages(
           modelType,
           userId: input.userId,
           backdrop,
-          quality: input.quality,
+          quality: effectiveQuality,
+          // Route Quick Listing by the retailer's Premium/Economy pick just
+          // like Catalogue. "vertex" preserves the historic Gemini fallback
+          // safety net; "gemini" skips Vertex entirely.
+          provider: catalogueProvider,
           casting,
         })
       : await runCatalogueStrategy({
@@ -297,8 +316,12 @@ export async function generateModelImages(
           provider: catalogueProvider,
           userId: input.userId,
           backdrop,
-          partImages,
-          quality: input.quality,
+          // VERTEX GUARD: partImages fuel the multi-image Catalogue prompt
+          // on the Gemini path; Vertex VTO can't consume extras. Drop them
+          // before dispatch so a stale client can't send close-ups that end
+          // up quietly ignored (and never billed for) — clearer intent.
+          partImages: catalogueProvider === "gemini" ? partImages : [],
+          quality: effectiveQuality,
           casting,
         });
 

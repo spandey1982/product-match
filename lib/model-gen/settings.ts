@@ -27,6 +27,11 @@ import {
   parseScenicSelection,
   type ScenicSelection,
 } from "./scenes/selection";
+import {
+  DEFAULT_GENERATION_QUALITY,
+  isGenerationQuality,
+  type GenerationQuality,
+} from "./quality";
 
 /** Where the brand watermark sits on generated model images. */
 export type BrandingPosition = "top-left" | "top-right";
@@ -47,12 +52,15 @@ export function isBrandingStyle(v: unknown): v is BrandingStyle {
 
 /**
  * Catalogue generation backend — independent of the try-on provider.
- * "auto" routes by category (drape→Natural Drape, structured→Sharp Fit).
+ * Retailer picks Premium (gemini) or Economy (vertex); "auto" (category-
+ * routed) was retired because it hid the provider's capability envelope
+ * from the retailer (extras, casting, scene, quality). Any legacy "auto"
+ * stored value coerces to "vertex" on load — see parseAiGenSettings.
  */
-export type CatalogueProvider = "auto" | "gemini" | "vertex";
+export type CatalogueProvider = "gemini" | "vertex";
 
 export function isCatalogueProvider(v: unknown): v is CatalogueProvider {
-  return v === "auto" || v === "gemini" || v === "vertex";
+  return v === "gemini" || v === "vertex";
 }
 
 export interface AiGenSettings {
@@ -63,8 +71,16 @@ export interface AiGenSettings {
   brandingPosition: BrandingPosition;
   /** Watermark look — classic text wordmark, or the frosted-glass chip. */
   brandingStyle: BrandingStyle;
-  /** Backend for the Catalogue & Social objective (independent of try-on). */
+  /** Backend for model-image generation (independent of try-on). Applies to
+   *  both objectives — Quick Listing and Catalogue & Social. */
   catalogueProvider: CatalogueProvider;
+  /**
+   * Native Gemini output quality — retailer's remembered preference. Only
+   * consumed on the Gemini path; Vertex ignores it (single output size).
+   * Retailer picks it once and it sticks; each new product starts on the
+   * remembered value unless they change it.
+   */
+  quality: GenerationQuality;
   /** Studio backdrop for generated images (Smart match, or a chosen preset). */
   backdrop: BackdropSelection;
   /**
@@ -82,7 +98,11 @@ export const DEFAULT_AI_GEN_SETTINGS: AiGenSettings = {
   brandingEnabled: true,
   brandingPosition: "top-right",
   brandingStyle: "classic",
-  catalogueProvider: "auto",
+  // Economy is the safe default: cheaper, faster, no metadata surface to
+  // mismanage. Retailers can opt in to Premium (Gemini) when they want
+  // casting / scenes / quality / multi-image.
+  catalogueProvider: "vertex",
+  quality: DEFAULT_GENERATION_QUALITY,
   backdrop: { ...DEFAULT_BACKDROP_SELECTION },
   scenic: { ...DEFAULT_SCENIC_SELECTION },
 };
@@ -109,9 +129,16 @@ export function parseAiGenSettings(raw: string | null | undefined): AiGenSetting
       brandingStyle: isBrandingStyle(parsed.brandingStyle)
         ? parsed.brandingStyle
         : DEFAULT_AI_GEN_SETTINGS.brandingStyle,
+      // Legacy "auto" values (from the retired category-routed mode) coerce
+      // to Vertex — the current safe default. Any other unknown value also
+      // falls back to the default. New retailers get "vertex" from the
+      // DEFAULT_AI_GEN_SETTINGS object above.
       catalogueProvider: isCatalogueProvider(parsed.catalogueProvider)
         ? parsed.catalogueProvider
         : DEFAULT_AI_GEN_SETTINGS.catalogueProvider,
+      quality: isGenerationQuality(parsed.quality)
+        ? parsed.quality
+        : DEFAULT_AI_GEN_SETTINGS.quality,
       backdrop: parseBackdropSelection(parsed.backdrop),
       scenic: parseScenicSelection(parsed.scenic),
     };
