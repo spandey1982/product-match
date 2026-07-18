@@ -5,7 +5,6 @@ import { useState } from "react";
 import {
   Sparkles,
   Package,
-  Upload,
   Bot,
   FolderOpen,
   Search,
@@ -16,6 +15,7 @@ import {
   Settings,
 } from "lucide-react";
 import { HangerPlusIcon } from "@/components/icons/HangerPlusIcon";
+import { TagPlusIcon } from "@/components/icons/TagPlusIcon";
 import { cn } from "@/lib/utils";
 import { useTrialRoom } from "@/components/trial-room/TrialRoomProvider";
 
@@ -55,7 +55,7 @@ export function Navbar({ user }: NavbarProps) {
   // Autonomous Catalog and Design Studio moved into the account dropdown.
   const navItems = [
     { href: "/catalog", label: "Catalog", icon: Package, badge: 0 },
-    { href: "/upload", label: "Add Product", icon: Upload, badge: 0 },
+    { href: "/upload", label: "Add Product", icon: TagPlusIcon, badge: 0 },
     { href: "/my-try-ons", label: "My Try-Ons", icon: HangerPlusIcon, badge: tryOnCount },
     { href: "/wishlist", label: "Wishlist", icon: Heart, badge: wishlistCount },
   ];

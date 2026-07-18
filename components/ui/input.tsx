@@ -19,7 +19,9 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
             htmlFor={inputId}
             className="text-sm font-medium text-gray-700"
           >
-            {label}
+            {label.endsWith(" *") ? (
+              <>{label.slice(0, -2)} <span className="text-indigo-500">*</span></>
+            ) : label}
           </label>
         )}
         <div className="relative">

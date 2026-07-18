@@ -63,7 +63,7 @@ export function DesignLibrary() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
+    <div className="max-w-7xl mx-auto px-4 py-6 space-y-6 [padding-bottom:calc(5rem+env(safe-area-inset-bottom))] md:[padding-bottom:2rem]">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -75,7 +75,8 @@ export function DesignLibrary() {
             Design garments from raw fabric and references
           </p>
         </div>
-        <Link href="/fashion-designer/new">
+        {/* Desktop — inline button */}
+        <Link href="/fashion-designer/new" className="hidden md:block">
           <Button className="gap-1.5">
             <Plus className="h-4 w-4" />
             New Design
@@ -152,6 +153,15 @@ export function DesignLibrary() {
           ))}
         </div>
       )}
+
+      {/* Mobile FAB — same gradient treatment as the Trial Room FAB */}
+      <Link
+        href="/fashion-designer/new"
+        className="fixed right-6 z-30 flex items-center gap-2 h-12 px-5 rounded-2xl text-sm font-semibold text-white shadow-lg bg-gradient-to-br from-purple-500 to-pink-600 hover:shadow-xl active:scale-95 transition-all md:hidden [bottom:max(1.5rem,calc(env(safe-area-inset-bottom)+0.75rem))]"
+      >
+        <Plus className="h-4 w-4" />
+        New Design
+      </Link>
     </div>
   );
 }

@@ -3,7 +3,7 @@ import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
-  Users, Plus, Trash2, Save, X, Info, Sparkles, ArrowLeft,
+  Users, Plus, Trash2, Check, X, Info, Sparkles, ArrowLeft,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -104,6 +104,19 @@ export function ModelStudioView({ initialProfiles, faceLibrary }: Props) {
     setError(null);
   }
 
+  // The API returns faceThumbnailUrl from the hardcoded registry (.webp) but
+  // the real file on disk may be .jpg/.png. The faceLibrary prop from the
+  // server page has the corrected URL via listAvailableFaces(). Patch the API
+  // response so the card renders immediately without a page refresh.
+  const faceUrlMap = new Map(faceLibrary.map((f) => [f.id, f.thumbnailUrl]));
+  function patchThumbnail(profile: SignatureModelSummary): SignatureModelSummary {
+    const realUrl = faceUrlMap.get(profile.faceId);
+    if (realUrl && realUrl !== profile.faceThumbnailUrl) {
+      return { ...profile, faceThumbnailUrl: realUrl };
+    }
+    return profile;
+  }
+
   async function save() {
     if (!name.trim()) {
       setError("Please give this Signature Model a name.");
@@ -123,7 +136,7 @@ export function ModelStudioView({ initialProfiles, faceLibrary }: Props) {
           throw new Error(msg || "Save failed");
         }
         const { profile } = await res.json();
-        setProfiles((prev) => prev.map((p) => (p.id === profile.id ? profile : p)));
+        setProfiles((prev) => prev.map((p) => (p.id === profile.id ? patchThumbnail(profile) : p)));
       } else {
         const res = await fetch("/api/model-profiles", {
           method: "POST",
@@ -135,7 +148,7 @@ export function ModelStudioView({ initialProfiles, faceLibrary }: Props) {
           throw new Error(msg || "Save failed");
         }
         const { profile } = await res.json();
-        setProfiles((prev) => [profile, ...prev]);
+        setProfiles((prev) => [patchThumbnail(profile), ...prev]);
       }
       setEditingId(null);
     } catch (e) {
@@ -425,8 +438,8 @@ export function ModelStudioView({ initialProfiles, faceLibrary }: Props) {
             <div className="flex gap-2">
               <Button variant="outline" onClick={cancel} disabled={saving}>Cancel</Button>
               <Button onClick={save} disabled={saving} className="gap-1.5">
-                <Save className="h-4 w-4" />
-                {saving ? "Saving…" : "Save"}
+                <Check className="h-4 w-4" />
+                {saving ? "Saving…" : "Done"}
               </Button>
             </div>
           </div>
@@ -522,12 +535,12 @@ function FacePickerGroup({
           scrolling makes it feel intentional on touch. Bleed the rail to the
           section edges (-mx-6 px-6) so the last visible card doesn't look
           cropped mid-scroll. */}
-      <div className="flex gap-2 overflow-x-auto pb-1 -mx-6 px-6 snap-x snap-mandatory [scrollbar-width:thin]">
+      <div className="flex gap-2 sm:gap-3 overflow-x-auto pb-1 -mx-6 px-6 snap-x snap-mandatory [scrollbar-width:thin]">
         {faces.map((face) => (
           <button
             key={face.id}
             onClick={() => onChange(face.id)}
-            className="group shrink-0 flex flex-col items-center gap-1 w-[76px] snap-start"
+            className="group shrink-0 flex flex-col items-center gap-1 w-[72px] landscape:w-[88px] sm:w-[96px] md:w-[108px] lg:w-[120px] snap-start"
             title={face.label}
           >
             <div
@@ -542,17 +555,13 @@ function FacePickerGroup({
                 src={face.thumbnailUrl}
                 alt={face.label}
                 fill
-                // object-top biases the center-crop toward the top of the
-                // portrait — hair and forehead stay visible; a bit of
-                // shoulder is sacrificed at the bottom instead of the head
-                // at the top.
                 className="object-cover object-top"
-                sizes="76px"
+                sizes="(max-width: 640px) 72px, (max-width: 768px) 96px, (max-width: 1024px) 108px, 120px"
                 unoptimized
               />
             </div>
             <span
-              className={`text-[11px] font-medium truncate max-w-full ${
+              className={`text-xs font-medium truncate max-w-full ${
                 value === face.id ? "text-indigo-700" : "text-gray-500"
               }`}
             >

@@ -572,7 +572,7 @@ export default function UploadPage() {
             mis-classification) and the category-specific image guidance below. */}
         <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm">
           <h2 className="text-sm font-semibold text-gray-900 mb-1">
-            Product category <span className="text-red-500">*</span>
+            Product category <span className="text-indigo-500">*</span>
           </h2>
           <p className="text-xs text-gray-400 mb-4">
             Select this first — it&apos;s used to recognise your product correctly and guide the image analysis.
@@ -787,24 +787,38 @@ export default function UploadPage() {
                   a single row with the "AI Casting" auto-pick default plus
                   whatever Signature Models the retailer has saved. */}
               {aiGen.castingEnabled && (
-                <div className="flex items-center justify-between gap-3 flex-wrap">
-                  <div className="flex-1 min-w-[200px]">
-                    <Select
-                      label="Cast the model"
-                      value={castingSelection}
-                      onChange={(e) => setCastingSelection(e.target.value)}
-                      options={[
-                        { value: "auto", label: "AI Casting — pick per product" },
-                        ...(aiGen.signatureModels ?? []).map((sm) => ({
-                          value: sm.id,
-                          label: sm.name,
-                        })),
-                      ]}
-                    />
+                <div>
+                  <p className="text-xs font-medium text-gray-500 mb-2">Cast the model</p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setCastingSelection("auto")}
+                      className={`rounded-full border px-3.5 py-1.5 text-xs font-medium transition-all ${
+                        castingSelection === "auto"
+                          ? "border-indigo-300 bg-indigo-50 text-indigo-700"
+                          : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
+                      }`}
+                    >
+                      AI Casting
+                    </button>
+                    {(aiGen.signatureModels ?? []).map((sm) => (
+                      <button
+                        key={sm.id}
+                        type="button"
+                        onClick={() => setCastingSelection(sm.id)}
+                        className={`rounded-full border px-3.5 py-1.5 text-xs font-medium transition-all ${
+                          castingSelection === sm.id
+                            ? "border-indigo-300 bg-indigo-50 text-indigo-700"
+                            : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
+                        }`}
+                      >
+                        {sm.name}
+                      </button>
+                    ))}
                   </div>
                   <Link
                     href="/assets/model-studio"
-                    className="text-xs text-indigo-600 hover:text-indigo-800 mt-5"
+                    className="inline-block text-xs text-indigo-600 hover:text-indigo-800 mt-2"
                   >
                     Manage in Model Studio →
                   </Link>

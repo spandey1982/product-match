@@ -17,7 +17,9 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
       <div className="flex flex-col gap-1.5">
         {label && (
           <label htmlFor={selectId} className="text-sm font-medium text-gray-700">
-            {label}
+            {label.endsWith(" *") ? (
+              <>{label.slice(0, -2)} <span className="text-indigo-500">*</span></>
+            ) : label}
           </label>
         )}
         <div className="relative">
