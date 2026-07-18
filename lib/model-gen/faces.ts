@@ -42,25 +42,32 @@ export interface FaceEntry {
 }
 
 /**
- * The registry. Order here is the order Model Studio renders them; keep female
- * and male grouped for scan-ability. Region order roughly mirrors the north →
- * south → east → west → north-east → global sweep from the casting brief.
+ * The registry. Order here is the order Model Studio renders them; keep
+ * female and male grouped for scan-ability.
+ *
+ * Labels are DELIBERATELY neutral ("Model 1", "Model 2", …). We source models
+ * with regional inspiration for inclusivity, but the retailer-facing surface
+ * treats them as fashion models first — the same way a real casting sheet
+ * doesn't sort humans by region. Region is retained as *metadata* only
+ * because the scorer's regionAffinity heuristic uses it to bias the
+ * auto-picker (e.g. "kanjivaram" → South-inspired face). Never surfaced in
+ * copy.
  */
 export const FACE_LIBRARY: readonly FaceEntry[] = [
-  // Female
-  { id: "north-f-1",      label: "North India",       region: "north",      sex: "female", thumbnailUrl: "/reference-models/faces/north-f-1.webp" },
-  { id: "south-f-1",      label: "South India",       region: "south",      sex: "female", thumbnailUrl: "/reference-models/faces/south-f-1.webp" },
-  { id: "east-f-1",       label: "East India",        region: "east",       sex: "female", thumbnailUrl: "/reference-models/faces/east-f-1.webp" },
-  { id: "west-f-1",       label: "West India",        region: "west",       sex: "female", thumbnailUrl: "/reference-models/faces/west-f-1.webp" },
-  { id: "north-east-f-1", label: "North-East India",  region: "north-east", sex: "female", thumbnailUrl: "/reference-models/faces/north-east-f-1.webp" },
-  { id: "global-f-1",     label: "Global",            region: "global",     sex: "female", thumbnailUrl: "/reference-models/faces/global-f-1.webp" },
-  // Male
-  { id: "north-m-1",      label: "North India",       region: "north",      sex: "male",   thumbnailUrl: "/reference-models/faces/north-m-1.webp" },
-  { id: "south-m-1",      label: "South India",       region: "south",      sex: "male",   thumbnailUrl: "/reference-models/faces/south-m-1.webp" },
-  { id: "east-m-1",       label: "East India",        region: "east",       sex: "male",   thumbnailUrl: "/reference-models/faces/east-m-1.webp" },
-  { id: "west-m-1",       label: "West India",        region: "west",       sex: "male",   thumbnailUrl: "/reference-models/faces/west-m-1.webp" },
-  { id: "north-east-m-1", label: "North-East India",  region: "north-east", sex: "male",   thumbnailUrl: "/reference-models/faces/north-east-m-1.webp" },
-  { id: "global-m-1",     label: "Global",            region: "global",     sex: "male",   thumbnailUrl: "/reference-models/faces/global-m-1.webp" },
+  // Female — six inspirations
+  { id: "north-f-1",      label: "Model 1", region: "north",      sex: "female", thumbnailUrl: "/reference-models/faces/north-f-1.webp" },
+  { id: "south-f-1",      label: "Model 2", region: "south",      sex: "female", thumbnailUrl: "/reference-models/faces/south-f-1.webp" },
+  { id: "east-f-1",       label: "Model 3", region: "east",       sex: "female", thumbnailUrl: "/reference-models/faces/east-f-1.webp" },
+  { id: "west-f-1",       label: "Model 4", region: "west",       sex: "female", thumbnailUrl: "/reference-models/faces/west-f-1.webp" },
+  { id: "north-east-f-1", label: "Model 5", region: "north-east", sex: "female", thumbnailUrl: "/reference-models/faces/north-east-f-1.webp" },
+  { id: "global-f-1",     label: "Model 6", region: "global",     sex: "female", thumbnailUrl: "/reference-models/faces/global-f-1.webp" },
+  // Male — six inspirations
+  { id: "north-m-1",      label: "Model 1", region: "north",      sex: "male",   thumbnailUrl: "/reference-models/faces/north-m-1.webp" },
+  { id: "south-m-1",      label: "Model 2", region: "south",      sex: "male",   thumbnailUrl: "/reference-models/faces/south-m-1.webp" },
+  { id: "east-m-1",       label: "Model 3", region: "east",       sex: "male",   thumbnailUrl: "/reference-models/faces/east-m-1.webp" },
+  { id: "west-m-1",       label: "Model 4", region: "west",       sex: "male",   thumbnailUrl: "/reference-models/faces/west-m-1.webp" },
+  { id: "north-east-m-1", label: "Model 5", region: "north-east", sex: "male",   thumbnailUrl: "/reference-models/faces/north-east-m-1.webp" },
+  { id: "global-m-1",     label: "Model 6", region: "global",     sex: "male",   thumbnailUrl: "/reference-models/faces/global-m-1.webp" },
 ];
 
 /** Lookup a face by id. Returns null on unknown id (never throws). */

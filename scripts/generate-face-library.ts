@@ -22,7 +22,7 @@
  *   1–2× iteration to reroll any faces that miss the brief.
  */
 import "dotenv/config";
-import { access, mkdir, writeFile } from "fs/promises";
+import { access, mkdir, rename, writeFile } from "fs/promises";
 import { join } from "path";
 
 const GEMINI_MODEL = "gemini-3.1-flash-image";
@@ -66,44 +66,53 @@ const EXT_BY_MIME: Record<string, string> = {
 const TRY_EXTS = ["webp", "png", "jpg", "jpeg"];
 
 /**
- * Region-specific descriptor. Deliberately restrained: age band, complexion
- * and hair, no essentialising features. The goal is representative diversity,
- * not stereotype. Global is a warm-toned catch-all for retailers whose
- * audience isn't India-specific.
+ * Feature descriptor for a region. Model-quality is asserted separately by
+ * the prompt scaffold; this only carries the visual cues (complexion, hair,
+ * bone structure) that vary by region. Deliberately restrained — the goal
+ * is representative regional inspiration for a fashion catalogue, not
+ * stereotype. "Global" is a fair-tone international look for retailers
+ * whose audience isn't India-specific.
  */
 function regionDescriptor(region: FaceRegion, sex: FaceSex): string {
-  const woman = sex === "female";
-  const she = woman ? "she has" : "he has";
+  const hairFem = "long silky dark hair styled naturally";
+  const hairMasc = "short neatly-styled dark hair";
+  const hair = sex === "female" ? hairFem : hairMasc;
   switch (region) {
     case "north":
-      return `a person from North India${woman ? "" : ""}, late twenties, wheatish complexion, oval face, ${she} ${woman ? "long dark hair styled naturally" : "short neatly-groomed dark hair"}`;
+      return `fair-to-wheatish complexion, oval face with defined cheekbones, ${hair}`;
     case "south":
-      return `a person from South India, late twenties, medium-to-deep complexion, oval face, ${she} ${woman ? "long dark hair" : "short neatly-groomed dark hair"}`;
+      return `warm medium complexion, expressive eyes, high cheekbones, ${hair}`;
     case "east":
-      return `a person from East India (Bengali features), late twenties, medium complexion, soft facial features, ${she} ${woman ? "long dark hair" : "short neatly-groomed dark hair"}`;
+      return `medium complexion with soft, delicate features and refined jawline, ${hair}`;
     case "west":
-      return `a person from West India (Gujarati/Rajasthani), late twenties, wheatish complexion, oval face, ${she} ${woman ? "long dark hair" : "short neatly-groomed dark hair"}`;
+      return `wheatish complexion, angular jawline, strong cheekbones, ${hair}`;
     case "north-east":
-      return `a person from North-East India, late twenties, medium complexion with distinct North-East features, ${she} ${woman ? "mid-length dark hair" : "short neatly-groomed dark hair"}`;
+      return `medium complexion, elegant almond-shaped eyes, high cheekbones, ${sex === "female" ? "silky mid-length dark hair" : hairMasc}`;
     case "global":
-      return `an international ${woman ? "woman" : "man"}, late twenties, fair complexion, versatile look, ${she} ${woman ? "mid-length brown hair" : "short neatly-groomed brown hair"}`;
+      return `fair complexion, versatile international look, ${sex === "female" ? "mid-length soft brown hair" : "short neatly-styled brown hair"}`;
   }
 }
 
 /**
- * Prompt shape: portrait head-and-shoulders, neutral wardrobe + expression +
- * background so downstream generation isn't fighting the ref for lighting or
- * mood. 4:5 aspect keeps it portrait-shaped (Gemini supports the ratio via
- * `imageConfig`; we set it explicitly rather than relying on prompt-only).
+ * Prompt shape — the fashion-model anchor is the FIRST clause so the
+ * generator prioritises "editorial model quality" over anything else, with
+ * regional features arriving as descriptive detail. Head-and-shoulders, 4:5
+ * (set via imageConfig, not prompt), neutral wardrobe + expression +
+ * background so downstream generation isn't fighting the ref for lighting
+ * or mood.
  */
 function buildPrompt(target: FaceTarget): string {
+  const persona = target.sex === "female"
+    ? "a polished, camera-confident female fashion model"
+    : "a polished, camera-confident male fashion model";
   return [
-    `Portrait head-and-shoulders fashion photograph of ${regionDescriptor(target.region, target.sex)}.`,
-    "Neutral warm expression, closed lips with a subtle smile, looking directly at the camera.",
+    `Editorial fashion portrait of ${persona} — a working catalogue model with the elegant bone structure, radiant natural skin and refined presence expected of a premium ethnic-wear campaign.`,
+    `The model has ${regionDescriptor(target.region, target.sex)}.`,
+    "Head-and-shoulders framing, subject centred, looking directly at the camera. Neutral warm expression, closed lips with a subtle smile.",
     "Wearing a plain neutral crew-neck top in a soft grey or beige — no patterns, no jewelry, no logos.",
-    "Plain light-beige seamless studio background, soft even studio lighting with no harsh directional shadow.",
+    "Plain light-beige seamless studio background, soft even fashion-studio lighting with no harsh directional shadow.",
     "Natural skin texture, realistic tones (no exaggerated saturation), sharp focus, photorealistic.",
-    "Head-and-shoulders framing only, subject centred, no props, no accessories, no text, no watermark.",
+    "Head-and-shoulders only — no props, no accessories, no text, no watermark.",
   ].join(" ");
 }
 
@@ -180,14 +189,31 @@ async function main(): Promise<void> {
 
   let made = 0, skipped = 0, failed = 0;
   for (const target of targets) {
-    if (!force) {
-      const present = await Promise.all(
-        TRY_EXTS.map((e) => fileExists(join(OUT_DIR, `${target.id}.${e}`)))
-      );
-      if (present.some(Boolean)) {
-        console.log(`• ${target.id}  — exists, skipping`);
+    // Look at all extension variants of this id so we can either skip or
+    // legacy-rename ALL of them (a face may have shipped as .webp AND been
+    // manually replaced with a .png — we never want two live versions).
+    const presentPaths: string[] = [];
+    for (const ext of TRY_EXTS) {
+      const p = join(OUT_DIR, `${target.id}.${ext}`);
+      if (await fileExists(p)) presentPaths.push(p);
+    }
+
+    if (presentPaths.length > 0) {
+      if (!force) {
+        console.log(`• ${target.id}  — exists, skipping (use --force to reroll)`);
         skipped++;
         continue;
+      }
+      // --force → NEVER delete/overwrite. Rename each existing variant to a
+      // timestamped -legacy name so old picks stay on disk for comparison.
+      // The loader (faces-loader.ts) only matches `{id}.{ext}` so legacy
+      // files are inert until you rename one back.
+      const ts = new Date().toISOString().replace(/[:.]/g, "-").replace("T", "_").slice(0, 19);
+      for (const p of presentPaths) {
+        const ext = p.split(".").pop();
+        const legacy = join(OUT_DIR, `${target.id}-legacy-${ts}.${ext}`);
+        await rename(p, legacy);
+        console.log(`  · kept previous as ${target.id}-legacy-${ts}.${ext}`);
       }
     }
 

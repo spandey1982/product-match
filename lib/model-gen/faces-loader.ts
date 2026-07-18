@@ -9,7 +9,7 @@
  */
 import { access, readFile } from "fs/promises";
 import { join } from "path";
-import { getFace } from "./faces";
+import { FACE_LIBRARY, getFace, type FaceEntry } from "./faces";
 
 const FACES_DIR = join(process.cwd(), "public", "reference-models", "faces");
 const FACE_EXTS = ["webp", "png", "jpg", "jpeg"] as const;
@@ -45,4 +45,32 @@ export async function loadFaceImage(faceId: string): Promise<FaceImage | null> {
     }
   }
   return null;
+}
+
+/**
+ * Check-only: does an asset exist on disk for this face id? Skips reading
+ * the buffer — used by Model Studio to render only the faces that actually
+ * ship. Never throws.
+ */
+async function hasAsset(faceId: string): Promise<boolean> {
+  for (const ext of FACE_EXTS) {
+    try {
+      await access(join(FACES_DIR, `${faceId}.${ext}`));
+      return true;
+    } catch {
+      // try next extension
+    }
+  }
+  return false;
+}
+
+/**
+ * Return the subset of FACE_LIBRARY whose portrait assets are actually on
+ * disk. Model Studio calls this so the picker shows N cards when N faces
+ * ship — not 12 gradient-only placeholders. Order is preserved from
+ * FACE_LIBRARY (female group before male group). Runs once per page load.
+ */
+export async function listAvailableFaces(): Promise<FaceEntry[]> {
+  const results = await Promise.all(FACE_LIBRARY.map(async (f) => ({ f, ok: await hasAsset(f.id) })));
+  return results.filter((r) => r.ok).map((r) => r.f);
 }

@@ -797,7 +797,7 @@ export default function UploadPage() {
                         { value: "auto", label: "AI Casting — pick per product" },
                         ...(aiGen.signatureModels ?? []).map((sm) => ({
                           value: sm.id,
-                          label: sm.faceLabel ? `${sm.name} · ${sm.faceLabel}` : sm.name,
+                          label: sm.name,
                         })),
                       ]}
                     />

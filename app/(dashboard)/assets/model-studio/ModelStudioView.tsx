@@ -199,6 +199,7 @@ export function ModelStudioView({ initialProfiles, faceLibrary }: Props) {
 
   const femaleFaces = faceLibrary.filter((f) => f.sex === "female");
   const maleFaces = faceLibrary.filter((f) => f.sex === "male");
+  const hasAnyFaces = faceLibrary.length > 0;
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 space-y-8">
@@ -237,7 +238,9 @@ export function ModelStudioView({ initialProfiles, faceLibrary }: Props) {
           ))}
           <button
             onClick={startNew}
-            className="shrink-0 w-40 h-52 rounded-2xl border-2 border-dashed border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/40 flex flex-col items-center justify-center gap-2 text-gray-400 hover:text-indigo-500 transition-colors"
+            disabled={!hasAnyFaces}
+            title={hasAnyFaces ? undefined : "No face references available yet"}
+            className="shrink-0 w-40 h-52 rounded-2xl border-2 border-dashed border-gray-200 enabled:hover:border-indigo-300 enabled:hover:bg-indigo-50/40 flex flex-col items-center justify-center gap-2 text-gray-400 enabled:hover:text-indigo-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Plus className="h-6 w-6" />
             <span className="text-xs font-medium">Add Signature Model</span>
@@ -269,11 +272,17 @@ export function ModelStudioView({ initialProfiles, faceLibrary }: Props) {
             maxLength={60}
           />
 
-          {/* Face picker */}
+          {/* Face picker — only groups that have at least one available face
+              render, so the retailer never sees an empty "Female" or "Male"
+              header while assets are still being generated. */}
           <div className="space-y-3">
             <label className="text-sm font-medium text-gray-700">Face</label>
-            <FacePickerGroup title="Female" faces={femaleFaces} value={faceId} onChange={setFaceId} />
-            <FacePickerGroup title="Male" faces={maleFaces} value={faceId} onChange={setFaceId} />
+            {femaleFaces.length > 0 && (
+              <FacePickerGroup title="Female" faces={femaleFaces} value={faceId} onChange={setFaceId} />
+            )}
+            {maleFaces.length > 0 && (
+              <FacePickerGroup title="Male" faces={maleFaces} value={faceId} onChange={setFaceId} />
+            )}
           </div>
 
           {/* Appearance (with Smart-pick defaults) */}
@@ -412,14 +421,20 @@ export function ModelStudioView({ initialProfiles, faceLibrary }: Props) {
       {!showForm && profiles.length === 0 && (
         <section className="rounded-2xl border border-dashed border-gray-200 bg-gray-50/50 p-10 text-center">
           <Sparkles className="h-8 w-8 text-indigo-400 mx-auto mb-3" />
-          <p className="text-sm font-medium text-gray-900 mb-1">No Signature Models yet</p>
-          <p className="text-sm text-gray-500 mb-4">
-            Save a face and appearance you can reuse for every catalogue.
+          <p className="text-sm font-medium text-gray-900 mb-1">
+            {hasAnyFaces ? "No Signature Models yet" : "No face references available yet"}
           </p>
-          <Button onClick={startNew} className="gap-1.5">
-            <Plus className="h-4 w-4" />
-            Create your first Signature Model
-          </Button>
+          <p className="text-sm text-gray-500 mb-4">
+            {hasAnyFaces
+              ? "Save a face and appearance you can reuse for every catalogue."
+              : "Generate the face library on the server first — Signature Models pick from those faces."}
+          </p>
+          {hasAnyFaces && (
+            <Button onClick={startNew} className="gap-1.5">
+              <Plus className="h-4 w-4" />
+              Create your first Signature Model
+            </Button>
+          )}
         </section>
       )}
     </div>
@@ -459,7 +474,6 @@ function SignatureCard({
         </div>
         <div className="px-3 py-2">
           <p className="text-sm font-medium text-gray-900 truncate">{profile.name}</p>
-          <p className="text-xs text-gray-500 truncate">{profile.faceLabel ?? "—"}</p>
         </div>
       </button>
       <button
