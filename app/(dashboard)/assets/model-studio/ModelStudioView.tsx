@@ -13,7 +13,8 @@ import {
   EMPTY_METADATA,
   SKIN_TONES, HAIR_STYLES, HAIR_COLORS, EXPRESSIONS,
   BODY_TYPES, PERSONAS,
-  type CastingMetadata, type PoseMode,
+  PERSONA_DEFAULTS, COMMON_STYLE_TAGS, COMMON_CATEGORIES,
+  type CastingMetadata, type PoseMode, type Persona,
 } from "@/lib/model-gen/casting-types";
 
 /**
@@ -143,6 +144,50 @@ export function ModelStudioView({ initialProfiles, faceLibrary }: Props) {
     }
   }
 
+  /**
+   * Apply the current persona's defaults to any field the retailer has left
+   * on "Smart pick". Never overwrites explicit choices. Style tags merge with
+   * the current selection (deduped) rather than replacing so retailers can
+   * layer persona defaults on top of their own tag picks.
+   */
+  function applyPersonaDefaults() {
+    if (!metadata.persona) return;
+    const d = PERSONA_DEFAULTS[metadata.persona];
+    setMetadata((m) => {
+      const mergedTags = m.styleTags && m.styleTags.length > 0
+        ? Array.from(new Set([...m.styleTags, ...d.styleTags]))
+        : [...d.styleTags];
+      return {
+        ...m,
+        hairStyle:  m.hairStyle  ?? d.hairStyle,
+        hairColor:  m.hairColor  ?? d.hairColor,
+        expression: m.expression ?? d.expression,
+        bodyType:   m.bodyType   ?? d.bodyType,
+        styleTags:  mergedTags,
+      };
+    });
+  }
+
+  function toggleStyleTag(tag: string) {
+    setMetadata((m) => {
+      const current = m.styleTags ?? [];
+      const next = current.includes(tag)
+        ? current.filter((t) => t !== tag)
+        : [...current, tag];
+      return { ...m, styleTags: next.length > 0 ? next : null };
+    });
+  }
+
+  function toggleCategory(cat: string) {
+    setMetadata((m) => {
+      const current = m.categoryAffinity ?? [];
+      const next = current.includes(cat)
+        ? current.filter((c) => c !== cat)
+        : [...current, cat];
+      return { ...m, categoryAffinity: next.length > 0 ? next : null };
+    });
+  }
+
   async function remove(id: string) {
     if (!confirm("Delete this Signature Model? Past catalogue images are unaffected.")) return;
     const res = await fetch(`/api/model-profiles/${id}`, { method: "DELETE" });
@@ -233,12 +278,23 @@ export function ModelStudioView({ initialProfiles, faceLibrary }: Props) {
 
           {/* Appearance (with Smart-pick defaults) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Select
-              label="Persona"
-              value={toSel(metadata.persona)}
-              onChange={(e) => setMetadata((m) => ({ ...m, persona: fromSel(e.target.value, PERSONAS) }))}
-              options={smartPickOptions(PERSONAS)}
-            />
+            <div className="space-y-1.5">
+              <Select
+                label="Persona"
+                value={toSel(metadata.persona)}
+                onChange={(e) => setMetadata((m) => ({ ...m, persona: fromSel(e.target.value, PERSONAS) as Persona | null }))}
+                options={smartPickOptions(PERSONAS)}
+              />
+              {metadata.persona && (
+                <button
+                  type="button"
+                  onClick={applyPersonaDefaults}
+                  className="text-xs text-indigo-600 hover:text-indigo-800"
+                >
+                  Apply {label(metadata.persona)} defaults →
+                </button>
+              )}
+            </div>
             <Select
               label="Expression"
               value={toSel(metadata.expression)}
@@ -268,6 +324,33 @@ export function ModelStudioView({ initialProfiles, faceLibrary }: Props) {
               value={toSel(metadata.hairColor)}
               onChange={(e) => setMetadata((m) => ({ ...m, hairColor: fromSel(e.target.value, HAIR_COLORS) }))}
               options={smartPickOptions(HAIR_COLORS)}
+            />
+          </div>
+
+          {/* Style tags — chip picker. Freeform strings on the wire; a
+              curated set here so signature models stay comparable when the
+              scorer picks between them. */}
+          <div>
+            <label className="text-sm font-medium text-gray-700">Style tags</label>
+            <p className="text-xs text-gray-500 mt-0.5 mb-2">Optional — feeds the auto-pick scorer.</p>
+            <ChipRow
+              items={COMMON_STYLE_TAGS}
+              selected={metadata.styleTags ?? []}
+              onToggle={toggleStyleTag}
+            />
+          </div>
+
+          {/* Category affinity — which categories this Signature Model is
+              best for. When AI Casting is on and the retailer has NOT picked
+              a specific Signature Model, the resolver prefers the profile
+              whose categories match the product. */}
+          <div>
+            <label className="text-sm font-medium text-gray-700">Best for categories</label>
+            <p className="text-xs text-gray-500 mt-0.5 mb-2">Optional — AI Casting will prefer this model for products in these categories.</p>
+            <ChipRow
+              items={COMMON_CATEGORIES}
+              selected={metadata.categoryAffinity ?? []}
+              onToggle={toggleCategory}
             />
           </div>
 
@@ -425,6 +508,38 @@ function FacePickerGroup({
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+function ChipRow({
+  items, selected, onToggle,
+}: {
+  items: readonly string[];
+  selected: string[];
+  onToggle: (item: string) => void;
+}) {
+  const set = new Set(selected);
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {items.map((item) => {
+        const active = set.has(item);
+        return (
+          <button
+            key={item}
+            type="button"
+            onClick={() => onToggle(item)}
+            aria-pressed={active}
+            className={`rounded-full border px-3 py-1 text-xs font-medium transition-all ${
+              active
+                ? "border-indigo-300 bg-indigo-50 text-indigo-700"
+                : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
+            }`}
+          >
+            {item}
+          </button>
+        );
+      })}
     </div>
   );
 }

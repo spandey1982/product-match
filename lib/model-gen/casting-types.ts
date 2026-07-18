@@ -98,6 +98,80 @@ export const PERSONAS: readonly Persona[] = [
   "professional-formal", "youth-casual",
 ];
 
+/**
+ * Per-persona appearance/style defaults. Applied ONLY to fields the retailer
+ * has left on "Smart pick" — an explicit user choice is never overwritten.
+ * The Model Studio "Apply defaults" button surfaces this behaviour; the
+ * resolver's smart-pick layer uses the same values as a runtime fallback.
+ */
+export interface PersonaDefaults {
+  hairStyle: HairStyle;
+  hairColor: HairColor;
+  expression: Expression;
+  bodyType: BodyType;
+  styleTags: string[];
+}
+
+export const PERSONA_DEFAULTS: Record<Persona, PersonaDefaults> = {
+  "luxury-bridal": {
+    hairStyle: "styled",
+    hairColor: "dark-brown",
+    expression: "soft-smile",
+    bodyType: "regular",
+    styleTags: ["bridal", "opulent", "heritage"],
+  },
+  "heritage-traditional": {
+    hairStyle: "long",
+    hairColor: "black",
+    expression: "warm",
+    bodyType: "regular",
+    styleTags: ["traditional", "heritage", "ethnic"],
+  },
+  "professional-formal": {
+    hairStyle: "medium",
+    hairColor: "dark-brown",
+    expression: "confident",
+    bodyType: "regular",
+    styleTags: ["formal", "office"],
+  },
+  "youth-casual": {
+    hairStyle: "wavy",
+    hairColor: "brown",
+    expression: "warm",
+    bodyType: "regular",
+    styleTags: ["casual", "youth"],
+  },
+  "urban-minimal": {
+    hairStyle: "medium",
+    hairColor: "dark-brown",
+    expression: "neutral",
+    bodyType: "regular",
+    styleTags: ["minimal", "urban"],
+  },
+};
+
+/**
+ * Common style-tag chips surfaced in Model Studio. Freeform strings are still
+ * legal on the wire — this is UX scaffolding, not a hard whitelist — but a
+ * curated set keeps Signature Models comparable across retailers so the
+ * scorer's jaccard overlap actually matches.
+ */
+export const COMMON_STYLE_TAGS: readonly string[] = [
+  "bridal", "heritage", "traditional", "ethnic", "opulent", "festive",
+  "formal", "office", "minimal", "urban", "casual", "youth", "streetwear",
+];
+
+/**
+ * Common product categories a Signature Model can be flagged as "best for".
+ * Matches the CATEGORIES list on the upload page (kept in sync manually — a
+ * shared source of truth is a Phase E cleanup, not a Phase D unlock).
+ */
+export const COMMON_CATEGORIES: readonly string[] = [
+  "Saree", "Lehenga", "Blouse", "Dupatta", "Kurta", "Kurti",
+  "Salwar", "Anarkali", "Sharara", "Palazzo",
+  "Suit", "Shirt", "T-shirt", "Waistcoat", "Trouser", "Jeans",
+];
+
 // ── The brief ───────────────────────────────────────────────────────────────
 
 /**

@@ -37,8 +37,8 @@ import type { GenerationQuality } from "./quality";
 import { ensureDetailNotes, ensureBackDetailNotes } from "@/lib/metadata/detail-notes";
 import { ensureGarmentIntelligence, isGarmentIntelligenceEnabled } from "@/lib/garment-intelligence/service";
 import { parsePartImages, findBackPart } from "@/lib/product/part-slots";
-import { isAiCastingEnabled, getModelProfile } from "./casting";
-import { resolveCasting, type CastingResult } from "./casting-match";
+import { isAiCastingEnabled, getModelProfile, listModelProfiles } from "./casting";
+import { resolveCasting, type CastingResult, type CastingProfileInput } from "./casting-match";
 import { parseArray } from "@/lib/serialize";
 
 /**
@@ -189,6 +189,18 @@ export async function generateModelImages(
     const profileRow = input.signatureProfileId
       ? await getModelProfile(input.signatureProfileId, input.userId)
       : null;
+    // When no explicit Signature Model was chosen, load the retailer's active
+    // ones so the resolver can auto-select a fitting one (category/style/
+    // persona match). Skipped when the retailer picked a specific model —
+    // that request is authoritative and needs no scoring.
+    const retailerProfiles: CastingProfileInput[] = profileRow
+      ? []
+      : (await listModelProfiles(input.userId)).map((p) => ({
+          id: p.id,
+          faceId: p.faceId,
+          metadata: p.metadata,
+          poseMode: p.poseMode,
+        }));
     const resolved = resolveCasting({
       product: {
         id: product.id,
@@ -209,6 +221,7 @@ export async function generateModelImages(
             poseMode: profileRow.poseMode,
           }
         : null,
+      retailerProfiles,
     });
     // Kids bypass (or any resolve that returned face=null) → legacy path.
     if (resolved.face) casting = resolved;

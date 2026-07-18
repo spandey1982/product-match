@@ -104,6 +104,14 @@ export interface ResolveCastingInput {
   fallbackModelType: ModelType;
   /** null = AI Casting (auto-pick). A profile object = Signature Model path. */
   profile?: CastingProfileInput | null;
+  /**
+   * Retailer's active Signature Models — used ONLY when `profile` is null.
+   * The resolver first scores these against the product (category affinity,
+   * style-tag overlap, persona alignment) and picks the best if it clears
+   * the threshold; otherwise falls through to face-library auto-pick. Empty
+   * or absent → straight face-library auto-pick (current behaviour).
+   */
+  retailerProfiles?: CastingProfileInput[];
 }
 
 // ── Kid detection ───────────────────────────────────────────────────────────
@@ -312,6 +320,91 @@ function autoPickFace(product: CastingProductSignals, sex: FaceSex): AutoPickRes
   return { face: pick, reason };
 }
 
+// ── Signature Model scorer (AI Casting auto-select) ────────────────────────
+//
+// When a retailer has saved Signature Models and picks "AI Casting" (no
+// explicit profile) on Add Product, the resolver first checks whether one of
+// the retailer's own profiles fits the product better than a face-library
+// auto-pick. Uses only the metadata the retailer set — profiles left blank
+// don't get spurious scores.
+
+const SIG_CATEGORY_WEIGHT = 0.5;
+const SIG_STYLE_WEIGHT    = 0.3;
+const SIG_PERSONA_WEIGHT  = 0.2;
+/**
+ * Minimum aggregate score for a Signature Model to win over face-library
+ * auto-pick. Deliberately conservative: if a retailer's saved profiles are
+ * generic ("no metadata") we don't want to override AI Casting's regional
+ * heuristics with a random pick.
+ */
+const SIG_MIN_SCORE = 0.3;
+
+interface ScoredProfile {
+  profile: CastingProfileInput;
+  face: FaceEntry;
+  score: number;
+}
+
+function scoreProfile(
+  profile: CastingProfileInput,
+  product: CastingProductSignals
+): number {
+  const meta = profile.metadata;
+  let score = 0;
+
+  // Category affinity — the strongest signal a retailer can give ("this model
+  // is for sarees"). Case-insensitive match.
+  if (meta.categoryAffinity && meta.categoryAffinity.length > 0 && product.category) {
+    const pc = product.category.toLowerCase();
+    if (meta.categoryAffinity.some((c) => c.toLowerCase() === pc)) {
+      score += SIG_CATEGORY_WEIGHT;
+    }
+  }
+
+  // Style-tag overlap — jaccard over the two tag sets. No product tags → no
+  // signal (score contribution stays 0 rather than a false zero).
+  if (meta.styleTags && meta.styleTags.length > 0) {
+    const productTags = new Set((product.styleTags ?? []).map((s) => s.toLowerCase()));
+    if (productTags.size > 0) {
+      const modelTags = new Set(meta.styleTags.map((s) => s.toLowerCase()));
+      const overlap = [...modelTags].filter((t) => productTags.has(t)).length;
+      const union = new Set([...productTags, ...modelTags]).size;
+      score += SIG_STYLE_WEIGHT * (overlap / union);
+    }
+  }
+
+  // Persona alignment — profile persona matches the inferred product persona.
+  if (meta.persona) {
+    if (meta.persona === pickPersona(product)) {
+      score += SIG_PERSONA_WEIGHT;
+    }
+  }
+
+  return score;
+}
+
+function pickBestProfile(
+  profiles: CastingProfileInput[],
+  product: CastingProductSignals,
+  sex: FaceSex
+): ScoredProfile | null {
+  if (profiles.length === 0) return null;
+  const eligible: ScoredProfile[] = [];
+  for (const profile of profiles) {
+    const face = getFace(profile.faceId);
+    // Sex gate: never propose a female Signature Model for a menswear
+    // product (or vice versa) even if the retailer somehow saved one.
+    if (!face || face.sex !== sex) continue;
+    eligible.push({ profile, face, score: scoreProfile(profile, product) });
+  }
+  if (eligible.length === 0) return null;
+  // Sort by score desc; stable order across ties (first-declared wins) is fine
+  // because retailer input order (newest-first in the DB) is already meaningful.
+  eligible.sort((a, b) => b.score - a.score);
+  const best = eligible[0];
+  return best.score >= SIG_MIN_SCORE ? best : null;
+}
+
 // ── Main entry point ────────────────────────────────────────────────────────
 
 export function resolveCasting(input: ResolveCastingInput): CastingResult {
@@ -376,7 +469,25 @@ export function resolveCasting(input: ResolveCastingInput): CastingResult {
     // Never throws; a stale profile should never break generation.
   }
 
-  // 4. AI Casting path — auto-pick face + fully smart-picked brief.
+  // 4. AI Casting — retailer-profile auto-select. Prefer one of the
+  //    retailer's saved Signature Models when it fits the product; falls
+  //    through to the face-library pick when none clear the threshold.
+  if (input.retailerProfiles && input.retailerProfiles.length > 0) {
+    const best = pickBestProfile(input.retailerProfiles, product, sex);
+    if (best) {
+      return {
+        modelType,
+        variant,
+        face: best.face,
+        metadata: smartFill(best.profile.metadata, best.face, product),
+        poseMode: best.profile.poseMode ?? "studio",
+        profileId: best.profile.id,
+        reason: `AI Casting — Signature Model (${best.face.label}, score ${best.score.toFixed(2)})`,
+      };
+    }
+  }
+
+  // 5. AI Casting fallback — auto-pick from the face library, fully smart-picked brief.
   const { face, reason } = autoPickFace(product, sex);
   return {
     modelType,
