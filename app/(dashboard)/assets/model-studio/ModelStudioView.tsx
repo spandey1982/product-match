@@ -481,7 +481,7 @@ function SignatureCard({
               src={profile.faceThumbnailUrl}
               alt={profile.faceLabel ?? ""}
               fill
-              className="object-cover"
+              className="object-cover object-top"
               sizes="160px"
               unoptimized
             />
@@ -518,15 +518,16 @@ function FacePickerGroup({
       <p className="text-xs font-medium text-gray-500 mb-1.5">{title}</p>
       {/* Horizontal scroll — a fixed 6-column grid would wrap the moment the
           library grows past 6. Flex row + overflow-x-auto keeps the picker a
-          single scrollable row regardless of how many faces exist. Bleed the
-          rail to the section edges (-mx-6 px-6) so the last visible card
-          doesn't look cropped mid-scroll. */}
-      <div className="flex gap-2 overflow-x-auto pb-1 -mx-6 px-6 [scrollbar-width:thin]">
+          single scrollable row regardless of how many faces exist. Snap
+          scrolling makes it feel intentional on touch. Bleed the rail to the
+          section edges (-mx-6 px-6) so the last visible card doesn't look
+          cropped mid-scroll. */}
+      <div className="flex gap-2 overflow-x-auto pb-1 -mx-6 px-6 snap-x snap-mandatory [scrollbar-width:thin]">
         {faces.map((face) => (
           <button
             key={face.id}
             onClick={() => onChange(face.id)}
-            className="group shrink-0 flex flex-col items-center gap-1 w-[76px]"
+            className="group shrink-0 flex flex-col items-center gap-1 w-[76px] snap-start"
             title={face.label}
           >
             <div
@@ -541,7 +542,11 @@ function FacePickerGroup({
                 src={face.thumbnailUrl}
                 alt={face.label}
                 fill
-                className="object-cover"
+                // object-top biases the center-crop toward the top of the
+                // portrait — hair and forehead stay visible; a bit of
+                // shoulder is sacrificed at the bottom instead of the head
+                // at the top.
+                className="object-cover object-top"
                 sizes="76px"
                 unoptimized
               />
