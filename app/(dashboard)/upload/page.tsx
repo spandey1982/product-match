@@ -15,6 +15,13 @@ import type { ScenicValue } from "@/components/product/ScenicCollectionSelect";
 import type { SceneOptionView } from "@/lib/model-gen/scenes/library";
 import { listQualityProfiles, DEFAULT_GENERATION_QUALITY, type GenerationQuality } from "@/lib/model-gen/quality";
 
+// Provider-gated helpers. Provider is stored on the retailer and drives every
+// downstream capability (extras, casting, scene, quality) — hide UI that
+// Vertex can't consume so we never mislead about what a click will do.
+type CatalogueStyle = "gemini" | "vertex";
+const isGeminiPath = (p: CatalogueStyle) => p === "gemini";
+const isVertexPath = (p: CatalogueStyle) => p === "vertex";
+
 const CATEGORIES = [
   "Saree", "Lehenga", "Blouse", "Dupatta", "Kurta", "Kurti",
   "Salwar", "Anarkali", "Sharara", "Palazzo",
@@ -68,17 +75,31 @@ interface AiGenConfig {
     brandingEnabled: boolean;
     brandingPosition: "top-left" | "top-right";
     brandingStyle: "classic" | "glass";
-    catalogueProvider: "auto" | "gemini" | "vertex";
+    catalogueProvider: CatalogueStyle;
+    quality: GenerationQuality;
     backdrop: BackdropValue;
     scenic: ScenicValue;
   };
 }
 
-// Provider-free, purpose-led labels (shared with the try-on settings screen).
-const CATALOGUE_STYLES: { id: "auto" | "gemini" | "vertex"; label: string }[] = [
-  { id: "auto", label: "Automatic" },
-  { id: "gemini", label: "Premium" },
-  { id: "vertex", label: "Economy" },
+// Two provider paths, retailer-facing labels only ("Premium" = Gemini's
+// multi-image + prompt surface; "Economy" = Vertex VTO's structured single-
+// shot surface). "Automatic" was retired — it hid capability differences.
+const CATALOGUE_STYLES: {
+  id: CatalogueStyle;
+  label: string;
+  description: string;
+}[] = [
+  {
+    id: "gemini",
+    label: "Premium",
+    description: "Full metadata + multi-image. Cast the model, scenes, quality.",
+  },
+  {
+    id: "vertex",
+    label: "Economy",
+    description: "One product image, one on-model output. Faster, cheaper.",
+  },
 ];
 
 // Concise, retailer-facing objective labels/descriptions shown side by side.
@@ -138,17 +159,20 @@ export default function UploadPage() {
   // face + brief per product; a specific id = use that Signature Model. Never
   // persisted — matches the "quality" pattern (resets per product).
   const [castingSelection, setCastingSelection] = useState<string>("auto");
-  // Native generation quality — deliberately NOT persisted (no localStorage, no
-  // profile setting). Plain component state resets to the default on every visit
-  // to this page, so each new product starts on Standard until the retailer
-  // explicitly picks Enhanced. See lib/model-gen/quality.ts.
+  // Native generation quality — now a sticky per-retailer setting, loaded
+  // from /api/settings/ai-generation on mount and persisted on change via
+  // patchBranding() below. Each new product starts on the retailer's
+  // remembered value; the default here is only the pre-hydration seed.
   const [quality, setQuality] = useState<GenerationQuality>(DEFAULT_GENERATION_QUALITY);
 
   // Store branding for generated images (persisted immediately on change).
   const [brandingEnabled, setBrandingEnabled] = useState(true);
   const [brandingStyle, setBrandingStyle] = useState<"classic" | "glass">("classic");
   // Branding position is fixed to top-left (picker removed) — no state needed.
-  const [catalogueProvider, setCatalogueProvider] = useState<"auto" | "gemini" | "vertex">("auto");
+  // "Economy" (vertex) is the safe pre-hydration default: cheap, small
+  // capability surface. The retailer's saved value overrides this once
+  // the settings response lands in the effect below.
+  const [catalogueProvider, setCatalogueProvider] = useState<CatalogueStyle>("vertex");
   // Studio backdrop (Phase 1: store-level setting only; no generation wiring yet).
   const [backdrops, setBackdrops] = useState<BackdropOption[]>([]);
   const [backdrop, setBackdrop] = useState<BackdropValue>({ mode: "smart", presetId: "reference-studio" });
@@ -197,7 +221,20 @@ export default function UploadPage() {
         // Leave modelType on "auto" — the system picks per product by default.
         setBrandingEnabled(data.settings.brandingEnabled);
         setBrandingStyle(data.settings.brandingStyle ?? "classic");
-        setCatalogueProvider(data.settings.catalogueProvider);
+        // Coerce two edge cases so the UI is always in a consistent state:
+        //   • a legacy "auto" value from before the retirement of that tier
+        //     collapses to Economy (matches the server-side coercion).
+        //   • a saved "vertex" value on an env where Vertex is unavailable
+        //     falls to Premium so the retailer can still act on the setting.
+        const savedProvider = data.settings.catalogueProvider as unknown as string;
+        const resolvedProvider: CatalogueStyle =
+          savedProvider === "gemini" || savedProvider === "vertex"
+            ? savedProvider
+            : "vertex";
+        setCatalogueProvider(
+          resolvedProvider === "vertex" && !data.vertexAvailable ? "gemini" : resolvedProvider
+        );
+        if (data.settings.quality) setQuality(data.settings.quality);
         setBackdrops(data.backdrops ?? []);
         if (data.settings.backdrop) setBackdrop(data.settings.backdrop);
         setScenes(data.scenes ?? []);
@@ -212,12 +249,13 @@ export default function UploadPage() {
     return () => { active = false; };
   }, []);
 
-  // Persist a branding setting change immediately (fire-and-forget).
+  // Persist a branding/generation setting change immediately (fire-and-forget).
   function patchBranding(patch: {
     brandingEnabled?: boolean;
     brandingPosition?: string;
     brandingStyle?: "classic" | "glass";
-    catalogueProvider?: string;
+    catalogueProvider?: CatalogueStyle;
+    quality?: GenerationQuality;
     backdrop?: BackdropValue;
     scenic?: ScenicValue;
   }) {
@@ -424,6 +462,13 @@ export default function UploadPage() {
       setError("Title, category, color, and price are required");
       return;
     }
+    // Main product image is mandatory — extraction, model-gen, matching and
+    // catalog listing all depend on it. A URL in the paste field counts as a
+    // main image (imageUrlInput), otherwise the retailer must upload one.
+    if (!imageFile && !imageUrlInput.trim()) {
+      setError("A main product image is required.");
+      return;
+    }
 
     setSaving(true);
     try {
@@ -447,17 +492,23 @@ export default function UploadPage() {
       }
 
       // Optional detail close-ups (extraction-only) — best-effort, never block.
+      // Only uploaded on the Gemini path: Vertex's VTO surface can't consume
+      // them, and the engine already drops them on that path. We still keep
+      // any locally-uploaded close-ups in state so they resurface if the
+      // retailer switches back to Premium mid-form.
       const partImages: { slot: string; label: string; url: string }[] = [];
-      for (const slot of partSlotsFor(form.category)) {
-        const file = partFiles[slot.id];
-        if (!file) continue;
-        try {
-          const pfd = new FormData();
-          pfd.append("file", file);
-          const pRes = await fetch("/api/upload", { method: "POST", body: pfd });
-          const pData = await pRes.json();
-          if (pRes.ok) partImages.push({ slot: slot.id, label: slot.label, url: pData.url });
-        } catch {/* optional — ignore a close-up upload failure */}
+      if (isGeminiPath(catalogueProvider)) {
+        for (const slot of partSlotsFor(form.category)) {
+          const file = partFiles[slot.id];
+          if (!file) continue;
+          try {
+            const pfd = new FormData();
+            pfd.append("file", file);
+            const pRes = await fetch("/api/upload", { method: "POST", body: pfd });
+            const pData = await pRes.json();
+            if (pRes.ok) partImages.push({ slot: slot.id, label: slot.label, url: pData.url });
+          } catch {/* optional — ignore a close-up upload failure */}
+        }
       }
 
       const res = await fetch("/api/products", {
@@ -595,16 +646,65 @@ export default function UploadPage() {
           />
         </div>
 
-        {/* Step 2 — Product image (revealed once a category is chosen) */}
+        {/* Step 2 — Catalogue style. Provider is now surfaced up-front so the
+            downstream cards (Product image, Generate model image) can hide
+            controls Vertex can't consume. Visible from page load, alongside
+            Category, so the retailer picks once and everything below reacts. */}
+        {aiGen?.enabled && (
+        <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm">
+          <h2 className="text-sm font-semibold text-gray-900 mb-1">
+            Catalogue style <span className="text-indigo-500">*</span>
+          </h2>
+          <p className="text-xs text-gray-400 mb-4">
+            Premium unlocks multi-image input, casting, scenes and quality tiers.
+            Economy is the fast, low-cost single-shot path.
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            {CATALOGUE_STYLES.map((s) => {
+              const active = catalogueProvider === s.id;
+              const disabled = s.id === "vertex" && !aiGen.vertexAvailable;
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => {
+                    setCatalogueProvider(s.id);
+                    patchBranding({ catalogueProvider: s.id });
+                  }}
+                  aria-pressed={active}
+                  className={`text-left rounded-2xl border p-3 transition-all ${
+                    active
+                      ? "border-indigo-300 bg-gradient-to-br from-indigo-50 to-purple-50 ring-1 ring-purple-200"
+                      : "border-gray-100 bg-white hover:border-gray-200"
+                  } ${disabled ? "opacity-40 cursor-not-allowed" : ""}`}
+                >
+                  <span className="text-sm font-semibold text-gray-900">{s.label}</span>
+                  <span className="block text-xs text-gray-500 mt-0.5 leading-snug">
+                    {s.description}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        )}
+
+        {/* Step 3 — Product image (revealed once a category is chosen) */}
         {form.category && (
         <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm">
           <h2 className="text-sm font-semibold text-gray-900 mb-4">
-            Product Image
+            Product Image <span className="text-indigo-500">*</span>
           </h2>
 
-          {imageSlots.length > 1 && (
+          {imageSlots.length > 1 && isGeminiPath(catalogueProvider) && (
             <p className="text-xs text-gray-400 -mt-2 mb-3">
               Add the main photo first — the other cards then unlock and each saved card moves you to the next. Tap any card to switch.
+            </p>
+          )}
+          {isVertexPath(catalogueProvider) && (
+            <p className="text-xs text-gray-400 -mt-2 mb-3">
+              Additional angles aren&apos;t used in Economy mode — Vertex takes a single product image. Switch to Premium above to upload close-ups.
             </p>
           )}
 
@@ -637,8 +737,9 @@ export default function UploadPage() {
           )}
 
           {/* Remaining slots — stacked rectangular cards; tap to enlarge. Locked
-              until the main photo is uploaded (it's the primary/extraction image). */}
-          {imageSlots.filter((s) => s.id !== activeId).length > 0 && (
+              until the main photo is uploaded (it's the primary/extraction image).
+              Vertex path shows only the main slot, so this block is skipped. */}
+          {isGeminiPath(catalogueProvider) && imageSlots.filter((s) => s.id !== activeId).length > 0 && (
             <div className="mt-3 space-y-2">
               {imageSlots.filter((s) => s.id !== activeId).map((s) => {
                 const preview = slotPreview(s.id);
@@ -674,8 +775,11 @@ export default function UploadPage() {
             </div>
           )}
 
-          {/* Hidden inputs for the close-up slots (main input is below) */}
-          {partSlotsFor(form.category).map((slot) => (
+          {/* Hidden inputs for the close-up slots (main input is below).
+              Only mounted on the Gemini path so the picker can't fire on
+              the Vertex path (extras aren't shown, but the inputs used to
+              stay in the DOM). */}
+          {isGeminiPath(catalogueProvider) && partSlotsFor(form.category).map((slot) => (
             <input
               key={slot.id}
               ref={(el) => { partInputRefs.current[slot.id] = el; }}
@@ -726,8 +830,10 @@ export default function UploadPage() {
           </div>
         )}
 
-        {/* Step 4 — Generate model image (revealed once the image is added) */}
-        {imageFile && (
+        {/* Step 4 — Generate model image (revealed alongside the image card
+            as soon as the retailer picks a category — no need to wait for
+            an actual upload before choosing generation settings). */}
+        {form.category && (
         <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
@@ -783,10 +889,11 @@ export default function UploadPage() {
                 })}
               </div>
 
-              {/* AI Casting — Signature Model chooser. Only when the flag is on;
-                  a single row with the "AI Casting" auto-pick default plus
-                  whatever Signature Models the retailer has saved. */}
-              {aiGen.castingEnabled && (
+              {/* AI Casting — Signature Model chooser. Only when the flag is
+                  on AND the retailer picked Premium (Gemini). Vertex VTO has
+                  no way to consume a face + prompt brief, so exposing the
+                  chooser on that path would mislead. */}
+              {aiGen.castingEnabled && isGeminiPath(catalogueProvider) && (
                 <div>
                   <p className="text-xs font-medium text-gray-500 mb-2">Cast the model</p>
                   <div className="flex flex-wrap gap-2">
@@ -825,51 +932,17 @@ export default function UploadPage() {
                 </div>
               )}
 
-              {/* Catalogue style — only for the Catalogue objective. Store-level
-                  setting; persisted immediately. Provider names never shown. */}
-              {objective === "catalogue" && (
-                <div>
-                  <p className="text-xs font-medium text-gray-500 mb-2">Catalogue style</p>
-                  <div className="flex flex-wrap gap-2">
-                    {CATALOGUE_STYLES.map((s) => {
-                      const active = catalogueProvider === s.id;
-                      const disabled = s.id === "vertex" && !aiGen.vertexAvailable;
-                      return (
-                        <button
-                          key={s.id}
-                          type="button"
-                          disabled={disabled}
-                          onClick={() => {
-                            setCatalogueProvider(s.id);
-                            patchBranding({ catalogueProvider: s.id });
-                          }}
-                          aria-pressed={active}
-                          className={`rounded-full border px-4 py-1.5 text-sm font-medium transition-all ${
-                            active
-                              ? "border-indigo-300 bg-gradient-to-br from-indigo-50 to-purple-50 text-indigo-700 ring-1 ring-purple-200"
-                              : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
-                          } ${disabled ? "opacity-40 cursor-not-allowed" : ""}`}
-                        >
-                          {s.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <p className="text-[11px] text-gray-400 mt-1.5">
-                    Automatic picks the best style per category. Choose one to override.
-                  </p>
-                </div>
-              )}
+              {/* Catalogue style moved to a top-level card above — retailer
+                  picks Premium/Economy once and every card reacts. */}
 
-              {/* Scene (Studio / Scenic) — only for the prompt-based catalogue
-                  path (Premium / Automatic). Quick listing and Sharp Fit
-                  (Economy/Vertex) don't take a backdrop: they use the
-                  reference-model studios as-is. Studio/Scenic itself is a
-                  per-generation choice (like Quality below) — it's local state
-                  only and is never patched to settings; only the choices
-                  UNDER each mode (backdrop preset, scene/presence/detail) are
-                  saved. */}
-              {objective === "catalogue" && catalogueProvider !== "vertex" && backdrops.length > 0 && (
+              {/* Scene (Studio / Scenic) — Premium (Gemini) Catalogue only.
+                  Quick Listing doesn't consume a backdrop (uses the reference
+                  model's studio as-is), and Vertex ignores the fragment
+                  entirely. Studio/Scenic itself is a per-generation choice
+                  (like Quality) — local state, never patched to settings;
+                  only the choices UNDER each mode (backdrop preset,
+                  scene/presence/detail) are saved. */}
+              {objective === "catalogue" && isGeminiPath(catalogueProvider) && backdrops.length > 0 && (
                 <SceneModeSelect
                   section={backdropSection}
                   onSectionChange={setBackdropSection}
@@ -899,36 +972,42 @@ export default function UploadPage() {
                 />
               )}
 
-              {/* Generation quality — TEMPORARY control, not a persisted setting.
-                  Always resets to Standard; the retailer opts into Enhanced per
-                  generation. Placement/UI will change once quality tiers land. */}
-              <div>
-                <p className="text-xs font-medium text-gray-500 mb-2">Quality</p>
-                <div className="flex flex-wrap gap-2">
-                  {listQualityProfiles().map((q) => {
-                    const active = quality === q.id;
-                    return (
-                      <button
-                        key={q.id}
-                        type="button"
-                        onClick={() => setQuality(q.id)}
-                        aria-pressed={active}
-                        title={q.description}
-                        className={`rounded-full border px-4 py-1.5 text-sm font-medium transition-all ${
-                          active
-                            ? "border-indigo-300 bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200"
-                            : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
-                        }`}
-                      >
-                        {q.label}
-                      </button>
-                    );
-                  })}
+              {/* Generation quality — Premium (Gemini) only. Vertex has no
+                  quality tiers (single output size), so the picker is hidden
+                  on that path. Now a STICKY per-retailer setting: the last
+                  value is remembered across products and persisted on change. */}
+              {isGeminiPath(catalogueProvider) && (
+                <div>
+                  <p className="text-xs font-medium text-gray-500 mb-2">Quality</p>
+                  <div className="flex flex-wrap gap-2">
+                    {listQualityProfiles().map((q) => {
+                      const active = quality === q.id;
+                      return (
+                        <button
+                          key={q.id}
+                          type="button"
+                          onClick={() => {
+                            setQuality(q.id);
+                            patchBranding({ quality: q.id });
+                          }}
+                          aria-pressed={active}
+                          title={q.description}
+                          className={`rounded-full border px-4 py-1.5 text-sm font-medium transition-all ${
+                            active
+                              ? "border-indigo-300 bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200"
+                              : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
+                          }`}
+                        >
+                          {q.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[11px] text-gray-400 mt-1.5">
+                    {listQualityProfiles().find((q) => q.id === quality)?.description}
+                  </p>
                 </div>
-                <p className="text-[11px] text-gray-400 mt-1.5">
-                  {listQualityProfiles().find((q) => q.id === quality)?.description}
-                </p>
-              </div>
+              )}
 
               {/* Model selection is automatic for now (derived from the product's
                   category + the gender detected at extraction). A picker for

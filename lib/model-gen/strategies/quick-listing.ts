@@ -38,6 +38,16 @@ export async function runQuickListingStrategy(opts: {
   /** Native Gemini output quality for the fallback path. Defaults to "standard". */
   quality?: GenerationQuality;
   /**
+   * Retailer's chosen provider ("gemini" = Premium, "vertex" = Economy).
+   * "vertex" (or omitted) preserves the historical behaviour: Vertex first,
+   * silent Gemini fallback if Vertex is unavailable/errors — the safety net
+   * matters so a Vertex outage doesn't drop the retailer's generation.
+   * "gemini" skips the Vertex attempt entirely and routes straight to Gemini
+   * (the retailer explicitly picked Premium; using Vertex behind their back
+   * would be misleading).
+   */
+  provider?: "gemini" | "vertex";
+  /**
    * AI Casting result (null = legacy path). Non-null adds the face identity
    * reference and appends appearance/persona tokens on the Gemini fallback
    * path only; the Vertex VTO primary path always uses the legacy fused
@@ -45,7 +55,7 @@ export async function runQuickListingStrategy(opts: {
    */
   casting?: CastingResult | null;
 }): Promise<{ images: GeneratedImage[]; usedFallback: boolean }> {
-  const { product, modelType, userId, backdrop, quality, casting = null } = opts;
+  const { product, modelType, userId, backdrop, quality, provider = "vertex", casting = null } = opts;
   const usage = { feature: "quick_listing", storeId: userId ?? null, userId: userId ?? null };
 
   const variant = resolveReferenceVariant(product.category);
@@ -63,7 +73,10 @@ export async function runQuickListingStrategy(opts: {
   const editorial = casting?.poseMode === "editorial";
 
   const vertexReady =
-    isVertexTryOnEnabled() && getVertexConfig() !== null && reference !== null;
+    provider === "vertex" &&
+    isVertexTryOnEnabled() &&
+    getVertexConfig() !== null &&
+    reference !== null;
 
   // ── Primary path: Vertex VTO with the reference model as the person ───────
   if (vertexReady && reference) {
