@@ -47,6 +47,7 @@ import { formatLabel } from "@/lib/product-detail/format";
 import { colorSwatchHex, colorDescriptor, pairingSuggestions, pairingNote } from "@/lib/product-detail/color-presentation";
 import { materialDescriptor, occasionDescriptor, categoryDescriptor, styleValue } from "@/lib/product-detail/descriptors";
 import { cn } from "@/lib/utils";
+import { useGenerationStatus } from "@/components/generation/GenerationStatusProvider";
 import { getMockRentalInfo } from "@/lib/rental/mock-data";
 import { RentalInfoPanel } from "@/components/rental/RentalInfoPanel";
 
@@ -150,11 +151,35 @@ export function ProductDetailView({
       : [];
 
   const hasModelImage = onModel.length > 0 || hasFrontInCatalogue;
-  const [generating, setGenerating] = useState(initialGenerating && !hasModelImage);
-  // Retailer-facing generation failure message. Reserved for ABSOLUTE
-  // failures only (route reported failure, network error, or the poll truly
-  // exhausted) — normal long runs show progressive status, never a warning.
-  const [genError, setGenError] = useState<string | null>(null);
+
+  const genCtx = useGenerationStatus();
+  const genStatus = genCtx.getStatus(product.id);
+  const generating = genStatus?.generating ?? false;
+  const [localGenError, setLocalGenError] = useState<string | null>(null);
+  const genError = localGenError ?? (genStatus && !genStatus.generating ? genStatus.error : null);
+
+  useEffect(() => {
+    if (initialGenerating && !hasModelImage) {
+      genCtx.startTracking(product.id);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    function onComplete(
+      data: { modelImageUrl: string | null; generatedImages: { url: string; view: string; objective?: string }[] } | null,
+    ) {
+      if (data) {
+        setGenImages(data.generatedImages ?? []);
+        setModelUrl(data.modelImageUrl ?? null);
+        setLocalGenError(null);
+        router.refresh();
+      }
+    }
+    genCtx.subscribe(product.id, onComplete);
+    return () => { genCtx.unsubscribe(product.id, onComplete); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product.id]);
   // Progressive status shown while generating — advances on a timer through
   // GEN_PHASES (like model-thinking indicators), staying on the last one
   // until images actually arrive. Purely cosmetic pacing: the real "done"
@@ -272,9 +297,9 @@ export function ProductDetailView({
   }
 
   async function handleGenerateModelImage() {
-    setGenerating(true);
+    genCtx.startTracking(product.id);
     setGenPhase(0);
-    setGenError(null);
+    setLocalGenError(null);
     try {
       // The route AWAITS generation server-side, so a successful response
       // already carries the finished images — apply them immediately instead
@@ -286,18 +311,18 @@ export function ProductDetailView({
         generatedImages?: GeneratedImage[];
       };
       if (!res.ok || data.failureMessage) {
-        setGenerating(false);
-        setGenError(data.failureMessage ?? "Image generation didn't complete. Please try again in a few minutes.");
+        genCtx.stopTracking(product.id);
+        setLocalGenError(data.failureMessage ?? "Image generation didn't complete. Please try again in a few minutes.");
         return;
       }
       if (data.generatedImages) setGenImages(data.generatedImages);
       if (data.product?.modelImageUrl !== undefined) setModelUrl(data.product.modelImageUrl ?? null);
-      setGenerating(false);
-      setGenError(null);
+      genCtx.stopTracking(product.id);
+      setLocalGenError(null);
       router.refresh();
     } catch {
-      setGenerating(false);
-      setGenError("Couldn't reach the server. Please check your connection and try again.");
+      genCtx.stopTracking(product.id);
+      setLocalGenError("Couldn't reach the server. Please check your connection and try again.");
     }
   }
 
@@ -330,67 +355,6 @@ export function ProductDetailView({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [product.id]);
 
-  useEffect(() => {
-    if (!generating) return;
-    let active = true;
-    let timer: ReturnType<typeof setTimeout>;
-    let attempts = 0;
-    // 100 × 3s = 5 minutes. A full catalogue run (garment-intelligence
-    // analysis on first generation + two sequential base shots + reviews +
-    // branding) legitimately exceeds the old 90s window — which made the poll
-    // give up moments before success and never show the finished images.
-    // Progressive status keeps the retailer informed meanwhile; the error
-    // banner is reserved for a genuine 5-minute halt.
-    const MAX_ATTEMPTS = 100;
-
-    async function poll() {
-      attempts += 1;
-      try {
-        const res = await fetch(`/api/products/${product.id}/model-status`);
-        if (res.ok) {
-          const data = (await res.json()) as {
-            modelImageUrl: string | null;
-            generatedImages: GeneratedImage[];
-            failed?: boolean;
-            failureMessage?: string | null;
-          };
-          const hasOnModel = data.generatedImages?.some(
-            (g) => g.objective === "model" || g.view === "on-model"
-          );
-          const ready = hasOnModel || !!data.modelImageUrl;
-          if (active && ready) {
-            setGenImages(data.generatedImages ?? []);
-            setModelUrl(data.modelImageUrl ?? null);
-            setGenerating(false);
-            setGenError(null);
-            router.refresh();
-            return;
-          }
-          // Server reports the run errored (out of credits, network, storage…)
-          // — stop spinning immediately and show the specific reason instead of
-          // waiting out the full poll window.
-          if (active && data.failed) {
-            setGenerating(false);
-            setGenError(data.failureMessage ?? "Image generation didn't complete. Please try again in a few minutes.");
-            return;
-          }
-        }
-      } catch {
-        // transient — keep polling
-      }
-      if (active) {
-        if (attempts >= MAX_ATTEMPTS) {
-          setGenerating(false);
-          setGenError("Image generation didn't complete. Please retry from the ⋯ menu.");
-        } else {
-          timer = setTimeout(poll, 3000);
-        }
-      }
-    }
-
-    timer = setTimeout(poll, 3000);
-    return () => { active = false; clearTimeout(timer); };
-  }, [generating, product.id, router]);
 
   return (
     // Mobile: reserve space at the bottom for the floating Trial Room FAB so
@@ -520,7 +484,7 @@ export function ProductDetailView({
                   <button
                     type="button"
                     aria-label="Dismiss"
-                    onClick={() => setGenError(null)}
+                    onClick={() => setLocalGenError(null)}
                     className="shrink-0 font-bold hover:opacity-70"
                   >
                     ✕

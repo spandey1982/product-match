@@ -1,11 +1,13 @@
 "use client";
 import Link from "next/link";
+import { Loader2 } from "lucide-react";
 import { Product } from "@/types";
 import { formatCurrency } from "@/lib/utils";
 import { ImageCarousel } from "@/components/product/ImageCarousel";
 import { getProductCardImages } from "@/lib/product/card-images";
 import { Badge } from "@/components/ui/badge";
 import { TryOnCardButton } from "@/components/trial-room/TryOnCardButton";
+import { useGenerationStatus } from "@/components/generation/GenerationStatusProvider";
 
 // ─── Product card ─────────────────────────────────────────────────────────────
 
@@ -14,6 +16,9 @@ interface ProductCardProps {
 }
 
 export function ProductCard({ product }: ProductCardProps) {
+  const { getStatus } = useGenerationStatus();
+  const isGenerating = getStatus(product.id)?.generating ?? false;
+
   return (
     <Link href={`/products/${product.id}`} className="group block">
       <div className="rounded-2xl bg-white border border-gray-100 overflow-hidden shadow-sm hover:shadow-md transition-all duration-200 hover:-translate-y-0.5">
@@ -43,6 +48,14 @@ export function ProductCard({ product }: ProductCardProps) {
 {!product.inStock && (
               <div className="absolute inset-0 bg-white/60 flex items-center justify-center z-10">
                 <Badge variant="error">Out of Stock</Badge>
+              </div>
+            )}
+
+            {isGenerating && (
+              <div className="absolute top-2.5 left-2.5 z-10">
+                <div className="flex items-center justify-center h-8 w-8 rounded-full bg-white/80 backdrop-blur-sm shadow-sm">
+                  <Loader2 size={16} className="animate-spin text-indigo-500" />
+                </div>
               </div>
             )}
           </div>
