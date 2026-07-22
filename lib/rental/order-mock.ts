@@ -67,14 +67,15 @@ export function deliveryWindowLabel(deliveryDateIso: string, slot: string): stri
 const MINUTES_PER_STAGE = 20;
 
 /**
- * The status to *display* for an order: real once cancelled (the only
- * user-driven transition), otherwise a deterministic function of how long
- * ago it was requested, walking through LIFECYCLE_STAGES. `order.status`
- * itself is never overwritten by this — it stays "requested" in storage
- * unless the customer cancels.
+ * The status to *display* for an order: the stored value once it's anything
+ * other than the initial "requested" — either the customer cancelled it, or
+ * a retailer explicitly advanced it via the Rental Orders admin page.
+ * Otherwise (still "requested", never manually touched) a deterministic
+ * function of how long ago it was placed, walking through LIFECYCLE_STAGES,
+ * so the list has something to show before any real action has happened.
  */
 export function getDisplayStatus(order: RentalOrder): OrderStatus {
-  if (order.status === "cancelled") return "cancelled";
+  if (order.status !== "requested") return order.status;
 
   const elapsedMinutes = (Date.now() - new Date(order.createdAt).getTime()) / 60000;
   const stageIndex = Math.max(0, Math.floor(elapsedMinutes / MINUTES_PER_STAGE));

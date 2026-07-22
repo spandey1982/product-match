@@ -77,7 +77,7 @@ export default async function RentalOrdersPage() {
                   <tr key={order.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
                     <td className="px-4 py-3 whitespace-nowrap">
                       <Link
-                        href={`/rent/orders/${order.id}`}
+                        href={`/rental-orders/${order.id}`}
                         className="font-mono text-xs text-indigo-600 hover:text-indigo-800"
                       >
                         #{order.id.slice(0, 8).toUpperCase()}

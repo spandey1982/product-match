@@ -2,7 +2,12 @@ import { AgeGroup } from "./types";
 
 export type DeliverySlot = "morning" | "afternoon" | "evening";
 
-/** Full rental lifecycle. "cancelled" is the only status a real user action sets — the rest are mocked progression (see order-mock.ts's getDisplayStatus). */
+/**
+ * Full rental lifecycle. The customer can set "cancelled"; a retailer can set
+ * any stage from the Rental Orders admin page. Until either happens, the
+ * order stays "requested" in storage and getDisplayStatus mocks progression
+ * through LIFECYCLE_STAGES for display purposes only (see order-mock.ts).
+ */
 export const ORDER_STATUSES = [
   "requested",
   "confirmed",
@@ -60,6 +65,6 @@ export interface RentalOrder {
   expectedTrialWindow: string; // display string, computed
 
   paymentMethod: "Pay at Doorstep";
-  /** Set at creation ("requested") or by the real Cancel action ("cancelled"). Any other value is only ever written by getDisplayStatus's mock progression, never stored. */
+  /** Set at creation ("requested"), by the customer's Cancel action ("cancelled"), or by a retailer manually advancing it from the Rental Orders admin page. */
   status: OrderStatus;
 }
