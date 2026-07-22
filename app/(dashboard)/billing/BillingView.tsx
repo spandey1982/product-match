@@ -21,14 +21,37 @@ interface WalletData {
   status: string;
 }
 
+type PaymentStatus = "paid" | "failed" | "due" | "pending" | "refunded" | "trial" | "promo";
+
 interface CreditTransaction {
   id: string;
   amountUsd: number;
   originalAmountInr: number | null;
   exchangeRate: number | null;
+  paymentStatus: PaymentStatus;
   description: string;
   createdAt: string;
 }
+
+const STATUS_STYLES: Record<PaymentStatus, string> = {
+  paid: "bg-emerald-50 text-emerald-700",
+  failed: "bg-red-50 text-red-700",
+  due: "bg-amber-50 text-amber-700",
+  pending: "bg-blue-50 text-blue-700",
+  refunded: "bg-gray-100 text-gray-600",
+  trial: "bg-indigo-50 text-indigo-700",
+  promo: "bg-purple-50 text-purple-700",
+};
+
+const STATUS_LABELS: Record<PaymentStatus, string> = {
+  paid: "Paid",
+  failed: "Failed",
+  due: "Due",
+  pending: "Pending",
+  refunded: "Refunded",
+  trial: "Free Trial",
+  promo: "Promotional",
+};
 
 function BalanceCard({ wallet }: { wallet: WalletData }) {
   const pct = wallet.remainingPercentage;
@@ -113,8 +136,8 @@ function CreditHistoryCard({
               <th className="text-right px-4 py-2 font-medium text-gray-600 text-xs">
                 Amount
               </th>
-              <th className="text-right px-4 py-2 font-medium text-gray-600 text-xs">
-                USD Credited
+              <th className="text-center px-4 py-2 font-medium text-gray-600 text-xs">
+                Status
               </th>
               <th className="text-center px-4 py-2 font-medium text-gray-600 text-xs">
                 Invoice
@@ -136,8 +159,14 @@ function CreditHistoryCard({
                     ? `₹${tx.originalAmountInr.toLocaleString("en-IN")}`
                     : "—"}
                 </td>
-                <td className="px-4 py-2.5 text-right tabular-nums text-xs font-medium text-emerald-600">
-                  +${tx.amountUsd.toFixed(4)}
+                <td className="px-4 py-2.5 text-center">
+                  <span
+                    className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                      STATUS_STYLES[tx.paymentStatus] ?? "bg-gray-100 text-gray-600"
+                    }`}
+                  >
+                    {STATUS_LABELS[tx.paymentStatus] ?? tx.paymentStatus}
+                  </span>
                 </td>
                 <td className="px-4 py-2.5 text-center">
                   <button

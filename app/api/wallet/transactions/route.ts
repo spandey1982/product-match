@@ -21,14 +21,26 @@ export async function GET() {
     });
 
     return NextResponse.json({
-      transactions: transactions.map((tx) => ({
-        id: tx.id,
-        amountUsd: tx.amountUsd,
-        originalAmountInr: tx.originalAmountInr,
-        exchangeRate: tx.exchangeRate,
-        description: tx.description,
-        createdAt: tx.createdAt.toISOString(),
-      })),
+      transactions: transactions.map((tx) => {
+        const desc = tx.description.toLowerCase();
+        let paymentStatus: string = "paid";
+        if (desc.includes("trial") || tx.initiatedBy.startsWith("admin:")) {
+          paymentStatus = "trial";
+        }
+        if (desc.includes("promo") || desc.includes("promotional")) {
+          paymentStatus = "promo";
+        }
+
+        return {
+          id: tx.id,
+          amountUsd: tx.amountUsd,
+          originalAmountInr: tx.originalAmountInr,
+          exchangeRate: tx.exchangeRate,
+          paymentStatus,
+          description: tx.description,
+          createdAt: tx.createdAt.toISOString(),
+        };
+      }),
     });
   } catch (err) {
     if ((err as Error).message === "Unauthorized") {
