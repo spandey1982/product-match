@@ -142,21 +142,6 @@ export function RentalOrderAdminView({ order }: RentalOrderAdminViewProps) {
           </div>
 
           {error && <p className="text-xs text-red-500 mt-3">{error}</p>}
-
-          <div className="h-px bg-gray-100 my-4" />
-
-          {isCancelled ? (
-            <p className="text-sm text-red-600 font-medium">This order has been cancelled.</p>
-          ) : (
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => updateStatus("cancelled")}
-              disabled={updating !== null}
-            >
-              {updating === "cancelled" ? "Cancelling…" : "Cancel Order"}
-            </Button>
-          )}
         </CardContent>
       </Card>
 
@@ -177,6 +162,24 @@ export function RentalOrderAdminView({ order }: RentalOrderAdminViewProps) {
           <SummaryRow label="Preferred Slot" value={SLOT_LABEL[order.deliverySlot] ?? order.deliverySlot} />
           {order.specialInstructions && (
             <SummaryRow label="Special Instructions" value={order.specialInstructions} />
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Cancel — deliberately last on the page, separate from status advancement */}
+      <Card className="rounded-3xl overflow-hidden bg-white/90 mb-4">
+        <CardContent className="p-5">
+          {isCancelled ? (
+            <p className="text-sm text-red-600 font-medium">This order has been cancelled.</p>
+          ) : (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => updateStatus("cancelled")}
+              disabled={updating !== null}
+            >
+              {updating === "cancelled" ? "Cancelling…" : "Cancel Order"}
+            </Button>
           )}
         </CardContent>
       </Card>
