@@ -319,18 +319,24 @@ export function ProductDetailView({
     setGenPhase(0);
     setGenError(null);
     try {
-      // The route AWAITS generation server-side, so a successful response
-      // already carries the finished images — apply them immediately instead
-      // of waiting for the next poll tick.
       const res = await fetch(`/api/products/${product.id}/generate-model-image`, { method: "POST" });
       const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        message?: string;
         failureMessage?: string;
         product?: { modelImageUrl?: string | null };
         generatedImages?: GeneratedImage[];
       };
+
+      if (res.status === 402 || data.error === "insufficient_credits") {
+        setGenerating(false);
+        setGenError(data.message ?? "Not enough credits. Contact your admin to add more credits.");
+        return;
+      }
+
       if (!res.ok || data.failureMessage) {
         setGenerating(false);
-        setGenError(data.failureMessage ?? "Image generation didn't complete. Please try again in a few minutes.");
+        setGenError(data.failureMessage ?? data.message ?? "Image generation didn't complete. Please try again in a few minutes.");
         return;
       }
       if (data.generatedImages) setGenImages(data.generatedImages);

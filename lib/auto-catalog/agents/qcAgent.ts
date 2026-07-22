@@ -7,6 +7,7 @@ import {
   type QcStatus,
 } from "../types";
 import { verifyImageView, type ExpectedView } from "./verifyImageView";
+import type { AiUsageContext } from "@/lib/ai-usage/record";
 
 function check(status: QcStatus, confidence: number, message: string): QcCheck {
   return { status, confidence, message };
@@ -31,7 +32,8 @@ const VIEW_MAP: Record<string, ExpectedView> = {
  */
 export async function qcAgent(
   catalogResult: CatalogResult,
-  productId: string
+  productId: string,
+  usage?: AiUsageContext
 ): Promise<QcResult> {
   const failedFields: string[] = [];
   const failedImages: string[] = [];
@@ -112,7 +114,7 @@ export async function qcAgent(
   } else {
     const verifications = await Promise.all(
       verifiableImages.map((img) =>
-        verifyImageView(img.id, img.url, VIEW_MAP[img.view!]!)
+        verifyImageView(img.id, img.url, VIEW_MAP[img.view!]!, usage)
       )
     );
 

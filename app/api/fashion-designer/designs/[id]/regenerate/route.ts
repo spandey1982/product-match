@@ -3,6 +3,8 @@ import { requireAuth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { runDesignPipeline } from "@/lib/fashion-designer/pipeline";
 import { findTemplate } from "@/lib/fashion-designer/templates";
+import { withCreditCheck } from "@/lib/billing/credit-check";
+import type { BillingOperation } from "@/lib/billing/types";
 
 // POST /api/fashion-designer/designs/[id]/regenerate
 // Optional body: { title, garmentType, templateId, structuredOptions, designNotes }
@@ -71,7 +73,28 @@ export async function POST(
       },
     });
 
-    await runDesignPipeline(id);
+    const designOps: BillingOperation[] = [
+      "fashion_design_analysis",
+      "fashion_design_analysis",
+      "fashion_design_analysis",
+      "fashion_design_analysis",
+      "fashion_design_gen",
+      "fashion_design_gen",
+    ];
+
+    const creditResult = await withCreditCheck(
+      session.id,
+      designOps,
+      async () => { await runDesignPipeline(id); }
+    );
+
+    if ("insufficientCredits" in creditResult) {
+      return NextResponse.json({
+        error: "insufficient_credits",
+        message: "Not enough credits to regenerate this design. Contact your admin to add more credits.",
+        remainingPercentage: creditResult.remainingPercentage,
+      }, { status: 402 });
+    }
 
     const updated = await db.fashionDesign.findUnique({
       where: { id },

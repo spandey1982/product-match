@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { TRYON_ALLOWED_MIME_TYPES, type TryOnMimeType } from "@/lib/tryon";
 import { getActiveTryOnProvider } from "@/lib/providers/active";
 import { normalizeTryOnUrl } from "@/lib/image-normalize";
+import { withCreditCheck, estimateTryOnOps } from "@/lib/billing/credit-check";
 
 // ─── In-memory rate limiter ───────────────────────────────────────────────────
 // Module-level Map is per-process. Resets on server restart.
@@ -145,19 +146,34 @@ export async function POST(
       );
     }
 
-    // ── Generate try-on ────────────────────────────────────────────────────
-    const result = await provider.generateTryOn({
-      productImageUrl: product.imageUrl,
-      userPhotoBuffer: buffer,
-      userPhotoMimeType: actualMime as TryOnMimeType,
-      productCategory: product.category,
-      productColor: product.color,
-      productId: product.id,
-      productTitle: product.title,
-      userId: session.id,
-    });
+    // ── Credit check + generate try-on ──────────────────────────────────
+    const creditResult = await withCreditCheck(
+      session.id,
+      estimateTryOnOps(),
+      async () => {
+        const result = await provider.generateTryOn({
+          productImageUrl: product.imageUrl!,
+          userPhotoBuffer: buffer,
+          userPhotoMimeType: actualMime as TryOnMimeType,
+          productCategory: product.category,
+          productColor: product.color,
+          productId: product.id,
+          productTitle: product.title,
+          userId: session.id,
+        });
+        return result;
+      }
+    );
 
-    return NextResponse.json({ tryOnUrl: normalizeTryOnUrl(result.url) });
+    if ("insufficientCredits" in creditResult) {
+      return NextResponse.json({
+        error: "insufficient_credits",
+        message: "Not enough credits to try on this product. Contact your admin to add more credits.",
+        remainingPercentage: creditResult.remainingPercentage,
+      }, { status: 402 });
+    }
+
+    return NextResponse.json({ tryOnUrl: normalizeTryOnUrl(creditResult.result.url) });
   } catch (err) {
     const message = (err as Error).message ?? "";
 

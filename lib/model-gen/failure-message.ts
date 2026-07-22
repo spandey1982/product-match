@@ -21,7 +21,7 @@ export interface GenerationFailure {
 
 const MESSAGES: Record<GenerationFailureReason, string> = {
   credits:
-    "Image generation stopped because the AI image credits/quota appear to be exhausted. Please top up or check billing, then try again.",
+    "Not enough credits to generate images. Contact your admin to add more credits.",
   network:
     "A network problem interrupted image generation. Please check your connection and try again in a few minutes.",
   storage:

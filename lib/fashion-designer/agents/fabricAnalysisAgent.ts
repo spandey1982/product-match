@@ -1,5 +1,6 @@
 import type { FabricAnalysis } from "../types";
 import { callGeminiForJson, fetchImageAsPart } from "../gemini-client";
+import type { AiUsageContext } from "@/lib/ai-usage/record";
 
 const PROMPT = `
 You are a textile and fabric expert for Indian fashion.
@@ -22,11 +23,13 @@ Return ONLY valid JSON — no markdown, no explanation.
 `.trim();
 
 export async function fabricAnalysisAgent(
-  fabricImageUrls: string[]
+  fabricImageUrls: string[],
+  usage?: AiUsageContext
 ): Promise<FabricAnalysis> {
-  // Use the first fabric image (primary reference)
   const imagePart = await fetchImageAsPart(fabricImageUrls[0]);
   if (!imagePart) throw new Error(`Failed to fetch fabric image: ${fabricImageUrls[0]}`);
 
-  return callGeminiForJson<FabricAnalysis>(PROMPT, [imagePart]);
+  return callGeminiForJson<FabricAnalysis>(PROMPT, [imagePart], {
+    usage: usage ? { ...usage, operation: "fabric_analysis" } : undefined,
+  });
 }

@@ -9,6 +9,8 @@
  * not JSON) and is not routed through this helper.
  */
 
+import { recordAiUsage, type AiUsageContext } from "@/lib/ai-usage/record";
+
 const DEFAULT_MODEL = "gemini-2.5-flash-lite";
 
 export interface ImagePart {
@@ -44,7 +46,7 @@ function stripJsonFence(raw: string): string {
 export async function callGeminiForJson<T>(
   prompt: string,
   images: ImagePart[] = [],
-  opts: { model?: string; temperature?: number } = {}
+  opts: { model?: string; temperature?: number; usage?: AiUsageContext & { operation?: string } } = {}
 ): Promise<T> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY not configured");
@@ -62,12 +64,50 @@ export async function callGeminiForJson<T>(
     generationConfig: { temperature: opts.temperature ?? 0.1 },
   });
 
+  const t0 = Date.now();
   const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body });
-  if (!res.ok) throw new Error(`Gemini API error: ${res.status}`);
+  const durationMs = Date.now() - t0;
+
+  if (!res.ok) {
+    if (opts.usage) {
+      void recordAiUsage({
+        provider: "gemini",
+        model,
+        feature: opts.usage.feature,
+        operation: opts.usage.operation ?? null,
+        imageInputs: images.length,
+        durationMs,
+        storeId: opts.usage.storeId,
+        userId: opts.usage.userId,
+        status: "error",
+        errorMessage: `HTTP ${res.status}`,
+      });
+    }
+    throw new Error(`Gemini API error: ${res.status}`);
+  }
 
   const data = (await res.json()) as {
     candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number };
   };
+
+  if (opts.usage) {
+    void recordAiUsage({
+      provider: "gemini",
+      model,
+      feature: opts.usage.feature,
+      operation: opts.usage.operation ?? null,
+      inputTokens: data.usageMetadata?.promptTokenCount ?? null,
+      outputTokens: data.usageMetadata?.candidatesTokenCount ?? null,
+      totalTokens: data.usageMetadata?.totalTokenCount ?? null,
+      imageInputs: images.length,
+      durationMs,
+      storeId: opts.usage.storeId,
+      userId: opts.usage.userId,
+      status: "success",
+    });
+  }
+
   const raw = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
   return JSON.parse(stripJsonFence(raw)) as T;
 }
