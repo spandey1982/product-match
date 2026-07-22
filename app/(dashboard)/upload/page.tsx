@@ -14,6 +14,7 @@ import SceneModeSelect, { type BackdropSection } from "@/components/product/Scen
 import type { ScenicValue } from "@/components/product/ScenicCollectionSelect";
 import type { SceneOptionView } from "@/lib/model-gen/scenes/library";
 import { listQualityProfiles, DEFAULT_GENERATION_QUALITY, type GenerationQuality } from "@/lib/model-gen/quality";
+import { useGenerationStatus } from "@/components/generation/GenerationStatusProvider";
 
 // Provider-gated helpers. Provider is stored on the retailer and drives every
 // downstream capability (extras, casting, scene, quality) — hide UI that
@@ -111,6 +112,7 @@ const OBJECTIVE_META: Record<string, { label: string; desc: string }> = {
 export default function UploadPage() {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
+  const { startTracking } = useGenerationStatus();
 
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -560,6 +562,7 @@ export default function UploadPage() {
             ? { headers: { "Content-Type": "application/json" }, body: genBody }
             : {}),
         }).catch(() => {/* silent — model image is a nice-to-have */});
+        startTracking(data.product.id);
       }
 
       // Signal the detail page to poll for the model image so it appears the
