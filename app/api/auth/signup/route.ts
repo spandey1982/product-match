@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { hashPassword, setSession } from "@/lib/auth";
+import { BUSINESS_TYPES, BusinessType } from "@/lib/business-type";
+
+const VALID_BUSINESS_TYPES = BUSINESS_TYPES.map((b) => b.value) as BusinessType[];
 
 export async function POST(req: NextRequest) {
   try {
-    const { email, password, name, storeName } = await req.json();
+    const { email, password, name, storeName, businessType } = await req.json();
 
     if (!email || !password || !name) {
       return NextResponse.json(
@@ -30,7 +33,13 @@ export async function POST(req: NextRequest) {
 
     const hashed = await hashPassword(password);
     const user = await db.user.create({
-      data: { email, password: hashed, name, storeName },
+      data: {
+        email,
+        password: hashed,
+        name,
+        storeName,
+        businessType: VALID_BUSINESS_TYPES.includes(businessType) ? businessType : "RETAILER",
+      },
     });
 
     await setSession({
@@ -39,10 +48,17 @@ export async function POST(req: NextRequest) {
       name: user.name,
       role: user.role,
       storeName: user.storeName,
+      businessType: user.businessType,
     });
 
     return NextResponse.json({
-      user: { id: user.id, email: user.email, name: user.name, storeName: user.storeName },
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        storeName: user.storeName,
+        businessType: user.businessType,
+      },
     });
   } catch (err) {
     console.error(err);

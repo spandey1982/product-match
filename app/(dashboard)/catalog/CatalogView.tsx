@@ -2,27 +2,19 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import {
-  Search, SlidersHorizontal, Plus, X,
+  Plus, X,
   Sparkles, Mic, Loader2, MicOff, AlertCircle, Trash2,
 } from "lucide-react";
 import { HangerPlusIcon } from "@/components/icons/HangerPlusIcon";
 import { cn } from "@/lib/utils";
 import { Product, Pagination } from "@/types";
 import { ProductCard } from "@/components/catalog/ProductCard";
-import { Input } from "@/components/ui/input";
+import { CatalogFilterBar } from "@/components/catalog/CatalogFilterBar";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTrialRoom, TRYON_LIMIT } from "@/components/trial-room/TrialRoomProvider";
 import { TrialRoomSetupModal } from "@/components/trial-room/TrialRoomSetupModal";
-
-const CATEGORIES = [
-  "All", "Saree", "Lehenga", "Blouse", "Dupatta", "Kurta",
-  "Anarkali", "Sharara", "Palazzo", "Jewellery", "Footwear", "Clutch", "Handbag",
-  "Shirt",
-];
-
-const OCCASIONS = ["Wedding", "Festive", "Bridal", "Party", "Casual", "Formal"];
+import { CATEGORIES, OCCASIONS } from "@/lib/catalog/taxonomy";
 
 type VoiceState = "idle" | "listening" | "processing";
 
@@ -148,9 +140,10 @@ export function CatalogView({ storeName, logoUrl }: CatalogViewProps = {}) {
     setVoiceError("");
   }
 
-  const hasFilters =
+  const hasFilters = Boolean(
     selectedCategory !== "All" || selectedOccasion || searchQuery ||
-    selectedColor || selectedGender;
+    selectedColor || selectedGender
+  );
 
   // ── voice search ───────────────────────────────────────────────────────────
   async function applyVoiceFilters(transcript: string) {
@@ -276,27 +269,25 @@ export function CatalogView({ storeName, logoUrl }: CatalogViewProps = {}) {
 
       </div>
 
-      {/* Search + mic + filters */}
-      <div className="flex flex-col gap-4 mb-6">
-        <div className="flex gap-2">
-          {/* Search input */}
-          <div className="flex-1">
-            <Input
-              placeholder="Search products, colors, materials..."
-              value={searchQuery}
-              onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
-              leftIcon={<Search className="h-4 w-4" />}
-              rightIcon={
-                searchQuery ? (
-                  <button onClick={() => setSearchQuery("")}>
-                    <X className="h-4 w-4" />
-                  </button>
-                ) : null
-              }
-            />
-          </div>
-
-          {/* Mic button */}
+      <CatalogFilterBar
+        categories={CATEGORIES}
+        occasions={OCCASIONS}
+        searchQuery={searchQuery}
+        onSearchChange={(v) => { setSearchQuery(v); setPage(1); }}
+        selectedCategory={selectedCategory}
+        onCategoryChange={(cat) => { setSelectedCategory(cat); setPage(1); setSearchQuery(""); setVoiceInterpretation(""); }}
+        selectedOccasion={selectedOccasion}
+        onOccasionChange={(occ) => { setSelectedOccasion(occ); setPage(1); }}
+        selectedColor={selectedColor}
+        onClearColor={() => setSelectedColor("")}
+        selectedGender={selectedGender}
+        onClearGender={() => setSelectedGender("")}
+        filtersOpen={filtersOpen}
+        onToggleFilters={() => setFiltersOpen((v) => !v)}
+        hasFilters={hasFilters}
+        onReset={resetFilters}
+        searchBarExtra={
+          /* Mic button — voice search, catalog-only for now */
           <button
             type="button"
             onClick={startVoiceSearch}
@@ -328,164 +319,65 @@ export function CatalogView({ storeName, logoUrl }: CatalogViewProps = {}) {
               <Mic className="h-4 w-4" />
             )}
           </button>
+        }
+        belowSearchBar={
+          <>
+            {voiceState === "listening" && (
+              <div className="flex items-center gap-3 px-4 py-3 bg-red-50 border border-red-100 rounded-2xl">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
+                </span>
+                <p className="text-sm font-medium text-red-700">
+                  Listening… speak your search
+                </p>
+                <p className="text-xs text-red-500 ml-auto hidden sm:block">
+                  e.g. &quot;Show me red wedding sarees&quot;
+                </p>
+              </div>
+            )}
 
-          {/* Filters toggle */}
-          <Button
-            variant="outline"
-            size="md"
-            onClick={() => setFiltersOpen((v) => !v)}
-            className={filtersOpen ? "border-indigo-300 bg-indigo-50 text-indigo-600" : ""}
-          >
-            <SlidersHorizontal className="h-4 w-4" />
-            Filters
-            {hasFilters && <span className="h-2 w-2 bg-indigo-500 rounded-full" />}
-          </Button>
-        </div>
+            {voiceState === "processing" && (
+              <div className="flex items-center gap-3 px-4 py-3 bg-indigo-50 border border-indigo-100 rounded-2xl">
+                <Loader2 className="h-4 w-4 text-indigo-500 animate-spin shrink-0" />
+                <p className="text-sm font-medium text-indigo-700">
+                  Understanding your request with Gemini…
+                </p>
+              </div>
+            )}
 
-        {/* Voice status banners */}
-        {voiceState === "listening" && (
-          <div className="flex items-center gap-3 px-4 py-3 bg-red-50 border border-red-100 rounded-2xl">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
-            </span>
-            <p className="text-sm font-medium text-red-700">
-              Listening… speak your search
-            </p>
-            <p className="text-xs text-red-500 ml-auto hidden sm:block">
-              e.g. &quot;Show me red wedding sarees&quot;
-            </p>
-          </div>
-        )}
-
-        {voiceState === "processing" && (
-          <div className="flex items-center gap-3 px-4 py-3 bg-indigo-50 border border-indigo-100 rounded-2xl">
-            <Loader2 className="h-4 w-4 text-indigo-500 animate-spin shrink-0" />
-            <p className="text-sm font-medium text-indigo-700">
-              Understanding your request with Gemini…
-            </p>
-          </div>
-        )}
-
-        {voiceState === "idle" && voiceInterpretation && !voiceError && (
-          <div className="flex items-center gap-3 px-4 py-3 bg-indigo-50 border border-indigo-100 rounded-2xl">
-            <Mic className="h-4 w-4 text-indigo-500 shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-indigo-700 truncate">
-                &ldquo;{voiceInterpretation}&rdquo;
-              </p>
-            </div>
-            <button
-              onClick={resetFilters}
-              className="text-xs text-indigo-400 hover:text-indigo-600 underline underline-offset-2 shrink-0"
-            >
-              Clear
-            </button>
-          </div>
-        )}
-
-        {voiceError && (
-          <div className="flex items-center gap-3 px-4 py-3 bg-amber-50 border border-amber-100 rounded-2xl">
-            <MicOff className="h-4 w-4 text-amber-500 shrink-0" />
-            <p className="text-sm text-amber-700">{voiceError}</p>
-            <button
-              onClick={() => setVoiceError("")}
-              className="ml-auto text-amber-400 hover:text-amber-600"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        )}
-
-        {/* Category tabs */}
-        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-          {CATEGORIES.map((cat) => (
-            <button
-              key={cat}
-              onClick={() => { setSelectedCategory(cat); setPage(1); setSearchQuery(""); setVoiceInterpretation(""); }}
-              className={`shrink-0 px-3 py-1.5 rounded-xl text-sm font-medium transition-all ${
-                selectedCategory === cat
-                  ? "bg-indigo-600 text-white shadow-sm"
-                  : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
-              }`}
-            >
-              {cat}
-            </button>
-          ))}
-        </div>
-
-        {/* Expanded filters */}
-        {filtersOpen && (
-          <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
-            <div className="flex items-center gap-2 mb-3">
-              <span className="text-sm font-medium text-gray-700">Occasion</span>
-              {selectedOccasion && (
-                <button onClick={() => setSelectedOccasion("")} className="text-xs text-gray-400 hover:text-gray-600">
+            {voiceState === "idle" && voiceInterpretation && !voiceError && (
+              <div className="flex items-center gap-3 px-4 py-3 bg-indigo-50 border border-indigo-100 rounded-2xl">
+                <Mic className="h-4 w-4 text-indigo-500 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-indigo-700 truncate">
+                    &ldquo;{voiceInterpretation}&rdquo;
+                  </p>
+                </div>
+                <button
+                  onClick={resetFilters}
+                  className="text-xs text-indigo-400 hover:text-indigo-600 underline underline-offset-2 shrink-0"
+                >
                   Clear
                 </button>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {OCCASIONS.map((occ) => (
-                <button
-                  key={occ}
-                  onClick={() => { setSelectedOccasion(occ === selectedOccasion ? "" : occ); setPage(1); }}
-                  className={`px-3 py-1 rounded-full text-sm border transition-all ${
-                    selectedOccasion === occ
-                      ? "bg-indigo-600 text-white border-indigo-600"
-                      : "border-gray-200 text-gray-600 hover:bg-gray-50"
-                  }`}
-                >
-                  {occ}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+              </div>
+            )}
 
-        {/* Active filter badges */}
-        {hasFilters && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-gray-500">Active:</span>
-            {selectedCategory !== "All" && (
-              <Badge variant="purple" className="gap-1">
-                {selectedCategory}
-                <button onClick={() => setSelectedCategory("All")}><X className="h-3 w-3" /></button>
-              </Badge>
+            {voiceError && (
+              <div className="flex items-center gap-3 px-4 py-3 bg-amber-50 border border-amber-100 rounded-2xl">
+                <MicOff className="h-4 w-4 text-amber-500 shrink-0" />
+                <p className="text-sm text-amber-700">{voiceError}</p>
+                <button
+                  onClick={() => setVoiceError("")}
+                  className="ml-auto text-amber-400 hover:text-amber-600"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
             )}
-            {selectedOccasion && (
-              <Badge variant="info" className="gap-1">
-                {selectedOccasion}
-                <button onClick={() => setSelectedOccasion("")}><X className="h-3 w-3" /></button>
-              </Badge>
-            )}
-            {selectedColor && (
-              <Badge variant="default" className="gap-1 capitalize">
-                {selectedColor}
-                <button onClick={() => setSelectedColor("")}><X className="h-3 w-3" /></button>
-              </Badge>
-            )}
-            {selectedGender && (
-              <Badge variant="outline" className="gap-1 capitalize">
-                {selectedGender.toLowerCase()}
-                <button onClick={() => setSelectedGender("")}><X className="h-3 w-3" /></button>
-              </Badge>
-            )}
-            {searchQuery && (
-              <Badge variant="default" className="gap-1">
-                &quot;{searchQuery}&quot;
-                <button onClick={() => setSearchQuery("")}><X className="h-3 w-3" /></button>
-              </Badge>
-            )}
-            <button
-              onClick={resetFilters}
-              className="text-xs text-gray-400 hover:text-gray-600 underline"
-            >
-              Reset all
-            </button>
-          </div>
-        )}
-      </div>
+          </>
+        }
+      />
 
       {/* Try-on limit banner */}
       {isAtLimit && (

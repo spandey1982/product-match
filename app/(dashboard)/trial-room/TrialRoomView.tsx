@@ -41,7 +41,13 @@ function timeAgo(ts: number): string {
 // Visible as soon as a photo is uploaded — even with zero try-ons.
 // Photo replacement / removal are available until the first product is queued.
 
-function CustomerProfile() {
+function CustomerProfile({
+  browseHref,
+  wishlistHref,
+}: {
+  browseHref: string;
+  wishlistHref?: string;
+}) {
   const {
     photoPreviewUrl,
     tryOns,
@@ -149,7 +155,7 @@ function CustomerProfile() {
           {tryOns.length === 0 ? (
             <p className="text-xs text-gray-500">
               No try-ons yet.{" "}
-              <Link href="/catalog" className="text-indigo-600 font-medium hover:underline">
+              <Link href={browseHref} className="text-indigo-600 font-medium hover:underline">
                 Browse catalog →
               </Link>
             </p>
@@ -171,9 +177,9 @@ function CustomerProfile() {
                   {doneCount} ready to view
                 </p>
               )}
-              {wishlist.length > 0 && (
+              {wishlistHref && wishlist.length > 0 && (
                 <Link
-                  href="/wishlist"
+                  href={wishlistHref}
                   className="text-xs text-indigo-600 hover:text-indigo-800 font-medium block"
                 >
                   {wishlist.length} saved to wishlist →
@@ -315,7 +321,19 @@ interface ViewerState {
   index: number;
 }
 
-export function TrialRoomView() {
+interface TrialRoomViewProps {
+  browseHref?: string;
+  setupTrialRoomHref?: string;
+  onSetupTrialRoom?: () => void;
+  wishlistHref?: string;
+}
+
+export function TrialRoomView({
+  browseHref = "/catalog",
+  setupTrialRoomHref = "/trial-room",
+  onSetupTrialRoom,
+  wishlistHref = "/wishlist",
+}: TrialRoomViewProps = {}) {
   const { photo, tryOns, wishlist } = useTrialRoom();
   const [filter, setFilter] = useState<FilterTab>("all");
   const [viewer, setViewer] = useState<ViewerState | null>(null);
@@ -365,13 +383,23 @@ export function TrialRoomView() {
           <p className="text-xs text-gray-400 max-w-xs mx-auto mb-5">
             Set up the Trial Room by uploading a customer photograph, then browse the catalog to begin.
           </p>
-          <button
-            onClick={() => setShowSetup(true)}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors"
-          >
-            <Plus className="h-4 w-4" />
-            Set Up Trial Room
-          </button>
+          {onSetupTrialRoom ? (
+            <button
+              onClick={onSetupTrialRoom}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors"
+            >
+              <Plus className="h-4 w-4" />
+              Set Up Trial Room
+            </button>
+          ) : (
+            <button
+              onClick={() => setShowSetup(true)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors"
+            >
+              <Plus className="h-4 w-4" />
+              Set Up Trial Room
+            </button>
+          )}
         </div>
         {showSetup && (
           <TrialRoomSetupModal onClose={() => setShowSetup(false)} />
@@ -400,7 +428,7 @@ export function TrialRoomView() {
 
         {/* ── LEFT: Customer profile panel ── */}
         <div className="w-full md:w-44 lg:w-52 shrink-0">
-          <CustomerProfile />
+          <CustomerProfile browseHref={browseHref} wishlistHref={wishlistHref} />
         </div>
 
         {/* ── RIGHT: Try-ons content ── */}
@@ -419,7 +447,7 @@ export function TrialRoomView() {
               </p>
             </div>
             <Link
-              href="/catalog"
+              href={browseHref}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors shrink-0"
             >
               <Plus className="h-3.5 w-3.5" />
@@ -436,7 +464,7 @@ export function TrialRoomView() {
                 Tap the hanger icon on any product in the catalog to add it for try-on.
               </p>
               <Link
-                href="/catalog"
+                href={browseHref}
                 className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors"
               >
                 <Plus className="h-4 w-4" />
@@ -489,7 +517,7 @@ export function TrialRoomView() {
               )}
 
               {/* Wishlist CTA */}
-              {wishlist.length > 0 && (
+              {wishlistHref && wishlist.length > 0 && (
                 <div className="mt-8 p-4 bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-100 rounded-2xl flex items-center justify-between">
                   <div>
                     <p className="text-sm font-semibold text-indigo-800">
@@ -500,7 +528,7 @@ export function TrialRoomView() {
                     </p>
                   </div>
                   <Link
-                    href="/wishlist"
+                    href={wishlistHref}
                     className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition-colors"
                   >
                     View Wishlist →

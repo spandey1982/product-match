@@ -40,12 +40,16 @@ import {
 } from "lucide-react";
 import { ProductImageViewer } from "@/components/product/ProductImageViewer";
 import { ProductThumbnailRail } from "@/components/product/ProductThumbnailRail";
+import { InfoCell, FieldValue, FieldRow } from "@/components/product/InfoCell";
 import { displayUrl, masterUrl, thumbnailUrl } from "@/lib/images/variants";
 import { framedImageUrl, FULL_MODEL_VIEWS } from "@/lib/image-normalize";
 import { formatLabel } from "@/lib/product-detail/format";
 import { colorSwatchHex, colorDescriptor, pairingSuggestions, pairingNote } from "@/lib/product-detail/color-presentation";
 import { materialDescriptor, occasionDescriptor, categoryDescriptor, styleValue } from "@/lib/product-detail/descriptors";
 import { cn } from "@/lib/utils";
+import { useGenerationStatus } from "@/components/generation/GenerationStatusProvider";
+import { getMockRentalInfo } from "@/lib/rental/mock-data";
+import { RentalInfoPanel } from "@/components/rental/RentalInfoPanel";
 
 interface GeneratedImage {
   url: string;
@@ -58,6 +62,8 @@ interface Props {
   generatedImages?: GeneratedImage[];
   /** True when arriving right after requesting model-image generation. */
   initialGenerating?: boolean;
+  /** True when arriving from /rent — shows rental info instead of the sale price. */
+  rentalMode?: boolean;
 }
 
 type RecommendationWithProduct = Recommendation & { product: Product };
@@ -68,58 +74,6 @@ function prettyView(view: string): string {
     .split(/[-_]/)
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(" ");
-}
-
-// ─── Product Information card — icon/swatch + label + value cell ────────────
-
-function InfoCell({
-  icon: Icon,
-  swatch,
-  image,
-  label,
-  children,
-}: {
-  icon?: React.ElementType;
-  swatch?: string;
-  image?: string;
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-center gap-2.5 p-2.5 sm:p-3 min-w-0">
-      <div className="h-8 w-8 rounded-xl shrink-0 overflow-hidden border border-gray-100 bg-gray-50 flex items-center justify-center">
-        {image ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={image} alt="" className="h-full w-full object-cover" />
-        ) : swatch ? (
-          <span className="h-full w-full block" style={{ backgroundColor: swatch }} />
-        ) : Icon ? (
-          <Icon className="h-3.5 w-3.5 text-gray-400" strokeWidth={1.5} />
-        ) : null}
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="text-[10px] font-medium text-gray-400 mb-0.5 tracking-wide font-body">{label}</p>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function FieldValue({ value, descriptor }: { value: string; descriptor?: string | null }) {
-  return (
-    <>
-      <p className="text-sm font-semibold text-gray-900 truncate font-body">{value}</p>
-      {descriptor && <p className="text-xs text-gray-400 mt-0.5 truncate font-body">{descriptor}</p>}
-    </>
-  );
-}
-
-function FieldRow({ children, last }: { children: React.ReactNode; last?: boolean }) {
-  return (
-    <div className={cn("grid grid-cols-2 divide-x divide-gray-100", !last && "border-b border-gray-100")}>
-      {children}
-    </div>
-  );
 }
 
 const editInputClass =
@@ -139,6 +93,7 @@ export function ProductDetailView({
   product,
   generatedImages = [],
   initialGenerating = false,
+  rentalMode = false,
 }: Props) {
   const router = useRouter();
   const [recommendations, setRecommendations] = useState<RecommendationWithProduct[]>([]);
@@ -170,6 +125,9 @@ export function ProductDetailView({
   // Live display values (updated on save)
   const [displayProduct, setDisplayProduct] = useState(product);
 
+  // Mocked rental data — only computed when viewing this page from /rent.
+  const rentalInfo = rentalMode ? getMockRentalInfo(displayProduct) : null;
+
   // Separate model images from catalogue flat images
   const modelImages: GeneratedImage[] = genImages.filter(
     (g) => g.objective === "model" || g.view === "on-model"
@@ -193,11 +151,35 @@ export function ProductDetailView({
       : [];
 
   const hasModelImage = onModel.length > 0 || hasFrontInCatalogue;
-  const [generating, setGenerating] = useState(initialGenerating && !hasModelImage);
-  // Retailer-facing generation failure message. Reserved for ABSOLUTE
-  // failures only (route reported failure, network error, or the poll truly
-  // exhausted) — normal long runs show progressive status, never a warning.
-  const [genError, setGenError] = useState<string | null>(null);
+
+  const genCtx = useGenerationStatus();
+  const genStatus = genCtx.getStatus(product.id);
+  const generating = genStatus?.generating ?? false;
+  const [localGenError, setLocalGenError] = useState<string | null>(null);
+  const genError = localGenError ?? (genStatus && !genStatus.generating ? genStatus.error : null);
+
+  useEffect(() => {
+    if (initialGenerating && !hasModelImage) {
+      genCtx.startTracking(product.id);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    function onComplete(
+      data: { modelImageUrl: string | null; generatedImages: { url: string; view: string; objective?: string }[] } | null,
+    ) {
+      if (data) {
+        setGenImages(data.generatedImages ?? []);
+        setModelUrl(data.modelImageUrl ?? null);
+        setLocalGenError(null);
+        router.refresh();
+      }
+    }
+    genCtx.subscribe(product.id, onComplete);
+    return () => { genCtx.unsubscribe(product.id, onComplete); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product.id]);
   // Progressive status shown while generating — advances on a timer through
   // GEN_PHASES (like model-thinking indicators), staying on the last one
   // until images actually arrive. Purely cosmetic pacing: the real "done"
@@ -315,9 +297,9 @@ export function ProductDetailView({
   }
 
   async function handleGenerateModelImage() {
-    setGenerating(true);
+    genCtx.startTracking(product.id);
     setGenPhase(0);
-    setGenError(null);
+    setLocalGenError(null);
     try {
       const res = await fetch(`/api/products/${product.id}/generate-model-image`, { method: "POST" });
       const data = (await res.json().catch(() => ({}))) as {
@@ -329,24 +311,24 @@ export function ProductDetailView({
       };
 
       if (res.status === 402 || data.error === "insufficient_credits") {
-        setGenerating(false);
-        setGenError(data.message ?? "Not enough credits. Contact your admin to add more credits.");
+        genCtx.stopTracking(product.id);
+        setLocalGenError(data.message ?? "Not enough credits. Contact your admin to add more credits.");
         return;
       }
 
       if (!res.ok || data.failureMessage) {
-        setGenerating(false);
-        setGenError(data.failureMessage ?? data.message ?? "Image generation didn't complete. Please try again in a few minutes.");
+        genCtx.stopTracking(product.id);
+        setLocalGenError(data.failureMessage ?? "Image generation didn't complete. Please try again in a few minutes.");
         return;
       }
       if (data.generatedImages) setGenImages(data.generatedImages);
       if (data.product?.modelImageUrl !== undefined) setModelUrl(data.product.modelImageUrl ?? null);
-      setGenerating(false);
-      setGenError(null);
+      genCtx.stopTracking(product.id);
+      setLocalGenError(null);
       router.refresh();
     } catch {
-      setGenerating(false);
-      setGenError("Couldn't reach the server. Please check your connection and try again.");
+      genCtx.stopTracking(product.id);
+      setLocalGenError("Couldn't reach the server. Please check your connection and try again.");
     }
   }
 
@@ -379,67 +361,6 @@ export function ProductDetailView({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [product.id]);
 
-  useEffect(() => {
-    if (!generating) return;
-    let active = true;
-    let timer: ReturnType<typeof setTimeout>;
-    let attempts = 0;
-    // 100 × 3s = 5 minutes. A full catalogue run (garment-intelligence
-    // analysis on first generation + two sequential base shots + reviews +
-    // branding) legitimately exceeds the old 90s window — which made the poll
-    // give up moments before success and never show the finished images.
-    // Progressive status keeps the retailer informed meanwhile; the error
-    // banner is reserved for a genuine 5-minute halt.
-    const MAX_ATTEMPTS = 100;
-
-    async function poll() {
-      attempts += 1;
-      try {
-        const res = await fetch(`/api/products/${product.id}/model-status`);
-        if (res.ok) {
-          const data = (await res.json()) as {
-            modelImageUrl: string | null;
-            generatedImages: GeneratedImage[];
-            failed?: boolean;
-            failureMessage?: string | null;
-          };
-          const hasOnModel = data.generatedImages?.some(
-            (g) => g.objective === "model" || g.view === "on-model"
-          );
-          const ready = hasOnModel || !!data.modelImageUrl;
-          if (active && ready) {
-            setGenImages(data.generatedImages ?? []);
-            setModelUrl(data.modelImageUrl ?? null);
-            setGenerating(false);
-            setGenError(null);
-            router.refresh();
-            return;
-          }
-          // Server reports the run errored (out of credits, network, storage…)
-          // — stop spinning immediately and show the specific reason instead of
-          // waiting out the full poll window.
-          if (active && data.failed) {
-            setGenerating(false);
-            setGenError(data.failureMessage ?? "Image generation didn't complete. Please try again in a few minutes.");
-            return;
-          }
-        }
-      } catch {
-        // transient — keep polling
-      }
-      if (active) {
-        if (attempts >= MAX_ATTEMPTS) {
-          setGenerating(false);
-          setGenError("Image generation didn't complete. Please retry from the ⋯ menu.");
-        } else {
-          timer = setTimeout(poll, 3000);
-        }
-      }
-    }
-
-    timer = setTimeout(poll, 3000);
-    return () => { active = false; clearTimeout(timer); };
-  }, [generating, product.id, router]);
 
   return (
     // Mobile: reserve space at the bottom for the floating Trial Room FAB so
@@ -569,7 +490,7 @@ export function ProductDetailView({
                   <button
                     type="button"
                     aria-label="Dismiss"
-                    onClick={() => setGenError(null)}
+                    onClick={() => setLocalGenError(null)}
                     className="shrink-0 font-bold hover:opacity-70"
                   >
                     ✕
@@ -695,7 +616,13 @@ export function ProductDetailView({
               )
             )}
 
-            {editing ? (
+            {rentalMode && rentalInfo ? (
+              <RentalInfoPanel
+                productId={displayProduct.id}
+                productTitle={displayProduct.title}
+                initialRental={rentalInfo}
+              />
+            ) : editing ? (
               <div>
                 <label className="text-xs font-medium text-gray-400 mb-1 block font-body">Price (₹)</label>
                 <input

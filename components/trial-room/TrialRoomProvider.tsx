@@ -20,7 +20,8 @@ export const TRYON_LIMIT = 5;
 
 // ─── Storage key ─────────────────────────────────────────────────────────────
 
-const STORAGE_KEY = "trial-room-v1";
+/** Default: the retailer dashboard's original shared-per-browser key, kept for backward compatibility. */
+const DEFAULT_STORAGE_KEY = "trial-room-v1";
 
 // ─── State + context shape ────────────────────────────────────────────────────
 
@@ -121,11 +122,11 @@ const INITIAL_STATE: TrialRoomState = {
  * (persisted), causing a hydration mismatch. Call it from an effect after
  * mount instead.
  */
-function loadPersistedState(): TrialRoomState {
+function loadPersistedState(storageKey: string): TrialRoomState {
   if (typeof window === "undefined") return INITIAL_STATE;
 
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey);
     if (!raw) return INITIAL_STATE;
 
     const { photoDataUrl, tryOns, wishlist } = JSON.parse(raw) as {
@@ -170,13 +171,14 @@ function loadPersistedState(): TrialRoomState {
 
 /** Write the serialisable slice to localStorage. Silently swallows quota errors. */
 function persistState(
+  storageKey: string,
   photoDataUrl: string | null,
   tryOns: TryOnEntry[],
   wishlist: WishlistEntry[]
 ) {
   try {
     localStorage.setItem(
-      STORAGE_KEY,
+      storageKey,
       JSON.stringify({ photoDataUrl, tryOns, wishlist })
     );
   } catch {
@@ -186,7 +188,34 @@ function persistState(
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
-export function TrialRoomProvider({ children }: { children: React.ReactNode }) {
+interface TrialRoomProviderProps {
+  children: React.ReactNode;
+  /**
+   * Isolates persisted state per identity. Defaults to the retailer
+   * dashboard's original shared-per-browser key (unchanged behavior there).
+   * The /rent mount passes a key derived from the customer's verified
+   * session so different customers on the same browser never share results.
+   */
+  storageKey?: string;
+  /**
+   * Base path for the try-on route; the product id and `/tryon` are appended
+   * as `${base}/${productId}/tryon`. A plain string (not a function) so a
+   * Server Component can pass it straight through to this Client Component.
+   * Defaults to the retailer-only route.
+   */
+  tryOnEndpointBase?: string;
+}
+
+export function TrialRoomProvider({
+  children,
+  storageKey = DEFAULT_STORAGE_KEY,
+  tryOnEndpointBase = "/api/products",
+}: TrialRoomProviderProps) {
+  const tryOnEndpoint = useCallback(
+    (productId: string) => `${tryOnEndpointBase}/${productId}/tryon`,
+    [tryOnEndpointBase]
+  );
+
   // Start from deterministic empty state so the server render and the first
   // client render match (avoids hydration mismatch). The persisted state is
   // loaded from localStorage after mount in the effect below.
@@ -202,9 +231,9 @@ export function TrialRoomProvider({ children }: { children: React.ReactNode }) {
   // distinguish it from a render-loop, so it's disabled for this line only.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time hydration from localStorage (browser-only store)
-    setState(loadPersistedState());
+    setState(loadPersistedState(storageKey));
     setHydrated(true);
-  }, []);
+  }, [storageKey]);
 
   // Clean up hint timer on unmount
   useEffect(() => () => { if (hintTimerRef.current) clearTimeout(hintTimerRef.current); }, []);
@@ -214,8 +243,8 @@ export function TrialRoomProvider({ children }: { children: React.ReactNode }) {
   // data before it has been loaded.
   useEffect(() => {
     if (!hydrated) return;
-    persistState(state.photoDataUrl, state.tryOns, state.wishlist);
-  }, [hydrated, state.photoDataUrl, state.tryOns, state.wishlist]);
+    persistState(storageKey, state.photoDataUrl, state.tryOns, state.wishlist);
+  }, [hydrated, storageKey, state.photoDataUrl, state.tryOns, state.wishlist]);
 
   const triggerSetupHint = useCallback(() => {
     if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
@@ -268,11 +297,11 @@ export function TrialRoomProvider({ children }: { children: React.ReactNode }) {
 
   // Runs a try-on API call in the background and updates the entry in context
   // when it settles — regardless of which page the user is currently on.
-  function runGeneration(entryId: string, productId: string, photo: File) {
+  const runGeneration = useCallback((entryId: string, productId: string, photo: File) => {
     const formData = new FormData();
     formData.append("photo", photo);
 
-    fetch(`/api/products/${productId}/tryon`, { method: "POST", body: formData })
+    fetch(tryOnEndpoint(productId), { method: "POST", body: formData })
       .then((res) => res.json())
       .then((data: { tryOnUrl?: string; error?: string }) => {
         if (data.tryOnUrl) {
@@ -313,7 +342,7 @@ export function TrialRoomProvider({ children }: { children: React.ReactNode }) {
           ),
         }));
       });
-  }
+  }, [tryOnEndpoint]);
 
   // ── Try-on queue ───────────────────────────────────────────────────────────
 
@@ -342,7 +371,7 @@ export function TrialRoomProvider({ children }: { children: React.ReactNode }) {
 
     setState((prev) => ({ ...prev, tryOns: [entry, ...prev.tryOns] }));
     runGeneration(entry.id, product.id, photo);
-  }, []);
+  }, [runGeneration]);
 
   const retryTryOn = useCallback((tryOnId: string) => {
     const photo = photoRef.current;
@@ -361,7 +390,7 @@ export function TrialRoomProvider({ children }: { children: React.ReactNode }) {
     }));
 
     runGeneration(tryOnId, entry.productId, photo);
-  }, []);
+  }, [runGeneration]);
 
   const removeFromTryOns = useCallback((tryOnId: string) => {
     setState((prev) => ({
@@ -408,8 +437,8 @@ export function TrialRoomProvider({ children }: { children: React.ReactNode }) {
       if (prev.photoPreviewUrl?.startsWith("blob:")) URL.revokeObjectURL(prev.photoPreviewUrl);
       return { photo: null, photoPreviewUrl: null, photoDataUrl: null, tryOns: [], wishlist: [] };
     });
-    try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
-  }, []);
+    try { localStorage.removeItem(storageKey); } catch { /* ignore */ }
+  }, [storageKey]);
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 

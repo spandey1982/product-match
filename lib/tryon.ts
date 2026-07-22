@@ -16,6 +16,50 @@ export const TRYON_ALLOWED_MIME_TYPES = [
 
 export type TryOnMimeType = (typeof TRYON_ALLOWED_MIME_TYPES)[number];
 
+// ─── Upload validation helpers ────────────────────────────────────────────────
+// Shared by every try-on route (retailer catalog + public rental) so the
+// magic-byte check and rate limiter can't drift between call sites.
+
+/**
+ * Validates that file bytes actually match a declared image type. Prevents
+ * malicious uploads that disguise non-images as JPEG/PNG/WebP.
+ */
+export function detectImageMimeFromBytes(buf: Buffer): string | null {
+  // JPEG: FF D8 FF
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
+
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (
+    buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47 &&
+    buf[4] === 0x0d && buf[5] === 0x0a && buf[6] === 0x1a && buf[7] === 0x0a
+  ) return "image/png";
+
+  // WebP: RIFF....WEBP (bytes 0-3 = "RIFF", bytes 8-11 = "WEBP")
+  if (
+    buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
+    buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50
+  ) return "image/webp";
+
+  return null;
+}
+
+/**
+ * In-memory sliding-window rate limiter. Each call site should create its own
+ * instance (module-level, per-process — sufficient for a single-instance
+ * Railway deployment) keyed by whatever identity makes sense for that route.
+ */
+export function createRateLimiter(maxRequests: number, windowMs: number) {
+  const store = new Map<string, number[]>();
+  return function consume(key: string): boolean {
+    const now = Date.now();
+    const recent = (store.get(key) ?? []).filter((t) => now - t < windowMs);
+    if (recent.length >= maxRequests) return false;
+    recent.push(now);
+    store.set(key, recent);
+    return true;
+  };
+}
+
 // ─── Prompt builder ───────────────────────────────────────────────────────────
 
 /**

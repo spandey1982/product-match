@@ -2,9 +2,11 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Eye, EyeOff, ArrowRight } from "lucide-react";
+import { Eye, EyeOff, ArrowRight, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { BUSINESS_TYPES, BusinessType } from "@/lib/business-type";
+import { BusinessTypeIcon } from "@/components/shared/BusinessTypeIcon";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -13,6 +15,7 @@ export default function SignupPage() {
     email: "",
     password: "",
     storeName: "",
+    businessType: "RETAILER" as BusinessType,
   });
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState("");
@@ -78,6 +81,38 @@ export default function SignupPage() {
             value={form.storeName}
             onChange={(e) => setForm({ ...form, storeName: e.target.value })}
           />
+
+          <div>
+            <label className="text-sm font-medium text-gray-700 mb-1.5 block">Business type</label>
+            <div className="rounded-xl border border-gray-200 divide-y divide-gray-200 overflow-hidden">
+              {BUSINESS_TYPES.map((type) => (
+                <label
+                  key={type.value}
+                  className={`flex items-center gap-2.5 px-3 py-2.5 cursor-pointer transition-all ${
+                    form.businessType === type.value ? "bg-indigo-50/60" : "hover:bg-gray-50"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="businessType"
+                    value={type.value}
+                    checked={form.businessType === type.value}
+                    onChange={() => setForm({ ...form, businessType: type.value })}
+                    className="sr-only"
+                  />
+                  <div
+                    className={`h-4 w-4 rounded-full border shrink-0 flex items-center justify-center ${
+                      form.businessType === type.value ? "bg-indigo-600 border-indigo-600" : "border-gray-300"
+                    }`}
+                  >
+                    {form.businessType === type.value && <Check className="h-2.5 w-2.5 text-white" />}
+                  </div>
+                  <BusinessTypeIcon type={type.value} className="h-4 w-4 text-indigo-500 shrink-0" />
+                  <span className="text-sm text-gray-700">{type.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
 
           <Input
             label="Email"
