@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Sparkles } from "lucide-react";
 import { getCustomerSession } from "@/lib/customer-auth";
+import { db } from "@/lib/db";
 import { CustomerAuthStatus } from "@/components/layout/CustomerAuthStatus";
 
 /**
@@ -10,6 +11,15 @@ import { CustomerAuthStatus } from "@/components/layout/CustomerAuthStatus";
  */
 export async function PublicHeader() {
   const session = await getCustomerSession();
+
+  let name: string | null = null;
+  if (session) {
+    const customer = await db.customer.findUnique({
+      where: { id: session.id },
+      select: { name: true },
+    });
+    name = customer?.name ?? null;
+  }
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-gray-100 bg-white/80 backdrop-blur-md">
@@ -21,7 +31,7 @@ export async function PublicHeader() {
           <span className="font-bold text-gray-900 text-sm">Mentis</span>
         </Link>
 
-        <CustomerAuthStatus phone={session?.phone ?? null} />
+        <CustomerAuthStatus phone={session?.phone ?? null} name={name} />
       </div>
     </header>
   );

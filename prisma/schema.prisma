@@ -7,12 +7,17 @@ datasource db {
 }
 
 model User {
-  id        String  @id @default(cuid())
-  email     String  @unique
-  name      String
-  password  String
-  role      String  @default("RETAILER")
-  storeName String?
+  id           String  @id @default(cuid())
+  email        String  @unique
+  name         String
+  password     String
+  role         String  @default("RETAILER")
+  storeName    String?
+  // Business classification picked at signup — purely descriptive, distinct
+  // from `role` (which gates ADMIN vs RETAILER access). "RETAILER" |
+  // "MANUFACTURER" | "RENTAL_STORE", plain string per this schema's
+  // stage-field convention, not a Prisma enum.
+  businessType String  @default("RETAILER")
 
   tryOnProvider String  @default("gemini")
   aiGenSettings String?

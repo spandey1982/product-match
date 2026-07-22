@@ -36,9 +36,16 @@ export async function POST(req: NextRequest) {
         name: demo.name,
         role: demo.role,
         storeName: demo.storeName,
+        businessType: demo.businessType,
       });
       return NextResponse.json({
-        user: { id: demo.id, email: demo.email, name: demo.name, storeName: demo.storeName },
+        user: {
+          id: demo.id,
+          email: demo.email,
+          name: demo.name,
+          storeName: demo.storeName,
+          businessType: demo.businessType,
+        },
       });
     }
 
@@ -64,10 +71,17 @@ export async function POST(req: NextRequest) {
       name: user.name,
       role: user.role,
       storeName: user.storeName,
+      businessType: user.businessType,
     });
 
     return NextResponse.json({
-      user: { id: user.id, email: user.email, name: user.name, storeName: user.storeName },
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        storeName: user.storeName,
+        businessType: user.businessType,
+      },
     });
   } catch (err) {
     console.error(err);

@@ -21,6 +21,7 @@ export default async function DashboardLayout({
             name: session.name,
             email: session.email,
             storeName: session.storeName,
+            businessType: session.businessType,
           }}
         />
         <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">{children}</main>

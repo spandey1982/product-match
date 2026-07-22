@@ -13,16 +13,17 @@ import {
   Store,
   Heart,
   Settings,
-  CalendarClock,
   ClipboardList,
 } from "lucide-react";
 import { HangerPlusIcon } from "@/components/icons/HangerPlusIcon";
 import { TagPlusIcon } from "@/components/icons/TagPlusIcon";
+import { BusinessTypeIcon } from "@/components/shared/BusinessTypeIcon";
+import { businessTypeLabel } from "@/lib/business-type";
 import { cn } from "@/lib/utils";
 import { useTrialRoom } from "@/components/trial-room/TrialRoomProvider";
 
 interface NavbarProps {
-  user: { name: string; email: string; storeName?: string | null };
+  user: { name: string; email: string; storeName?: string | null; businessType?: string };
 }
 
 // ─── Badge chip ───────────────────────────────────────────────────────────────
@@ -57,7 +58,6 @@ export function Navbar({ user }: NavbarProps) {
   // Autonomous Catalog and Design Studio moved into the account dropdown.
   const navItems = [
     { href: "/catalog", label: "Catalog", icon: Package, badge: 0 },
-    { href: "/rent", label: "Rent", icon: CalendarClock, badge: 0 },
     { href: "/upload", label: "Add Product", icon: TagPlusIcon, badge: 0 },
     { href: "/my-try-ons", label: "My Try-Ons", icon: HangerPlusIcon, badge: tryOnCount },
     { href: "/wishlist", label: "Wishlist", icon: Heart, badge: wishlistCount },
@@ -126,9 +126,17 @@ export function Navbar({ user }: NavbarProps) {
                 />
                 <div className="absolute right-0 top-full mt-1 w-56 bg-white border border-gray-100 rounded-2xl shadow-lg z-50 p-1 overflow-hidden">
                   <div className="px-3 py-2 mb-1">
-                    <p className="text-sm font-semibold text-gray-900 truncate">
-                      {user.name}
-                    </p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-semibold text-gray-900 truncate">
+                        {user.name}
+                      </p>
+                      {user.businessType && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded-full shrink-0">
+                          <BusinessTypeIcon type={user.businessType} className="h-2.5 w-2.5" />
+                          {businessTypeLabel(user.businessType)}
+                        </span>
+                      )}
+                    </div>
                     {user.storeName && (
                       <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
                         <Store className="h-3 w-3" />
@@ -139,14 +147,16 @@ export function Navbar({ user }: NavbarProps) {
                   </div>
                   <div className="h-px bg-gray-100 mx-1 my-1" />
                   {/* Secondary tools — moved out of the main nav to keep it lean on mobile */}
-                  <Link
-                    href="/rental-orders"
-                    onClick={() => setUserMenuOpen(false)}
-                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-                  >
-                    <ClipboardList className="h-4 w-4 text-indigo-400" />
-                    Rental Orders
-                  </Link>
+                  {user.businessType === "RENTAL_STORE" && (
+                    <Link
+                      href="/rental-orders"
+                      onClick={() => setUserMenuOpen(false)}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                    >
+                      <ClipboardList className="h-4 w-4 text-indigo-400" />
+                      Rental Orders
+                    </Link>
+                  )}
                   <Link
                     href="/auto-catalog"
                     onClick={() => setUserMenuOpen(false)}

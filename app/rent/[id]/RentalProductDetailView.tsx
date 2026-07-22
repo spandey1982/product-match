@@ -1,10 +1,13 @@
 "use client";
+import { useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Palette, Shirt, Layers, Crown } from "lucide-react";
 import { PublicRentalProduct } from "@/lib/rental/public-product";
 import { ImageCarousel } from "@/components/product/ImageCarousel";
-import { getProductCardImages } from "@/lib/product/card-images";
+import { ProductThumbnailRail } from "@/components/product/ProductThumbnailRail";
+import { getProductCardImages, getProductCardImageLabels } from "@/lib/product/card-images";
 import { RentalInfoPanel } from "@/components/rental/RentalInfoPanel";
+import { TryOnQueueButton } from "@/components/trial-room/TryOnQueueButton";
 import { getMockRentalInfo } from "@/lib/rental/mock-data";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,6 +44,9 @@ export function RentalProductDetailView({
   const rental = getMockRentalInfo(product);
   const styleInfo = styleValue(product.styleTags);
   const images = getProductCardImages(product);
+  const imageLabels = getProductCardImageLabels(product);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const safeActiveIndex = Math.min(activeIndex, Math.max(images.length - 1, 0));
 
   const badgeLabels = Array.from(
     new Set([
@@ -61,19 +67,40 @@ export function RentalProductDetailView({
 
       <div className="rounded-[2rem] bg-gradient-to-r from-transparent to-[#f7f4ef] p-4 sm:p-6 lg:p-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
-          {/* LEFT — Image */}
-          <div className="relative rounded-3xl overflow-hidden aspect-[3/4] bg-gray-50 shadow-sm border border-gray-100">
-            <ImageCarousel
-              images={images}
-              title={product.title}
-              category={product.category}
-              className="w-full h-full"
-            />
-            <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/40 to-transparent p-4 z-20 pointer-events-none">
-              <Badge variant="purple" className="bg-white/90 text-indigo-700 backdrop-blur-sm">
-                {product.category}
-              </Badge>
+          {/* LEFT — Image + Trial Room CTA (desktop/tablet). Mobile uses the
+              floating FAB below instead (same component, iconOnly). */}
+          <div>
+            <div className="flex flex-col-reverse lg:flex-row gap-3">
+              <ProductThumbnailRail
+                images={images}
+                labels={imageLabels}
+                activeIndex={safeActiveIndex}
+                onSelect={setActiveIndex}
+                title={product.title}
+                category={product.category}
+              />
+              <div className="relative rounded-3xl overflow-hidden aspect-[3/4] bg-gray-50 shadow-sm border border-gray-100 flex-1 min-w-0">
+                <ImageCarousel
+                  images={images}
+                  labels={imageLabels}
+                  title={product.title}
+                  category={product.category}
+                  className="w-full h-full"
+                  index={safeActiveIndex}
+                  onIndexChange={setActiveIndex}
+                />
+                <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/40 to-transparent p-4 z-20 pointer-events-none">
+                  <Badge variant="purple" className="bg-white/90 text-indigo-700 backdrop-blur-sm">
+                    {product.category}
+                  </Badge>
+                </div>
+              </div>
             </div>
+            {sessionPhone && (
+              <div className={`hidden md:block mt-4 ${images.length >= 2 ? "lg:pl-[76px]" : ""}`}>
+                <TryOnQueueButton product={product} myTryOnsHref="/rent/my-try-ons" />
+              </div>
+            )}
           </div>
 
           {/* RIGHT — Product details */}
@@ -151,6 +178,13 @@ export function RentalProductDetailView({
           </div>
         </div>
       </div>
+
+      {/* Mobile-only: floating Trial Room FAB, fixed to the viewport. */}
+      {sessionPhone && (
+        <div className="md:hidden fixed right-6 z-30 [bottom:max(1.5rem,calc(env(safe-area-inset-bottom)+0.75rem))]">
+          <TryOnQueueButton product={product} iconOnly myTryOnsHref="/rent/my-try-ons" />
+        </div>
+      )}
     </div>
   );
 }

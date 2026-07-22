@@ -2,7 +2,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { User, UserCircle, MapPin, Package, LogOut, LogIn, UserPlus } from "lucide-react";
+import { User, UserCircle, MapPin, Package, LogOut, LogIn, UserPlus, Phone } from "lucide-react";
+import { HangerPlusIcon } from "@/components/icons/HangerPlusIcon";
 
 /**
  * Single profile icon + dropdown for the /rent header. Logged out: just
@@ -10,7 +11,13 @@ import { User, UserCircle, MapPin, Package, LogOut, LogIn, UserPlus } from "luci
  * Account/Address/Orders + Sign out — those three are only ever shown to a
  * signed-in customer, never to a guest.
  */
-export function CustomerAuthStatus({ phone }: { phone: string | null }) {
+export function CustomerAuthStatus({
+  phone,
+  name,
+}: {
+  phone: string | null;
+  name?: string | null;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
 
@@ -38,7 +45,13 @@ export function CustomerAuthStatus({ phone }: { phone: string | null }) {
             {phone ? (
               <>
                 <div className="px-3 py-2.5">
-                  <p className="text-sm font-semibold text-gray-900">{phone}</p>
+                  <p className="text-sm font-semibold text-gray-900">
+                    {name ? `Hello, ${name}` : "Hello"}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1">
+                    <Phone className="h-3 w-3" />
+                    {phone}
+                  </p>
                 </div>
                 <div className="h-px bg-gray-100 mx-1 my-1" />
 
@@ -67,6 +80,15 @@ export function CustomerAuthStatus({ phone }: { phone: string | null }) {
                 >
                   <Package className="h-4 w-4 text-indigo-400" />
                   My Orders
+                </Link>
+
+                <Link
+                  href="/rent/my-try-ons"
+                  onClick={() => setOpen(false)}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  <HangerPlusIcon className="h-4 w-4 text-indigo-400" />
+                  My Try-Ons
                 </Link>
 
                 <div className="h-px bg-gray-100 mx-1 my-1" />

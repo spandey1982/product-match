@@ -1,3 +1,4 @@
+"use client";
 import Link from "next/link";
 import { Product } from "@/types";
 import { formatCurrency } from "@/lib/utils";
@@ -7,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getMockRentalInfo } from "@/lib/rental/mock-data";
 import { AGE_GROUPS, RentalAvailability } from "@/lib/rental/types";
+import { TryOnCardButton } from "@/components/trial-room/TryOnCardButton";
 
 const AVAILABILITY_BADGE: Record<RentalAvailability, { label: string; variant: "success" | "warning" | "error" }> = {
   available: { label: "Available", variant: "success" },
@@ -18,9 +20,11 @@ const AGE_RANGE_LABEL = `Ages ${AGE_GROUPS[0].split("-")[0]}–${AGE_GROUPS[AGE_
 
 interface RentalProductCardProps {
   product: Product & { storeName?: string | null };
+  /** Show the try-on quick button? Hidden entirely for guests — no logged-in customer to attach a try-on to. */
+  showTryOn?: boolean;
 }
 
-export function RentalProductCard({ product }: RentalProductCardProps) {
+export function RentalProductCard({ product, showTryOn = false }: RentalProductCardProps) {
   const rental = getMockRentalInfo(product);
   const availability = AVAILABILITY_BADGE[rental.availability];
 
@@ -40,6 +44,12 @@ export function RentalProductCard({ product }: RentalProductCardProps) {
           <div className="absolute left-3 top-3 z-10">
             <Badge variant={availability.variant}>{availability.label}</Badge>
           </div>
+
+          {showTryOn && (
+            <div className="absolute right-3 top-3 z-20">
+              <TryOnCardButton product={product} myTryOnsHref="/rent/my-try-ons" />
+            </div>
+          )}
         </div>
 
         <div className="px-4 pb-4 pt-4 space-y-2">

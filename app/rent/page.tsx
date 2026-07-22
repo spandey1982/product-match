@@ -1,14 +1,17 @@
 import { Suspense } from "react";
+import { getCustomerSession } from "@/lib/customer-auth";
 import { RentalView } from "./RentalView";
 
 export const metadata = {
   title: "Rent — Mentis",
 };
 
-export default function RentPage() {
+export default async function RentPage() {
+  const session = await getCustomerSession();
+
   return (
     <Suspense fallback={<RentSkeleton />}>
-      <RentalView />
+      <RentalView loggedIn={!!session} />
     </Suspense>
   );
 }

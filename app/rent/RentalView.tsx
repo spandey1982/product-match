@@ -15,7 +15,12 @@ import { CATEGORIES, OCCASIONS } from "@/lib/catalog/taxonomy";
  * CatalogFilterBar and grid layout as CatalogView/the old retailer-only
  * RentalView, swapping only the data source.
  */
-export function RentalView() {
+interface RentalViewProps {
+  /** Verified customer session present? Try-on buttons are hidden entirely until then. */
+  loggedIn: boolean;
+}
+
+export function RentalView({ loggedIn }: RentalViewProps) {
   const [products, setProducts] = useState<PublicRentalProduct[]>([]);
   const [pagination, setPagination] = useState<Pagination | null>(null);
   const [loading, setLoading] = useState(true);
@@ -120,7 +125,7 @@ export function RentalView() {
         <>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
             {products.map((product) => (
-              <RentalProductCard key={product.id} product={product} />
+              <RentalProductCard key={product.id} product={product} showTryOn={loggedIn} />
             ))}
           </div>
 

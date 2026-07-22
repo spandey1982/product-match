@@ -13,6 +13,7 @@ export interface SessionUser {
   name: string;
   role: string;
   storeName?: string | null;
+  businessType?: string;
 }
 
 export async function hashPassword(password: string): Promise<string> {
