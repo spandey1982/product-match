@@ -7,7 +7,7 @@ import type { Product } from "@/types";
 
 interface Props {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ generating?: string }>;
+  searchParams: Promise<{ generating?: string; mode?: string }>;
 }
 
 export async function generateMetadata({ params }: Props) {
@@ -21,7 +21,7 @@ export async function generateMetadata({ params }: Props) {
 
 export default async function ProductDetailPage({ params, searchParams }: Props) {
   const { id } = await params;
-  const { generating } = await searchParams;
+  const { generating, mode } = await searchParams;
   const session = await getSession();
   if (!session) notFound();
 
@@ -48,6 +48,7 @@ export default async function ProductDetailPage({ params, searchParams }: Props)
       product={product}
       generatedImages={generatedImages}
       initialGenerating={generating === "1"}
+      rentalMode={mode === "rental"}
     />
   );
 }

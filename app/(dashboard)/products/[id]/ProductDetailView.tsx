@@ -40,12 +40,15 @@ import {
 } from "lucide-react";
 import { ProductImageViewer } from "@/components/product/ProductImageViewer";
 import { ProductThumbnailRail } from "@/components/product/ProductThumbnailRail";
+import { InfoCell, FieldValue, FieldRow } from "@/components/product/InfoCell";
 import { displayUrl, masterUrl, thumbnailUrl } from "@/lib/images/variants";
 import { framedImageUrl, FULL_MODEL_VIEWS } from "@/lib/image-normalize";
 import { formatLabel } from "@/lib/product-detail/format";
 import { colorSwatchHex, colorDescriptor, pairingSuggestions, pairingNote } from "@/lib/product-detail/color-presentation";
 import { materialDescriptor, occasionDescriptor, categoryDescriptor, styleValue } from "@/lib/product-detail/descriptors";
 import { cn } from "@/lib/utils";
+import { getMockRentalInfo } from "@/lib/rental/mock-data";
+import { RentalInfoPanel } from "@/components/rental/RentalInfoPanel";
 
 interface GeneratedImage {
   url: string;
@@ -58,6 +61,8 @@ interface Props {
   generatedImages?: GeneratedImage[];
   /** True when arriving right after requesting model-image generation. */
   initialGenerating?: boolean;
+  /** True when arriving from /rent — shows rental info instead of the sale price. */
+  rentalMode?: boolean;
 }
 
 type RecommendationWithProduct = Recommendation & { product: Product };
@@ -68,58 +73,6 @@ function prettyView(view: string): string {
     .split(/[-_]/)
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(" ");
-}
-
-// ─── Product Information card — icon/swatch + label + value cell ────────────
-
-function InfoCell({
-  icon: Icon,
-  swatch,
-  image,
-  label,
-  children,
-}: {
-  icon?: React.ElementType;
-  swatch?: string;
-  image?: string;
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-center gap-2.5 p-2.5 sm:p-3 min-w-0">
-      <div className="h-8 w-8 rounded-xl shrink-0 overflow-hidden border border-gray-100 bg-gray-50 flex items-center justify-center">
-        {image ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={image} alt="" className="h-full w-full object-cover" />
-        ) : swatch ? (
-          <span className="h-full w-full block" style={{ backgroundColor: swatch }} />
-        ) : Icon ? (
-          <Icon className="h-3.5 w-3.5 text-gray-400" strokeWidth={1.5} />
-        ) : null}
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="text-[10px] font-medium text-gray-400 mb-0.5 tracking-wide font-body">{label}</p>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function FieldValue({ value, descriptor }: { value: string; descriptor?: string | null }) {
-  return (
-    <>
-      <p className="text-sm font-semibold text-gray-900 truncate font-body">{value}</p>
-      {descriptor && <p className="text-xs text-gray-400 mt-0.5 truncate font-body">{descriptor}</p>}
-    </>
-  );
-}
-
-function FieldRow({ children, last }: { children: React.ReactNode; last?: boolean }) {
-  return (
-    <div className={cn("grid grid-cols-2 divide-x divide-gray-100", !last && "border-b border-gray-100")}>
-      {children}
-    </div>
-  );
 }
 
 const editInputClass =
@@ -139,6 +92,7 @@ export function ProductDetailView({
   product,
   generatedImages = [],
   initialGenerating = false,
+  rentalMode = false,
 }: Props) {
   const router = useRouter();
   const [recommendations, setRecommendations] = useState<RecommendationWithProduct[]>([]);
@@ -169,6 +123,9 @@ export function ProductDetailView({
   });
   // Live display values (updated on save)
   const [displayProduct, setDisplayProduct] = useState(product);
+
+  // Mocked rental data — only computed when viewing this page from /rent.
+  const rentalInfo = rentalMode ? getMockRentalInfo(displayProduct) : null;
 
   // Separate model images from catalogue flat images
   const modelImages: GeneratedImage[] = genImages.filter(
@@ -689,7 +646,13 @@ export function ProductDetailView({
               )
             )}
 
-            {editing ? (
+            {rentalMode && rentalInfo ? (
+              <RentalInfoPanel
+                productId={displayProduct.id}
+                productTitle={displayProduct.title}
+                initialRental={rentalInfo}
+              />
+            ) : editing ? (
               <div>
                 <label className="text-xs font-medium text-gray-400 mb-1 block font-body">Price (₹)</label>
                 <input

@@ -13,6 +13,8 @@ import {
   Store,
   Heart,
   Settings,
+  CalendarClock,
+  ClipboardList,
 } from "lucide-react";
 import { HangerPlusIcon } from "@/components/icons/HangerPlusIcon";
 import { TagPlusIcon } from "@/components/icons/TagPlusIcon";
@@ -55,6 +57,7 @@ export function Navbar({ user }: NavbarProps) {
   // Autonomous Catalog and Design Studio moved into the account dropdown.
   const navItems = [
     { href: "/catalog", label: "Catalog", icon: Package, badge: 0 },
+    { href: "/rent", label: "Rent", icon: CalendarClock, badge: 0 },
     { href: "/upload", label: "Add Product", icon: TagPlusIcon, badge: 0 },
     { href: "/my-try-ons", label: "My Try-Ons", icon: HangerPlusIcon, badge: tryOnCount },
     { href: "/wishlist", label: "Wishlist", icon: Heart, badge: wishlistCount },
@@ -136,6 +139,14 @@ export function Navbar({ user }: NavbarProps) {
                   </div>
                   <div className="h-px bg-gray-100 mx-1 my-1" />
                   {/* Secondary tools — moved out of the main nav to keep it lean on mobile */}
+                  <Link
+                    href="/rental-orders"
+                    onClick={() => setUserMenuOpen(false)}
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    <ClipboardList className="h-4 w-4 text-indigo-400" />
+                    Rental Orders
+                  </Link>
                   <Link
                     href="/auto-catalog"
                     onClick={() => setUserMenuOpen(false)}

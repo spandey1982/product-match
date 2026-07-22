@@ -5,8 +5,7 @@ import { Check, Loader2, RotateCcw } from "lucide-react";
 import { Product } from "@/types";
 import { formatCurrency } from "@/lib/utils";
 import { ImageCarousel } from "@/components/product/ImageCarousel";
-import { thumbnailUrl } from "@/lib/images/variants";
-import { framedImageUrl } from "@/lib/image-normalize";
+import { getProductCardImages } from "@/lib/product/card-images";
 import { Badge } from "@/components/ui/badge";
 import { Sparkles } from "lucide-react";
 import { useTrialRoom, TRYON_LIMIT } from "@/components/trial-room/TrialRoomProvider";
@@ -140,20 +139,7 @@ export function ProductCard({ product }: ProductCardProps) {
           {/* Image + overlays — clipped to rounded top corners */}
           <div className="absolute inset-0 overflow-hidden rounded-t-2xl bg-gray-50">
             <ImageCarousel
-              images={[
-                // Legacy top-level field is kept in sync with the "front" ProductImage
-                // for backward compatibility (see persist.ts) — for any product
-                // generated through the current card-stack pipeline, generatedImages
-                // already has that same shot as "front". Only synthesize the on-model
-                // fallback when there's no such entry, otherwise it duplicates the
-                // front shot as the first two thumbnails.
-                product.modelImageUrl && !product.generatedImages?.some((gi) => gi.view === "front")
-                  ? thumbnailUrl(framedImageUrl(product.modelImageUrl, "on-model"))
-                  : null,
-                ...(product.generatedImages?.map((gi) => thumbnailUrl(framedImageUrl(gi.url, gi.view))) ?? []),
-                // Retailer's raw upload — no generated view, passes through as-is.
-                product.imageUrl ? thumbnailUrl(product.imageUrl) : null,
-              ].filter(Boolean) as string[]}
+              images={getProductCardImages(product)}
               title={product.title}
               category={product.category}
               className="w-full h-full"

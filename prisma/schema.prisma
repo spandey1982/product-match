@@ -7,14 +7,14 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
+  id        String  @id @default(cuid())
+  email     String  @unique
   name      String
   password  String
-  role      String   @default("RETAILER")
+  role      String  @default("RETAILER")
   storeName String?
 
-  tryOnProvider String @default("gemini")
+  tryOnProvider String  @default("gemini")
   aiGenSettings String?
   logoPublicId  String?
 
@@ -27,6 +27,94 @@ model User {
   @@map("users")
 }
 
+/**
+ * End-customer identity for the /rent marketplace — deliberately separate
+ * from User (the retailer/tenant entity). Authenticated via mobile OTP, not
+ * email/password, and carries none of the retailer-only fields on User.
+ */
+model Customer {
+  id    String  @id @default(cuid())
+  phone String  @unique
+  name  String?
+  email String?
+
+  addresses    CustomerAddress[]
+  rentalOrders RentalOrder[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("customers")
+}
+
+model CustomerAddress {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  label     String?
+  line1     String
+  pincode   String
+  landmark  String?
+  isDefault Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([customerId])
+  @@map("customer_addresses")
+}
+
+// Mocked rental request/order — no payment integration behind this yet.
+// productId is deliberately NOT a relation to Product: this is a durable
+// snapshot (title/image/store captured at request time) that must survive
+// the product being edited or deleted later, same rationale as
+// GenerationRecord above.
+model RentalOrder {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  productId    String
+  productTitle String
+  productImage String?
+  storeName    String?
+
+  ageGroup           String
+  rentalPricePerDay  Float
+  deposit            Float
+  rentalDurationDays Int
+
+  customerName  String
+  customerPhone String
+  customerEmail String?
+
+  addressLine1    String
+  addressPincode  String
+  addressLandmark String?
+
+  eventDate           String
+  deliverySlot        String
+  specialInstructions String?
+
+  deliveryDate        String
+  expectedTrialWindow String
+
+  paymentMethod String @default("Pay at Doorstep")
+  // "requested" | "confirmed" | "preparing" | "out_for_delivery" | "trial" |
+  // "delivered" | "pickup_scheduled" | "completed" | "cancelled" — plain
+  // string per this schema's stage-field convention (see AutoCatalogItem),
+  // not a Prisma enum.
+  status        String @default("requested")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([customerId])
+  @@index([productId])
+  @@map("rental_orders")
+}
+
 model Product {
   id          String  @id @default(cuid())
   title       String
@@ -37,24 +125,24 @@ model Product {
   color  String
   colors String @default("[]")
 
-  occasion  String @default("[]")
-  styleTags String @default("[]")
-  material  String?
+  occasion        String  @default("[]")
+  styleTags       String  @default("[]")
+  material        String?
   // Visual pattern/print (e.g. Floral, Paisley, Zari, Solid). Extracted by the
   // shared metadata service (lib/metadata) and reused by generation + future
   // recommendation/stylist systems. Nullable → existing rows unaffected.
-  pattern   String?
+  pattern         String?
   // Concise generation hints — the visually critical specifics the model must
   // preserve (weave/technique, motifs, border, embellishment, texture).
   // Lazily extracted once (category-aware) and cached; fed into the generation
   // prompt so fine detail isn't lost during synthesis. Nullable → safe default.
-  detailNotes String?
+  detailNotes     String?
   // Same, but for the back image — fed only into the BACK-view prompt (catalogue
   // generates a back view; quick-listing is front-only so never uses this).
   backDetailNotes String?
-  gender    String @default("WOMEN")
-  season    String @default("[]")
-  price     Float
+  gender          String  @default("WOMEN")
+  season          String  @default("[]")
+  price           Float
 
   imageUrl      String?
   // Optional back-of-product image. When present, back-profile catalogue
@@ -164,7 +252,7 @@ model ProductImage {
 // AI scores (Phase F) and manual scores (Phase G) are filled in later; null
 // until reviewed.
 model GenerationRecord {
-  id        String @id @default(cuid())
+  id        String  @id @default(cuid())
   productId String?
   userId    String?
 
@@ -176,8 +264,8 @@ model GenerationRecord {
   outputUrl String
 
   // Master (pre-variant) image facts — base shots only; null for derived crops.
-  width        Int?
-  height       Int?
+  width         Int?
+  height        Int?
   fileSizeBytes Int?
 
   generationMs Int?
@@ -358,9 +446,9 @@ model AutoCatalogItem {
   userId  String
 
   // The uploaded raw image (Cloudinary URL)
-  imageUrl  String
-  mimeType  String @default("image/jpeg")
-  fileName  String @default("")
+  imageUrl String
+  mimeType String @default("image/jpeg")
+  fileName String @default("")
 
   // Pipeline stage for this item
   stage String @default("uploaded")
@@ -377,7 +465,7 @@ model AutoCatalogItem {
   qcResult String?
 
   // Retry tracking
-  retryCount  Int    @default(0)
+  retryCount    Int     @default(0)
   failureReason String?
 
   // Linked product once published
@@ -428,10 +516,10 @@ model FashionDesign {
   flatFrontUrl String?
   flatBackUrl  String?
 
-  qualityScore      Int?
-  failureReason     String?
-  cancelRequested   Boolean @default(false)
-  catalogProductId  String?
+  qualityScore     Int?
+  failureReason    String?
+  cancelRequested  Boolean @default(false)
+  catalogProductId String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
