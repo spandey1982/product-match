@@ -497,7 +497,7 @@ export function CatalogView({ storeName, logoUrl }: CatalogViewProps = {}) {
             {" "}Remove a try-on to add more.
           </p>
           <Link
-            href="/my-try-ons"
+            href="/trial-room"
             className="text-xs font-semibold text-amber-700 underline underline-offset-2 hover:text-amber-900 shrink-0"
           >
             Manage Try-Ons
@@ -594,7 +594,7 @@ export function CatalogView({ storeName, logoUrl }: CatalogViewProps = {}) {
 
           {/* Primary FAB */}
           {photo ? (
-            <Link href="/my-try-ons">
+            <Link href="/trial-room">
               <button
                 className={cn(
                   "relative flex items-center gap-2 h-12 px-5 rounded-2xl text-sm font-semibold text-white shadow-lg",

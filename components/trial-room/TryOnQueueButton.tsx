@@ -66,7 +66,7 @@ export function TryOnQueueButton({ product, iconOnly = false }: Props) {
       variantClass =
         "bg-emerald-500 text-white shadow-emerald-300/50 hover:bg-emerald-600";
       label = "Try-on ready — tap to view";
-      onClick = () => router.push("/my-try-ons");
+      onClick = () => router.push("/trial-room");
     } else if (entry?.status === "failed") {
       iconNode = <RotateCcw size={20} />;
       variantClass =
@@ -78,7 +78,7 @@ export function TryOnQueueButton({ product, iconOnly = false }: Props) {
       variantClass =
         "bg-amber-50 text-amber-600 border border-amber-200 hover:bg-amber-100";
       label = "Try-on limit reached — tap to manage";
-      onClick = () => router.push("/my-try-ons");
+      onClick = () => router.push("/trial-room");
     } else {
       iconNode = <HangerPlusIcon size={20} />;
       variantClass =
@@ -162,7 +162,7 @@ export function TryOnQueueButton({ product, iconOnly = false }: Props) {
           <span className="text-sm font-medium text-emerald-700">Try-on ready</span>
         </div>
         <Link
-          href="/my-try-ons"
+          href="/trial-room"
           className="flex items-center gap-1.5 py-2 px-3 bg-white border border-gray-200 rounded-2xl text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
         >
           View
@@ -204,7 +204,7 @@ export function TryOnQueueButton({ product, iconOnly = false }: Props) {
           Try-on limit reached (5/5)
         </div>
         <Link
-          href="/my-try-ons"
+          href="/trial-room"
           className="w-full flex items-center justify-center gap-1.5 h-12 rounded-2xl text-sm font-semibold text-indigo-600 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 transition-colors"
         >
           Manage Try-Ons to free up a slot

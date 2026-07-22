@@ -10,6 +10,8 @@ export async function GET() {
     if (!balance) {
       return NextResponse.json({
         hasWallet: false,
+        balanceUsd: 0,
+        totalCreditsUsd: 0,
         remainingPercentage: 0,
         usedPercentage: 0,
         status: "active",
@@ -18,6 +20,8 @@ export async function GET() {
 
     return NextResponse.json({
       hasWallet: true,
+      balanceUsd: balance.balanceUsd,
+      totalCreditsUsd: balance.totalCreditsUsd,
       remainingPercentage: balance.remainingPercentage,
       usedPercentage: balance.usedPercentage,
       status: balance.status,

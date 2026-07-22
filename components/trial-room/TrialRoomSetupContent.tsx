@@ -264,10 +264,10 @@ export function TrialRoomSetupContent({ onComplete, onCancel }: Props) {
         {tryOns.length > 0 && (
           <div className="pt-2 border-t border-gray-100">
             <Link
-              href="/my-try-ons"
+              href="/trial-room"
               className="flex items-center justify-between py-2 text-sm text-indigo-600 hover:text-indigo-800 transition-colors"
             >
-              <span className="font-medium">View My Try-Ons</span>
+              <span className="font-medium">View Try-Ons</span>
               <span className="flex items-center gap-1">
                 {tryOns.length} item{tryOns.length !== 1 ? "s" : ""}
                 <ArrowRight className="h-3.5 w-3.5" />

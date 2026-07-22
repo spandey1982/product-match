@@ -13,6 +13,7 @@ import {
   Store,
   Heart,
   Settings,
+  CreditCard,
 } from "lucide-react";
 import { HangerPlusIcon } from "@/components/icons/HangerPlusIcon";
 import { TagPlusIcon } from "@/components/icons/TagPlusIcon";
@@ -74,7 +75,7 @@ export function Navbar({ user }: NavbarProps) {
   const navItems = [
     { href: "/catalog", label: "Catalog", icon: Package, badge: 0 },
     { href: "/upload", label: "Add Product", icon: TagPlusIcon, badge: 0 },
-    { href: "/my-try-ons", label: "My Try-Ons", icon: HangerPlusIcon, badge: tryOnCount },
+    { href: "/trial-room", label: "Virtual Trial Room", icon: HangerPlusIcon, badge: tryOnCount },
     { href: "/wishlist", label: "Wishlist", icon: Heart, badge: wishlistCount },
   ];
 
@@ -168,12 +169,12 @@ export function Navbar({ user }: NavbarProps) {
                   Assets
                 </Link>
                 <Link
-                  href="/trial-room"
+                  href="/billing"
                   onClick={() => setUserMenuOpen(false)}
                   className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                 >
-                  <HangerPlusIcon className="h-4 w-4 text-indigo-400" />
-                  Virtual Trial Room
+                  <CreditCard className="h-4 w-4 text-indigo-400" />
+                  Billing
                 </Link>
                 <Link
                   href="/settings"

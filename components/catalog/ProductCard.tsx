@@ -45,9 +45,9 @@ function TryOnCardButton({ product }: { product: Product }) {
       return;
     }
     if (active?.status === "generating") return;
-    if (active?.status === "done") { router.push("/my-try-ons"); return; }
-    if (active) { router.push("/my-try-ons"); return; } // queued — go view it
-    if (isAtLimit) { router.push("/my-try-ons"); return; } // limit hit — manage slot
+    if (active?.status === "done") { router.push("/trial-room"); return; }
+    if (active) { router.push("/trial-room"); return; } // queued — go view it
+    if (isAtLimit) { router.push("/trial-room"); return; } // limit hit — manage slot
     addToQueue(product);
   }
 

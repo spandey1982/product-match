@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { useTrialRoom } from "@/components/trial-room/TrialRoomProvider";
+import { TrialRoomSetupModal } from "@/components/trial-room/TrialRoomSetupModal";
 import { HangerPlusIcon } from "@/components/icons/HangerPlusIcon";
 import { TryOnViewer } from "@/components/trial-room/TryOnViewer";
 import { displayUrl } from "@/lib/images/variants";
@@ -314,10 +315,11 @@ interface ViewerState {
   index: number;
 }
 
-export function MyTryOnsView() {
+export function TrialRoomView() {
   const { photo, tryOns, wishlist } = useTrialRoom();
   const [filter, setFilter] = useState<FilterTab>("all");
   const [viewer, setViewer] = useState<ViewerState | null>(null);
+  const [showSetup, setShowSetup] = useState(false);
 
   const generatingCount = tryOns.filter((t) => t.status === "generating").length;
   const savedCount = wishlist.length;
@@ -351,7 +353,7 @@ export function MyTryOnsView() {
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
             <Sparkles className="h-6 w-6 text-indigo-500" />
-            My Try-Ons
+            Virtual Trial Room
           </h1>
           <p className="text-sm text-gray-500 mt-1">
             Your virtual try-ons will appear here as they generate.
@@ -363,14 +365,17 @@ export function MyTryOnsView() {
           <p className="text-xs text-gray-400 max-w-xs mx-auto mb-5">
             Set up the Trial Room by uploading a customer photograph, then browse the catalog to begin.
           </p>
-          <Link
-            href="/trial-room"
+          <button
+            onClick={() => setShowSetup(true)}
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors"
           >
             <Plus className="h-4 w-4" />
             Set Up Trial Room
-          </Link>
+          </button>
         </div>
+        {showSetup && (
+          <TrialRoomSetupModal onClose={() => setShowSetup(false)} />
+        )}
       </div>
     );
   }
@@ -405,7 +410,7 @@ export function MyTryOnsView() {
             <div>
               <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
                 <Sparkles className="h-6 w-6 text-indigo-500" />
-                My Try-Ons
+                Virtual Trial Room
               </h1>
               <p className="text-sm text-gray-500 mt-1">
                 {tryOns.length > 0
