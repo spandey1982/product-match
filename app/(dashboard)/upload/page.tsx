@@ -112,7 +112,7 @@ const OBJECTIVE_META: Record<string, { label: string; desc: string }> = {
 export default function UploadPage() {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
-  const { startTracking } = useGenerationStatus();
+  const { startTracking, stopTracking } = useGenerationStatus();
 
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -556,19 +556,33 @@ export default function UploadPage() {
                   : {}),
               })
             : undefined;
-        fetch(`/api/products/${data.product.id}/generate-model-image`, {
+        let genFailCode: string | null = null;
+        const genPromise = fetch(`/api/products/${data.product.id}/generate-model-image`, {
           method: "POST",
           ...(genBody
             ? { headers: { "Content-Type": "application/json" }, body: genBody }
             : {}),
-        }).catch(() => {/* silent — model image is a nice-to-have */});
+        }).then(async (r) => {
+          if (!r.ok) {
+            const body = await r.json().catch(() => ({})) as { error?: string };
+            genFailCode = body.error === "insufficient_credits" ? "credits" : "error";
+          }
+        }).catch(() => { genFailCode = "error"; });
         startTracking(data.product.id);
-      }
 
-      // Signal the detail page to poll for the model image so it appears the
-      // moment generation finishes — no manual refresh needed.
-      const dest = `/products/${data.product.id}${willGenerate ? "?generating=1" : ""}`;
-      setTimeout(() => router.push(dest), 1200);
+        await Promise.race([
+          genPromise,
+          new Promise((r) => setTimeout(r, 1000)),
+        ]);
+
+        if (genFailCode) stopTracking(data.product.id);
+
+        const q = genFailCode ? `?genFailed=${genFailCode}` : "?generating=1";
+        router.push(`/products/${data.product.id}${q}`);
+      } else {
+        const dest = `/products/${data.product.id}`;
+        setTimeout(() => router.push(dest), 1200);
+      }
     } catch {
       setError("Something went wrong. Please try again.");
     } finally {

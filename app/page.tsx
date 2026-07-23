@@ -475,6 +475,20 @@ function UseCases() {
 }
 
 // ─── ROI ──────────────────────────────────────────────────────────────────────
+function StatCard({ stat: s, index: i, inView }: { stat: { value: number; prefix?: string; suffix: string; label: string; raw?: string }; index: number; inView: boolean }) {
+  const count = useCountUp(s.value, 1600, inView);
+  return (
+    <FadeIn key={s.label} delay={i * 60}>
+      <div style={{ background: "#0d0d0d", border: "1px solid #1a1a1a", borderRadius: 12, padding: 24, textAlign: "center" }}>
+        <div style={{ fontSize: 36, fontWeight: 900, color: "#fff", lineHeight: 1, letterSpacing: "-0.03em" }}>
+          {s.raw ? s.raw : `${s.prefix ?? ""}${count}${s.suffix}`}
+        </div>
+        <div style={{ fontSize: 11, color: "#555", marginTop: 8, lineHeight: 1.5 }}>{s.label}</div>
+      </div>
+    </FadeIn>
+  );
+}
+
 function ROI() {
   const { ref, inView } = useInView();
   const stats = [
@@ -502,19 +516,9 @@ function ROI() {
         </FadeIn>
 
         <div ref={ref} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(160px,1fr))", gap: 14 }}>
-          {stats.map((s, i) => {
-            const count = useCountUp(s.value, 1600, inView);
-            return (
-              <FadeIn key={s.label} delay={i * 60}>
-                <div style={{ background: "#0d0d0d", border: "1px solid #1a1a1a", borderRadius: 12, padding: 24, textAlign: "center" }}>
-                  <div style={{ fontSize: 36, fontWeight: 900, color: "#fff", lineHeight: 1, letterSpacing: "-0.03em" }}>
-                    {s.raw ? s.raw : `${s.prefix ?? ""}${count}${s.suffix}`}
-                  </div>
-                  <div style={{ fontSize: 11, color: "#555", marginTop: 8, lineHeight: 1.5 }}>{s.label}</div>
-                </div>
-              </FadeIn>
-            );
-          })}
+          {stats.map((s, i) => (
+            <StatCard key={s.label} stat={s} index={i} inView={inView} />
+          ))}
         </div>
 
         <FadeIn delay={200}>

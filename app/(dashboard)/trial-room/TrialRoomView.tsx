@@ -330,7 +330,6 @@ interface TrialRoomViewProps {
 
 export function TrialRoomView({
   browseHref = "/catalog",
-  setupTrialRoomHref = "/trial-room",
   onSetupTrialRoom,
   wishlistHref = "/wishlist",
 }: TrialRoomViewProps = {}) {

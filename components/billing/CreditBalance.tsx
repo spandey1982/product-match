@@ -124,17 +124,21 @@ function DropdownPill({ pct, isFrozen }: { pct: number; isFrozen: boolean }) {
   );
 }
 
-export function useCreditBalance() {
+export function useCreditBalance(pollMs = 30_000) {
   const [data, setData] = useState<BalanceData | null>(null);
 
   useEffect(() => {
     let mounted = true;
-    fetch("/api/wallet/balance")
-      .then((r) => r.json())
-      .then((d: BalanceData) => { if (mounted) setData(d); })
-      .catch(() => {});
-    return () => { mounted = false; };
-  }, []);
+    function fetchBalance() {
+      fetch("/api/wallet/balance")
+        .then((r) => r.json())
+        .then((d: BalanceData) => { if (mounted) setData(d); })
+        .catch(() => {});
+    }
+    fetchBalance();
+    const iv = setInterval(fetchBalance, pollMs);
+    return () => { mounted = false; clearInterval(iv); };
+  }, [pollMs]);
 
   return data;
 }

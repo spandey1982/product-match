@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Product } from "@/types";
 import { formatCurrency } from "@/lib/utils";
@@ -16,8 +17,35 @@ interface ProductCardProps {
 }
 
 export function ProductCard({ product }: ProductCardProps) {
-  const { getStatus } = useGenerationStatus();
+  const { getStatus, subscribe, unsubscribe } = useGenerationStatus();
   const isGenerating = getStatus(product.id)?.generating ?? false;
+
+  const [completedImages, setCompletedImages] = useState<{
+    modelImageUrl: string | null;
+    generatedImages: { url: string; view: string; objective?: string }[];
+  } | null>(null);
+
+  useEffect(() => {
+    function onComplete(
+      data: { modelImageUrl: string | null; generatedImages: { url: string; view: string; objective?: string }[] } | null,
+    ) {
+      if (data) setCompletedImages(data);
+    }
+    subscribe(product.id, onComplete);
+    return () => { unsubscribe(product.id, onComplete); };
+  }, [product.id, subscribe, unsubscribe]);
+
+  const displayProduct = completedImages
+    ? {
+        ...product,
+        modelImageUrl: completedImages.modelImageUrl,
+        generatedImages: completedImages.generatedImages.map((g) => ({
+          id: "", productId: product.id, isPrimary: false, createdAt: "",
+          objective: "",
+          ...g,
+        })),
+      }
+    : product;
 
   return (
     <Link href={`/products/${product.id}`} className="group block">
@@ -39,7 +67,7 @@ export function ProductCard({ product }: ProductCardProps) {
           {/* Image + overlays — clipped to rounded top corners */}
           <div className="absolute inset-0 overflow-hidden rounded-t-2xl bg-gray-50">
             <ImageCarousel
-              images={getProductCardImages(product)}
+              images={getProductCardImages(displayProduct)}
               title={product.title}
               category={product.category}
               className="w-full h-full"

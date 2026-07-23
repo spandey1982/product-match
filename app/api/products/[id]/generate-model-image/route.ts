@@ -12,6 +12,7 @@ import { isModelType } from "@/lib/model-gen/reference-models";
 import { isGenerationQuality } from "@/lib/model-gen/quality";
 import { isBackdropSection } from "@/lib/model-gen/scenes/selection";
 import { categorizeGenerationError, genericFailureMessage } from "@/lib/model-gen/failure-message";
+import { getAiGenSettings } from "@/lib/model-gen/settings";
 import { withCreditCheck, estimateCatalogueOps, estimateQuickListingOps } from "@/lib/billing/credit-check";
 import { recordAiUsage } from "@/lib/ai-usage/record";
 
@@ -59,7 +60,7 @@ export async function POST(
         ? signatureProfileIdRaw
         : undefined;
 
-    const [giRow, productForBilling] = await Promise.all([
+    const [giRow, productForBilling, userSettings] = await Promise.all([
       db.garmentIntelligence.findUnique({
         where: { productId: id },
         select: { id: true },
@@ -68,15 +69,18 @@ export async function POST(
         where: { id },
         select: { backImageUrl: true, partImages: true },
       }),
+      getAiGenSettings(session.id),
     ]);
     const hasGI = !!giRow;
     const hasBackImage = !!(productForBilling?.backImageUrl || productForBilling?.partImages);
 
+    const effectiveQuality = quality ?? userSettings.quality;
+
     const isCatalogue = isAiGenObjectivesEnabled() &&
       (!objective || objective === "catalogue");
     const billingOps = isCatalogue
-      ? estimateCatalogueOps(hasGI, quality, hasBackImage)
-      : estimateQuickListingOps(quality);
+      ? estimateCatalogueOps(hasGI, effectiveQuality, hasBackImage)
+      : estimateQuickListingOps(effectiveQuality);
 
     const creditResult = await withCreditCheck(
       session.id,
@@ -105,7 +109,7 @@ export async function POST(
       void recordAiUsage({
         provider: "billing",
         model: "credit-check",
-        feature: "catalogue",
+        feature: "credit_check",
         productId: id,
         userId: session.id,
         inputTokens: 0,
