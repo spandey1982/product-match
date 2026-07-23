@@ -3,6 +3,7 @@ import { getSession, isAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { BILLING_OPERATIONS } from "@/lib/billing/types";
 import { SeedPricingButton } from "./SeedPricingButton";
+import { EditPricingButton, AddPricingButton } from "./PricingActions";
 
 export const metadata = { title: "Pricing Config — Admin" };
 
@@ -42,11 +43,14 @@ export default async function PricingPage() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
-      <div className="mb-6">
-        <h1 className="text-xl font-bold text-gray-900">Pricing Configuration</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Retail prices charged per AI operation. Create new configs via API.
-        </p>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">Pricing Configuration</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Retail prices charged per AI operation.
+          </p>
+        </div>
+        <AddPricingButton defaultPrices={activeConfig?.prices} />
       </div>
 
       {/* Active pricing table */}
@@ -64,7 +68,13 @@ export default async function PricingPage() {
                 })}
               </p>
             </div>
-            <ActiveBadge active />
+            <div className="flex items-center gap-2">
+              <EditPricingButton
+                configId={activeConfig.id}
+                prices={activeConfig.prices}
+              />
+              <ActiveBadge active />
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

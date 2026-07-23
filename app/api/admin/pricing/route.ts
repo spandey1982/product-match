@@ -61,19 +61,92 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const config = await db.pricingConfig.create({
-      data: {
-        name,
-        prices: JSON.stringify(prices),
-        effectiveFrom: effectiveFrom ? new Date(effectiveFrom) : new Date(),
-        isActive: true,
-        createdBy: admin.id,
-      },
+    const config = await db.$transaction(async (tx) => {
+      await tx.pricingConfig.updateMany({
+        where: { isActive: true },
+        data: { isActive: false },
+      });
+
+      return tx.pricingConfig.create({
+        data: {
+          name,
+          prices: JSON.stringify(prices),
+          effectiveFrom: effectiveFrom ? new Date(effectiveFrom) : new Date(),
+          isActive: true,
+          createdBy: admin.id,
+        },
+      });
     });
 
     return NextResponse.json({
       success: true,
       config: { ...config, prices: JSON.parse(config.prices) },
+    });
+  } catch (err) {
+    const msg = (err as Error).message;
+    if (msg === "Unauthorized") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (msg === "Forbidden") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    console.error(err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+export async function PATCH(req: NextRequest) {
+  try {
+    await requireAdmin();
+    const body = await req.json();
+
+    const { id, prices, name } = body as {
+      id?: string;
+      prices?: Record<string, number>;
+      name?: string;
+    };
+
+    if (!id || typeof id !== "string") {
+      return NextResponse.json({ error: "id is required" }, { status: 400 });
+    }
+
+    const existing = await db.pricingConfig.findUnique({ where: { id } });
+    if (!existing) {
+      return NextResponse.json({ error: "Config not found" }, { status: 404 });
+    }
+
+    const data: { prices?: string; name?: string } = {};
+
+    if (prices && typeof prices === "object") {
+      for (const [key, val] of Object.entries(prices)) {
+        if (!isBillingOperation(key)) {
+          return NextResponse.json(
+            { error: `Unknown billing operation: ${key}` },
+            { status: 400 }
+          );
+        }
+        if (typeof val !== "number" || val < 0) {
+          return NextResponse.json(
+            { error: `Invalid price for ${key}: must be a non-negative number` },
+            { status: 400 }
+          );
+        }
+      }
+      data.prices = JSON.stringify(prices);
+    }
+
+    if (name && typeof name === "string") {
+      data.name = name;
+    }
+
+    if (Object.keys(data).length === 0) {
+      return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
+    }
+
+    const updated = await db.pricingConfig.update({
+      where: { id },
+      data,
+    });
+
+    return NextResponse.json({
+      success: true,
+      config: { ...updated, prices: JSON.parse(updated.prices) },
     });
   } catch (err) {
     const msg = (err as Error).message;

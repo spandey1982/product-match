@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, AlertCircle } from "lucide-react";
 import { Product } from "@/types";
 import { formatCurrency } from "@/lib/utils";
 import { ImageCarousel } from "@/components/product/ImageCarousel";
@@ -18,7 +18,9 @@ interface ProductCardProps {
 
 export function ProductCard({ product }: ProductCardProps) {
   const { getStatus, subscribe, unsubscribe } = useGenerationStatus();
-  const isGenerating = getStatus(product.id)?.generating ?? false;
+  const genStatus = getStatus(product.id);
+  const isGenerating = genStatus?.generating ?? false;
+  const hasGenError = !isGenerating && !!genStatus?.error;
 
   const [completedImages, setCompletedImages] = useState<{
     modelImageUrl: string | null;
@@ -83,6 +85,14 @@ export function ProductCard({ product }: ProductCardProps) {
               <div className="absolute top-2.5 left-2.5 z-10">
                 <div className="flex items-center justify-center h-8 w-8 rounded-full bg-white/80 backdrop-blur-sm shadow-sm">
                   <Loader2 size={16} className="animate-spin text-indigo-500" />
+                </div>
+              </div>
+            )}
+
+            {hasGenError && (
+              <div className="absolute top-2.5 left-2.5 z-10">
+                <div className="flex items-center justify-center h-8 w-8 rounded-full bg-red-50/90 backdrop-blur-sm shadow-sm">
+                  <AlertCircle size={16} className="text-red-500" />
                 </div>
               </div>
             )}

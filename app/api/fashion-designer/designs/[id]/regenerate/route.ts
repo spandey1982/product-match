@@ -3,12 +3,7 @@ import { requireAuth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { runDesignPipeline } from "@/lib/fashion-designer/pipeline";
 import { findTemplate } from "@/lib/fashion-designer/templates";
-import { withCreditCheck } from "@/lib/billing/credit-check";
-import type { BillingOperation } from "@/lib/billing/types";
 
-// POST /api/fashion-designer/designs/[id]/regenerate
-// Optional body: { title, garmentType, templateId, structuredOptions, designNotes }
-// to update design params before re-running.
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -53,7 +48,7 @@ export async function POST(
       templateUpdate = { templateId: body.templateId ?? null, structuredOptions };
     }
 
-    // Reset to uploading stage and clear previous outputs
+    // Full regeneration: clear ALL previous outputs and restart from scratch.
     await db.fashionDesign.update({
       where: { id },
       data: {
@@ -70,36 +65,23 @@ export async function POST(
         flatBackUrl: null,
         qualityScore: null,
         failureReason: null,
+        failedAtStage: null,
       },
     });
 
-    const designOps: BillingOperation[] = [
-      "fashion_design_analysis",
-      "fashion_design_analysis",
-      "fashion_design_analysis",
-      "fashion_design_analysis",
-      "fashion_design_gen",
-      "fashion_design_gen",
-    ];
-
-    const creditResult = await withCreditCheck(
-      session.id,
-      designOps,
-      async () => { await runDesignPipeline(id); }
-    );
-
-    if ("insufficientCredits" in creditResult) {
-      return NextResponse.json({
-        error: "insufficient_credits",
-        message: "Not enough credits to regenerate this design. Contact your admin to add more credits.",
-        remainingPercentage: creditResult.remainingPercentage,
-      }, { status: 402 });
-    }
+    await runDesignPipeline(id, session.id);
 
     const updated = await db.fashionDesign.findUnique({
       where: { id },
       include: { assets: true },
     });
+
+    if (updated?.stage === "failed" && updated.failureReason?.includes("Insufficient credits")) {
+      return NextResponse.json({
+        error: "insufficient_credits",
+        message: updated.failureReason,
+      }, { status: 402 });
+    }
 
     return NextResponse.json({ design: updated });
   } catch (err) {

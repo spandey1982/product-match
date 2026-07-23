@@ -19,6 +19,13 @@ export async function POST(
       return NextResponse.json({ error: "Design not found" }, { status: 404 });
     }
 
+    if (design.stage !== "failed") {
+      return NextResponse.json(
+        { error: "Design is not in a failed state — cannot resume" },
+        { status: 400 }
+      );
+    }
+
     await runDesignPipeline(id, session.id);
 
     const updated = await db.fashionDesign.findUnique({

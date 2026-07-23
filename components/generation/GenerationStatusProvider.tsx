@@ -3,7 +3,6 @@
 import React, {
   createContext,
   useCallback,
-  useContext,
   useEffect,
   useRef,
   useState,
@@ -29,6 +28,8 @@ type StatusRemover = (productId: string) => void;
 interface GenerationStatusContextValue {
   startTracking: (productId: string) => void;
   stopTracking: (productId: string) => void;
+  failGeneration: (productId: string, error: string) => void;
+  clearError: (productId: string) => void;
   getStatus: (productId: string) => GenerationStatus | undefined;
   subscribe: (productId: string, listener: CompletionListener) => void;
   unsubscribe: (productId: string, listener: CompletionListener) => void;
@@ -79,6 +80,14 @@ function markDone(refs: PollRefs, productId: string, error: string | null) {
   if (timer) clearTimeout(timer);
   refs.timers.current.delete(productId);
   refs.setStatus.current(productId, { generating: false, error });
+}
+
+function stopPolling(refs: PollRefs, productId: string) {
+  refs.active.current.delete(productId);
+  refs.attempts.current.delete(productId);
+  const timer = refs.timers.current.get(productId);
+  if (timer) clearTimeout(timer);
+  refs.timers.current.delete(productId);
 }
 
 function schedulePoll(refs: PollRefs, productId: string) {
@@ -149,6 +158,10 @@ function runPoll(refs: PollRefs, productId: string) {
 
 // ─── Provider ────────────────────────────────────────────────────────────────
 
+function useContext<T>(ctx: React.Context<T>) {
+  return React.useContext(ctx);
+}
+
 export function GenerationStatusProvider({ children }: { children: React.ReactNode }) {
   const [statusMap, setStatusMap] = useState<Map<string, GenerationStatus>>(new Map());
 
@@ -195,11 +208,18 @@ export function GenerationStatusProvider({ children }: { children: React.ReactNo
 
   const stopTracking = useCallback((productId: string) => {
     const r = refsRef.current;
-    r.active.current.delete(productId);
-    r.attempts.current.delete(productId);
-    const timer = r.timers.current.get(productId);
-    if (timer) clearTimeout(timer);
-    r.timers.current.delete(productId);
+    stopPolling(r, productId);
+    r.removeStatus.current(productId);
+  }, []);
+
+  const failGeneration = useCallback((productId: string, error: string) => {
+    const r = refsRef.current;
+    stopPolling(r, productId);
+    r.setStatus.current(productId, { generating: false, error });
+  }, []);
+
+  const clearError = useCallback((productId: string) => {
+    const r = refsRef.current;
     r.removeStatus.current(productId);
   }, []);
 
@@ -227,7 +247,7 @@ export function GenerationStatusProvider({ children }: { children: React.ReactNo
 
   return (
     <GenerationStatusContext.Provider
-      value={{ startTracking, stopTracking, getStatus, subscribe, unsubscribe }}
+      value={{ startTracking, stopTracking, failGeneration, clearError, getStatus, subscribe, unsubscribe }}
     >
       {children}
     </GenerationStatusContext.Provider>

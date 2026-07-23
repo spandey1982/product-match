@@ -37,11 +37,17 @@ export default async function ProductDetailPage({ params, searchParams }: Props)
 
   // Multi-view catalogue gallery (additive — empty for products generated with
   // the legacy single-image flow, where modelImageUrl still drives the carousel).
-  const generatedImages = await db.productImage.findMany({
-    where: { productId: id },
-    orderBy: { createdAt: "asc" },
-    select: { url: true, view: true, objective: true },
-  });
+  const [generatedImages, giRow] = await Promise.all([
+    db.productImage.findMany({
+      where: { productId: id },
+      orderBy: { createdAt: "asc" },
+      select: { url: true, view: true, objective: true },
+    }),
+    db.garmentIntelligence.findUnique({
+      where: { productId: id },
+      select: { id: true },
+    }),
+  ]);
 
   return (
     <ProductDetailView
@@ -50,6 +56,7 @@ export default async function ProductDetailPage({ params, searchParams }: Props)
       initialGenerating={generating === "1"}
       initialGenError={genFailed ?? null}
       rentalMode={mode === "rental"}
+      hasGI={!!giRow}
     />
   );
 }
