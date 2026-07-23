@@ -18,6 +18,7 @@ const OP_LABELS: Record<BillingOperation, string> = {
   garment_intelligence: "Garment Intelligence",
   image_gen_1k: "Image Gen (1K)",
   image_gen_2k: "Image Gen (2K)",
+  vai_image_gen: "Vertex AI Image Gen",
   tryon_1k: "Try-On (1K)",
   fashion_design_analysis: "Design Analysis",
   fashion_design_gen: "Design Generation",

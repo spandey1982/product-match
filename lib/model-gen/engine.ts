@@ -322,7 +322,10 @@ export async function generateModelImages(
   // ── Billing: charge for image generation ──────────────────────────────
   const isCatalogue = objective !== "quick_listing";
   const imageCount = isCatalogue ? 2 : 1;
-  const imgOp: BillingOperation = effectiveQuality === "enhanced" ? "image_gen_2k" : "image_gen_1k";
+  const imgOp: BillingOperation =
+    catalogueProvider === "vertex"
+      ? "vai_image_gen"
+      : effectiveQuality === "enhanced" ? "image_gen_2k" : "image_gen_1k";
   const imgCharge = await chargeForCall(input.userId, imgOp, imageCount);
   if ("insufficientCredits" in imgCharge) {
     return { objective, modelType, images: [], failure: "insufficient_credits" };

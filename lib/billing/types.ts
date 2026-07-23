@@ -3,6 +3,7 @@ export type BillingOperation =
   | "garment_intelligence"
   | "image_gen_1k"
   | "image_gen_2k"
+  | "vai_image_gen"
   | "tryon_1k"
   | "fashion_design_analysis"
   | "fashion_design_gen"
@@ -49,6 +50,7 @@ export const BILLING_OPERATIONS: readonly BillingOperation[] = [
   "garment_intelligence",
   "image_gen_1k",
   "image_gen_2k",
+  "vai_image_gen",
   "tryon_1k",
   "fashion_design_analysis",
   "fashion_design_gen",
