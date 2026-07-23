@@ -20,7 +20,7 @@ interface TryOnCardButtonProps {
  * marketplace (RentalProductCard) — the state machine and visuals are
  * identical, only the "my try-ons" destination differs.
  */
-export function TryOnCardButton({ product, myTryOnsHref = "/my-try-ons" }: TryOnCardButtonProps) {
+export function TryOnCardButton({ product, myTryOnsHref = "/trial-room" }: TryOnCardButtonProps) {
   const router = useRouter();
   const { photo, addToQueue, findActiveTryOn, findAnyTryOn, isAtLimit, triggerSetupHint } =
     useTrialRoom();

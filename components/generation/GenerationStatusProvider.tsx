@@ -195,7 +195,6 @@ export function GenerationStatusProvider({ children }: { children: React.ReactNo
 
   const stopTracking = useCallback((productId: string) => {
     const r = refsRef.current;
-    if (!r.active.current.has(productId)) return;
     r.active.current.delete(productId);
     r.attempts.current.delete(productId);
     const timer = r.timers.current.get(productId);

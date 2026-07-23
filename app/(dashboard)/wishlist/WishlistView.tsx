@@ -194,11 +194,11 @@ export function WishlistView() {
             Generate try-ons and tap the heart icon to save your favourites here.
           </p>
           <Link
-            href="/my-try-ons"
+            href="/trial-room"
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors"
           >
             <Plus className="h-4 w-4" />
-            View My Try-Ons
+            View Try-Ons
           </Link>
         </div>
       </div>
@@ -228,7 +228,7 @@ export function WishlistView() {
             </p>
           </div>
           <Link
-            href="/my-try-ons"
+            href="/trial-room"
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors"
           >
             <Plus className="h-3.5 w-3.5" />

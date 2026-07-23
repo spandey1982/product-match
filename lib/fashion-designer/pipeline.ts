@@ -5,6 +5,7 @@ import { accessoryUnderstandingAgent } from "./agents/accessoryUnderstandingAgen
 import { plannerAgent } from "./agents/plannerAgent";
 import { garmentConstructionAgent } from "./agents/garmentConstructionAgent";
 import { findTemplate, defaultOptionsFor } from "./templates";
+import type { AiUsageContext } from "@/lib/ai-usage/record";
 
 async function setStage(designId: string, stage: string) {
   await db.fashionDesign.update({ where: { id: designId }, data: { stage } });
@@ -50,8 +51,13 @@ export async function runDesignPipeline(designId: string): Promise<void> {
     : {};
   const designNotes = design.designNotes ?? "";
 
-  // Clear any stale cancel flag before starting
   await db.fashionDesign.update({ where: { id: designId }, data: { cancelRequested: false } });
+
+  const usage: AiUsageContext = {
+    feature: "fashion_designer",
+    storeId: design.userId,
+    userId: design.userId,
+  };
 
   try {
     // ── Stage 1: Fabric Analysis ────────────────────────────────────────────
@@ -66,7 +72,7 @@ export async function runDesignPipeline(designId: string): Promise<void> {
       return;
     }
 
-    const fabricAnalysis = await fabricAnalysisAgent(fabricUrls);
+    const fabricAnalysis = await fabricAnalysisAgent(fabricUrls, usage);
     await db.fashionDesign.update({
       where: { id: designId },
       data: { fabricAnalysis: JSON.stringify(fabricAnalysis) },
@@ -78,7 +84,7 @@ export async function runDesignPipeline(designId: string): Promise<void> {
     await setStage(designId, "analyzing_design");
 
     const sketchUrls = [...urlsOf("sketch"), ...urlsOf("reference")];
-    const designUnderstanding = await designUnderstandingAgent(sketchUrls, garmentType);
+    const designUnderstanding = await designUnderstandingAgent(sketchUrls, garmentType, usage);
     await db.fashionDesign.update({
       where: { id: designId },
       data: { designUnderstanding: JSON.stringify(designUnderstanding) },
@@ -93,7 +99,7 @@ export async function runDesignPipeline(designId: string): Promise<void> {
       .filter((a) => ["accessory", "border", "neck", "sleeve", "back"].includes(a.assetType))
       .map((a) => ({ url: a.url, assetType: a.assetType, mimeType: a.mimeType }));
 
-    const accessoryAnalysis = await accessoryUnderstandingAgent(accessoryAssets);
+    const accessoryAnalysis = await accessoryUnderstandingAgent(accessoryAssets, usage);
     await db.fashionDesign.update({
       where: { id: designId },
       data: { accessoryAnalysis: JSON.stringify(accessoryAnalysis) },
@@ -111,7 +117,8 @@ export async function runDesignPipeline(designId: string): Promise<void> {
       garmentType,
       template,
       structuredOptions,
-      designNotes
+      designNotes,
+      usage
     );
     await db.fashionDesign.update({
       where: { id: designId },
@@ -134,7 +141,7 @@ export async function runDesignPipeline(designId: string): Promise<void> {
       ...urlsOf("border"),
     ];
 
-    const { flatFrontUrl, flatBackUrl } = await garmentConstructionAgent(generationPlan, referenceUrls);
+    const { flatFrontUrl, flatBackUrl } = await garmentConstructionAgent(generationPlan, referenceUrls, usage);
 
     await setStage(designId, "generating_flat_images");
 

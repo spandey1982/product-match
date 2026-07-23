@@ -1,5 +1,6 @@
 import type { AccessoryAnalysis, AccessoryItem } from "../types";
 import { callGeminiForJson, fetchImageAsPart } from "../gemini-client";
+import type { AiUsageContext } from "@/lib/ai-usage/record";
 
 function buildPrompt(assetType: string) {
   return `
@@ -18,7 +19,8 @@ Return ONLY valid JSON — no markdown, no explanation.
 }
 
 export async function accessoryUnderstandingAgent(
-  assets: Array<{ url: string; assetType: string; mimeType: string }>
+  assets: Array<{ url: string; assetType: string; mimeType: string }>,
+  usage?: AiUsageContext
 ): Promise<AccessoryAnalysis> {
   const accessoryTypes = new Set([
     "accessory", "border", "neck", "sleeve", "back",
@@ -32,7 +34,9 @@ export async function accessoryUnderstandingAgent(
     accessoryAssets.map(async (asset): Promise<AccessoryItem> => {
       const imagePart = await fetchImageAsPart(asset.url, asset.mimeType);
       if (!imagePart) throw new Error(`Cannot fetch accessory image: ${asset.url}`);
-      return callGeminiForJson<AccessoryItem>(buildPrompt(asset.assetType), [imagePart]);
+      return callGeminiForJson<AccessoryItem>(buildPrompt(asset.assetType), [imagePart], {
+        usage: usage ? { ...usage, operation: "accessory_understanding" } : undefined,
+      });
     })
   );
 

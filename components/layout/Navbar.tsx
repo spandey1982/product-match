@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Sparkles,
   Package,
@@ -13,6 +13,7 @@ import {
   Store,
   Heart,
   Settings,
+  CreditCard,
   ClipboardList,
 } from "lucide-react";
 import { HangerPlusIcon } from "@/components/icons/HangerPlusIcon";
@@ -21,6 +22,11 @@ import { BusinessTypeIcon } from "@/components/shared/BusinessTypeIcon";
 import { businessTypeLabel } from "@/lib/business-type";
 import { cn } from "@/lib/utils";
 import { useTrialRoom } from "@/components/trial-room/TrialRoomProvider";
+import {
+  useCreditBalance,
+  CreditBalanceRing,
+  CreditBalanceDropdown,
+} from "@/components/billing/CreditBalance";
 
 interface NavbarProps {
   user: { name: string; email: string; storeName?: string | null; businessType?: string };
@@ -43,23 +49,36 @@ export function Navbar({ user }: NavbarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
-  // Read live counts from session context — zero-cost when trial room is idle
   const { tryOns, wishlist } = useTrialRoom();
   const tryOnCount = tryOns.length;
   const wishlistCount = wishlist.length;
+
+  const creditBalance = useCreditBalance();
+
+  useEffect(() => {
+    if (!userMenuOpen) return;
+
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setUserMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [userMenuOpen]);
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
     router.push("/login");
   }
 
-  // Primary nav — kept lean so the bar doesn't overflow on narrow mobile.
-  // Autonomous Catalog and Design Studio moved into the account dropdown.
   const navItems = [
     { href: "/catalog", label: "Catalog", icon: Package, badge: 0 },
     { href: "/upload", label: "Add Product", icon: TagPlusIcon, badge: 0 },
-    { href: "/my-try-ons", label: "My Try-Ons", icon: HangerPlusIcon, badge: tryOnCount },
+    { href: "/trial-room", label: "Virtual Trial Room", icon: HangerPlusIcon, badge: tryOnCount },
     { href: "/wishlist", label: "Wishlist", icon: Heart, badge: wishlistCount },
   ];
 
@@ -107,99 +126,94 @@ export function Navbar({ user }: NavbarProps) {
           </Link>
 
           {/* User menu */}
-          <div className="relative">
+          <div className="relative" ref={menuRef}>
             <button
               onClick={() => setUserMenuOpen((v) => !v)}
               className="flex items-center gap-2 pl-2 pr-1 py-1 rounded-xl hover:bg-gray-50 transition-colors"
             >
-              <div className="h-7 w-7 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white text-xs font-bold">
-                {user.name[0].toUpperCase()}
-              </div>
+              <CreditBalanceRing balance={creditBalance}>
+                <div className="h-7 w-7 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white text-xs font-bold">
+                  {user.name[0].toUpperCase()}
+                </div>
+              </CreditBalanceRing>
               <ChevronDown className="h-3.5 w-3.5 text-gray-400" />
             </button>
 
             {userMenuOpen && (
-              <>
-                <div
-                  className="fixed inset-0 z-40"
-                  onClick={() => setUserMenuOpen(false)}
-                />
-                <div className="absolute right-0 top-full mt-1 w-56 bg-white border border-gray-100 rounded-2xl shadow-lg z-50 p-1 overflow-hidden">
-                  <div className="px-3 py-2 mb-1">
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-sm font-semibold text-gray-900 truncate">
-                        {user.name}
-                      </p>
-                      {user.businessType && (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded-full shrink-0">
-                          <BusinessTypeIcon type={user.businessType} className="h-2.5 w-2.5" />
-                          {businessTypeLabel(user.businessType)}
-                        </span>
-                      )}
-                    </div>
-                    {user.storeName && (
-                      <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
-                        <Store className="h-3 w-3" />
-                        {user.storeName}
-                      </p>
+              <div className="absolute right-0 top-full mt-1 w-56 bg-white border border-gray-100 rounded-2xl shadow-lg z-50 p-1 overflow-hidden">
+                <div className="px-3 py-2 mb-1">
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-sm font-semibold text-gray-900 truncate">
+                      {user.name}
+                    </p>
+                    {user.businessType && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-medium text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded-full shrink-0">
+                        <BusinessTypeIcon type={user.businessType} className="h-2.5 w-2.5" />
+                        {businessTypeLabel(user.businessType)}
+                      </span>
                     )}
-                    <p className="text-xs text-gray-400 truncate">{user.email}</p>
                   </div>
-                  <div className="h-px bg-gray-100 mx-1 my-1" />
-                  {/* Secondary tools — moved out of the main nav to keep it lean on mobile */}
-                  {user.businessType === "RENTAL_STORE" && (
-                    <Link
-                      href="/rental-orders"
-                      onClick={() => setUserMenuOpen(false)}
-                      className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-                    >
-                      <ClipboardList className="h-4 w-4 text-indigo-400" />
-                      Rental Orders
-                    </Link>
+                  {user.storeName && (
+                    <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
+                      <Store className="h-3 w-3" />
+                      {user.storeName}
+                    </p>
                   )}
-                  <Link
-                    href="/auto-catalog"
-                    onClick={() => setUserMenuOpen(false)}
-                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-                  >
-                    <Bot className="h-4 w-4 text-indigo-400" />
-                    Autonomous Catalog
-                  </Link>
-                  <Link
-                    href="/assets"
-                    onClick={() => setUserMenuOpen(false)}
-                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-                  >
-                    <FolderOpen className="h-4 w-4 text-indigo-400" />
-                    Assets
-                  </Link>
-                  {/* Trial Room shortcut */}
-                  <Link
-                    href="/trial-room"
-                    onClick={() => setUserMenuOpen(false)}
-                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-                  >
-                    <HangerPlusIcon className="h-4 w-4 text-indigo-400" />
-                    Virtual Trial Room
-                  </Link>
-                  <Link
-                    href="/settings"
-                    onClick={() => setUserMenuOpen(false)}
-                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-                  >
-                    <Settings className="h-4 w-4 text-gray-400" />
-                    Settings
-                  </Link>
-                  <div className="h-px bg-gray-100 mx-1 my-1" />
-                  <button
-                    onClick={handleLogout}
-                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-red-600 hover:bg-red-50 transition-colors"
-                  >
-                    <LogOut className="h-4 w-4" />
-                    Sign out
-                  </button>
+                  <p className="text-xs text-gray-400 truncate">{user.email}</p>
                 </div>
-              </>
+                <CreditBalanceDropdown balance={creditBalance} />
+                <div className="h-px bg-gray-100 mx-1 my-1" />
+                {user.businessType === "RENTAL_STORE" && (
+                  <Link
+                    href="/rental-orders"
+                    onClick={() => setUserMenuOpen(false)}
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    <ClipboardList className="h-4 w-4 text-indigo-400" />
+                    Rental Orders
+                  </Link>
+                )}
+                <Link
+                  href="/auto-catalog"
+                  onClick={() => setUserMenuOpen(false)}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  <Bot className="h-4 w-4 text-indigo-400" />
+                  Autonomous Catalog
+                </Link>
+                <Link
+                  href="/assets"
+                  onClick={() => setUserMenuOpen(false)}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  <FolderOpen className="h-4 w-4 text-indigo-400" />
+                  Assets
+                </Link>
+                <Link
+                  href="/billing"
+                  onClick={() => setUserMenuOpen(false)}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  <CreditCard className="h-4 w-4 text-indigo-400" />
+                  Billing
+                </Link>
+                <Link
+                  href="/settings"
+                  onClick={() => setUserMenuOpen(false)}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  <Settings className="h-4 w-4 text-gray-400" />
+                  Settings
+                </Link>
+                <div className="h-px bg-gray-100 mx-1 my-1" />
+                <button
+                  onClick={handleLogout}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-red-600 hover:bg-red-50 transition-colors"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Sign out
+                </button>
+              </div>
             )}
           </div>
         </div>

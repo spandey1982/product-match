@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { MyTryOnsView } from "@/app/(dashboard)/my-try-ons/MyTryOnsView";
+import { TrialRoomView } from "@/app/(dashboard)/trial-room/TrialRoomView";
 import { TrialRoomSetupModal } from "@/components/trial-room/TrialRoomSetupModal";
 
 /**
@@ -15,7 +15,7 @@ export function RentalMyTryOnsView() {
 
   return (
     <>
-      <MyTryOnsView
+      <TrialRoomView
         browseHref="/rent"
         onSetupTrialRoom={() => setSetupModalOpen(true)}
         wishlistHref={undefined}

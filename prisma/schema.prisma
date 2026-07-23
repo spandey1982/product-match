@@ -28,6 +28,7 @@ model User {
 
   products      Product[]
   modelProfiles ModelProfile[]
+  wallet        Wallet?
 
   @@map("users")
 }
@@ -356,8 +357,9 @@ model AiUsageEvent {
   status       String  @default("success") // "success" | "error"
   errorMessage String?
 
-  // Provider-specific extras (resolution, finishReason, sampleCount, dims …) as
-  // a JSON string via lib/serialize.ts. Keeps the table provider-agnostic.
+  retailPriceUsd   Float?
+  billingOperation String?
+
   metadata String?
 
   createdAt DateTime @default(now())
@@ -574,4 +576,74 @@ model Recommendation {
   @@unique([sourceProductId, targetProductId])
   @@index([sourceProductId, matchScore])
   @@map("recommendations")
+}
+
+// ── Credit Wallet ───────────────────────────────────────────────────────────
+
+model Wallet {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  balanceUsd      Float @default(0)
+  totalCreditsUsd Float @default(0)
+
+  status String @default("active")
+
+  lastExchangeRate Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transactions WalletTransaction[]
+
+  @@map("wallets")
+}
+
+model WalletTransaction {
+  id       String @id @default(cuid())
+  walletId String
+  wallet   Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  type      String
+  amountUsd Float
+  balanceAfter Float
+
+  description String
+
+  reservationId   String?
+  aiUsageEventId  String?
+  pricingConfigId String?
+
+  initiatedBy String
+
+  originalAmountInr Float?
+  exchangeRate      Float?
+
+  createdAt DateTime @default(now())
+
+  @@index([walletId, createdAt])
+  @@index([type, createdAt])
+  @@index([reservationId])
+  @@map("wallet_transactions")
+}
+
+model PricingConfig {
+  id   String @id @default(cuid())
+  name String
+
+  prices String
+
+  effectiveFrom  DateTime
+  effectiveUntil DateTime?
+
+  isActive Boolean @default(true)
+
+  createdBy String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([effectiveFrom, effectiveUntil])
+  @@map("pricing_configs")
 }

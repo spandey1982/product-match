@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Product, Recommendation } from "@/types";
@@ -62,6 +62,8 @@ interface Props {
   generatedImages?: GeneratedImage[];
   /** True when arriving right after requesting model-image generation. */
   initialGenerating?: boolean;
+  /** Generation failure code from upload flow (e.g. "credits", "error"). */
+  initialGenError?: string | null;
   /** True when arriving from /rent — shows rental info instead of the sale price. */
   rentalMode?: boolean;
 }
@@ -89,10 +91,16 @@ const GEN_PHASES = [
   "Polishing… hang tight",
 ];
 
+const GEN_FAIL_MESSAGES: Record<string, string> = {
+  credits: "Not enough credits to generate images. Add credits and retry from the ⋯ menu.",
+  error: "Image generation didn’t start. Please retry from the ⋯ menu.",
+};
+
 export function ProductDetailView({
   product,
   generatedImages = [],
   initialGenerating = false,
+  initialGenError = null,
   rentalMode = false,
 }: Props) {
   const router = useRouter();
@@ -155,7 +163,9 @@ export function ProductDetailView({
   const genCtx = useGenerationStatus();
   const genStatus = genCtx.getStatus(product.id);
   const generating = genStatus?.generating ?? false;
-  const [localGenError, setLocalGenError] = useState<string | null>(null);
+  const [localGenError, setLocalGenError] = useState<string | null>(
+    initialGenError ? (GEN_FAIL_MESSAGES[initialGenError] ?? GEN_FAIL_MESSAGES.error) : null,
+  );
   const genError = localGenError ?? (genStatus && !genStatus.generating ? genStatus.error : null);
 
   useEffect(() => {
@@ -165,15 +175,32 @@ export function ProductDetailView({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const prevProductId = useRef(product.id);
+  useEffect(() => {
+    if (prevProductId.current !== product.id) {
+      setLocalGenError(null);
+      prevProductId.current = product.id;
+    }
+  }, [product.id]);
+
+  useEffect(() => {
+    if (!localGenError) return;
+    const t = setTimeout(() => setLocalGenError(null), 8000);
+    return () => clearTimeout(t);
+  }, [localGenError]);
+
   useEffect(() => {
     function onComplete(
       data: { modelImageUrl: string | null; generatedImages: { url: string; view: string; objective?: string }[] } | null,
+      error: string | null,
     ) {
       if (data) {
         setGenImages(data.generatedImages ?? []);
         setModelUrl(data.modelImageUrl ?? null);
         setLocalGenError(null);
         router.refresh();
+      } else if (error) {
+        setLocalGenError(error);
       }
     }
     genCtx.subscribe(product.id, onComplete);
@@ -297,19 +324,26 @@ export function ProductDetailView({
   }
 
   async function handleGenerateModelImage() {
+    if (generating) return;
     genCtx.startTracking(product.id);
     setGenPhase(0);
     setLocalGenError(null);
     try {
-      // The route AWAITS generation server-side, so a successful response
-      // already carries the finished images — apply them immediately instead
-      // of waiting for the next poll tick.
       const res = await fetch(`/api/products/${product.id}/generate-model-image`, { method: "POST" });
       const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        message?: string;
         failureMessage?: string;
         product?: { modelImageUrl?: string | null };
         generatedImages?: GeneratedImage[];
       };
+
+      if (res.status === 402 || data.error === "insufficient_credits") {
+        genCtx.stopTracking(product.id);
+        setLocalGenError(data.message ?? "Not enough credits. Contact your admin to add more credits.");
+        return;
+      }
+
       if (!res.ok || data.failureMessage) {
         genCtx.stopTracking(product.id);
         setLocalGenError(data.failureMessage ?? "Image generation didn't complete. Please try again in a few minutes.");

@@ -58,6 +58,9 @@ export interface AiUsageInput {
 
   /** Provider-specific extras (resolution, finishReason, dims …). */
   metadata?: Record<string, unknown> | null;
+
+  retailPriceUsd?: number | null;
+  billingOperation?: string | null;
 }
 
 /** Truncate provider error text so a verbose body never bloats the row. */
@@ -106,8 +109,8 @@ export async function recordAiUsage(input: AiUsageInput): Promise<void> {
         productId: input.productId ?? null,
         status: input.status ?? "success",
         errorMessage: clampError(input.errorMessage),
-        // Arbitrary JSON object → plain JSON string (not a string-array field,
-        // so lib/serialize.ts does not apply).
+        retailPriceUsd: input.retailPriceUsd ?? null,
+        billingOperation: input.billingOperation ?? null,
         metadata: input.metadata ? JSON.stringify(input.metadata) : null,
       },
     });

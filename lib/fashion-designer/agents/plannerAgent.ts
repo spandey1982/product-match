@@ -1,6 +1,7 @@
 import type { FabricAnalysis, DesignUnderstanding, AccessoryAnalysis, GenerationPlan } from "../types";
 import { callGeminiForJson } from "../gemini-client";
 import { fieldOptionLabel, type GarmentTemplate } from "../templates";
+import type { AiUsageContext } from "@/lib/ai-usage/record";
 
 function buildBlueprintSection(
   template: GarmentTemplate | null,
@@ -28,7 +29,8 @@ export async function plannerAgent(
   garmentType: string,
   template: GarmentTemplate | null = null,
   structuredOptions: Record<string, string> = {},
-  designNotes = ""
+  designNotes = "",
+  usage?: AiUsageContext
 ): Promise<GenerationPlan> {
   const fabricContext = `
 FABRIC:
@@ -107,5 +109,8 @@ Return ONLY valid JSON — no markdown, no explanation:
 }
 `.trim();
 
-  return callGeminiForJson<GenerationPlan>(prompt, [], { temperature: 0.3 });
+  return callGeminiForJson<GenerationPlan>(prompt, [], {
+    temperature: 0.3,
+    usage: usage ? { ...usage, operation: "planning" } : undefined,
+  });
 }

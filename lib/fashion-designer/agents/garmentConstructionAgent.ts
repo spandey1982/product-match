@@ -1,5 +1,6 @@
 import { cloudinary } from "@/lib/cloudinary";
 import type { GenerationPlan } from "../types";
+import { recordAiUsage, type AiUsageContext } from "@/lib/ai-usage/record";
 
 const IMAGE_GEN_MODEL = "gemini-3.1-flash-image";
 
@@ -17,7 +18,8 @@ async function fetchImagePart(url: string): Promise<{ inline_data: { mime_type: 
 
 async function generateFlatImage(
   prompt: string,
-  imageParts: Array<{ inline_data: { mime_type: string; data: string } }>
+  imageParts: Array<{ inline_data: { mime_type: string; data: string } }>,
+  usage?: AiUsageContext & { operation?: string }
 ): Promise<string | null> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY not configured");
@@ -34,16 +36,27 @@ async function generateFlatImage(
   });
 
   for (let attempt = 1; attempt <= 3; attempt++) {
+    const t0 = Date.now();
     try {
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body,
       });
+      const durationMs = Date.now() - t0;
 
       if (!res.ok) {
         const errBody = await res.text().catch(() => "");
         console.error(`[fashion-designer] image gen failed: HTTP ${res.status}`, errBody.slice(0, 400));
+        if (usage) {
+          void recordAiUsage({
+            provider: "gemini", model: IMAGE_GEN_MODEL,
+            feature: usage.feature, operation: usage.operation ?? null,
+            imageInputs: imageParts.length, durationMs,
+            storeId: usage.storeId, userId: usage.userId,
+            status: "error", errorMessage: `HTTP ${res.status}`,
+          });
+        }
         if (attempt < 3) {
           await new Promise((r) => setTimeout(r, 1500 * attempt));
           continue;
@@ -55,16 +68,33 @@ async function generateFlatImage(
         candidates?: Array<{
           content?: { parts?: Array<{ inlineData?: { mimeType: string; data: string } }> };
         }>;
+        usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number };
       };
 
-      const parts = data.candidates?.[0]?.content?.parts ?? [];
-      const imagePart = parts.find((p) => p.inlineData?.data);
-      if (!imagePart?.inlineData) {
+      const respParts = data.candidates?.[0]?.content?.parts ?? [];
+      const imgPart = respParts.find((p) => p.inlineData?.data);
+
+      if (usage) {
+        void recordAiUsage({
+          provider: "gemini", model: IMAGE_GEN_MODEL,
+          feature: usage.feature, operation: usage.operation ?? null,
+          inputTokens: data.usageMetadata?.promptTokenCount ?? null,
+          outputTokens: data.usageMetadata?.candidatesTokenCount ?? null,
+          totalTokens: data.usageMetadata?.totalTokenCount ?? null,
+          imagesGenerated: imgPart ? 1 : 0,
+          imageInputs: imageParts.length, durationMs,
+          storeId: usage.storeId, userId: usage.userId,
+          status: imgPart ? "success" : "error",
+          errorMessage: imgPart ? null : "No image in response",
+        });
+      }
+
+      if (!imgPart?.inlineData) {
         console.error("[fashion-designer] no image in response", JSON.stringify(data).slice(0, 200));
         return null;
       }
 
-      const { mimeType, data: b64 } = imagePart.inlineData;
+      const { mimeType, data: b64 } = imgPart.inlineData;
       const result = await cloudinary.uploader.upload(`data:${mimeType};base64,${b64}`, {
         folder: "product-match/fashion-designer",
       });
@@ -80,17 +110,15 @@ async function generateFlatImage(
 export async function garmentConstructionAgent(
   plan: GenerationPlan,
   referenceUrls: string[] = [],
+  usage?: AiUsageContext
 ): Promise<{ flatFrontUrl: string | null; flatBackUrl: string | null }> {
-  // Fetch up to 4 reference images ONCE and reuse the same bytes for both the
-  // front and back calls — identical images either way, just without fetching
-  // and re-encoding each one twice.
   const imageParts = (
     await Promise.all(referenceUrls.slice(0, 4).map(fetchImagePart))
   ).filter((p): p is { inline_data: { mime_type: string; data: string } } => p !== null);
 
   const [flatFrontUrl, flatBackUrl] = await Promise.all([
-    generateFlatImage(plan.flatFrontPrompt, imageParts),
-    generateFlatImage(plan.flatBackPrompt, imageParts),
+    generateFlatImage(plan.flatFrontPrompt, imageParts, usage ? { ...usage, operation: "flat_front" } : undefined),
+    generateFlatImage(plan.flatBackPrompt, imageParts, usage ? { ...usage, operation: "flat_back" } : undefined),
   ]);
 
   return { flatFrontUrl, flatBackUrl };
