@@ -525,6 +525,7 @@ model FashionDesign {
 
   qualityScore     Int?
   failureReason    String?
+  failedAtStage    String?
   cancelRequested  Boolean @default(false)
   catalogProductId String?
 

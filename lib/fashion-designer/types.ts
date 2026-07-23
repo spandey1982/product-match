@@ -87,6 +87,7 @@ export interface FashionDesignRecord {
   flatBackUrl: string | null;
   qualityScore: number | null;
   failureReason: string | null;
+  failedAtStage: string | null;
   createdAt: string;
   updatedAt: string;
   assets: DesignAsset[];

@@ -5,7 +5,7 @@ import { TRYON_ALLOWED_MIME_TYPES, type TryOnMimeType } from "@/lib/tryon";
 import { isVertexTryOnEnabled, getVertexConfig } from "@/lib/tryon-vertex";
 import { getTryOnProvider } from "@/lib/providers";
 import { normalizeTryOnUrl } from "@/lib/image-normalize";
-import { withCreditCheck, estimateTryOnOps } from "@/lib/billing/credit-check";
+import { chargeForCall } from "@/lib/billing/charge";
 
 // ─── In-memory rate limiter ───────────────────────────────────────────────────
 // Intentionally separate from the Gemini try-on limiter so the two providers
@@ -149,33 +149,28 @@ export async function POST(
       );
     }
 
-    // ── Credit check + generate try-on via Vertex AI ────────────────────
-    const creditResult = await withCreditCheck(
-      session.id,
-      estimateTryOnOps(),
-      async () => {
-        return getTryOnProvider("vertex").generateTryOn({
-          productImageUrl: product.imageUrl!,
-          userPhotoBuffer: buffer,
-          userPhotoMimeType: actualMime as TryOnMimeType,
-          productCategory: product.category,
-          productColor: product.color,
-          productId: product.id,
-          productTitle: product.title,
-          userId: session.id,
-        });
-      }
-    );
-
-    if ("insufficientCredits" in creditResult) {
+    // ── Per-call billing + generate try-on via Vertex AI ──────────────
+    const charge = await chargeForCall(session.id, "tryon_1k");
+    if ("insufficientCredits" in charge) {
       return NextResponse.json({
         error: "insufficient_credits",
         message: "Not enough credits to try on this product. Contact your admin to add more credits.",
-        remainingPercentage: creditResult.remainingPercentage,
+        remainingPercentage: charge.remainingPercentage,
       }, { status: 402 });
     }
 
-    return NextResponse.json({ tryOnUrl: normalizeTryOnUrl(creditResult.result.url), provider: "vertex" });
+    const result = await getTryOnProvider("vertex").generateTryOn({
+      productImageUrl: product.imageUrl!,
+      userPhotoBuffer: buffer,
+      userPhotoMimeType: actualMime as TryOnMimeType,
+      productCategory: product.category,
+      productColor: product.color,
+      productId: product.id,
+      productTitle: product.title,
+      userId: session.id,
+    });
+
+    return NextResponse.json({ tryOnUrl: normalizeTryOnUrl(result.url), provider: "vertex" });
   } catch (err) {
     const message = (err as Error).message ?? "";
 

@@ -48,6 +48,7 @@ import { colorSwatchHex, colorDescriptor, pairingSuggestions, pairingNote } from
 import { materialDescriptor, occasionDescriptor, categoryDescriptor, styleValue } from "@/lib/product-detail/descriptors";
 import { cn } from "@/lib/utils";
 import { useGenerationStatus } from "@/components/generation/GenerationStatusProvider";
+import { GenerationSettingsModal, useGenerationSettingsModal, type GenerationSettings } from "@/components/generation/GenerationSettingsModal";
 import { getMockRentalInfo } from "@/lib/rental/mock-data";
 import { RentalInfoPanel } from "@/components/rental/RentalInfoPanel";
 
@@ -66,6 +67,8 @@ interface Props {
   initialGenError?: string | null;
   /** True when arriving from /rent — shows rental info instead of the sale price. */
   rentalMode?: boolean;
+  /** Whether the product has a cached GarmentIntelligence row. */
+  hasGI?: boolean;
 }
 
 type RecommendationWithProduct = Recommendation & { product: Product };
@@ -102,6 +105,7 @@ export function ProductDetailView({
   initialGenerating = false,
   initialGenError = null,
   rentalMode = false,
+  hasGI = false,
 }: Props) {
   const router = useRouter();
   const [recommendations, setRecommendations] = useState<RecommendationWithProduct[]>([]);
@@ -110,6 +114,7 @@ export function ProductDetailView({
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const genSettingsModal = useGenerationSettingsModal();
   const [wishlisted, setWishlisted] = useState(false);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -168,6 +173,11 @@ export function ProductDetailView({
   );
   const genError = localGenError ?? (genStatus && !genStatus.generating ? genStatus.error : null);
 
+  function dismissGenError() {
+    setLocalGenError(null);
+    genCtx.clearError(product.id);
+  }
+
   useEffect(() => {
     if (initialGenerating && !hasModelImage) {
       genCtx.startTracking(product.id);
@@ -184,10 +194,11 @@ export function ProductDetailView({
   }, [product.id]);
 
   useEffect(() => {
-    if (!localGenError) return;
-    const t = setTimeout(() => setLocalGenError(null), 8000);
+    if (!genError) return;
+    const t = setTimeout(() => dismissGenError(), 8000);
     return () => clearTimeout(t);
-  }, [localGenError]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [genError]);
 
   useEffect(() => {
     function onComplete(
@@ -323,13 +334,18 @@ export function ProductDetailView({
     setEditing(false);
   }
 
-  async function handleGenerateModelImage() {
+  async function handleGenerateModelImage(settings?: GenerationSettings) {
     if (generating) return;
+    genSettingsModal.closeModal();
     genCtx.startTracking(product.id);
     setGenPhase(0);
     setLocalGenError(null);
     try {
-      const res = await fetch(`/api/products/${product.id}/generate-model-image`, { method: "POST" });
+      const body = settings ? JSON.stringify(settings) : undefined;
+      const res = await fetch(`/api/products/${product.id}/generate-model-image`, {
+        method: "POST",
+        ...(body ? { headers: { "Content-Type": "application/json" }, body } : {}),
+      });
       const data = (await res.json().catch(() => ({}))) as {
         error?: string;
         message?: string;
@@ -339,14 +355,16 @@ export function ProductDetailView({
       };
 
       if (res.status === 402 || data.error === "insufficient_credits") {
-        genCtx.stopTracking(product.id);
-        setLocalGenError(data.message ?? "Not enough credits. Contact your admin to add more credits.");
+        const msg = data.message ?? "Not enough credits. Contact your admin to add more credits.";
+        genCtx.failGeneration(product.id, msg);
+        setLocalGenError(msg);
         return;
       }
 
       if (!res.ok || data.failureMessage) {
-        genCtx.stopTracking(product.id);
-        setLocalGenError(data.failureMessage ?? "Image generation didn't complete. Please try again in a few minutes.");
+        const msg = data.failureMessage ?? "Image generation didn't complete. Please try again in a few minutes.";
+        genCtx.failGeneration(product.id, msg);
+        setLocalGenError(msg);
         return;
       }
       if (data.generatedImages) setGenImages(data.generatedImages);
@@ -355,8 +373,9 @@ export function ProductDetailView({
       setLocalGenError(null);
       router.refresh();
     } catch {
-      genCtx.stopTracking(product.id);
-      setLocalGenError("Couldn't reach the server. Please check your connection and try again.");
+      const msg = "Couldn't reach the server. Please check your connection and try again.";
+      genCtx.failGeneration(product.id, msg);
+      setLocalGenError(msg);
     }
   }
 
@@ -453,7 +472,7 @@ export function ProductDetailView({
                   <Pencil className="h-4 w-4" strokeWidth={1.75} />
                   Edit Details
                 </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => handleGenerateModelImage()} disabled={generating}>
+                <DropdownMenuItem onSelect={() => genSettingsModal.openModal()} disabled={generating}>
                   {generating ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
@@ -513,12 +532,12 @@ export function ProductDetailView({
                 </div>
               )}
               {!generating && genError && (
-                <div className="absolute inset-x-0 top-0 z-30 flex items-start justify-between gap-2 bg-amber-500/95 backdrop-blur-sm text-white text-xs font-medium py-2 px-3">
+                <div className="absolute inset-x-0 top-0 z-30 flex items-start justify-between gap-2 bg-red-600/95 backdrop-blur-sm text-white text-xs font-medium py-2 px-3">
                   <span>{genError}</span>
                   <button
                     type="button"
                     aria-label="Dismiss"
-                    onClick={() => setLocalGenError(null)}
+                    onClick={(e) => { e.stopPropagation(); dismissGenError(); }}
                     className="shrink-0 font-bold hover:opacity-70"
                   >
                     ✕
@@ -903,6 +922,20 @@ export function ProductDetailView({
       <div className="md:hidden fixed right-6 z-30 [bottom:max(1.5rem,calc(env(safe-area-inset-bottom)+0.75rem))]">
         <TryOnQueueButton product={product} iconOnly />
       </div>
+
+      <GenerationSettingsModal
+        open={genSettingsModal.open}
+        onOpenChange={genSettingsModal.setOpen}
+        productTitle={product.title}
+        productColor={product.color}
+        productCategory={product.category}
+        hasDetailNotes={!!product.detailNotes}
+        hasGI={hasGI}
+        onGenerate={handleGenerateModelImage}
+        generating={generating}
+        settingsData={genSettingsModal.data}
+        settingsLoading={genSettingsModal.loading}
+      />
     </div>
   );
 }

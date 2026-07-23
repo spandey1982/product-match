@@ -12,8 +12,6 @@ import { isModelType } from "@/lib/model-gen/reference-models";
 import { isGenerationQuality } from "@/lib/model-gen/quality";
 import { isBackdropSection } from "@/lib/model-gen/scenes/selection";
 import { categorizeGenerationError, genericFailureMessage } from "@/lib/model-gen/failure-message";
-import { getAiGenSettings } from "@/lib/model-gen/settings";
-import { withCreditCheck, estimateCatalogueOps, estimateQuickListingOps } from "@/lib/billing/credit-check";
 import { recordAiUsage } from "@/lib/ai-usage/record";
 
 export async function POST(
@@ -60,52 +58,25 @@ export async function POST(
         ? signatureProfileIdRaw
         : undefined;
 
-    const [giRow, productForBilling, userSettings] = await Promise.all([
-      db.garmentIntelligence.findUnique({
-        where: { productId: id },
-        select: { id: true },
-      }),
-      db.product.findUnique({
-        where: { id },
-        select: { backImageUrl: true, partImages: true },
-      }),
-      getAiGenSettings(session.id),
-    ]);
-    const hasGI = !!giRow;
-    const hasBackImage = !!(productForBilling?.backImageUrl || productForBilling?.partImages);
+    // The engine handles per-call billing internally (chargeForCall at each
+    // step boundary). No upfront estimation or reservation needed here.
+    let failure: "storage_unreachable" | "generation_failed" | "insufficient_credits" | undefined;
+    if (isAiGenObjectivesEnabled()) {
+      const result = await generateModelImages({
+        productId: id,
+        userId: session.id,
+        objective: isGenerationObjective(objective) ? objective : undefined,
+        modelType: isModelType(modelType) ? modelType : undefined,
+        quality,
+        backdropSection,
+        signatureProfileId,
+      });
+      failure = result.failure;
+    } else {
+      await generateModelImage(id, quality);
+    }
 
-    const effectiveQuality = quality ?? userSettings.quality;
-
-    const isCatalogue = isAiGenObjectivesEnabled() &&
-      (!objective || objective === "catalogue");
-    const billingOps = isCatalogue
-      ? estimateCatalogueOps(hasGI, effectiveQuality, hasBackImage)
-      : estimateQuickListingOps(effectiveQuality);
-
-    const creditResult = await withCreditCheck(
-      session.id,
-      billingOps,
-      async () => {
-        let failure: "storage_unreachable" | "generation_failed" | undefined;
-        if (isAiGenObjectivesEnabled()) {
-          const result = await generateModelImages({
-            productId: id,
-            userId: session.id,
-            objective: isGenerationObjective(objective) ? objective : undefined,
-            modelType: isModelType(modelType) ? modelType : undefined,
-            quality,
-            backdropSection,
-            signatureProfileId,
-          });
-          failure = result.failure;
-        } else {
-          await generateModelImage(id, quality);
-        }
-        return failure;
-      }
-    );
-
-    if ("insufficientCredits" in creditResult) {
+    if (failure === "insufficient_credits") {
       void recordAiUsage({
         provider: "billing",
         model: "credit-check",
@@ -121,13 +92,8 @@ export async function POST(
       return NextResponse.json({
         error: "insufficient_credits",
         message: "Not enough credits to complete this operation. Contact your admin to add more credits.",
-        required: creditResult.required,
-        available: creditResult.available,
-        remainingPercentage: creditResult.remainingPercentage,
       }, { status: 402 });
     }
-
-    const failure = creditResult.result;
 
     // Use raw query so the cached Prisma client doesn't strip new columns
     const rows = await db.$queryRaw<Record<string, unknown>[]>`

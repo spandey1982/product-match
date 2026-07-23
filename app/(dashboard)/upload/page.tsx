@@ -13,8 +13,11 @@ import { type BackdropOption, type BackdropValue } from "@/components/product/Ba
 import SceneModeSelect, { type BackdropSection } from "@/components/product/SceneModeSelect";
 import type { ScenicValue } from "@/components/product/ScenicCollectionSelect";
 import type { SceneOptionView } from "@/lib/model-gen/scenes/library";
-import { listQualityProfiles, DEFAULT_GENERATION_QUALITY, type GenerationQuality } from "@/lib/model-gen/quality";
+import { DEFAULT_GENERATION_QUALITY, type GenerationQuality } from "@/lib/model-gen/quality";
 import { useGenerationStatus } from "@/components/generation/GenerationStatusProvider";
+import { ObjectiveChooser } from "@/components/generation/ObjectiveChooser";
+import { QualityChooser } from "@/components/generation/QualityChooser";
+import { CastingChooser } from "@/components/generation/CastingChooser";
 
 // Provider-gated helpers. Provider is stored on the retailer and drives every
 // downstream capability (extras, casting, scene, quality) — hide UI that
@@ -103,16 +106,11 @@ const CATALOGUE_STYLES: {
   },
 ];
 
-// Concise, retailer-facing objective labels/descriptions shown side by side.
-const OBJECTIVE_META: Record<string, { label: string; desc: string }> = {
-  quick_listing: { label: "Quick Listing", desc: "One fast on-model front shot." },
-  catalogue: { label: "Catalogue & Social", desc: "Full multi-view set for catalog & social." },
-};
 
 export default function UploadPage() {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
-  const { startTracking, stopTracking } = useGenerationStatus();
+  const { startTracking, stopTracking, failGeneration } = useGenerationStatus();
 
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -343,6 +341,10 @@ export default function UploadPage() {
       const res = await fetch("/api/ai/extract-product", { method: "POST", body: fd });
       const data = await res.json();
 
+      if (res.status === 402 || data.error === "insufficient_credits") {
+        setExtractError(data.message ?? "Not enough credits. Fill the form manually or add credits.");
+        return;
+      }
       if (!res.ok) {
         setExtractError(data.error || "AI extraction failed. Fill the form manually.");
         return;
@@ -556,29 +558,37 @@ export default function UploadPage() {
                   : {}),
               })
             : undefined;
+        const productId = data.product.id;
         let genFailCode: string | null = null;
-        const genPromise = fetch(`/api/products/${data.product.id}/generate-model-image`, {
+        const genPromise = fetch(`/api/products/${productId}/generate-model-image`, {
           method: "POST",
           ...(genBody
             ? { headers: { "Content-Type": "application/json" }, body: genBody }
             : {}),
         }).then(async (r) => {
           if (!r.ok) {
-            const body = await r.json().catch(() => ({})) as { error?: string };
+            const body = await r.json().catch(() => ({})) as { error?: string; message?: string };
             genFailCode = body.error === "insufficient_credits" ? "credits" : "error";
+            const msg = body.error === "insufficient_credits"
+              ? (body.message ?? "Not enough credits. Contact your admin to add more credits.")
+              : "Image generation failed. Try again from the product page.";
+            failGeneration(productId, msg);
+          } else {
+            stopTracking(productId);
           }
-        }).catch(() => { genFailCode = "error"; });
-        startTracking(data.product.id);
+        }).catch(() => {
+          genFailCode = "error";
+          failGeneration(productId, "Image generation failed. Try again from the product page.");
+        });
+        startTracking(productId);
 
         await Promise.race([
           genPromise,
           new Promise((r) => setTimeout(r, 1000)),
         ]);
 
-        if (genFailCode) stopTracking(data.product.id);
-
         const q = genFailCode ? `?genFailed=${genFailCode}` : "?generating=1";
-        router.push(`/products/${data.product.id}${q}`);
+        router.push(`/products/${productId}${q}`);
       } else {
         const dest = `/products/${data.product.id}`;
         setTimeout(() => router.push(dest), 1200);
@@ -881,72 +891,22 @@ export default function UploadPage() {
           {generateModel && aiGen?.enabled && (
             <div className="mt-4 pt-4 border-t border-gray-100 space-y-4">
               {/* Objective — concise cards, side by side */}
-              <div className="grid grid-cols-2 gap-2">
-                {aiGen.objectives.map((o) => {
-                  const active = objective === o.id;
-                  const meta = OBJECTIVE_META[o.id];
-                  return (
-                    <button
-                      key={o.id}
-                      type="button"
-                      onClick={() => setObjective(o.id)}
-                      aria-pressed={active}
-                      className={`text-left rounded-2xl border p-3 transition-all ${
-                        active
-                          ? "border-indigo-300 bg-gradient-to-br from-indigo-50 to-purple-50 ring-1 ring-purple-200"
-                          : "border-gray-100 bg-white hover:border-gray-200"
-                      }`}
-                    >
-                      <span className="text-sm font-semibold text-gray-900">{meta?.label ?? o.label}</span>
-                      <span className="block text-xs text-gray-500 mt-0.5 leading-snug">
-                        {meta?.desc ?? o.description}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
+              <ObjectiveChooser
+                objectives={aiGen.objectives}
+                value={objective}
+                onChange={setObjective}
+              />
 
               {/* AI Casting — Signature Model chooser. Only when the flag is
                   on AND the retailer picked Premium (Gemini). Vertex VTO has
                   no way to consume a face + prompt brief, so exposing the
                   chooser on that path would mislead. */}
               {aiGen.castingEnabled && isGeminiPath(catalogueProvider) && (
-                <div>
-                  <p className="text-xs font-medium text-gray-500 mb-2">Cast the model</p>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setCastingSelection("auto")}
-                      className={`rounded-full border px-3.5 py-1.5 text-xs font-medium transition-all ${
-                        castingSelection === "auto"
-                          ? "border-indigo-300 bg-indigo-50 text-indigo-700"
-                          : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
-                      }`}
-                    >
-                      AI Casting
-                    </button>
-                    {(aiGen.signatureModels ?? []).map((sm) => (
-                      <button
-                        key={sm.id}
-                        type="button"
-                        onClick={() => setCastingSelection(sm.id)}
-                        className={`rounded-full border px-3.5 py-1.5 text-xs font-medium transition-all ${
-                          castingSelection === sm.id
-                            ? "border-indigo-300 bg-indigo-50 text-indigo-700"
-                            : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
-                        }`}
-                      >
-                        {sm.name}
-                      </button>
-                    ))}
-                  </div>
-                  <Link
-                    href="/assets/model-studio"
-                    className="inline-block text-xs text-indigo-600 hover:text-indigo-800 mt-2"
-                  >
-                    Manage in Model Studio →
-                  </Link>
-                </div>
+                <CastingChooser
+                  signatureModels={aiGen.signatureModels ?? []}
+                  value={castingSelection}
+                  onChange={setCastingSelection}
+                />
               )}
 
               {/* Catalogue style moved to a top-level card above — retailer
@@ -994,36 +954,13 @@ export default function UploadPage() {
                   on that path. Now a STICKY per-retailer setting: the last
                   value is remembered across products and persisted on change. */}
               {isGeminiPath(catalogueProvider) && (
-                <div>
-                  <p className="text-xs font-medium text-gray-500 mb-2">Quality</p>
-                  <div className="flex flex-wrap gap-2">
-                    {listQualityProfiles().map((q) => {
-                      const active = quality === q.id;
-                      return (
-                        <button
-                          key={q.id}
-                          type="button"
-                          onClick={() => {
-                            setQuality(q.id);
-                            patchBranding({ quality: q.id });
-                          }}
-                          aria-pressed={active}
-                          title={q.description}
-                          className={`rounded-full border px-4 py-1.5 text-sm font-medium transition-all ${
-                            active
-                              ? "border-indigo-300 bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200"
-                              : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
-                          }`}
-                        >
-                          {q.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <p className="text-[11px] text-gray-400 mt-1.5">
-                    {listQualityProfiles().find((q) => q.id === quality)?.description}
-                  </p>
-                </div>
+                <QualityChooser
+                  value={quality}
+                  onChange={(q) => {
+                    setQuality(q);
+                    patchBranding({ quality: q });
+                  }}
+                />
               )}
 
               {/* Model selection is automatic for now (derived from the product's
