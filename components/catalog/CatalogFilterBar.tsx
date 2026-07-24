@@ -1,8 +1,10 @@
 "use client";
-import { Search, SlidersHorizontal, X } from "lucide-react";
+import { useState } from "react";
+import { Search, SlidersHorizontal, X, IndianRupee } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { formatCurrency } from "@/lib/utils";
 
 interface CatalogFilterBarProps {
   categories: string[];
@@ -22,6 +24,12 @@ interface CatalogFilterBarProps {
   onClearColor?: () => void;
   selectedGender?: string;
   onClearGender?: () => void;
+
+  /** Price range filter — products between min and max are shown in the primary window. */
+  priceMin?: number;
+  onPriceMinChange?: (value: number) => void;
+  priceMax?: number;
+  onPriceMaxChange?: (value: number) => void;
 
   filtersOpen: boolean;
   onToggleFilters: () => void;
@@ -52,6 +60,10 @@ export function CatalogFilterBar({
   onClearColor,
   selectedGender,
   onClearGender,
+  priceMin,
+  onPriceMinChange,
+  priceMax,
+  onPriceMaxChange,
   filtersOpen,
   onToggleFilters,
   hasFilters,
@@ -59,6 +71,27 @@ export function CatalogFilterBar({
   searchBarExtra,
   belowSearchBar,
 }: CatalogFilterBarProps) {
+  const priceMinStr = priceMin && priceMin > 0 ? String(priceMin) : "";
+  const priceMaxStr = priceMax && priceMax > 0 ? String(priceMax) : "";
+  const [localMin, setLocalMin] = useState(priceMinStr);
+  const [localMax, setLocalMax] = useState(priceMaxStr);
+
+  if (localMin !== priceMinStr && document.activeElement?.getAttribute("data-price") !== "min") {
+    setLocalMin(priceMinStr);
+  }
+  if (localMax !== priceMaxStr && document.activeElement?.getAttribute("data-price") !== "max") {
+    setLocalMax(priceMaxStr);
+  }
+
+  function commitPrice() {
+    const min = parseInt(localMin) || 0;
+    const max = parseInt(localMax) || 0;
+    if (min !== (priceMin ?? 0)) onPriceMinChange?.(min);
+    if (max !== (priceMax ?? 0)) onPriceMaxChange?.(max);
+  }
+
+  const hasPriceFilter = (priceMin ?? 0) > 0 || (priceMax ?? 0) > 0;
+
   return (
     <div className="flex flex-col gap-4 mb-6">
       <div className="flex gap-2">
@@ -113,30 +146,77 @@ export function CatalogFilterBar({
 
       {/* Expanded filters */}
       {filtersOpen && (
-        <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
-          <div className="flex items-center gap-2 mb-3">
-            <span className="text-sm font-medium text-gray-700">Occasion</span>
-            {selectedOccasion && (
-              <button onClick={() => onOccasionChange("")} className="text-xs text-gray-400 hover:text-gray-600">
-                Clear
-              </button>
-            )}
+        <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-4">
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-sm font-medium text-gray-700">Occasion</span>
+              {selectedOccasion && (
+                <button onClick={() => onOccasionChange("")} className="text-xs text-gray-400 hover:text-gray-600">
+                  Clear
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {occasions.map((occ) => (
+                <button
+                  key={occ}
+                  onClick={() => onOccasionChange(occ === selectedOccasion ? "" : occ)}
+                  className={`px-3 py-1 rounded-full text-sm border transition-all ${
+                    selectedOccasion === occ
+                      ? "bg-indigo-600 text-white border-indigo-600"
+                      : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                  }`}
+                >
+                  {occ}
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {occasions.map((occ) => (
-              <button
-                key={occ}
-                onClick={() => onOccasionChange(occ === selectedOccasion ? "" : occ)}
-                className={`px-3 py-1 rounded-full text-sm border transition-all ${
-                  selectedOccasion === occ
-                    ? "bg-indigo-600 text-white border-indigo-600"
-                    : "border-gray-200 text-gray-600 hover:bg-gray-50"
-                }`}
-              >
-                {occ}
-              </button>
-            ))}
-          </div>
+
+          {onPriceMinChange && (
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <IndianRupee className="h-3.5 w-3.5 text-gray-500" />
+                <span className="text-sm font-medium text-gray-700">Price Range</span>
+                {hasPriceFilter && (
+                  <button onClick={() => { onPriceMinChange(0); onPriceMaxChange?.(0); }} className="text-xs text-gray-400 hover:text-gray-600">
+                    Clear
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">&#8377;</span>
+                  <input
+                    type="number"
+                    data-price="min"
+                    placeholder="Min"
+                    value={localMin}
+                    onChange={(e) => setLocalMin(e.target.value)}
+                    onBlur={commitPrice}
+                    onKeyDown={(e) => { if (e.key === "Enter") commitPrice(); }}
+                    min={0}
+                    className="w-28 pl-7 pr-3 py-1.5 rounded-xl border border-gray-200 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:border-indigo-300 focus:ring-1 focus:ring-indigo-200 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                  />
+                </div>
+                <span className="text-xs text-gray-400">to</span>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">&#8377;</span>
+                  <input
+                    type="number"
+                    data-price="max"
+                    placeholder="Max"
+                    value={localMax}
+                    onChange={(e) => setLocalMax(e.target.value)}
+                    onBlur={commitPrice}
+                    onKeyDown={(e) => { if (e.key === "Enter") commitPrice(); }}
+                    min={0}
+                    className="w-28 pl-7 pr-3 py-1.5 rounded-xl border border-gray-200 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:border-indigo-300 focus:ring-1 focus:ring-indigo-200 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -166,6 +246,16 @@ export function CatalogFilterBar({
             <Badge variant="outline" className="gap-1 capitalize">
               {selectedGender.toLowerCase()}
               <button onClick={onClearGender}><X className="h-3 w-3" /></button>
+            </Badge>
+          )}
+          {hasPriceFilter && onPriceMinChange && (
+            <Badge variant="purple" className="gap-1">
+              {(priceMin ?? 0) > 0 && (priceMax ?? 0) > 0
+                ? `${formatCurrency(priceMin!)} – ${formatCurrency(priceMax!)}`
+                : (priceMin ?? 0) > 0
+                ? `${formatCurrency(priceMin!)}+`
+                : `Up to ${formatCurrency(priceMax!)}`}
+              <button onClick={() => { onPriceMinChange(0); onPriceMaxChange?.(0); }}><X className="h-3 w-3" /></button>
             </Badge>
           )}
           {searchQuery && (
