@@ -57,6 +57,8 @@ export async function POST(
       typeof signatureProfileIdRaw === "string" && signatureProfileIdRaw
         ? signatureProfileIdRaw
         : undefined;
+    const useCastingRaw = (body as { useCasting?: unknown }).useCasting;
+    const useCasting = typeof useCastingRaw === "boolean" ? useCastingRaw : undefined;
 
     // The engine handles per-call billing internally (chargeForCall at each
     // step boundary). No upfront estimation or reservation needed here.
@@ -70,6 +72,7 @@ export async function POST(
         quality,
         backdropSection,
         signatureProfileId,
+        useCasting,
       });
       failure = result.failure;
     } else {

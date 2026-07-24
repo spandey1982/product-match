@@ -93,6 +93,12 @@ export interface GenerateModelImagesInput {
    * transparently degrades to auto-pick.
    */
   signatureProfileId?: string;
+  /**
+   * When false, skip AI Casting entirely and use the legacy reference-model
+   * path (retailer picked "Classic" in the UI). Default true — Casting runs
+   * if the feature flag is on.
+   */
+  useCasting?: boolean;
 }
 
 export interface GenerateModelImagesResult {
@@ -219,7 +225,7 @@ export async function generateModelImages(
   // the resulting face/persona brief anyway, and honoring a stale client
   // request would let casting metadata slip through the API boundary.
   let casting: CastingResult | null = null;
-  if (isAiCastingEnabled() && catalogueProvider === "gemini") {
+  if (isAiCastingEnabled() && catalogueProvider === "gemini" && input.useCasting !== false) {
     const profileRow = input.signatureProfileId
       ? await getModelProfile(input.signatureProfileId, input.userId)
       : null;

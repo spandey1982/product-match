@@ -34,7 +34,9 @@ export default async function PricingPage() {
     take: 20,
   });
 
-  const parsed = configs.map((c) => ({
+  type ConfigRow = (typeof configs)[number];
+  type ParsedConfig = ConfigRow & { prices: Record<string, number> };
+  const parsed: ParsedConfig[] = configs.map((c: ConfigRow) => ({
     ...c,
     prices: JSON.parse(c.prices) as Record<string, number>,
   }));

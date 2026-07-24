@@ -22,6 +22,7 @@ export interface GenerationSettings {
   quality: GenerationQuality;
   backdropSection?: "studio" | "scenic";
   signatureProfileId?: string;
+  useCasting?: boolean;
 }
 
 interface ObjectiveOption {
@@ -143,6 +144,7 @@ export function GenerationSettingsModal({
   const [objective, setObjective] = useState("catalogue");
   const [quality, setQuality] = useState<GenerationQuality>(DEFAULT_GENERATION_QUALITY);
   const [backdropSection, setBackdropSection] = useState<"studio" | "scenic">("studio");
+  const [modelMode, setModelMode] = useState<"classic" | "personalised">("personalised");
   const [castingSelection, setCastingSelection] = useState("auto");
 
   const resetToDefaults = useCallback((d: SettingsData) => {
@@ -160,7 +162,8 @@ export function GenerationSettingsModal({
 
   const isGemini = data?.settings.catalogueProvider === "gemini";
   const isCatalogue = objective === "catalogue";
-  const showCasting = data?.castingEnabled && isGemini && isCatalogue;
+  const showModelMode = data?.castingEnabled && isGemini;
+  const showCasting = showModelMode && modelMode === "personalised" && isCatalogue;
   const showScene = isCatalogue && isGemini && data?.scenicEnabled;
   const showQuality = isGemini;
   const hasCachedIntelligence = hasDetailNotes || hasGI;
@@ -169,6 +172,11 @@ export function GenerationSettingsModal({
     value: o.id,
     label: o.label,
   }));
+
+  const modelModeOptions = [
+    { value: "personalised" as const, label: "Personalised" },
+    { value: "classic" as const, label: "Classic" },
+  ];
 
   const castingOptions = [
     { value: "auto", label: "Auto" },
@@ -195,6 +203,7 @@ export function GenerationSettingsModal({
       backdropSection: showScene ? backdropSection : undefined,
       signatureProfileId:
         showCasting && castingSelection !== "auto" ? castingSelection : undefined,
+      useCasting: modelMode === "personalised",
     };
     onGenerate(settings);
   }
@@ -238,6 +247,12 @@ export function GenerationSettingsModal({
             {showScene && (
               <SettingsRow label="Scene">
                 <CompactSelect value={backdropSection} onChange={setBackdropSection} options={sceneOptions} />
+              </SettingsRow>
+            )}
+
+            {showModelMode && (
+              <SettingsRow label="Model style">
+                <CompactSelect value={modelMode} onChange={setModelMode} options={modelModeOptions} />
               </SettingsRow>
             )}
 
