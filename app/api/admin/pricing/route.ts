@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const config = await db.$transaction(async (tx: typeof db) => {
+    const config = await db.$transaction(async (tx) => {
       await tx.pricingConfig.updateMany({
         where: { isActive: true },
         data: { isActive: false },
