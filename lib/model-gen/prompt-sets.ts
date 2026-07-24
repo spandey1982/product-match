@@ -17,6 +17,8 @@ export interface PromptView {
   modifier: string;
 }
 
+export const CROSS_VIEW_LABEL = "__cross_view_ref__";
+
 // Saree drape is deterministic and IDENTICAL in intent across front and back
 // (only the camera side differs) — retailer testing (2026-07-15) found the
 // model otherwise improvised the pallu differently per view (front bunched/
@@ -267,6 +269,7 @@ function anchorClause(studioAnchor?: string | null): string {
 // duplicated as a plain string (not an import) so this file stays a leaf
 // module the casting layer never depends on.
 const IDENTITY_FACE_LABEL_INTERNAL = "__identity_face__";
+const CROSS_VIEW_LABEL_INTERNAL = "__cross_view_ref__";
 
 function extraImageClause(
   refs: Array<{ label: string; placement: string }> | undefined,
@@ -276,6 +279,9 @@ function extraImageClause(
   const lines = refs.map((r, i) => {
     if (r.label === IDENTITY_FACE_LABEL_INTERNAL) {
       return `Image ${startIndex + i} is the model's face identity reference — reproduce this exact face on the generated model; it is the person, NOT a garment part.`;
+    }
+    if (r.label === CROSS_VIEW_LABEL_INTERNAL) {
+      return `Image ${startIndex + i} is the ${r.placement} of this exact same model from this same photo session — the current view MUST show the exact same person: same hair (colour, length, style, parting), same skin tone, same body build and proportions, same outfit and accessories. Only the camera angle changes.`;
     }
     return `Image ${startIndex + i} is a real close-up photo of ${r.label} of this exact same garment — faithfully reproduce its exact design, motif, colour and surface texture on ${r.placement}.`;
   });

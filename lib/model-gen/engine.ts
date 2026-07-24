@@ -337,6 +337,25 @@ export async function generateModelImages(
     return { objective, modelType, images: [], failure: "insufficient_credits" };
   }
 
+  // Bidirectional consistency: check for existing ProductImages from a
+  // previous partial run. If one view succeeded but the other failed, the
+  // existing view's image is passed to the strategy as a cross-view
+  // reference so the AI maintains model identity on retry.
+  let existingFrontUrl: string | null = null;
+  let existingBackUrl: string | null = null;
+  if (isCatalogue) {
+    const existingImages = await db.productImage.findMany({
+      where: { productId: product.id, view: { in: ["front", "back"] }, objective: "catalogue" },
+      orderBy: { createdAt: "desc" },
+      select: { view: true, url: true },
+      take: 2,
+    });
+    for (const img of existingImages) {
+      if (img.view === "front" && !existingFrontUrl) existingFrontUrl = img.url;
+      if (img.view === "back" && !existingBackUrl) existingBackUrl = img.url;
+    }
+  }
+
   const { images } =
     objective === "quick_listing"
       ? await runQuickListingStrategy({
@@ -364,6 +383,8 @@ export async function generateModelImages(
           partImages: catalogueProvider === "gemini" ? partImages : [],
           quality: effectiveQuality,
           casting,
+          existingFrontUrl,
+          existingBackUrl,
         });
 
   // Brand each image (store logo, or store name) before persisting, so the
