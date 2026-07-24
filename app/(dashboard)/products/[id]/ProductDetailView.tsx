@@ -37,6 +37,7 @@ import {
   Crown,
   MoreVertical,
   Heart,
+  Download,
 } from "lucide-react";
 import { ProductImageViewer } from "@/components/product/ProductImageViewer";
 import { ProductThumbnailRail } from "@/components/product/ProductThumbnailRail";
@@ -50,6 +51,7 @@ import { cn } from "@/lib/utils";
 import { useGenerationStatus } from "@/components/generation/GenerationStatusProvider";
 import { GenerationSettingsModal, useGenerationSettingsModal, type GenerationSettings } from "@/components/generation/GenerationSettingsModal";
 import { getMockRentalInfo } from "@/lib/rental/mock-data";
+import { downloadImage } from "@/lib/share-image";
 import { RentalInfoPanel } from "@/components/rental/RentalInfoPanel";
 
 interface GeneratedImage {
@@ -281,6 +283,41 @@ export function ProductDetailView({
     (c) => c.toLowerCase() !== displayProduct.color.toLowerCase()
   );
 
+  const [downloading, setDownloading] = useState(false);
+
+  function slugify(text: string) {
+    return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+  }
+
+  async function handleDownloadCurrent() {
+    const img = allImages[safeActiveIndex];
+    if (!img) return;
+    const view = img.view ?? "product";
+    const filename = `${slugify(product.title)}-${view}.jpg`;
+    try {
+      await downloadImage(masterUrl(framedImageUrl(img.url, img.view)), filename);
+    } catch { /* silent */ }
+  }
+
+  async function handleDownloadAll() {
+    const downloadable = allImages.filter((g) => g.url);
+    if (downloadable.length === 0) return;
+    setDownloading(true);
+    try {
+      for (let i = 0; i < downloadable.length; i++) {
+        const img = downloadable[i];
+        const view = img.view ?? "image";
+        const filename = `${slugify(product.title)}-${view}-${i + 1}.jpg`;
+        await downloadImage(masterUrl(framedImageUrl(img.url, img.view)), filename);
+        if (i < downloadable.length - 1) {
+          await new Promise((r) => setTimeout(r, 500));
+        }
+      }
+    } catch { /* silent */ } finally {
+      setDownloading(false);
+    }
+  }
+
   async function handleDelete() {
     if (!confirmDelete) { setConfirmDelete(true); return; }
     setDeleting(true);
@@ -480,6 +517,16 @@ export function ProductDetailView({
                   )}
                   {generating ? "Generating…" : "Generate Model Image"}
                 </DropdownMenuItem>
+                {allImages.length > 1 && (
+                  <DropdownMenuItem onSelect={handleDownloadAll} disabled={downloading}>
+                    {downloading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Download className="h-4 w-4" strokeWidth={1.75} />
+                    )}
+                    {downloading ? "Downloading…" : "Download All Images"}
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onSelect={(e) => {
@@ -545,14 +592,26 @@ export function ProductDetailView({
                 </div>
               )}
 
-              <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/40 to-transparent p-4 z-20 pointer-events-none">
-                <div className="flex items-center gap-2">
-                  <Badge variant="purple" className="bg-white/90 text-indigo-700 backdrop-blur-sm">
-                    {product.category}
-                  </Badge>
-                  {!product.inStock && <Badge variant="error">Out of Stock</Badge>}
+              {!product.inStock && (
+                <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/40 to-transparent p-4 z-20 pointer-events-none">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="error">Out of Stock</Badge>
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {allImages.length > 0 && (
+                <div className="absolute bottom-3 left-3 z-30 pointer-events-auto" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    aria-label="Download image"
+                    onClick={handleDownloadCurrent}
+                    className="h-8 w-8 rounded-full bg-white/90 backdrop-blur-sm shadow-md flex items-center justify-center text-gray-600 hover:text-indigo-600 hover:bg-white transition-colors"
+                  >
+                    <Download className="h-3.5 w-3.5" strokeWidth={2} />
+                  </button>
+                </div>
+              )}
 
               {product.modelImageUrl && (
                 <div className="absolute bottom-3 right-3 z-30 pointer-events-auto" onClick={(e) => e.stopPropagation()}>
@@ -933,6 +992,7 @@ export function ProductDetailView({
         hasGI={hasGI}
         onGenerate={handleGenerateModelImage}
         generating={generating}
+        hasGeneratedImages={hasModelImage}
         settingsData={genSettingsModal.data}
         settingsLoading={genSettingsModal.loading}
       />

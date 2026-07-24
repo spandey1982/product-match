@@ -93,6 +93,12 @@ export interface GenerateModelImagesInput {
    * transparently degrades to auto-pick.
    */
   signatureProfileId?: string;
+  /**
+   * When false, skip AI Casting entirely and use the legacy reference-model
+   * path (retailer picked "Classic" in the UI). Default true — Casting runs
+   * if the feature flag is on.
+   */
+  useCasting?: boolean;
 }
 
 export interface GenerateModelImagesResult {
@@ -219,7 +225,7 @@ export async function generateModelImages(
   // the resulting face/persona brief anyway, and honoring a stale client
   // request would let casting metadata slip through the API boundary.
   let casting: CastingResult | null = null;
-  if (isAiCastingEnabled() && catalogueProvider === "gemini") {
+  if (isAiCastingEnabled() && catalogueProvider === "gemini" && input.useCasting !== false) {
     const profileRow = input.signatureProfileId
       ? await getModelProfile(input.signatureProfileId, input.userId)
       : null;
@@ -331,6 +337,25 @@ export async function generateModelImages(
     return { objective, modelType, images: [], failure: "insufficient_credits" };
   }
 
+  // Bidirectional consistency: check for existing ProductImages from a
+  // previous partial run. If one view succeeded but the other failed, the
+  // existing view's image is passed to the strategy as a cross-view
+  // reference so the AI maintains model identity on retry.
+  let existingFrontUrl: string | null = null;
+  let existingBackUrl: string | null = null;
+  if (isCatalogue) {
+    const existingImages = await db.productImage.findMany({
+      where: { productId: product.id, view: { in: ["front", "back"] }, objective: "catalogue" },
+      orderBy: { createdAt: "desc" },
+      select: { view: true, url: true },
+      take: 2,
+    });
+    for (const img of existingImages) {
+      if (img.view === "front" && !existingFrontUrl) existingFrontUrl = img.url;
+      if (img.view === "back" && !existingBackUrl) existingBackUrl = img.url;
+    }
+  }
+
   const { images } =
     objective === "quick_listing"
       ? await runQuickListingStrategy({
@@ -358,6 +383,8 @@ export async function generateModelImages(
           partImages: catalogueProvider === "gemini" ? partImages : [],
           quality: effectiveQuality,
           casting,
+          existingFrontUrl,
+          existingBackUrl,
         });
 
   // Brand each image (store logo, or store name) before persisting, so the

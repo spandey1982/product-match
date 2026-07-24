@@ -12,7 +12,7 @@ export async function GET() {
       take: 20,
     });
 
-    const parsed = configs.map((c) => ({
+    const parsed = configs.map((c: (typeof configs)[number]) => ({
       ...c,
       prices: JSON.parse(c.prices) as Record<string, number>,
     }));
@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const config = await db.$transaction(async (tx) => {
+    const config = await db.$transaction(async (tx: typeof db) => {
       await tx.pricingConfig.updateMany({
         where: { isActive: true },
         data: { isActive: false },

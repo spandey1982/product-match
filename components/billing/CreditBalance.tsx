@@ -10,6 +10,17 @@ interface BalanceData {
   status?: string;
 }
 
+const ALERT_CRITICAL = 10;
+const ALERT_WARNING = 20;
+
+export type CreditAlertLevel = "critical" | "warning" | "normal";
+
+export function creditAlertLevel(pct: number): CreditAlertLevel {
+  if (pct <= ALERT_CRITICAL) return "critical";
+  if (pct <= ALERT_WARNING) return "warning";
+  return "normal";
+}
+
 function opacityForPercentage(pct: number): number {
   if (pct >= 50) return 1;
   if (pct >= 20) return 0.7;
@@ -17,6 +28,9 @@ function opacityForPercentage(pct: number): number {
 }
 
 function ringStrokeForPercentage(pct: number): string {
+  const level = creditAlertLevel(pct);
+  if (level === "critical") return "rgba(239, 68, 68, 0.9)";
+  if (level === "warning") return "rgba(245, 158, 11, 0.85)";
   const opacity = opacityForPercentage(pct);
   return `rgba(99, 102, 241, ${opacity})`;
 }
@@ -92,8 +106,24 @@ function CreditRing({
   );
 }
 
+function alertBarGradient(level: CreditAlertLevel, opacity: number): string {
+  if (level === "critical")
+    return "linear-gradient(to right, rgba(239,68,68,0.9), rgba(220,38,38,0.9))";
+  if (level === "warning")
+    return "linear-gradient(to right, rgba(245,158,11,0.85), rgba(234,88,12,0.85))";
+  return `linear-gradient(to right, rgba(99,102,241,${opacity}), rgba(139,92,246,${opacity}))`;
+}
+
 function DropdownPill({ pct, isFrozen }: { pct: number; isFrozen: boolean }) {
   const opacity = opacityForPercentage(pct);
+  const level = creditAlertLevel(pct);
+
+  const pctColor =
+    level === "critical"
+      ? "rgb(239, 68, 68)"
+      : level === "warning"
+        ? "rgb(245, 158, 11)"
+        : `rgba(99, 102, 241, ${Math.max(opacity, 0.5)})`;
 
   return (
     <div className="px-3 py-2 mb-1">
@@ -103,10 +133,7 @@ function DropdownPill({ pct, isFrozen }: { pct: number; isFrozen: boolean }) {
           {isFrozen && (
             <span className="text-[10px] font-semibold text-blue-400">Frozen</span>
           )}
-          <span
-            className="text-xs font-semibold tabular-nums"
-            style={{ color: `rgba(99, 102, 241, ${Math.max(opacity, 0.5)})` }}
-          >
+          <span className="text-xs font-semibold tabular-nums" style={{ color: pctColor }}>
             {pct}%
           </span>
         </div>
@@ -116,10 +143,15 @@ function DropdownPill({ pct, isFrozen }: { pct: number; isFrozen: boolean }) {
           className="h-full rounded-full transition-all duration-500"
           style={{
             width: `${pct}%`,
-            background: `linear-gradient(to right, rgba(99,102,241,${opacity}), rgba(139,92,246,${opacity}))`,
+            background: alertBarGradient(level, opacity),
           }}
         />
       </div>
+      {level !== "normal" && (
+        <p className={`text-[10px] mt-1 font-medium ${level === "critical" ? "text-red-500" : "text-amber-600"}`}>
+          {level === "critical" ? "Credits almost depleted" : "Credits running low"}
+        </p>
+      )}
     </div>
   );
 }

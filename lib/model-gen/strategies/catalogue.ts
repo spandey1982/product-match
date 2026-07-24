@@ -14,7 +14,7 @@
 import { fetchProductImageBuffer, runGeminiImageGen } from "@/lib/generate-model-image";
 import { generateTryOnVertex, isVertexTryOnEnabled, getVertexConfig } from "@/lib/tryon-vertex";
 import type { TryOnMimeType } from "@/lib/tryon";
-import { resolvePromptSet, buildViewPrompt } from "../prompt-sets";
+import { resolvePromptSet, buildViewPrompt, CROSS_VIEW_LABEL } from "../prompt-sets";
 import { resolveReferenceVariant } from "../reference-selection";
 import { loadReferenceImage, type ModelType, type ReferenceImage } from "../reference-models";
 import { sampleStudioColor } from "../studio-anchor";
@@ -73,8 +73,18 @@ export async function runCatalogueStrategy(opts: {
    * drops the drape reference on the Gemini path so the AI can vary pose.
    */
   casting?: CastingResult | null;
+  /**
+   * URLs of existing ProductImages from a previous partial run (bidirectional
+   * consistency). When the back succeeded but the front is being regenerated
+   * (or vice versa), the existing view's image is passed as a cross-view
+   * reference so the AI maintains model identity across views.
+   */
+  existingFrontUrl?: string | null;
+  existingBackUrl?: string | null;
 }): Promise<{ images: GeneratedImage[] }> {
   const { product, modelType, provider = "gemini", userId, backdrop, partImages = [], quality, casting = null } = opts;
+  const existingFrontUrl = opts.existingFrontUrl ?? null;
+  const existingBackUrl = opts.existingBackUrl ?? null;
   // Same store + acting user for every call in this run; feature is "catalogue".
   const usage = { feature: "catalogue", storeId: userId ?? null, userId: userId ?? null };
   // Region image conditioning (R&D) — feed labelled part uploads (pallu/border)
@@ -216,6 +226,32 @@ export async function runCatalogueStrategy(opts: {
     if (faceRef) {
       imageRefs.push({ buffer: faceRef.buffer, mime: faceRef.mime, label: IDENTITY_FACE_LABEL });
       promptRefs.push({ label: IDENTITY_FACE_LABEL, placement: "" });
+    }
+
+    // Cross-view consistency: when generating the back, feed the already-
+    // generated front image so the AI sees the exact model (hair, skin tone,
+    // build, outfit) and keeps it identical. On retry, an existing front from
+    // a previous partial run serves the same purpose. Gemini path only — Vertex
+    // VTO uses the same reference photo for both views so consistency is inherent.
+    if (isBack && provider === "gemini") {
+      const frontUrl = baseShots.front?.url ?? existingFrontUrl;
+      if (frontUrl) {
+        const frontBuf = await fetchProductImageBuffer(frontUrl);
+        if (frontBuf) {
+          imageRefs.push({ buffer: frontBuf.buffer, mime: frontBuf.mime, label: CROSS_VIEW_LABEL });
+          promptRefs.push({ label: CROSS_VIEW_LABEL, placement: "already-generated front view" });
+        }
+      }
+    }
+    if (!isBack && provider === "gemini") {
+      const backUrl = existingBackUrl;
+      if (backUrl) {
+        const backBuf = await fetchProductImageBuffer(backUrl);
+        if (backBuf) {
+          imageRefs.push({ buffer: backBuf.buffer, mime: backBuf.mime, label: CROSS_VIEW_LABEL });
+          promptRefs.push({ label: CROSS_VIEW_LABEL, placement: "existing back view from a previous session" });
+        }
+      }
     }
 
     // Region conditioning (flag-gated): match this view's generation references

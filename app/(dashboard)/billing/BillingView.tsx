@@ -10,7 +10,9 @@ import {
   Calendar,
   ArrowUpRight,
   Shield,
+  AlertTriangle,
 } from "lucide-react";
+import { creditAlertLevel } from "@/components/billing/CreditBalance";
 
 interface WalletData {
   hasWallet: boolean;
@@ -55,7 +57,17 @@ const STATUS_LABELS: Record<PaymentStatus, string> = {
 
 function BalanceCard({ wallet }: { wallet: WalletData }) {
   const pct = wallet.remainingPercentage;
-  const barOpacity = pct >= 50 ? 1 : pct >= 20 ? 0.7 : 0.45;
+  const level = creditAlertLevel(pct);
+
+  const barGradient =
+    level === "critical"
+      ? "linear-gradient(to right, rgba(239,68,68,0.9), rgba(220,38,38,0.9))"
+      : level === "warning"
+        ? "linear-gradient(to right, rgba(245,158,11,0.85), rgba(234,88,12,0.85))"
+        : (() => {
+            const o = pct >= 50 ? 1 : pct >= 20 ? 0.7 : 0.45;
+            return `linear-gradient(to right, rgba(99,102,241,${o}), rgba(139,92,246,${o}))`;
+          })();
 
   return (
     <div className="bg-white border border-gray-200 rounded-2xl p-6">
@@ -75,6 +87,42 @@ function BalanceCard({ wallet }: { wallet: WalletData }) {
         </span>
       </div>
 
+      {level !== "normal" && wallet.status !== "frozen" && (
+        <div
+          className={`flex items-start gap-2 rounded-xl px-3 py-2.5 mb-4 ${
+            level === "critical"
+              ? "bg-red-50 border border-red-100"
+              : "bg-amber-50 border border-amber-100"
+          }`}
+        >
+          <AlertTriangle
+            className={`h-4 w-4 shrink-0 mt-0.5 ${
+              level === "critical" ? "text-red-500" : "text-amber-500"
+            }`}
+          />
+          <div>
+            <p
+              className={`text-xs font-semibold ${
+                level === "critical" ? "text-red-700" : "text-amber-700"
+              }`}
+            >
+              {level === "critical"
+                ? "Credits almost depleted"
+                : "Credits running low"}
+            </p>
+            <p
+              className={`text-[11px] mt-0.5 ${
+                level === "critical" ? "text-red-600" : "text-amber-600"
+              }`}
+            >
+              {level === "critical"
+                ? "You may not be able to complete AI operations. Please add credits soon."
+                : "Consider adding credits to avoid interruptions during generation."}
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-3 gap-4 mb-4">
         <div>
           <p className="text-xs text-gray-500">Available</p>
@@ -90,17 +138,24 @@ function BalanceCard({ wallet }: { wallet: WalletData }) {
         </div>
         <div>
           <p className="text-xs text-gray-500">Remaining</p>
-          <p className="text-lg font-bold tabular-nums">{pct}%</p>
+          <p
+            className={`text-lg font-bold tabular-nums ${
+              level === "critical"
+                ? "text-red-600"
+                : level === "warning"
+                  ? "text-amber-600"
+                  : ""
+            }`}
+          >
+            {pct}%
+          </p>
         </div>
       </div>
 
       <div className="w-full h-2 rounded-full bg-gray-200 overflow-hidden">
         <div
           className="h-full rounded-full transition-all duration-500"
-          style={{
-            width: `${pct}%`,
-            background: `linear-gradient(to right, rgba(99,102,241,${barOpacity}), rgba(139,92,246,${barOpacity}))`,
-          }}
+          style={{ width: `${pct}%`, background: barGradient }}
         />
       </div>
 
