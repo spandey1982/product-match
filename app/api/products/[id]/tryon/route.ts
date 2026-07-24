@@ -9,6 +9,7 @@ import {
 } from "@/lib/tryon";
 import { getActiveTryOnProvider } from "@/lib/providers/active";
 import { normalizeTryOnUrl } from "@/lib/image-normalize";
+import { chargeForCall } from "@/lib/billing/charge";
 
 // ─── In-memory rate limiter ───────────────────────────────────────────────────
 // Module-level — per-process, resets on server restart. Sufficient for a
@@ -114,9 +115,18 @@ export async function POST(
       );
     }
 
-    // ── Generate try-on ────────────────────────────────────────────────────
+    // ── Per-call billing + generate try-on ────────────────────────────
+    const charge = await chargeForCall(session.id, "tryon_1k");
+    if ("insufficientCredits" in charge) {
+      return NextResponse.json({
+        error: "insufficient_credits",
+        message: "Not enough credits to try on this product. Contact your admin to add more credits.",
+        remainingPercentage: charge.remainingPercentage,
+      }, { status: 402 });
+    }
+
     const result = await provider.generateTryOn({
-      productImageUrl: product.imageUrl,
+      productImageUrl: product.imageUrl!,
       userPhotoBuffer: buffer,
       userPhotoMimeType: actualMime as TryOnMimeType,
       productCategory: product.category,

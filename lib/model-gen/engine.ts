@@ -41,6 +41,8 @@ import { parsePartImages, findBackPart } from "@/lib/product/part-slots";
 import { isAiCastingEnabled, getModelProfile, listModelProfiles } from "./casting";
 import { resolveCasting, type CastingResult, type CastingProfileInput } from "./casting-match";
 import { parseArray } from "@/lib/serialize";
+import { chargeForCall } from "@/lib/billing/charge";
+import type { BillingOperation } from "@/lib/billing/types";
 
 /**
  * Master switch for the objective-based generation UI + routing. When OFF
@@ -91,6 +93,12 @@ export interface GenerateModelImagesInput {
    * transparently degrades to auto-pick.
    */
   signatureProfileId?: string;
+  /**
+   * When false, skip AI Casting entirely and use the legacy reference-model
+   * path (retailer picked "Classic" in the UI). Default true — Casting runs
+   * if the feature flag is on.
+   */
+  useCasting?: boolean;
 }
 
 export interface GenerateModelImagesResult {
@@ -103,13 +111,19 @@ export interface GenerateModelImagesResult {
    *   was attempted or spent; retrying later is free and safe.
    * - "generation_failed": generation ran but produced no stored images.
    */
-  failure?: "storage_unreachable" | "generation_failed";
+  failure?: "storage_unreachable" | "generation_failed" | "insufficient_credits";
 }
 
 export async function generateModelImages(
   input: GenerateModelImagesInput
 ): Promise<GenerateModelImagesResult> {
-  const product = await db.product.findUnique({ where: { id: input.productId } });
+  const giEnabled = isGarmentIntelligenceEnabled();
+  const [product, giRow] = await Promise.all([
+    db.product.findUnique({ where: { id: input.productId } }),
+    giEnabled
+      ? db.garmentIntelligence.findUnique({ where: { productId: input.productId }, select: { id: true } })
+      : null,
+  ]);
 
   const settings = await getAiGenSettings(input.userId);
   const objective = input.objective ?? settings.defaultObjective;
@@ -142,21 +156,36 @@ export async function generateModelImages(
   const partImages = parsePartImages(product.partImages);
   const backImageUrl = findBackPart(partImages)?.url ?? product.backImageUrl ?? null;
 
+  // ── Billing: charge for enrichment steps before they run ──────────────
+  const hasGI = !!giRow;
+  if (giEnabled) {
+    if (!hasGI) {
+      const giCallCount = 2 + (backImageUrl ? 1 : 0);
+      const giCharge = await chargeForCall(input.userId, "garment_intelligence", giCallCount);
+      if ("insufficientCredits" in giCharge) {
+        return { objective, modelType, images: [], failure: "insufficient_credits" };
+      }
+    }
+  } else {
+    if (!product.detailNotes) {
+      const charge = await chargeForCall(input.userId, "metadata_extract");
+      if ("insufficientCredits" in charge) {
+        return { objective, modelType, images: [], failure: "insufficient_credits" };
+      }
+    }
+    if (backImageUrl && !product.backDetailNotes) {
+      const charge = await chargeForCall(input.userId, "metadata_extract");
+      if ("insufficientCredits" in charge) {
+        return { objective, modelType, images: [], failure: "insufficient_credits" };
+      }
+    }
+  }
+
   // Prompt enrichment, extracted once and cached, non-fatal.
-  //
-  // Garment Intelligence ON: the structured hierarchical analysis is the ONLY
-  // extractor — front notes AND back notes both come from it (part close-ups
-  // feed its evidence pass; the back image feeds its back analysis). The v1
-  // extractor (lib/metadata/detail-notes.ts) is deliberately NOT a fallback
-  // here: on GI failure notes are simply null and generation proceeds
-  // unenriched (back views still get the deterministic guard clause).
-  //
-  // Garment Intelligence OFF (default): detail-notes v1 runs exactly as it
-  // always has.
   const ctx = { storeId: input.userId, userId: input.userId };
   let detailNotes: string | null;
   let backDetailNotes: string | null;
-  if (isGarmentIntelligenceEnabled()) {
+  if (giEnabled) {
     const garmentIntel = await ensureGarmentIntelligence(product.id, ctx);
     detailNotes = garmentIntel?.promptNotes || null;
     backDetailNotes = garmentIntel?.backPromptNotes ?? null;
@@ -196,7 +225,7 @@ export async function generateModelImages(
   // the resulting face/persona brief anyway, and honoring a stale client
   // request would let casting metadata slip through the API boundary.
   let casting: CastingResult | null = null;
-  if (isAiCastingEnabled() && catalogueProvider === "gemini") {
+  if (isAiCastingEnabled() && catalogueProvider === "gemini" && input.useCasting !== false) {
     const profileRow = input.signatureProfileId
       ? await getModelProfile(input.signatureProfileId, input.userId)
       : null;
@@ -296,6 +325,37 @@ export async function generateModelImages(
     brandingHint = { preferredLogo: backdropPreset.branding.preferredLogo, brightness: backdropPreset.color.brightness };
   }
 
+  // ── Billing: charge for image generation ──────────────────────────────
+  const isCatalogue = objective !== "quick_listing";
+  const imageCount = isCatalogue ? 2 : 1;
+  const imgOp: BillingOperation =
+    catalogueProvider === "vertex"
+      ? "vai_image_gen"
+      : effectiveQuality === "enhanced" ? "image_gen_2k" : "image_gen_1k";
+  const imgCharge = await chargeForCall(input.userId, imgOp, imageCount);
+  if ("insufficientCredits" in imgCharge) {
+    return { objective, modelType, images: [], failure: "insufficient_credits" };
+  }
+
+  // Bidirectional consistency: check for existing ProductImages from a
+  // previous partial run. If one view succeeded but the other failed, the
+  // existing view's image is passed to the strategy as a cross-view
+  // reference so the AI maintains model identity on retry.
+  let existingFrontUrl: string | null = null;
+  let existingBackUrl: string | null = null;
+  if (isCatalogue) {
+    const existingImages = await db.productImage.findMany({
+      where: { productId: product.id, view: { in: ["front", "back"] }, objective: "catalogue" },
+      orderBy: { createdAt: "desc" },
+      select: { view: true, url: true },
+      take: 2,
+    });
+    for (const img of existingImages) {
+      if (img.view === "front" && !existingFrontUrl) existingFrontUrl = img.url;
+      if (img.view === "back" && !existingBackUrl) existingBackUrl = img.url;
+    }
+  }
+
   const { images } =
     objective === "quick_listing"
       ? await runQuickListingStrategy({
@@ -323,6 +383,8 @@ export async function generateModelImages(
           partImages: catalogueProvider === "gemini" ? partImages : [],
           quality: effectiveQuality,
           casting,
+          existingFrontUrl,
+          existingBackUrl,
         });
 
   // Brand each image (store logo, or store name) before persisting, so the

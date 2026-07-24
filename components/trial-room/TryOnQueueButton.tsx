@@ -30,7 +30,7 @@ interface Props {
  * modal in-place so the user never has to leave the product page.
  * After uploading a photo they can immediately add the product for try-on.
  */
-export function TryOnQueueButton({ product, iconOnly = false, myTryOnsHref = "/my-try-ons" }: Props) {
+export function TryOnQueueButton({ product, iconOnly = false, myTryOnsHref = "/trial-room" }: Props) {
   const router = useRouter();
   const { photo, addToQueue, retryTryOn, findActiveTryOn, isAtLimit } = useTrialRoom();
   const [setupModalOpen, setSetupModalOpen] = useState(false);

@@ -5,6 +5,8 @@ import { accessoryUnderstandingAgent } from "./agents/accessoryUnderstandingAgen
 import { plannerAgent } from "./agents/plannerAgent";
 import { garmentConstructionAgent } from "./agents/garmentConstructionAgent";
 import { findTemplate, defaultOptionsFor } from "./templates";
+import type { AiUsageContext } from "@/lib/ai-usage/record";
+import { chargeForCall } from "@/lib/billing/charge";
 
 async function setStage(designId: string, stage: string) {
   await db.fashionDesign.update({ where: { id: designId }, data: { stage } });
@@ -25,13 +27,21 @@ async function abort(designId: string) {
   });
 }
 
-export async function runDesignPipeline(designId: string): Promise<void> {
+async function failAtStage(designId: string, stage: string, reason: string) {
+  await db.fashionDesign.update({
+    where: { id: designId },
+    data: { stage: "failed", failedAtStage: stage, failureReason: reason },
+  }).catch(() => {});
+}
+
+export async function runDesignPipeline(designId: string, userId?: string): Promise<void> {
   const design = await db.fashionDesign.findUnique({
     where: { id: designId },
     include: { assets: true },
   });
   if (!design) return;
 
+  const effectiveUserId = userId ?? design.userId;
   const { garmentType, assets } = design;
 
   const byType = (type: string) => assets.filter((a) => a.assetType === type);
@@ -50,108 +60,184 @@ export async function runDesignPipeline(designId: string): Promise<void> {
     : {};
   const designNotes = design.designNotes ?? "";
 
-  // Clear any stale cancel flag before starting
-  await db.fashionDesign.update({ where: { id: designId }, data: { cancelRequested: false } });
+  await db.fashionDesign.update({
+    where: { id: designId },
+    data: { cancelRequested: false, failedAtStage: null, failureReason: null },
+  });
 
-  try {
-    // ── Stage 1: Fabric Analysis ────────────────────────────────────────────
+  const usage: AiUsageContext = {
+    feature: "fashion_designer",
+    storeId: effectiveUserId,
+    userId: effectiveUserId,
+  };
+
+  // ── Stage 1: Fabric Analysis ──────────────────────────────────────────
+  let fabricAnalysis = design.fabricAnalysis ? JSON.parse(design.fabricAnalysis) : null;
+  if (!fabricAnalysis) {
     await setStage(designId, "analyzing_fabric");
 
     const fabricUrls = urlsOf("fabric");
     if (fabricUrls.length === 0) {
-      await db.fashionDesign.update({
-        where: { id: designId },
-        data: { stage: "failed", failureReason: "No fabric images uploaded" },
-      });
+      await failAtStage(designId, "analyzing_fabric", "No fabric images uploaded");
       return;
     }
 
-    const fabricAnalysis = await fabricAnalysisAgent(fabricUrls);
-    await db.fashionDesign.update({
-      where: { id: designId },
-      data: { fabricAnalysis: JSON.stringify(fabricAnalysis) },
-    });
+    const charge = await chargeForCall(effectiveUserId, "fashion_design_analysis");
+    if ("insufficientCredits" in charge) {
+      await failAtStage(designId, "analyzing_fabric", "Insufficient credits to continue. Add credits and resume.");
+      return;
+    }
 
-    if (await isCancelled(designId)) { await abort(designId); return; }
+    try {
+      fabricAnalysis = await fabricAnalysisAgent(fabricUrls, usage);
+      await db.fashionDesign.update({
+        where: { id: designId },
+        data: { fabricAnalysis: JSON.stringify(fabricAnalysis) },
+      });
+    } catch (err) {
+      console.error(`[fashion-designer] fabric analysis failed for ${designId}:`, err);
+      await failAtStage(designId, "analyzing_fabric", String(err));
+      return;
+    }
+  }
 
-    // ── Stage 2: Design Understanding ───────────────────────────────────────
+  if (await isCancelled(designId)) { await abort(designId); return; }
+
+  // ── Stage 2: Design Understanding ─────────────────────────────────────
+  let designUnderstanding = design.designUnderstanding ? JSON.parse(design.designUnderstanding) : null;
+  if (!designUnderstanding) {
     await setStage(designId, "analyzing_design");
 
-    const sketchUrls = [...urlsOf("sketch"), ...urlsOf("reference")];
-    const designUnderstanding = await designUnderstandingAgent(sketchUrls, garmentType);
-    await db.fashionDesign.update({
-      where: { id: designId },
-      data: { designUnderstanding: JSON.stringify(designUnderstanding) },
-    });
+    const charge = await chargeForCall(effectiveUserId, "fashion_design_analysis");
+    if ("insufficientCredits" in charge) {
+      await failAtStage(designId, "analyzing_design", "Insufficient credits to continue. Add credits and resume.");
+      return;
+    }
 
-    if (await isCancelled(designId)) { await abort(designId); return; }
+    try {
+      const sketchUrls = [...urlsOf("sketch"), ...urlsOf("reference")];
+      designUnderstanding = await designUnderstandingAgent(sketchUrls, garmentType, usage);
+      await db.fashionDesign.update({
+        where: { id: designId },
+        data: { designUnderstanding: JSON.stringify(designUnderstanding) },
+      });
+    } catch (err) {
+      console.error(`[fashion-designer] design understanding failed for ${designId}:`, err);
+      await failAtStage(designId, "analyzing_design", String(err));
+      return;
+    }
+  }
 
-    // ── Stage 3: Accessory Understanding ────────────────────────────────────
+  if (await isCancelled(designId)) { await abort(designId); return; }
+
+  // ── Stage 3: Accessory Understanding ──────────────────────────────────
+  let accessoryAnalysis = design.accessoryAnalysis ? JSON.parse(design.accessoryAnalysis) : null;
+  if (!accessoryAnalysis) {
     await setStage(designId, "analyzing_accessories");
 
-    const accessoryAssets = assets
-      .filter((a) => ["accessory", "border", "neck", "sleeve", "back"].includes(a.assetType))
-      .map((a) => ({ url: a.url, assetType: a.assetType, mimeType: a.mimeType }));
+    const charge = await chargeForCall(effectiveUserId, "fashion_design_analysis");
+    if ("insufficientCredits" in charge) {
+      await failAtStage(designId, "analyzing_accessories", "Insufficient credits to continue. Add credits and resume.");
+      return;
+    }
 
-    const accessoryAnalysis = await accessoryUnderstandingAgent(accessoryAssets);
-    await db.fashionDesign.update({
-      where: { id: designId },
-      data: { accessoryAnalysis: JSON.stringify(accessoryAnalysis) },
-    });
+    try {
+      const accessoryAssets = assets
+        .filter((a) => ["accessory", "border", "neck", "sleeve", "back"].includes(a.assetType))
+        .map((a) => ({ url: a.url, assetType: a.assetType, mimeType: a.mimeType }));
 
-    if (await isCancelled(designId)) { await abort(designId); return; }
+      accessoryAnalysis = await accessoryUnderstandingAgent(accessoryAssets, usage);
+      await db.fashionDesign.update({
+        where: { id: designId },
+        data: { accessoryAnalysis: JSON.stringify(accessoryAnalysis) },
+      });
+    } catch (err) {
+      console.error(`[fashion-designer] accessory understanding failed for ${designId}:`, err);
+      await failAtStage(designId, "analyzing_accessories", String(err));
+      return;
+    }
+  }
 
-    // ── Stage 4: Planning ────────────────────────────────────────────────────
+  if (await isCancelled(designId)) { await abort(designId); return; }
+
+  // ── Stage 4: Planning ─────────────────────────────────────────────────
+  let generationPlan = design.generationPlan ? JSON.parse(design.generationPlan) : null;
+  if (!generationPlan) {
     await setStage(designId, "planning");
 
-    const generationPlan = await plannerAgent(
-      fabricAnalysis,
-      designUnderstanding,
-      accessoryAnalysis,
-      garmentType,
-      template,
-      structuredOptions,
-      designNotes
-    );
-    await db.fashionDesign.update({
-      where: { id: designId },
-      data: { generationPlan: JSON.stringify(generationPlan) },
-    });
+    const charge = await chargeForCall(effectiveUserId, "fashion_design_analysis");
+    if ("insufficientCredits" in charge) {
+      await failAtStage(designId, "planning", "Insufficient credits to continue. Add credits and resume.");
+      return;
+    }
 
-    if (await isCancelled(designId)) { await abort(designId); return; }
+    try {
+      generationPlan = await plannerAgent(
+        fabricAnalysis,
+        designUnderstanding,
+        accessoryAnalysis,
+        garmentType,
+        template,
+        structuredOptions,
+        designNotes,
+        usage
+      );
+      await db.fashionDesign.update({
+        where: { id: designId },
+        data: { generationPlan: JSON.stringify(generationPlan) },
+      });
+    } catch (err) {
+      console.error(`[fashion-designer] planning failed for ${designId}:`, err);
+      await failAtStage(designId, "planning", String(err));
+      return;
+    }
+  }
 
-    // ── Stage 5: Garment Construction + Flat Image Generation ───────────────
+  if (await isCancelled(designId)) { await abort(designId); return; }
+
+  // ── Stage 5: Garment Construction + Flat Image Generation ─────────────
+  if (!design.flatFrontUrl) {
     await setStage(designId, "constructing");
 
-    // Pass fabric + sketch/reference images so the model can visually follow them
-    const referenceUrls = [
-      ...urlsOf("fabric"),
-      ...urlsOf("sketch"),
-      ...urlsOf("reference"),
-      ...urlsOf("neck"),
-      ...urlsOf("sleeve"),
-      ...urlsOf("back"),
-      ...urlsOf("border"),
-    ];
+    const charge = await chargeForCall(effectiveUserId, "fashion_design_gen");
+    if ("insufficientCredits" in charge) {
+      await failAtStage(designId, "constructing", "Insufficient credits to continue. Add credits and resume.");
+      return;
+    }
 
-    const { flatFrontUrl, flatBackUrl } = await garmentConstructionAgent(generationPlan, referenceUrls);
+    try {
+      const referenceUrls = [
+        ...urlsOf("fabric"),
+        ...urlsOf("sketch"),
+        ...urlsOf("reference"),
+        ...urlsOf("neck"),
+        ...urlsOf("sleeve"),
+        ...urlsOf("back"),
+        ...urlsOf("border"),
+      ];
 
-    await setStage(designId, "generating_flat_images");
+      const { flatFrontUrl, flatBackUrl } = await garmentConstructionAgent(generationPlan, referenceUrls, usage);
 
+      await setStage(designId, "generating_flat_images");
+
+      await db.fashionDesign.update({
+        where: { id: designId },
+        data: {
+          flatFrontUrl,
+          flatBackUrl,
+          stage: "completed",
+          qualityScore: flatFrontUrl ? 80 : 0,
+        },
+      });
+    } catch (err) {
+      console.error(`[fashion-designer] garment construction failed for ${designId}:`, err);
+      await failAtStage(designId, "constructing", String(err));
+      return;
+    }
+  } else {
     await db.fashionDesign.update({
       where: { id: designId },
-      data: {
-        flatFrontUrl,
-        flatBackUrl,
-        stage: "completed",
-        qualityScore: flatFrontUrl ? 80 : 0,
-      },
+      data: { stage: "completed" },
     });
-  } catch (err) {
-    console.error(`[fashion-designer] pipeline error for design ${designId}:`, err);
-    await db.fashionDesign.update({
-      where: { id: designId },
-      data: { stage: "failed", failureReason: String(err) },
-    }).catch(() => {});
   }
 }

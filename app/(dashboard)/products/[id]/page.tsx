@@ -7,7 +7,7 @@ import type { Product } from "@/types";
 
 interface Props {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ generating?: string; mode?: string }>;
+  searchParams: Promise<{ generating?: string; mode?: string; genFailed?: string }>;
 }
 
 export async function generateMetadata({ params }: Props) {
@@ -21,7 +21,7 @@ export async function generateMetadata({ params }: Props) {
 
 export default async function ProductDetailPage({ params, searchParams }: Props) {
   const { id } = await params;
-  const { generating, mode } = await searchParams;
+  const { generating, mode, genFailed } = await searchParams;
   const session = await getSession();
   if (!session) notFound();
 
@@ -37,18 +37,26 @@ export default async function ProductDetailPage({ params, searchParams }: Props)
 
   // Multi-view catalogue gallery (additive — empty for products generated with
   // the legacy single-image flow, where modelImageUrl still drives the carousel).
-  const generatedImages = await db.productImage.findMany({
-    where: { productId: id },
-    orderBy: { createdAt: "asc" },
-    select: { url: true, view: true, objective: true },
-  });
+  const [generatedImages, giRow] = await Promise.all([
+    db.productImage.findMany({
+      where: { productId: id },
+      orderBy: { createdAt: "asc" },
+      select: { url: true, view: true, objective: true },
+    }),
+    db.garmentIntelligence.findUnique({
+      where: { productId: id },
+      select: { id: true },
+    }),
+  ]);
 
   return (
     <ProductDetailView
       product={product}
       generatedImages={generatedImages}
       initialGenerating={generating === "1"}
+      initialGenError={genFailed ?? null}
       rentalMode={mode === "rental"}
+      hasGI={!!giRow}
     />
   );
 }

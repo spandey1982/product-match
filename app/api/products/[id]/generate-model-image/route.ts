@@ -12,6 +12,7 @@ import { isModelType } from "@/lib/model-gen/reference-models";
 import { isGenerationQuality } from "@/lib/model-gen/quality";
 import { isBackdropSection } from "@/lib/model-gen/scenes/selection";
 import { categorizeGenerationError, genericFailureMessage } from "@/lib/model-gen/failure-message";
+import { recordAiUsage } from "@/lib/ai-usage/record";
 
 export async function POST(
   req: NextRequest,
@@ -56,8 +57,12 @@ export async function POST(
       typeof signatureProfileIdRaw === "string" && signatureProfileIdRaw
         ? signatureProfileIdRaw
         : undefined;
+    const useCastingRaw = (body as { useCasting?: unknown }).useCasting;
+    const useCasting = typeof useCastingRaw === "boolean" ? useCastingRaw : undefined;
 
-    let failure: "storage_unreachable" | "generation_failed" | undefined;
+    // The engine handles per-call billing internally (chargeForCall at each
+    // step boundary). No upfront estimation or reservation needed here.
+    let failure: "storage_unreachable" | "generation_failed" | "insufficient_credits" | undefined;
     if (isAiGenObjectivesEnabled()) {
       const result = await generateModelImages({
         productId: id,
@@ -67,10 +72,30 @@ export async function POST(
         quality,
         backdropSection,
         signatureProfileId,
+        useCasting,
       });
       failure = result.failure;
     } else {
       await generateModelImage(id, quality);
+    }
+
+    if (failure === "insufficient_credits") {
+      void recordAiUsage({
+        provider: "billing",
+        model: "credit-check",
+        feature: "credit_check",
+        productId: id,
+        userId: session.id,
+        inputTokens: 0,
+        outputTokens: 0,
+        durationMs: 0,
+        status: "error",
+        errorMessage: "Insufficient credits",
+      });
+      return NextResponse.json({
+        error: "insufficient_credits",
+        message: "Not enough credits to complete this operation. Contact your admin to add more credits.",
+      }, { status: 402 });
     }
 
     // Use raw query so the cached Prisma client doesn't strip new columns

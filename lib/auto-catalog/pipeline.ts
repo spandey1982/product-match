@@ -9,6 +9,7 @@ import { imageAgent } from "./agents/imageAgent";
 import { qcAgent } from "./agents/qcAgent";
 import { serializeArray } from "@/lib/serialize";
 import type { CatalogResult, ClassificationResult } from "./types";
+import type { AiUsageContext } from "@/lib/ai-usage/record";
 
 async function setStage(itemId: string, stage: string) {
   await db.autoCatalogItem.update({ where: { id: itemId }, data: { stage } });
@@ -26,6 +27,12 @@ export async function runPipeline(itemId: string): Promise<void> {
   if (!item) return;
 
   const { batchId, userId, imageUrl } = item;
+
+  const usage: AiUsageContext = {
+    feature: "auto_catalog",
+    storeId: userId,
+    userId,
+  };
 
   try {
     // ── Stage 2: Classification ───────────────────────────────────────────
@@ -143,7 +150,7 @@ export async function runPipeline(itemId: string): Promise<void> {
     // ── Stage 5: QC ───────────────────────────────────────────────────────
     await setStage(itemId, "qc_running");
 
-    const qcResult = await qcAgent(catalogResult, draftProduct.id);
+    const qcResult = await qcAgent(catalogResult, draftProduct.id, usage);
     await db.autoCatalogItem.update({
       where: { id: itemId },
       data: { qcResult: JSON.stringify(qcResult) },
@@ -199,7 +206,7 @@ export async function runPipeline(itemId: string): Promise<void> {
     // ── Stage 7: Second QC ────────────────────────────────────────────────
     await setStage(itemId, "qc_running");
 
-    const qcResult2 = await qcAgent(retryCatalog, draftProduct.id);
+    const qcResult2 = await qcAgent(retryCatalog, draftProduct.id, usage);
     await db.autoCatalogItem.update({
       where: { id: itemId },
       data: { qcResult: JSON.stringify(qcResult2) },

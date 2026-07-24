@@ -34,6 +34,7 @@ export type Product = {
   styleTags: string[];
   material?: string | null;
   pattern?: string | null;
+  detailNotes?: string | null;
   gender: string;
   season: string[];
   price: number;

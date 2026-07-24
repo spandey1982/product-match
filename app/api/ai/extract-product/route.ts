@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { analyzeProductImage } from "@/lib/metadata/analyze";
+import { chargeForCall } from "@/lib/billing/charge";
 
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 
@@ -22,6 +23,14 @@ export async function POST(req: NextRequest) {
         { error: "Only JPEG, PNG, WebP, and GIF are supported" },
         { status: 400 }
       );
+    }
+
+    const charge = await chargeForCall(session.id, "metadata_extract");
+    if ("insufficientCredits" in charge) {
+      return NextResponse.json({
+        error: "insufficient_credits",
+        message: "Not enough credits to extract product metadata.",
+      }, { status: 402 });
     }
 
     // Delegate to the shared, provider-agnostic metadata service.

@@ -1,11 +1,14 @@
 "use client";
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { Loader2, AlertCircle } from "lucide-react";
 import { Product } from "@/types";
 import { formatCurrency } from "@/lib/utils";
 import { ImageCarousel } from "@/components/product/ImageCarousel";
 import { getProductCardImages } from "@/lib/product/card-images";
 import { Badge } from "@/components/ui/badge";
 import { TryOnCardButton } from "@/components/trial-room/TryOnCardButton";
+import { useGenerationStatus } from "@/components/generation/GenerationStatusProvider";
 
 // ─── Product card ─────────────────────────────────────────────────────────────
 
@@ -14,6 +17,38 @@ interface ProductCardProps {
 }
 
 export function ProductCard({ product }: ProductCardProps) {
+  const { getStatus, subscribe, unsubscribe } = useGenerationStatus();
+  const genStatus = getStatus(product.id);
+  const isGenerating = genStatus?.generating ?? false;
+  const hasGenError = !isGenerating && !!genStatus?.error;
+
+  const [completedImages, setCompletedImages] = useState<{
+    modelImageUrl: string | null;
+    generatedImages: { url: string; view: string; objective?: string }[];
+  } | null>(null);
+
+  useEffect(() => {
+    function onComplete(
+      data: { modelImageUrl: string | null; generatedImages: { url: string; view: string; objective?: string }[] } | null,
+    ) {
+      if (data) setCompletedImages(data);
+    }
+    subscribe(product.id, onComplete);
+    return () => { unsubscribe(product.id, onComplete); };
+  }, [product.id, subscribe, unsubscribe]);
+
+  const displayProduct = completedImages
+    ? {
+        ...product,
+        modelImageUrl: completedImages.modelImageUrl,
+        generatedImages: completedImages.generatedImages.map((g) => ({
+          id: "", productId: product.id, isPrimary: false, createdAt: "",
+          objective: "",
+          ...g,
+        })),
+      }
+    : product;
+
   return (
     <Link href={`/products/${product.id}`} className="group block">
       <div className="rounded-2xl bg-white border border-gray-100 overflow-hidden shadow-sm hover:shadow-md transition-all duration-200 hover:-translate-y-0.5">
@@ -34,7 +69,7 @@ export function ProductCard({ product }: ProductCardProps) {
           {/* Image + overlays — clipped to rounded top corners */}
           <div className="absolute inset-0 overflow-hidden rounded-t-2xl bg-gray-50">
             <ImageCarousel
-              images={getProductCardImages(product)}
+              images={getProductCardImages(displayProduct)}
               title={product.title}
               category={product.category}
               className="w-full h-full"
@@ -43,6 +78,22 @@ export function ProductCard({ product }: ProductCardProps) {
 {!product.inStock && (
               <div className="absolute inset-0 bg-white/60 flex items-center justify-center z-10">
                 <Badge variant="error">Out of Stock</Badge>
+              </div>
+            )}
+
+            {isGenerating && (
+              <div className="absolute top-2.5 left-2.5 z-10">
+                <div className="flex items-center justify-center h-8 w-8 rounded-full bg-white/80 backdrop-blur-sm shadow-sm">
+                  <Loader2 size={16} className="animate-spin text-indigo-500" />
+                </div>
+              </div>
+            )}
+
+            {hasGenError && (
+              <div className="absolute top-2.5 left-2.5 z-10">
+                <div className="flex items-center justify-center h-8 w-8 rounded-full bg-red-50/90 backdrop-blur-sm shadow-sm">
+                  <AlertCircle size={16} className="text-red-500" />
+                </div>
               </div>
             )}
           </div>

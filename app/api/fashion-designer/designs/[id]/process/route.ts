@@ -3,7 +3,6 @@ import { requireAuth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { runDesignPipeline } from "@/lib/fashion-designer/pipeline";
 
-// POST /api/fashion-designer/designs/[id]/process — run full pipeline synchronously
 export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -20,12 +19,19 @@ export async function POST(
       return NextResponse.json({ error: "Design not found" }, { status: 404 });
     }
 
-    await runDesignPipeline(id);
+    await runDesignPipeline(id, session.id);
 
     const updated = await db.fashionDesign.findUnique({
       where: { id },
       include: { assets: true },
     });
+
+    if (updated?.stage === "failed" && updated.failureReason?.includes("Insufficient credits")) {
+      return NextResponse.json({
+        error: "insufficient_credits",
+        message: updated.failureReason,
+      }, { status: 402 });
+    }
 
     return NextResponse.json({ design: updated });
   } catch (err) {

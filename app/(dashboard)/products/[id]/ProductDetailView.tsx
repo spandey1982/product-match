@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Product, Recommendation } from "@/types";
@@ -37,6 +37,7 @@ import {
   Crown,
   MoreVertical,
   Heart,
+  Download,
 } from "lucide-react";
 import { ProductImageViewer } from "@/components/product/ProductImageViewer";
 import { ProductThumbnailRail } from "@/components/product/ProductThumbnailRail";
@@ -47,7 +48,10 @@ import { formatLabel } from "@/lib/product-detail/format";
 import { colorSwatchHex, colorDescriptor, pairingSuggestions, pairingNote } from "@/lib/product-detail/color-presentation";
 import { materialDescriptor, occasionDescriptor, categoryDescriptor, styleValue } from "@/lib/product-detail/descriptors";
 import { cn } from "@/lib/utils";
+import { useGenerationStatus } from "@/components/generation/GenerationStatusProvider";
+import { GenerationSettingsModal, useGenerationSettingsModal, type GenerationSettings } from "@/components/generation/GenerationSettingsModal";
 import { getMockRentalInfo } from "@/lib/rental/mock-data";
+import { downloadImage } from "@/lib/share-image";
 import { RentalInfoPanel } from "@/components/rental/RentalInfoPanel";
 
 interface GeneratedImage {
@@ -61,8 +65,12 @@ interface Props {
   generatedImages?: GeneratedImage[];
   /** True when arriving right after requesting model-image generation. */
   initialGenerating?: boolean;
+  /** Generation failure code from upload flow (e.g. "credits", "error"). */
+  initialGenError?: string | null;
   /** True when arriving from /rent — shows rental info instead of the sale price. */
   rentalMode?: boolean;
+  /** Whether the product has a cached GarmentIntelligence row. */
+  hasGI?: boolean;
 }
 
 type RecommendationWithProduct = Recommendation & { product: Product };
@@ -88,11 +96,18 @@ const GEN_PHASES = [
   "Polishing… hang tight",
 ];
 
+const GEN_FAIL_MESSAGES: Record<string, string> = {
+  credits: "Not enough credits to generate images. Add credits and retry from the ⋯ menu.",
+  error: "Image generation didn’t start. Please retry from the ⋯ menu.",
+};
+
 export function ProductDetailView({
   product,
   generatedImages = [],
   initialGenerating = false,
+  initialGenError = null,
   rentalMode = false,
+  hasGI = false,
 }: Props) {
   const router = useRouter();
   const [recommendations, setRecommendations] = useState<RecommendationWithProduct[]>([]);
@@ -101,6 +116,7 @@ export function ProductDetailView({
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const genSettingsModal = useGenerationSettingsModal();
   const [wishlisted, setWishlisted] = useState(false);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -150,11 +166,60 @@ export function ProductDetailView({
       : [];
 
   const hasModelImage = onModel.length > 0 || hasFrontInCatalogue;
-  const [generating, setGenerating] = useState(initialGenerating && !hasModelImage);
-  // Retailer-facing generation failure message. Reserved for ABSOLUTE
-  // failures only (route reported failure, network error, or the poll truly
-  // exhausted) — normal long runs show progressive status, never a warning.
-  const [genError, setGenError] = useState<string | null>(null);
+
+  const genCtx = useGenerationStatus();
+  const genStatus = genCtx.getStatus(product.id);
+  const generating = genStatus?.generating ?? false;
+  const [localGenError, setLocalGenError] = useState<string | null>(
+    initialGenError ? (GEN_FAIL_MESSAGES[initialGenError] ?? GEN_FAIL_MESSAGES.error) : null,
+  );
+  const genError = localGenError ?? (genStatus && !genStatus.generating ? genStatus.error : null);
+
+  function dismissGenError() {
+    setLocalGenError(null);
+    genCtx.clearError(product.id);
+  }
+
+  useEffect(() => {
+    if (initialGenerating && !hasModelImage) {
+      genCtx.startTracking(product.id);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const prevProductId = useRef(product.id);
+  useEffect(() => {
+    if (prevProductId.current !== product.id) {
+      setLocalGenError(null);
+      prevProductId.current = product.id;
+    }
+  }, [product.id]);
+
+  useEffect(() => {
+    if (!genError) return;
+    const t = setTimeout(() => dismissGenError(), 8000);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [genError]);
+
+  useEffect(() => {
+    function onComplete(
+      data: { modelImageUrl: string | null; generatedImages: { url: string; view: string; objective?: string }[] } | null,
+      error: string | null,
+    ) {
+      if (data) {
+        setGenImages(data.generatedImages ?? []);
+        setModelUrl(data.modelImageUrl ?? null);
+        setLocalGenError(null);
+        router.refresh();
+      } else if (error) {
+        setLocalGenError(error);
+      }
+    }
+    genCtx.subscribe(product.id, onComplete);
+    return () => { genCtx.unsubscribe(product.id, onComplete); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product.id]);
   // Progressive status shown while generating — advances on a timer through
   // GEN_PHASES (like model-thinking indicators), staying on the last one
   // until images actually arrive. Purely cosmetic pacing: the real "done"
@@ -218,6 +283,41 @@ export function ProductDetailView({
     (c) => c.toLowerCase() !== displayProduct.color.toLowerCase()
   );
 
+  const [downloading, setDownloading] = useState(false);
+
+  function slugify(text: string) {
+    return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+  }
+
+  async function handleDownloadCurrent() {
+    const img = allImages[safeActiveIndex];
+    if (!img) return;
+    const view = img.view ?? "product";
+    const filename = `${slugify(product.title)}-${view}.jpg`;
+    try {
+      await downloadImage(masterUrl(framedImageUrl(img.url, img.view)), filename);
+    } catch { /* silent */ }
+  }
+
+  async function handleDownloadAll() {
+    const downloadable = allImages.filter((g) => g.url);
+    if (downloadable.length === 0) return;
+    setDownloading(true);
+    try {
+      for (let i = 0; i < downloadable.length; i++) {
+        const img = downloadable[i];
+        const view = img.view ?? "image";
+        const filename = `${slugify(product.title)}-${view}-${i + 1}.jpg`;
+        await downloadImage(masterUrl(framedImageUrl(img.url, img.view)), filename);
+        if (i < downloadable.length - 1) {
+          await new Promise((r) => setTimeout(r, 500));
+        }
+      }
+    } catch { /* silent */ } finally {
+      setDownloading(false);
+    }
+  }
+
   async function handleDelete() {
     if (!confirmDelete) { setConfirmDelete(true); return; }
     setDeleting(true);
@@ -271,33 +371,48 @@ export function ProductDetailView({
     setEditing(false);
   }
 
-  async function handleGenerateModelImage() {
-    setGenerating(true);
+  async function handleGenerateModelImage(settings?: GenerationSettings) {
+    if (generating) return;
+    genSettingsModal.closeModal();
+    genCtx.startTracking(product.id);
     setGenPhase(0);
-    setGenError(null);
+    setLocalGenError(null);
     try {
-      // The route AWAITS generation server-side, so a successful response
-      // already carries the finished images — apply them immediately instead
-      // of waiting for the next poll tick.
-      const res = await fetch(`/api/products/${product.id}/generate-model-image`, { method: "POST" });
+      const body = settings ? JSON.stringify(settings) : undefined;
+      const res = await fetch(`/api/products/${product.id}/generate-model-image`, {
+        method: "POST",
+        ...(body ? { headers: { "Content-Type": "application/json" }, body } : {}),
+      });
       const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        message?: string;
         failureMessage?: string;
         product?: { modelImageUrl?: string | null };
         generatedImages?: GeneratedImage[];
       };
+
+      if (res.status === 402 || data.error === "insufficient_credits") {
+        const msg = data.message ?? "Not enough credits. Contact your admin to add more credits.";
+        genCtx.failGeneration(product.id, msg);
+        setLocalGenError(msg);
+        return;
+      }
+
       if (!res.ok || data.failureMessage) {
-        setGenerating(false);
-        setGenError(data.failureMessage ?? "Image generation didn't complete. Please try again in a few minutes.");
+        const msg = data.failureMessage ?? "Image generation didn't complete. Please try again in a few minutes.";
+        genCtx.failGeneration(product.id, msg);
+        setLocalGenError(msg);
         return;
       }
       if (data.generatedImages) setGenImages(data.generatedImages);
       if (data.product?.modelImageUrl !== undefined) setModelUrl(data.product.modelImageUrl ?? null);
-      setGenerating(false);
-      setGenError(null);
+      genCtx.stopTracking(product.id);
+      setLocalGenError(null);
       router.refresh();
     } catch {
-      setGenerating(false);
-      setGenError("Couldn't reach the server. Please check your connection and try again.");
+      const msg = "Couldn't reach the server. Please check your connection and try again.";
+      genCtx.failGeneration(product.id, msg);
+      setLocalGenError(msg);
     }
   }
 
@@ -330,67 +445,6 @@ export function ProductDetailView({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [product.id]);
 
-  useEffect(() => {
-    if (!generating) return;
-    let active = true;
-    let timer: ReturnType<typeof setTimeout>;
-    let attempts = 0;
-    // 100 × 3s = 5 minutes. A full catalogue run (garment-intelligence
-    // analysis on first generation + two sequential base shots + reviews +
-    // branding) legitimately exceeds the old 90s window — which made the poll
-    // give up moments before success and never show the finished images.
-    // Progressive status keeps the retailer informed meanwhile; the error
-    // banner is reserved for a genuine 5-minute halt.
-    const MAX_ATTEMPTS = 100;
-
-    async function poll() {
-      attempts += 1;
-      try {
-        const res = await fetch(`/api/products/${product.id}/model-status`);
-        if (res.ok) {
-          const data = (await res.json()) as {
-            modelImageUrl: string | null;
-            generatedImages: GeneratedImage[];
-            failed?: boolean;
-            failureMessage?: string | null;
-          };
-          const hasOnModel = data.generatedImages?.some(
-            (g) => g.objective === "model" || g.view === "on-model"
-          );
-          const ready = hasOnModel || !!data.modelImageUrl;
-          if (active && ready) {
-            setGenImages(data.generatedImages ?? []);
-            setModelUrl(data.modelImageUrl ?? null);
-            setGenerating(false);
-            setGenError(null);
-            router.refresh();
-            return;
-          }
-          // Server reports the run errored (out of credits, network, storage…)
-          // — stop spinning immediately and show the specific reason instead of
-          // waiting out the full poll window.
-          if (active && data.failed) {
-            setGenerating(false);
-            setGenError(data.failureMessage ?? "Image generation didn't complete. Please try again in a few minutes.");
-            return;
-          }
-        }
-      } catch {
-        // transient — keep polling
-      }
-      if (active) {
-        if (attempts >= MAX_ATTEMPTS) {
-          setGenerating(false);
-          setGenError("Image generation didn't complete. Please retry from the ⋯ menu.");
-        } else {
-          timer = setTimeout(poll, 3000);
-        }
-      }
-    }
-
-    timer = setTimeout(poll, 3000);
-    return () => { active = false; clearTimeout(timer); };
-  }, [generating, product.id, router]);
 
   return (
     // Mobile: reserve space at the bottom for the floating Trial Room FAB so
@@ -455,7 +509,7 @@ export function ProductDetailView({
                   <Pencil className="h-4 w-4" strokeWidth={1.75} />
                   Edit Details
                 </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => handleGenerateModelImage()} disabled={generating}>
+                <DropdownMenuItem onSelect={() => genSettingsModal.openModal()} disabled={generating}>
                   {generating ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
@@ -463,6 +517,16 @@ export function ProductDetailView({
                   )}
                   {generating ? "Generating…" : "Generate Model Image"}
                 </DropdownMenuItem>
+                {allImages.length > 1 && (
+                  <DropdownMenuItem onSelect={handleDownloadAll} disabled={downloading}>
+                    {downloading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Download className="h-4 w-4" strokeWidth={1.75} />
+                    )}
+                    {downloading ? "Downloading…" : "Download All Images"}
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onSelect={(e) => {
@@ -515,12 +579,12 @@ export function ProductDetailView({
                 </div>
               )}
               {!generating && genError && (
-                <div className="absolute inset-x-0 top-0 z-30 flex items-start justify-between gap-2 bg-amber-500/95 backdrop-blur-sm text-white text-xs font-medium py-2 px-3">
+                <div className="absolute inset-x-0 top-0 z-30 flex items-start justify-between gap-2 bg-red-600/95 backdrop-blur-sm text-white text-xs font-medium py-2 px-3">
                   <span>{genError}</span>
                   <button
                     type="button"
                     aria-label="Dismiss"
-                    onClick={() => setGenError(null)}
+                    onClick={(e) => { e.stopPropagation(); dismissGenError(); }}
                     className="shrink-0 font-bold hover:opacity-70"
                   >
                     ✕
@@ -528,14 +592,26 @@ export function ProductDetailView({
                 </div>
               )}
 
-              <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/40 to-transparent p-4 z-20 pointer-events-none">
-                <div className="flex items-center gap-2">
-                  <Badge variant="purple" className="bg-white/90 text-indigo-700 backdrop-blur-sm">
-                    {product.category}
-                  </Badge>
-                  {!product.inStock && <Badge variant="error">Out of Stock</Badge>}
+              {!product.inStock && (
+                <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/40 to-transparent p-4 z-20 pointer-events-none">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="error">Out of Stock</Badge>
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {allImages.length > 0 && (
+                <div className="absolute bottom-3 left-3 z-30 pointer-events-auto" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    aria-label="Download image"
+                    onClick={handleDownloadCurrent}
+                    className="h-8 w-8 rounded-full bg-white/90 backdrop-blur-sm shadow-md flex items-center justify-center text-gray-600 hover:text-indigo-600 hover:bg-white transition-colors"
+                  >
+                    <Download className="h-3.5 w-3.5" strokeWidth={2} />
+                  </button>
+                </div>
+              )}
 
               {product.modelImageUrl && (
                 <div className="absolute bottom-3 right-3 z-30 pointer-events-auto" onClick={(e) => e.stopPropagation()}>
@@ -905,6 +981,21 @@ export function ProductDetailView({
       <div className="md:hidden fixed right-6 z-30 [bottom:max(1.5rem,calc(env(safe-area-inset-bottom)+0.75rem))]">
         <TryOnQueueButton product={product} iconOnly />
       </div>
+
+      <GenerationSettingsModal
+        open={genSettingsModal.open}
+        onOpenChange={genSettingsModal.setOpen}
+        productTitle={product.title}
+        productColor={product.color}
+        productCategory={product.category}
+        hasDetailNotes={!!product.detailNotes}
+        hasGI={hasGI}
+        onGenerate={handleGenerateModelImage}
+        generating={generating}
+        hasGeneratedImages={hasModelImage}
+        settingsData={genSettingsModal.data}
+        settingsLoading={genSettingsModal.loading}
+      />
     </div>
   );
 }

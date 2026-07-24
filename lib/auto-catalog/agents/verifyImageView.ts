@@ -9,6 +9,8 @@
  * provider. The prompt is intentionally minimal to keep latency and cost low.
  */
 
+import { recordAiUsage, type AiUsageContext } from "@/lib/ai-usage/record";
+
 const VERIFIER_MODEL = "gemini-2.5-flash-lite";
 
 export type ExpectedView = "front" | "back" | "close-up" | "on-model";
@@ -37,7 +39,8 @@ Return ONLY valid JSON in this exact shape (no markdown, no explanation):
 export async function verifyImageView(
   imageId: string,
   url: string,
-  expectedView: ExpectedView
+  expectedView: ExpectedView,
+  usage?: AiUsageContext
 ): Promise<ViewVerificationResult> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || apiKey === "your-gemini-api-key-here") {
@@ -69,19 +72,46 @@ export async function verifyImageView(
     generationConfig: { temperature: 0.1 },
   });
 
+  const t0 = Date.now();
   try {
     const res = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body,
     });
+    const durationMs = Date.now() - t0;
+
     if (!res.ok) {
+      if (usage) {
+        void recordAiUsage({
+          provider: "gemini", model: VERIFIER_MODEL,
+          feature: usage.feature, operation: "verify_image_view",
+          imageInputs: 1, durationMs,
+          storeId: usage.storeId, userId: usage.userId,
+          status: "error", errorMessage: `HTTP ${res.status}`,
+        });
+      }
       return { imageId, url, expectedView, detectedView: "unknown", match: true, confidence: 0 };
     }
-    const data = await res.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
-    const raw = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
+    const data = await res.json() as {
+      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+      usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number };
+    };
 
-    // Strip possible markdown fences
+    if (usage) {
+      void recordAiUsage({
+        provider: "gemini", model: VERIFIER_MODEL,
+        feature: usage.feature, operation: "verify_image_view",
+        inputTokens: data.usageMetadata?.promptTokenCount ?? null,
+        outputTokens: data.usageMetadata?.candidatesTokenCount ?? null,
+        totalTokens: data.usageMetadata?.totalTokenCount ?? null,
+        imageInputs: 1, durationMs,
+        storeId: usage.storeId, userId: usage.userId,
+        status: "success",
+      });
+    }
+
+    const raw = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
     const clean = raw.replace(/```[a-z]*\n?/g, "").replace(/```/g, "").trim();
     const parsed = JSON.parse(clean) as { detected_view: string; match: boolean; confidence: number };
 

@@ -164,7 +164,7 @@ export function ShareModelImage({ product, iconOnly = false }: Props) {
           <div className="flex items-start gap-2 text-xs text-gray-500">
             <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-400" />
             <span>
-              Native sharing isn't available on this device. Save the image,
+              Native sharing isn&apos;t available on this device. Save the image,
               copy the caption, then post on Instagram.
             </span>
           </div>

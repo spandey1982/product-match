@@ -1,5 +1,6 @@
 import type { DesignUnderstanding } from "../types";
 import { callGeminiForJson, fetchImageAsPart } from "../gemini-client";
+import type { AiUsageContext } from "@/lib/ai-usage/record";
 
 const PROMPT = `
 You are a fashion design expert specialising in Indian ethnic garments.
@@ -44,7 +45,8 @@ function defaultDesignUnderstanding(garmentType: string): DesignUnderstanding {
 
 export async function designUnderstandingAgent(
   sketchOrReferenceUrls: string[],
-  garmentType: string
+  garmentType: string,
+  usage?: AiUsageContext
 ): Promise<DesignUnderstanding> {
   if (sketchOrReferenceUrls.length === 0) {
     return defaultDesignUnderstanding(garmentType);
@@ -54,8 +56,9 @@ export async function designUnderstandingAgent(
     const imagePart = await fetchImageAsPart(sketchOrReferenceUrls[0]);
     if (!imagePart) return defaultDesignUnderstanding(garmentType);
 
-    const parsed = await callGeminiForJson<DesignUnderstanding>(PROMPT, [imagePart]);
-    // Override garment category with user's explicit choice when provided
+    const parsed = await callGeminiForJson<DesignUnderstanding>(PROMPT, [imagePart], {
+      usage: usage ? { ...usage, operation: "design_understanding" } : undefined,
+    });
     if (garmentType) parsed.garmentCategory = garmentType;
     return parsed;
   } catch {

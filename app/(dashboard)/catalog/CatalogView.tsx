@@ -6,8 +6,8 @@ import {
   Sparkles, Mic, Loader2, MicOff, AlertCircle, Trash2,
 } from "lucide-react";
 import { HangerPlusIcon } from "@/components/icons/HangerPlusIcon";
-import { cn } from "@/lib/utils";
-import { Product, Pagination } from "@/types";
+import { cn, formatCurrency } from "@/lib/utils";
+import { Product } from "@/types";
 import { ProductCard } from "@/components/catalog/ProductCard";
 import { CatalogFilterBar } from "@/components/catalog/CatalogFilterBar";
 import { Button } from "@/components/ui/button";
@@ -28,9 +28,11 @@ interface CatalogViewProps {
 export function CatalogView({ storeName, logoUrl }: CatalogViewProps = {}) {
   // ── catalog state ──────────────────────────────────────────────────────────
   const [products, setProducts] = useState<Product[]>([]);
-  const [pagination, setPagination] = useState<Pagination | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(1);
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
   // ── filter state ───────────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState("");
@@ -38,6 +40,8 @@ export function CatalogView({ storeName, logoUrl }: CatalogViewProps = {}) {
   const [selectedOccasion, setSelectedOccasion] = useState("");
   const [selectedColor, setSelectedColor] = useState("");
   const [selectedGender, setSelectedGender] = useState("");
+  const [priceMin, setPriceMin] = useState(0);
+  const [priceMax, setPriceMax] = useState(0);
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   // ── trial room ─────────────────────────────────────────────────────────────
@@ -73,23 +77,28 @@ export function CatalogView({ storeName, logoUrl }: CatalogViewProps = {}) {
 
   // ── data fetching ──────────────────────────────────────────────────────────
   const fetchProducts = useCallback(async () => {
-    setLoading(true);
+    if (page === 1) setLoading(true);
+    else setLoadingMore(true);
     try {
       const params = new URLSearchParams();
       if (selectedCategory && selectedCategory !== "All") params.set("category", selectedCategory);
       if (selectedOccasion) params.set("occasion", selectedOccasion);
       if (selectedColor)    params.set("color", selectedColor);
       if (selectedGender)   params.set("gender", selectedGender);
+      if (priceMin > 0)     params.set("priceMin", String(priceMin));
       params.set("page",  String(page));
       params.set("limit", "24");
       const res = await fetch(`/api/products?${params}`);
       const data = await res.json();
-      setProducts(data.products || []);
-      setPagination(data.pagination);
+      const fetched: Product[] = data.products || [];
+      if (page === 1) setProducts(fetched);
+      else setProducts((prev) => [...prev, ...fetched]);
+      setHasMore(fetched.length === 24);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
-  }, [selectedCategory, selectedOccasion, selectedColor, selectedGender, page]);
+  }, [selectedCategory, selectedOccasion, selectedColor, selectedGender, priceMin, page]);
 
   const searchProducts = useCallback(
     async (q: string) => {
@@ -99,7 +108,7 @@ export function CatalogView({ storeName, logoUrl }: CatalogViewProps = {}) {
         const res = await fetch(`/api/products/search?q=${encodeURIComponent(q)}`);
         const data = await res.json();
         setProducts(data.products || []);
-        setPagination(null);
+        setHasMore(false);
       } finally {
         setLoading(false);
       }
@@ -116,17 +125,29 @@ export function CatalogView({ storeName, logoUrl }: CatalogViewProps = {}) {
   useEffect(() => {
     function onVisible() {
       if (document.visibilityState === "visible" && !searchQuery) {
-        void fetchProducts();
+        setPage(1);
       }
     }
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [fetchProducts, searchQuery]);
+  }, [searchQuery]);
 
   useEffect(() => {
     const t = setTimeout(() => { if (searchQuery) searchProducts(searchQuery); }, 350);
     return () => clearTimeout(t);
   }, [searchQuery, searchProducts]);
+
+  // ── infinite scroll ────────────────────────────────────────────────────────
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || loading || loadingMore || !hasMore || searchQuery) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) setPage((p) => p + 1); },
+      { rootMargin: "400px" },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [loading, loadingMore, hasMore, searchQuery]);
 
   // ── reset ──────────────────────────────────────────────────────────────────
   function resetFilters() {
@@ -134,6 +155,8 @@ export function CatalogView({ storeName, logoUrl }: CatalogViewProps = {}) {
     setSelectedOccasion("");
     setSelectedColor("");
     setSelectedGender("");
+    setPriceMin(0);
+    setPriceMax(0);
     setPage(1);
     setSearchQuery("");
     setVoiceInterpretation("");
@@ -142,7 +165,7 @@ export function CatalogView({ storeName, logoUrl }: CatalogViewProps = {}) {
 
   const hasFilters = Boolean(
     selectedCategory !== "All" || selectedOccasion || searchQuery ||
-    selectedColor || selectedGender
+    selectedColor || selectedGender || priceMin > 0 || priceMax > 0
   );
 
   // ── voice search ───────────────────────────────────────────────────────────
@@ -282,6 +305,10 @@ export function CatalogView({ storeName, logoUrl }: CatalogViewProps = {}) {
         onClearColor={() => setSelectedColor("")}
         selectedGender={selectedGender}
         onClearGender={() => setSelectedGender("")}
+        priceMin={priceMin}
+        onPriceMinChange={(v) => { setPriceMin(v); setPage(1); }}
+        priceMax={priceMax}
+        onPriceMaxChange={(v) => { setPriceMax(v); setPage(1); }}
         filtersOpen={filtersOpen}
         onToggleFilters={() => setFiltersOpen((v) => !v)}
         hasFilters={hasFilters}
@@ -389,7 +416,7 @@ export function CatalogView({ storeName, logoUrl }: CatalogViewProps = {}) {
             {" "}Remove a try-on to add more.
           </p>
           <Link
-            href="/my-try-ons"
+            href="/trial-room"
             className="text-xs font-semibold text-amber-700 underline underline-offset-2 hover:text-amber-900 shrink-0"
           >
             Manage Try-Ons
@@ -423,37 +450,46 @@ export function CatalogView({ storeName, logoUrl }: CatalogViewProps = {}) {
             </Link>
           )}
         </div>
-      ) : (
-        <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-            {products.map((product) => (
-              <ProductCard key={product.id} product={product} />
-            ))}
-          </div>
+      ) : (() => {
+          const hasPriceWindow = priceMax > 0;
+          const withinWindow = hasPriceWindow ? products.filter((p) => p.price <= priceMax) : products;
+          const aboveWindow = hasPriceWindow ? products.filter((p) => p.price > priceMax) : [];
 
-          {pagination && pagination.pages > 1 && !searchQuery && (
-            <div className="flex items-center justify-center gap-2 mt-10">
-              <Button
-                variant="outline" size="sm"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
-              >
-                Previous
-              </Button>
-              <span className="text-sm text-gray-500">
-                Page {pagination.page} of {pagination.pages}
-              </span>
-              <Button
-                variant="outline" size="sm"
-                onClick={() => setPage((p) => Math.min(pagination.pages, p + 1))}
-                disabled={page === pagination.pages}
-              >
-                Next
-              </Button>
-            </div>
-          )}
-        </>
-      )}
+          return (
+            <>
+              {withinWindow.length > 0 && (
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                  {withinWindow.map((product) => (
+                    <ProductCard key={product.id} product={product} />
+                  ))}
+                </div>
+              )}
+
+              {hasPriceWindow && aboveWindow.length > 0 && (
+                <>
+                  <div className="flex items-center gap-4 my-8">
+                    <div className="flex-1 h-px bg-gray-200" />
+                    <span className="text-sm font-medium text-gray-500 whitespace-nowrap">
+                      Now showing products with price above {formatCurrency(priceMax)}
+                    </span>
+                    <div className="flex-1 h-px bg-gray-200" />
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                    {aboveWindow.map((product) => (
+                      <ProductCard key={product.id} product={product} />
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {hasMore && !searchQuery && (
+                <div ref={sentinelRef} className="flex justify-center py-8">
+                  {loadingMore && <Loader2 className="h-6 w-6 animate-spin text-indigo-400" />}
+                </div>
+              )}
+            </>
+          );
+        })()}
 
       {/* ── Floating Trial Room button ──
           `bottom` uses max(1.5rem, env(safe-area-inset-bottom) + 0.75rem) so
@@ -486,7 +522,7 @@ export function CatalogView({ storeName, logoUrl }: CatalogViewProps = {}) {
 
           {/* Primary FAB */}
           {photo ? (
-            <Link href="/my-try-ons">
+            <Link href="/trial-room">
               <button
                 className={cn(
                   "relative flex items-center gap-2 h-12 px-5 rounded-2xl text-sm font-semibold text-white shadow-lg",

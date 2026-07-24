@@ -17,6 +17,8 @@ export interface PromptView {
   modifier: string;
 }
 
+export const CROSS_VIEW_LABEL = "__cross_view_ref__";
+
 // Saree drape is deterministic and IDENTICAL in intent across front and back
 // (only the camera side differs) — retailer testing (2026-07-15) found the
 // model otherwise improvised the pallu differently per view (front bunched/
@@ -44,6 +46,16 @@ const KURTI: PromptView[] = [
   { id: "fabric", label: "Fabric Detail",    modifier: "Close-up fabric detail, showing the texture, print and stitching." },
 ];
 
+const BLOUSE: PromptView[] = [
+  { id: "front",  label: "Front View",       modifier: "Full-length front view showing the blouse as part of a complete traditional outfit." },
+  { id: "back",   label: "Back View",        modifier: "Full-length back view showing the blouse back design, neckline and embellishment as part of a complete outfit." },
+];
+
+const BOTTOM_WEAR: PromptView[] = [
+  { id: "front",  label: "Front View",       modifier: "Full-length front view showing the bottom-wear product as part of a complete outfit, with the product clearly visible." },
+  { id: "back",   label: "Back View",        modifier: "Full-length back view showing the bottom-wear product fit and drape as part of a complete outfit." },
+];
+
 const GENERIC: PromptView[] = [
   { id: "front", label: "Front View", modifier: "Full-length front view, the product worn naturally and clearly visible." },
   { id: "back",  label: "Back View",  modifier: "Full-length back view of the product." },
@@ -53,10 +65,15 @@ const CATEGORY_PROMPT_SET: Record<string, PromptView[]> = {
   saree: SAREE,
   dupatta: SAREE,
   lehenga: LEHENGA,
-  sharara: LEHENGA,
+  sharara: BOTTOM_WEAR,
   kurta: KURTI,
   kurti: KURTI,
-  salwar: KURTI,
+  salwar: BOTTOM_WEAR,
+  palazzo: BOTTOM_WEAR,
+  churidar: BOTTOM_WEAR,
+  leggings: BOTTOM_WEAR,
+  pyjama: BOTTOM_WEAR,
+  blouse: BLOUSE,
   anarkali: KURTI,
 };
 
@@ -151,6 +168,49 @@ function blouseClause(category: string, color: string): string {
 }
 
 /**
+ * Outfit completion — when the product is a PARTIAL garment (a top without
+ * bottoms, a bottom without a top, a blouse without a saree), the model must
+ * wear a complete, professionally styled outfit — never leave the body bare,
+ * transparent or cropped. The complementary garment is derived from the
+ * product category and uses the product's own colour for coordination.
+ *
+ * Indian ethnic wear is NOT western dress: a kurta needs churidar/leggings,
+ * a blouse needs a saree or long skirt, a salwar needs a kurta. The AI must
+ * treat these as coordinated ensembles, not standalone pieces.
+ */
+function outfitCompletionClause(category: string, color: string): string {
+  const cat = category.trim().toLowerCase();
+
+  // Top-wear categories — need appropriate bottoms
+  if (cat === "blouse") {
+    return `OUTFIT COMPLETION (mandatory): The blouse is a partial garment — the model MUST wear a complete outfit. Pair it with a simple, elegant saree or a floor-length skirt in a colour that complements ${color}. The complementary garment should be plain and understated so the blouse remains the hero product. NEVER leave the lower body bare, transparent, skin-coloured, or empty — this must look like a professional catalogue photo of a complete Indian ethnic outfit.`;
+  }
+  if (cat === "kurti" || cat === "kurta") {
+    return `OUTFIT COMPLETION (mandatory): The ${cat} MUST be shown as part of a complete outfit. The model wears well-fitted churidar, leggings, or a slim salwar in a neutral or tonal shade that complements ${color} (e.g. matching, off-white, beige, or cream). NEVER leave the lower body bare, transparent, or empty — Indian ethnic wear always includes coordinated bottom-wear. The bottom-wear is plain and understated so the ${cat} remains the hero product.`;
+  }
+
+  // Bottom-wear categories — need appropriate tops (waist-length so product is visible)
+  if (cat === "salwar" || cat === "palazzo" || cat === "sharara") {
+    return `OUTFIT COMPLETION (mandatory): The ${cat} is bottom-wear and MUST be shown with a complete outfit. The model wears a simple, plain kurta or kurti that ends at waist to hip length in a neutral or tonal shade that complements ${color}, so the ${cat} product is clearly visible below. NEVER leave the upper body bare, in just an undergarment, or empty — this is Indian ethnic wear and must look like a complete, professionally coordinated outfit. The top is understated so the ${cat} remains the hero product.`;
+  }
+  if (cat === "leggings" || cat === "churidar" || cat === "pyjama") {
+    return `OUTFIT COMPLETION (mandatory): The ${cat} is bottom-wear and MUST be shown with a complete outfit. The model wears a simple, plain kurta, kurti, or long top that ends at waist to hip length in a neutral or tonal shade that complements ${color}, so the ${cat} is clearly visible below. NEVER leave the upper body bare or in just an undergarment. The top is understated so the ${cat} remains the hero product.`;
+  }
+
+  // Dupatta — needs an underlying outfit
+  if (cat === "dupatta") {
+    return `OUTFIT COMPLETION (mandatory): The dupatta is draped elegantly and MUST be shown over a complete outfit — a simple, plain kurta or suit set in a neutral or tonal shade that complements ${color}. The underlying outfit is understated so the dupatta's print, weave and colour remain the hero. NEVER show just the dupatta floating on a bare body.`;
+  }
+
+  // Lehenga — ensure choli/blouse is present
+  if (cat === "lehenga") {
+    return `OUTFIT COMPLETION (mandatory): The lehenga MUST be shown as a complete outfit with a well-fitted choli or blouse and dupatta. The choli colour should complement ${color}. The lehenga skirt is the hero product.`;
+  }
+
+  return "";
+}
+
+/**
  * Front and back are INDEPENDENT generations, so every element that is not the
  * product itself — footwear, any complementary top or bottoms (a bottom for a
  * top-wear product, a top for a bottom-wear product), and any jewellery or
@@ -175,7 +235,7 @@ const STYLING_CONSISTENCY_CLAUSE =
  */
 function orientationClause(viewId: string): string {
   if (viewId === "front") {
-    return "Camera orientation (mandatory): the model faces the camera directly, front of the garment fully visible — never shown from behind, over-the-shoulder, or walking away.";
+    return "Camera orientation (mandatory, override any product image angle): the model faces the camera directly in a straight-on front-facing pose, front of the garment fully visible — never shown from behind, from the side, at a three-quarter angle, over-the-shoulder, or walking away. Even if the product photo is a side or back shot, the generated image MUST be a direct front view.";
   }
   if (viewId === "back") {
     return "Camera orientation (mandatory): the model is seen from directly behind, back of the garment fully visible.";
@@ -209,6 +269,7 @@ function anchorClause(studioAnchor?: string | null): string {
 // duplicated as a plain string (not an import) so this file stays a leaf
 // module the casting layer never depends on.
 const IDENTITY_FACE_LABEL_INTERNAL = "__identity_face__";
+const CROSS_VIEW_LABEL_INTERNAL = "__cross_view_ref__";
 
 function extraImageClause(
   refs: Array<{ label: string; placement: string }> | undefined,
@@ -218,6 +279,9 @@ function extraImageClause(
   const lines = refs.map((r, i) => {
     if (r.label === IDENTITY_FACE_LABEL_INTERNAL) {
       return `Image ${startIndex + i} is the model's face identity reference — reproduce this exact face on the generated model; it is the person, NOT a garment part.`;
+    }
+    if (r.label === CROSS_VIEW_LABEL_INTERNAL) {
+      return `Image ${startIndex + i} is the ${r.placement} of this exact same model from this same photo session — the current view MUST show the exact same person: same hair (colour, length, style, parting), same skin tone, same body build and proportions, same outfit and accessories. Only the camera angle changes.`;
     }
     return `Image ${startIndex + i} is a real close-up photo of ${r.label} of this exact same garment — faithfully reproduce its exact design, motif, colour and surface texture on ${r.placement}.`;
   });
@@ -233,6 +297,7 @@ export function buildViewPrompt(input: ViewPromptInput): string {
   const detail = detailClause(detailNotes);
   const backGuard = backGuardClause(view.id, detailNotes);
   const blouse = blouseClause(category, color);
+  const outfitCompletion = outfitCompletionClause(category, color);
   const anchor = anchorClause(studioAnchor);
   const styling = STYLING_CONSISTENCY_CLAUSE;
   const orientation = orientationClause(view.id);
@@ -264,6 +329,7 @@ export function buildViewPrompt(input: ViewPromptInput): string {
       detail,
       backGuard,
       blouse,
+      outfitCompletion,
       styling,
       backdrop,
       anchor,
@@ -279,6 +345,7 @@ export function buildViewPrompt(input: ViewPromptInput): string {
     view.modifier,
     detail,
     backGuard,
+    outfitCompletion,
     backdrop,
     anchor,
     orientation,

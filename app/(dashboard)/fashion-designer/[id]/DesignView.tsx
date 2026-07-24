@@ -28,6 +28,7 @@ interface Design {
   flatBackUrl: string | null;
   qualityScore: number | null;
   failureReason: string | null;
+  failedAtStage: string | null;
   catalogProductId: string | null;
 }
 
@@ -49,19 +50,23 @@ function stageIndex(stage: DesignStage) {
   return idx === -1 ? 0 : idx;
 }
 
-function PipelineProgress({ stage }: { stage: DesignStage }) {
-  const current = stageIndex(stage);
-  const failed = stage === "failed";
+function PipelineProgress({ stage, failedAtStage }: { stage: DesignStage; failedAtStage?: string | null }) {
+  const isFailed = stage === "failed";
+  const failedIdx = isFailed && failedAtStage
+    ? stageIndex(failedAtStage as DesignStage)
+    : -1;
+  const current = isFailed ? failedIdx : stageIndex(stage);
 
   return (
     <div className="space-y-3">
       {PIPELINE_STAGES.map((s, i) => {
-        const done = current > i;
-        const active = current === i && !failed;
+        const isFailedStep = isFailed && i === current;
+        const done = stage === "completed" || current > i;
+        const active = !isFailed && current === i;
         return (
           <div key={s.key} className="flex items-center gap-3">
             <div className="shrink-0">
-              {failed && active ? (
+              {isFailedStep ? (
                 <XCircle className="h-5 w-5 text-red-500" />
               ) : done ? (
                 <CheckCircle2 className="h-5 w-5 text-emerald-500" />
@@ -71,7 +76,7 @@ function PipelineProgress({ stage }: { stage: DesignStage }) {
                 <Circle className="h-5 w-5 text-gray-200" />
               )}
             </div>
-            <span className={`text-sm ${done ? "text-gray-700 font-medium" : active ? "text-purple-700 font-semibold" : "text-gray-400"}`}>
+            <span className={`text-sm ${isFailedStep ? "text-red-600 font-semibold" : done ? "text-gray-700 font-medium" : active ? "text-purple-700 font-semibold" : "text-gray-400"}`}>
               {s.label}
             </span>
           </div>
@@ -184,6 +189,13 @@ export function DesignView() {
     setRegenerateFeedback("");
   }
 
+  async function handleResume() {
+    setRegenerating(true);
+    startPolling();
+    await fetch(`/api/fashion-designer/designs/${id}/resume`, { method: "POST" });
+    setRegenerating(false);
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-24">
@@ -279,7 +291,7 @@ export function DesignView() {
         <div className="lg:col-span-1 space-y-4">
           <div className="rounded-2xl border border-gray-100 bg-white p-5">
             <h2 className="text-sm font-semibold text-gray-900 mb-4">Pipeline</h2>
-            <PipelineProgress stage={design.stage} />
+            <PipelineProgress stage={design.stage} failedAtStage={design.failedAtStage} />
             {design.stage === "failed" && design.failureReason && (
               <div className="mt-4 p-3 bg-red-50 rounded-xl">
                 <p className="text-xs text-red-600 font-medium">Error</p>
@@ -481,15 +493,29 @@ export function DesignView() {
             <div className="flex flex-col items-center justify-center py-24 rounded-2xl border-2 border-dashed border-red-100 bg-red-50/20">
               <XCircle className="h-10 w-10 text-red-300 mb-4" />
               <p className="text-sm font-medium text-gray-600">Generation failed</p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="mt-4"
-                onClick={handleRegenerate}
-                loading={regenerating}
-              >
-                Try again
-              </Button>
+              {design.failureReason && (
+                <p className="text-xs text-red-500 mt-1 max-w-xs text-center">{design.failureReason}</p>
+              )}
+              <div className="flex gap-2 mt-4">
+                {design.failedAtStage && (design.fabricAnalysis || design.designUnderstanding || design.accessoryAnalysis || design.generationPlan) && (
+                  <Button
+                    size="sm"
+                    className="bg-purple-600 hover:bg-purple-700"
+                    onClick={handleResume}
+                    loading={regenerating}
+                  >
+                    Resume
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRegenerate}
+                  loading={regenerating}
+                >
+                  Start over
+                </Button>
+              </div>
             </div>
           ) : null}
         </div>
