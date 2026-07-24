@@ -2,8 +2,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import {
-  Plus, X,
-  Sparkles, Mic, Loader2, MicOff, AlertCircle, Trash2,
+  Plus, X, Check, CheckSquare,
+  Sparkles, Mic, Loader2, MicOff, AlertCircle, Trash2, ImageDown,
 } from "lucide-react";
 import { HangerPlusIcon } from "@/components/icons/HangerPlusIcon";
 import { cn, formatCurrency } from "@/lib/utils";
@@ -32,6 +32,7 @@ export function CatalogView({ storeName, logoUrl }: CatalogViewProps = {}) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(1);
+  const [refreshKey, setRefreshKey] = useState(0);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   // ── filter state ───────────────────────────────────────────────────────────
@@ -43,6 +44,82 @@ export function CatalogView({ storeName, logoUrl }: CatalogViewProps = {}) {
   const [priceMin, setPriceMin] = useState(0);
   const [priceMax, setPriceMax] = useState(0);
   const [filtersOpen, setFiltersOpen] = useState(false);
+
+  // ── bulk download ──────────────────────────────────────────────────────────
+  const [bulkMode, setBulkMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [downloading, setDownloading] = useState(false);
+
+  function enterBulkMode() {
+    setBulkMode(true);
+    setSelectedIds(new Set());
+  }
+
+  function exitBulkMode() {
+    setBulkMode(false);
+    setSelectedIds(new Set());
+  }
+
+  function toggleSelection(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function selectAll() {
+    setSelectedIds(new Set(products.map((p) => p.id)));
+  }
+
+  async function handleBulkDownload() {
+    if (selectedIds.size === 0) return;
+    setDownloading(true);
+    try {
+      const selected = products.filter((p) => selectedIds.has(p.id));
+      const urls = selected
+        .map((p) => p.modelImageUrl || p.generatedImages?.[0]?.url || p.imageUrl)
+        .filter(Boolean) as string[];
+
+      if (urls.length === 0) return;
+
+      if (urls.length === 1) {
+        const res = await fetch(urls[0]);
+        const blob = await res.blob();
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `${selected[0].title.replace(/[^a-zA-Z0-9]/g, "_")}.jpg`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        exitBulkMode();
+        return;
+      }
+
+      const { default: JSZip } = await import("jszip");
+      const zip = new JSZip();
+      const results = await Promise.allSettled(
+        urls.map(async (url, i) => {
+          const res = await fetch(url);
+          const blob = await res.blob();
+          const name = selected[i].title.replace(/[^a-zA-Z0-9]/g, "_");
+          zip.file(`${name}_${i + 1}.jpg`, blob);
+        }),
+      );
+      const succeeded = results.filter((r) => r.status === "fulfilled").length;
+      if (succeeded === 0) return;
+
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(zipBlob);
+      a.download = "catalogue_images.zip";
+      a.click();
+      URL.revokeObjectURL(a.href);
+      exitBulkMode();
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   // ── trial room ─────────────────────────────────────────────────────────────
   const { photo, isAtLimit, activeTryOnCount, clearAll, setupHintActive } = useTrialRoom();
@@ -98,7 +175,8 @@ export function CatalogView({ storeName, logoUrl }: CatalogViewProps = {}) {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [selectedCategory, selectedOccasion, selectedColor, selectedGender, priceMin, page]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCategory, selectedOccasion, selectedColor, selectedGender, priceMin, page, refreshKey]);
 
   const searchProducts = useCallback(
     async (q: string) => {
@@ -126,6 +204,7 @@ export function CatalogView({ storeName, logoUrl }: CatalogViewProps = {}) {
     function onVisible() {
       if (document.visibilityState === "visible" && !searchQuery) {
         setPage(1);
+        setRefreshKey((k) => k + 1);
       }
     }
     document.addEventListener("visibilitychange", onVisible);
@@ -314,38 +393,51 @@ export function CatalogView({ storeName, logoUrl }: CatalogViewProps = {}) {
         hasFilters={hasFilters}
         onReset={resetFilters}
         searchBarExtra={
-          /* Mic button — voice search, catalog-only for now */
-          <button
-            type="button"
-            onClick={startVoiceSearch}
-            disabled={voiceState === "processing"}
-            title={
-              voiceState === "listening" ? "Stop listening" :
-              voiceState === "processing" ? "Processing…" :
-              "Voice search"
-            }
-            className={`
-              relative flex items-center justify-center h-10 w-10 rounded-xl border transition-all duration-200 shrink-0
-              ${voiceState === "listening"
-                ? "bg-red-500 border-red-500 text-white shadow-lg shadow-red-200"
-                : voiceState === "processing"
-                ? "bg-indigo-50 border-indigo-200 text-indigo-400 cursor-wait"
-                : "bg-white border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50"
+          <>
+            {/* Mic button — voice search */}
+            <button
+              type="button"
+              onClick={startVoiceSearch}
+              disabled={voiceState === "processing"}
+              title={
+                voiceState === "listening" ? "Stop listening" :
+                voiceState === "processing" ? "Processing…" :
+                "Voice search"
               }
-            `}
-          >
-            {voiceState === "processing" ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : voiceState === "listening" ? (
-              <>
-                {/* Pulse rings while listening */}
-                <span className="absolute inset-0 rounded-xl animate-ping bg-red-400 opacity-30" />
-                <MicOff className="h-4 w-4 relative z-10" />
-              </>
-            ) : (
-              <Mic className="h-4 w-4" />
+              className={`
+                relative flex items-center justify-center h-10 w-10 rounded-xl border transition-all duration-200 shrink-0
+                ${voiceState === "listening"
+                  ? "bg-red-500 border-red-500 text-white shadow-lg shadow-red-200"
+                  : voiceState === "processing"
+                  ? "bg-indigo-50 border-indigo-200 text-indigo-400 cursor-wait"
+                  : "bg-white border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50"
+                }
+              `}
+            >
+              {voiceState === "processing" ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : voiceState === "listening" ? (
+                <>
+                  <span className="absolute inset-0 rounded-xl animate-ping bg-red-400 opacity-30" />
+                  <MicOff className="h-4 w-4 relative z-10" />
+                </>
+              ) : (
+                <Mic className="h-4 w-4" />
+              )}
+            </button>
+
+            {/* Bulk download button */}
+            {!bulkMode && (
+              <button
+                type="button"
+                onClick={enterBulkMode}
+                title="Bulk download images"
+                className="flex items-center justify-center h-10 w-10 rounded-xl border border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50 transition-all duration-200 shrink-0"
+              >
+                <ImageDown className="h-4 w-4" />
+              </button>
             )}
-          </button>
+          </>
         }
         belowSearchBar={
           <>
@@ -424,6 +516,38 @@ export function CatalogView({ storeName, logoUrl }: CatalogViewProps = {}) {
         </div>
       )}
 
+      {/* Bulk download bar */}
+      {bulkMode && (
+        <div className="flex items-center gap-3 px-4 py-3 mb-4 bg-indigo-50 border border-indigo-200 rounded-2xl">
+          <CheckSquare className="h-4 w-4 text-indigo-500 shrink-0" />
+          <p className="text-sm text-indigo-800 flex-1">
+            {selectedIds.size === 0
+              ? "Tap products to select for download"
+              : <><span className="font-semibold">{selectedIds.size}</span> selected</>}
+          </p>
+          <button
+            onClick={selectAll}
+            className="text-xs font-medium text-indigo-600 hover:text-indigo-800 underline underline-offset-2 shrink-0"
+          >
+            Select all
+          </button>
+          <button
+            onClick={handleBulkDownload}
+            disabled={selectedIds.size === 0 || downloading}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors shrink-0"
+          >
+            {downloading ? <Loader2 className="h-3 w-3 animate-spin" /> : <ImageDown className="h-3 w-3" />}
+            Download
+          </button>
+          <button
+            onClick={exitBulkMode}
+            className="text-indigo-400 hover:text-indigo-600 shrink-0"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {/* Grid */}
       {loading ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
@@ -460,7 +584,23 @@ export function CatalogView({ storeName, logoUrl }: CatalogViewProps = {}) {
               {withinWindow.length > 0 && (
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                   {withinWindow.map((product) => (
-                    <ProductCard key={product.id} product={product} />
+                    bulkMode ? (
+                      <div key={product.id} className="relative cursor-pointer" onClick={() => toggleSelection(product.id)}>
+                        <div className={cn("rounded-2xl transition-all pointer-events-none", selectedIds.has(product.id) && "ring-2 ring-indigo-500 ring-offset-2")}>
+                          <ProductCard product={product} />
+                        </div>
+                        <div className={cn(
+                          "absolute top-2.5 left-2.5 z-30 h-6 w-6 rounded-md border-2 flex items-center justify-center transition-all",
+                          selectedIds.has(product.id)
+                            ? "bg-indigo-600 border-indigo-600"
+                            : "bg-white/80 border-gray-300 backdrop-blur-sm"
+                        )}>
+                          {selectedIds.has(product.id) && <Check className="h-3.5 w-3.5 text-white" />}
+                        </div>
+                      </div>
+                    ) : (
+                      <ProductCard key={product.id} product={product} />
+                    )
                   ))}
                 </div>
               )}
@@ -476,7 +616,23 @@ export function CatalogView({ storeName, logoUrl }: CatalogViewProps = {}) {
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                     {aboveWindow.map((product) => (
-                      <ProductCard key={product.id} product={product} />
+                      bulkMode ? (
+                        <div key={product.id} className="relative cursor-pointer" onClick={() => toggleSelection(product.id)}>
+                          <div className={cn("rounded-2xl transition-all", selectedIds.has(product.id) && "ring-2 ring-indigo-500 ring-offset-2")}>
+                            <ProductCard product={product} />
+                          </div>
+                          <div className={cn(
+                            "absolute top-2.5 left-2.5 z-30 h-6 w-6 rounded-md border-2 flex items-center justify-center transition-all",
+                            selectedIds.has(product.id)
+                              ? "bg-indigo-600 border-indigo-600"
+                              : "bg-white/80 border-gray-300 backdrop-blur-sm"
+                          )}>
+                            {selectedIds.has(product.id) && <Check className="h-3.5 w-3.5 text-white" />}
+                          </div>
+                        </div>
+                      ) : (
+                        <ProductCard key={product.id} product={product} />
+                      )
                     ))}
                   </div>
                 </>
