@@ -23,6 +23,7 @@ export interface GenerationSettings {
   backdropSection?: "studio" | "scenic";
   signatureProfileId?: string;
   useCasting?: boolean;
+  mode?: "resume" | "recreate";
 }
 
 interface ObjectiveOption {
@@ -58,6 +59,7 @@ interface GenerationSettingsModalProps {
   hasGI: boolean;
   onGenerate: (settings: GenerationSettings) => void;
   generating: boolean;
+  hasGeneratedImages?: boolean;
 }
 
 async function fetchSettingsData(): Promise<SettingsData | null> {
@@ -106,16 +108,19 @@ function CompactSelect<T extends string>({
   value,
   onChange,
   options,
+  disabled = false,
 }: {
   value: T;
   onChange: (v: T) => void;
   options: { value: T; label: string }[];
+  disabled?: boolean;
 }) {
   return (
     <select
       value={value}
       onChange={(e) => onChange(e.target.value as T)}
-      className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 focus:border-indigo-300 focus:ring-1 focus:ring-indigo-200 outline-none min-w-[140px]"
+      disabled={disabled}
+      className={`rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 focus:border-indigo-300 focus:ring-1 focus:ring-indigo-200 outline-none min-w-[140px] ${disabled ? "opacity-50 cursor-not-allowed bg-gray-50" : ""}`}
     >
       {options.map((o) => (
         <option key={o.value} value={o.value}>{o.label}</option>
@@ -132,6 +137,7 @@ export function GenerationSettingsModal({
   hasGI,
   onGenerate,
   generating,
+  hasGeneratedImages = false,
   settingsData,
   settingsLoading,
 }: GenerationSettingsModalProps & {
@@ -196,7 +202,9 @@ export function GenerationSettingsModal({
     { value: "enhanced" as const, label: "Enhanced (2K)" },
   ];
 
-  function handleGenerate() {
+  const styleLocked = hasGeneratedImages;
+
+  function handleAction(mode: "resume" | "recreate") {
     const settings: GenerationSettings = {
       objective,
       quality,
@@ -204,6 +212,7 @@ export function GenerationSettingsModal({
       signatureProfileId:
         showCasting && castingSelection !== "auto" ? castingSelection : undefined,
       useCasting: modelMode === "personalised",
+      mode,
     };
     onGenerate(settings);
   }
@@ -240,7 +249,7 @@ export function GenerationSettingsModal({
 
             {data.enabled && objectiveOptions.length > 1 && (
               <SettingsRow label="Style">
-                <CompactSelect value={objective} onChange={setObjective} options={objectiveOptions} />
+                <CompactSelect value={objective} onChange={setObjective} options={objectiveOptions} disabled={styleLocked} />
               </SettingsRow>
             )}
 
@@ -271,21 +280,33 @@ export function GenerationSettingsModal({
         )}
 
         <DialogFooter>
+          {hasGeneratedImages ? (
+            <Button
+              variant="outline"
+              onClick={() => handleAction("resume")}
+              disabled={loading || !data || generating}
+              loading={generating}
+              className="rounded-xl"
+            >
+              {generating ? "Generating…" : "Resume"}
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={generating}
+              className="rounded-xl"
+            >
+              Cancel
+            </Button>
+          )}
           <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={generating}
-            className="rounded-xl"
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleGenerate}
+            onClick={() => handleAction("recreate")}
             disabled={loading || !data || generating}
             loading={generating}
             className="rounded-xl bg-indigo-600 hover:bg-indigo-700"
           >
-            {generating ? "Generating…" : "Generate"}
+            {generating ? "Generating…" : hasGeneratedImages ? "Recreate" : "Generate"}
           </Button>
         </DialogFooter>
       </DialogContent>
