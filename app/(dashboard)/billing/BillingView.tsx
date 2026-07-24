@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   CreditCard,
   Receipt,
@@ -8,11 +8,51 @@ import {
   Sparkles,
   Zap,
   Calendar,
-  ArrowUpRight,
   Shield,
   AlertTriangle,
+  CheckCircle2,
+  Plus,
+  Loader2,
+  IndianRupee,
 } from "lucide-react";
 import { creditAlertLevel } from "@/components/billing/CreditBalance";
+
+declare global {
+  interface Window {
+    Razorpay?: new (options: RazorpayCheckoutOptions) => RazorpayCheckoutInstance;
+  }
+}
+
+interface RazorpayCheckoutOptions {
+  key: string;
+  amount: number;
+  currency: string;
+  name: string;
+  description: string;
+  order_id: string;
+  handler: (response: RazorpayPaymentResponse) => void;
+  modal?: { ondismiss?: () => void };
+  theme?: { color: string };
+  prefill?: { email?: string; contact?: string };
+}
+
+interface RazorpayCheckoutInstance {
+  open: () => void;
+}
+
+interface RazorpayPaymentResponse {
+  razorpay_order_id: string;
+  razorpay_payment_id: string;
+  razorpay_signature: string;
+}
+
+interface BillingConfig {
+  enabled: boolean;
+  keyId: string | null;
+  packs: { id: string; label: string; amountInr: number }[];
+  customMinInr: number;
+  customMaxInr: number;
+}
 
 interface WalletData {
   hasWallet: boolean;
@@ -251,22 +291,263 @@ function CreditHistoryCard({
   );
 }
 
-function PaymentCard() {
+function loadRazorpayScript(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (window.Razorpay) { resolve(); return; }
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Failed to load Razorpay checkout"));
+    document.head.appendChild(script);
+  });
+}
+
+function AddCreditsCard({ onSuccess }: { onSuccess: () => void }) {
+  const [config, setConfig] = useState<BillingConfig | null>(null);
+  const [selectedPack, setSelectedPack] = useState<string | null>(null);
+  const [customAmount, setCustomAmount] = useState("");
+  const [useCustom, setUseCustom] = useState(false);
+  const [processing, setProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [successAmount, setSuccessAmount] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetch("/api/billing/config")
+      .then((r) => r.json())
+      .then((d: BillingConfig) => {
+        setConfig(d);
+        if (d.packs.length > 0) setSelectedPack(d.packs[0].id);
+      })
+      .catch(() => {});
+  }, []);
+
+  const handlePurchase = useCallback(async () => {
+    if (!config?.enabled || !config.keyId) return;
+    setError(null);
+    setProcessing(true);
+
+    try {
+      const body: Record<string, unknown> = useCustom
+        ? { customAmountInr: parseInt(customAmount, 10) }
+        : { packId: selectedPack };
+
+      const orderRes = await fetch("/api/billing/create-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      if (!orderRes.ok) {
+        const data = await orderRes.json();
+        throw new Error(data.error ?? "Failed to create order");
+      }
+
+      const order = (await orderRes.json()) as {
+        orderId: string;
+        amountInr: number;
+        amountPaise: number;
+        currency: string;
+        packLabel: string;
+      };
+
+      await loadRazorpayScript();
+
+      if (!window.Razorpay) throw new Error("Razorpay not loaded");
+
+      const rzp = new window.Razorpay({
+        key: config.keyId,
+        amount: order.amountPaise,
+        currency: order.currency,
+        name: "Product Match",
+        description: `Credit top-up: ${order.packLabel}`,
+        order_id: order.orderId,
+        handler: async (response: RazorpayPaymentResponse) => {
+          try {
+            const verifyRes = await fetch("/api/billing/verify-payment", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(response),
+            });
+
+            if (!verifyRes.ok) {
+              const data = await verifyRes.json();
+              throw new Error(data.error ?? "Verification failed");
+            }
+
+            setSuccessAmount(order.amountInr);
+            onSuccess();
+          } catch (err) {
+            setError((err as Error).message);
+          } finally {
+            setProcessing(false);
+          }
+        },
+        modal: {
+          ondismiss: () => setProcessing(false),
+        },
+        theme: { color: "#4f46e5" },
+      });
+
+      rzp.open();
+    } catch (err) {
+      setError((err as Error).message);
+      setProcessing(false);
+    }
+  }, [config, selectedPack, useCustom, customAmount, onSuccess]);
+
+  if (successAmount !== null) {
+    return (
+      <div className="bg-white border border-gray-200 rounded-2xl p-6">
+        <div className="flex flex-col items-center py-4 text-center">
+          <CheckCircle2 className="h-10 w-10 text-emerald-500 mb-3" />
+          <h3 className="font-semibold text-gray-900">Payment Successful</h3>
+          <p className="text-sm text-gray-500 mt-1">
+            ₹{successAmount.toLocaleString("en-IN")} has been added to your credit balance.
+          </p>
+          <button
+            onClick={() => setSuccessAmount(null)}
+            className="mt-4 px-4 py-1.5 rounded-xl bg-indigo-50 text-xs font-medium text-indigo-600 hover:bg-indigo-100 transition-colors"
+          >
+            Add More Credits
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-2xl p-6">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+          <Plus className="h-4 w-4 text-indigo-500" />
+          Add Credits
+        </h2>
+        {config && !config.enabled && (
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 text-gray-500">
+            Not Configured
+          </span>
+        )}
+      </div>
+
+      {!config ? (
+        <div className="flex items-center justify-center py-6">
+          <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+        </div>
+      ) : !config.enabled ? (
+        <p className="text-xs text-gray-400 py-4">
+          Payment gateway is not configured yet. Contact your administrator.
+        </p>
+      ) : (
+        <>
+          <div className="space-y-3">
+            {!useCustom ? (
+              <div className="grid grid-cols-2 gap-2">
+                {config.packs.map((pack) => (
+                  <button
+                    key={pack.id}
+                    onClick={() => setSelectedPack(pack.id)}
+                    className={`p-3 rounded-xl border text-left transition-all ${
+                      selectedPack === pack.id
+                        ? "border-indigo-300 bg-indigo-50 ring-1 ring-indigo-200"
+                        : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                    }`}
+                  >
+                    <p className="text-sm font-semibold text-gray-900 flex items-center gap-1">
+                      <IndianRupee className="h-3.5 w-3.5" />
+                      {pack.amountInr.toLocaleString("en-IN")}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">₹</span>
+                  <input
+                    type="number"
+                    value={customAmount}
+                    onChange={(e) => setCustomAmount(e.target.value)}
+                    placeholder="Enter amount"
+                    min={config.customMinInr}
+                    max={config.customMaxInr}
+                    className="w-full rounded-xl border border-gray-200 pl-7 pr-3 py-2 text-sm text-gray-700 focus:border-indigo-300 focus:ring-1 focus:ring-indigo-200 outline-none"
+                  />
+                </div>
+                <span className="text-[10px] text-gray-400 whitespace-nowrap">
+                  ₹{config.customMinInr}–₹{config.customMaxInr.toLocaleString("en-IN")}
+                </span>
+              </div>
+            )}
+
+            <button
+              onClick={() => {
+                setUseCustom(!useCustom);
+                setError(null);
+              }}
+              className="text-[11px] text-indigo-600 hover:text-indigo-700 font-medium"
+            >
+              {useCustom ? "Choose a credit pack" : "Enter custom amount"}
+            </button>
+          </div>
+
+          {error && (
+            <p className="mt-3 text-xs text-red-600 flex items-center gap-1">
+              <AlertTriangle className="h-3 w-3" />
+              {error}
+            </p>
+          )}
+
+          <button
+            onClick={handlePurchase}
+            disabled={
+              processing ||
+              (!useCustom && !selectedPack) ||
+              (useCustom && (!customAmount || parseInt(customAmount, 10) < config.customMinInr || parseInt(customAmount, 10) > config.customMaxInr))
+            }
+            className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {processing ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Processing…
+              </>
+            ) : (
+              <>
+                <CreditCard className="h-4 w-4" />
+                Pay{" "}
+                {useCustom && customAmount
+                  ? `₹${parseInt(customAmount, 10).toLocaleString("en-IN")}`
+                  : selectedPack
+                    ? config.packs.find((p) => p.id === selectedPack)?.label
+                    : ""}
+              </>
+            )}
+          </button>
+
+          <p className="mt-2 text-[10px] text-gray-400 text-center">
+            Secured by Razorpay. Cards, UPI, and Netbanking accepted.
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
+function PlanCard() {
   return (
     <div className="bg-white border border-gray-200 rounded-2xl p-6">
       <div className="flex items-center gap-2 mb-4">
-        <CreditCard className="h-4 w-4 text-indigo-500" />
-        <h2 className="font-semibold text-gray-900">Payment & Subscription</h2>
+        <Zap className="h-4 w-4 text-indigo-500" />
+        <h2 className="font-semibold text-gray-900">Plan & Subscription</h2>
       </div>
 
       <div className="space-y-4">
-        {/* Current plan */}
         <div className="p-4 bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-100 rounded-xl">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <Zap className="h-4 w-4 text-indigo-600" />
               <span className="text-sm font-semibold text-indigo-900">
-                Pilot Plan
+                Pay-as-you-go
               </span>
             </div>
             <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-100 text-indigo-700">
@@ -274,32 +555,10 @@ function PaymentCard() {
             </span>
           </div>
           <p className="text-xs text-indigo-700">
-            Pre-loaded credits managed by your administrator. Usage is
-            billed per AI operation.
+            Top up credits as needed. Usage is billed per AI operation.
           </p>
         </div>
 
-        {/* Payment method placeholder */}
-        <div className="p-4 border border-dashed border-gray-200 rounded-xl">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-700">
-                Payment Method
-              </p>
-              <p className="text-xs text-gray-400 mt-0.5">
-                No payment method on file
-              </p>
-            </div>
-            <button
-              disabled
-              className="px-3 py-1.5 rounded-xl border border-gray-200 text-xs font-medium text-gray-400 cursor-not-allowed"
-            >
-              Add Card
-            </button>
-          </div>
-        </div>
-
-        {/* Auto-recharge placeholder */}
         <div className="p-4 border border-dashed border-gray-200 rounded-xl">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -318,27 +577,6 @@ function PaymentCard() {
             </span>
           </div>
         </div>
-
-        {/* Upgrade placeholder */}
-        <div className="p-4 border border-dashed border-gray-200 rounded-xl">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-700">
-                Upgrade Plan
-              </p>
-              <p className="text-xs text-gray-400 mt-0.5">
-                Self-service recharges and custom plans
-              </p>
-            </div>
-            <button
-              disabled
-              className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-gray-200 text-xs font-medium text-gray-400 cursor-not-allowed"
-            >
-              Explore Plans
-              <ArrowUpRight className="h-3 w-3" />
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   );
@@ -349,24 +587,23 @@ export function BillingView() {
   const [transactions, setTransactions] = useState<CreditTransaction[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const [walletRes, txRes] = await Promise.all([
-          fetch("/api/wallet"),
-          fetch("/api/wallet/transactions"),
-        ]);
-        if (walletRes.ok) setWallet(await walletRes.json());
-        if (txRes.ok) {
-          const data = await txRes.json();
-          setTransactions(data.transactions ?? []);
-        }
-      } finally {
-        setLoading(false);
+  const loadData = useCallback(async () => {
+    try {
+      const [walletRes, txRes] = await Promise.all([
+        fetch("/api/wallet"),
+        fetch("/api/wallet/transactions"),
+      ]);
+      if (walletRes.ok) setWallet(await walletRes.json());
+      if (txRes.ok) {
+        const data = await txRes.json();
+        setTransactions(data.transactions ?? []);
       }
+    } finally {
+      setLoading(false);
     }
-    load();
   }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
 
   if (loading) {
     return (
@@ -388,13 +625,14 @@ export function BillingView() {
           Billing
         </h1>
         <p className="text-sm text-gray-500 mt-1">
-          Manage your credits, payment method, and subscription
+          Manage your credits and top up as needed
         </p>
       </div>
 
       <div className="space-y-6">
         {wallet?.hasWallet && <BalanceCard wallet={wallet} />}
-        <PaymentCard />
+        <AddCreditsCard onSuccess={loadData} />
+        <PlanCard />
         <CreditHistoryCard transactions={transactions} />
       </div>
     </div>

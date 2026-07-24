@@ -629,6 +629,35 @@ model WalletTransaction {
   @@map("wallet_transactions")
 }
 
+model PaymentOrder {
+  id     String @id @default(cuid())
+  userId String
+
+  razorpayOrderId   String  @unique
+  razorpayPaymentId String?
+  razorpaySignature String?
+
+  amountInr    Int
+  amountUsd    Float?
+  exchangeRate Float?
+
+  currency String @default("INR")
+
+  status String @default("created") // created | attempted | paid | failed | refunded
+
+  packLabel   String?
+  description String?
+
+  walletTransactionId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([status])
+  @@map("payment_orders")
+}
+
 model PricingConfig {
   id   String @id @default(cuid())
   name String
