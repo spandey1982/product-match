@@ -110,7 +110,7 @@ const CATALOGUE_STYLES: {
 export default function UploadPage() {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
-  const { startTracking, stopTracking, failGeneration } = useGenerationStatus();
+  const { startTracking, failGeneration } = useGenerationStatus();
 
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -604,8 +604,6 @@ export default function UploadPage() {
               ? (body.message ?? "Not enough credits. Contact your admin to add more credits.")
               : "Image generation failed. Try again from the product page.";
             failGeneration(productId, msg);
-          } else {
-            stopTracking(productId);
           }
         }).catch(() => {
           genFailCode = "error";

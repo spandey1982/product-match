@@ -57,6 +57,7 @@ interface PollRefs {
   attempts: React.RefObject<Map<string, number>>;
   timers: React.RefObject<Map<string, ReturnType<typeof setTimeout>>>;
   listeners: React.RefObject<Map<string, Set<CompletionListener>>>;
+  lastResult: React.RefObject<Map<string, { data: CompletionData | null; error: string | null }>>;
   setStatus: React.RefObject<StatusSetter>;
   removeStatus: React.RefObject<StatusRemover>;
 }
@@ -67,6 +68,7 @@ function notifyListeners(
   data: CompletionData | null,
   error: string | null,
 ) {
+  refs.lastResult.current.set(productId, { data, error });
   const listeners = refs.listeners.current.get(productId);
   if (listeners) {
     listeners.forEach((fn) => fn(data, error));
@@ -182,6 +184,7 @@ export function GenerationStatusProvider({ children }: { children: React.ReactNo
   });
 
   const listenersRef = useRef(new Map<string, Set<CompletionListener>>());
+  const lastResultRef = useRef(new Map<string, { data: CompletionData | null; error: string | null }>());
   const attemptsRef = useRef(new Map<string, number>());
   const timersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const activeRef = useRef(new Set<string>());
@@ -191,6 +194,7 @@ export function GenerationStatusProvider({ children }: { children: React.ReactNo
     attempts: attemptsRef,
     timers: timersRef,
     listeners: listenersRef,
+    lastResult: lastResultRef,
     setStatus: setStatusRef,
     removeStatus: removeStatusRef,
   };
@@ -202,6 +206,7 @@ export function GenerationStatusProvider({ children }: { children: React.ReactNo
     if (r.active.current.has(productId)) return;
     r.active.current.add(productId);
     r.attempts.current.set(productId, 0);
+    r.lastResult.current.delete(productId);
     r.setStatus.current(productId, { generating: true, error: null });
     schedulePoll(r, productId);
   }, []);
@@ -232,6 +237,10 @@ export function GenerationStatusProvider({ children }: { children: React.ReactNo
       listenersRef.current.set(productId, new Set());
     }
     listenersRef.current.get(productId)!.add(listener);
+    const cached = lastResultRef.current.get(productId);
+    if (cached) {
+      listener(cached.data, cached.error);
+    }
   }, []);
 
   const unsubscribe = useCallback((productId: string, listener: CompletionListener) => {
