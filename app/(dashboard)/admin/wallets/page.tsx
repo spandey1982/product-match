@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getSession, isAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { UsageAnalyticsCard } from "./UsageAnalyticsCard";
 
 export const metadata = { title: "Wallet Management — Admin" };
 
@@ -72,7 +73,9 @@ export default async function WalletsPage() {
         </p>
       </div>
 
-      <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+      <UsageAnalyticsCard />
+
+      <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden mt-6">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>

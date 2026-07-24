@@ -592,28 +592,30 @@ export function ProductDetailView({
                 </div>
               )}
 
-              <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/40 to-transparent p-4 z-20 pointer-events-none">
-                <div className="flex items-center gap-2">
-                  <Badge variant="purple" className="bg-white/90 text-indigo-700 backdrop-blur-sm">
-                    {product.category}
-                  </Badge>
-                  {!product.inStock && <Badge variant="error">Out of Stock</Badge>}
+              {!product.inStock && (
+                <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/40 to-transparent p-4 z-20 pointer-events-none">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="error">Out of Stock</Badge>
+                  </div>
                 </div>
-              </div>
+              )}
 
-              {(product.modelImageUrl || allImages.length > 0) && (
-                <div className="absolute bottom-3 right-3 z-30 pointer-events-auto flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                  {allImages.length > 0 && (
-                    <button
-                      type="button"
-                      aria-label="Download image"
-                      onClick={handleDownloadCurrent}
-                      className="h-8 w-8 rounded-full bg-white/90 backdrop-blur-sm shadow-md flex items-center justify-center text-gray-600 hover:text-indigo-600 hover:bg-white transition-colors"
-                    >
-                      <Download className="h-3.5 w-3.5" strokeWidth={2} />
-                    </button>
-                  )}
-                  {product.modelImageUrl && <ShareModelImage product={product} iconOnly />}
+              {allImages.length > 0 && (
+                <div className="absolute bottom-3 left-3 z-30 pointer-events-auto" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    aria-label="Download image"
+                    onClick={handleDownloadCurrent}
+                    className="h-8 w-8 rounded-full bg-white/90 backdrop-blur-sm shadow-md flex items-center justify-center text-gray-600 hover:text-indigo-600 hover:bg-white transition-colors"
+                  >
+                    <Download className="h-3.5 w-3.5" strokeWidth={2} />
+                  </button>
+                </div>
+              )}
+
+              {product.modelImageUrl && (
+                <div className="absolute bottom-3 right-3 z-30 pointer-events-auto" onClick={(e) => e.stopPropagation()}>
+                  <ShareModelImage product={product} iconOnly />
                 </div>
               )}
 
