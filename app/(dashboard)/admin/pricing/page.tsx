@@ -35,11 +35,11 @@ export default async function PricingPage() {
   });
 
   type ConfigRow = (typeof configs)[number];
-  type ParsedConfig = ConfigRow & { prices: Record<string, number> };
-  const parsed: ParsedConfig[] = configs.map((c: ConfigRow) => ({
-    ...c,
-    prices: JSON.parse(c.prices) as Record<string, number>,
-  }));
+  type ParsedConfig = Omit<ConfigRow, "prices"> & { prices: Record<string, number> };
+  const parsed: ParsedConfig[] = configs.map((c: ConfigRow) => {
+    const { prices: raw, ...rest } = c;
+    return { ...rest, prices: JSON.parse(raw) as Record<string, number> };
+  });
 
   const activeConfig = parsed.find((c) => c.isActive);
 
