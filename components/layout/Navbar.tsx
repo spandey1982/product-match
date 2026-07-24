@@ -93,6 +93,9 @@ export function Navbar({ user }: NavbarProps) {
           <span className="font-bold text-gray-900 text-sm hidden sm:block">
             Mentis
           </span>
+          <span className="hidden sm:inline-flex sm:items-center px-1.5 py-0.5 rounded-md bg-amber-50 border border-amber-200 text-[10px] font-semibold text-amber-700 uppercase tracking-wide leading-none">
+            Pilot
+          </span>
         </Link>
 
         {/* Nav */}

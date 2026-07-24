@@ -14,6 +14,8 @@ export async function GET(req: NextRequest) {
     const color = searchParams.get("color");
     const occasion = searchParams.get("occasion");
     const gender = searchParams.get("gender");
+    const priceMinRaw = searchParams.get("priceMin");
+    const priceMin = priceMinRaw ? parseFloat(priceMinRaw) : 0;
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "24");
 
@@ -26,6 +28,7 @@ export async function GET(req: NextRequest) {
     if (color) where.color = { contains: color };
     if (gender) where.gender = gender;
     if (occasion) where.occasion = { contains: occasion };
+    if (priceMin > 0) where.price = { gte: priceMin };
 
     const [products, total] = await Promise.all([
       db.product.findMany({
