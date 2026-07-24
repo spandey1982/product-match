@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import jwt from "jsonwebtoken";
 import { db } from "@/lib/db";
 import { isValidPhone, normalizePhone } from "@/lib/phone";
+import { sendOtpSms } from "@/lib/sms/msg91";
 
 export { isValidPhone, normalizePhone };
 
@@ -31,11 +32,11 @@ function generateOtp(): string {
 }
 
 /**
- * Mocked OTP delivery — no SMS provider (Twilio/MSG91/etc.) is configured in
- * this project, so the code is handed back to the caller to display on
- * screen instead of being texted. The pending OTP is held in a short-lived
- * signed cookie (not a DB table) since it's a 5-minute, single-use value.
- * Swap this for a real provider before this ever reaches production.
+ * Issues and delivers an OTP over real SMS via MSG91. The pending OTP is
+ * held in a short-lived signed cookie (not a DB table) since it's a
+ * 5-minute, single-use value — unchanged from before MSG91 was wired in.
+ * Throws if MSG91 delivery fails, so a customer who didn't receive a code
+ * sees an error rather than a false "sent" confirmation.
  */
 export async function issuePendingOtp(rawPhone: string): Promise<string> {
   const phone = normalizePhone(rawPhone);
@@ -51,6 +52,8 @@ export async function issuePendingOtp(rawPhone: string): Promise<string> {
     maxAge: OTP_DURATION,
     path: "/",
   });
+
+  await sendOtpSms(phone, otp);
 
   return otp;
 }

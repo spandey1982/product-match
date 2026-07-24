@@ -9,14 +9,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Enter a valid mobile number" }, { status: 400 });
     }
 
-    const otp = await issuePendingOtp(phone);
+    await issuePendingOtp(phone);
 
-    // Mocked delivery: no SMS provider is configured, so the OTP is returned
-    // directly instead of being texted. Replace with a real provider call
-    // before this reaches production, and stop returning `otp` here.
-    return NextResponse.json({ otp });
+    return NextResponse.json({ success: true });
   } catch (err) {
     console.error(err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Could not send OTP. Please try again." }, { status: 500 });
   }
 }

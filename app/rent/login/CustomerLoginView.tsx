@@ -25,7 +25,6 @@ export function CustomerLoginView() {
   const [step, setStep] = useState<Step>("phone");
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
-  const [mockOtp, setMockOtp] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -44,7 +43,6 @@ export function CustomerLoginView() {
         setError(data.error || "Could not send OTP");
         return;
       }
-      setMockOtp(data.otp);
       setOtp("");
       setStep("otp");
     } catch {
@@ -138,13 +136,6 @@ export function CustomerLoginView() {
           </form>
         ) : (
           <form onSubmit={handleVerifyOtp} className="space-y-4">
-            {mockOtp && (
-              <div className="p-3 bg-indigo-50 rounded-2xl border border-indigo-100">
-                <p className="text-xs text-indigo-700 font-medium">
-                  ✨ Mock OTP (no SMS is sent yet): <span className="font-mono">{mockOtp}</span>
-                </p>
-              </div>
-            )}
             <Input
               label="One-time code"
               type="text"
