@@ -11,6 +11,9 @@ import {
   ArrowUpRight,
   Shield,
   AlertTriangle,
+  PieChart as PieChartIcon,
+  Loader2,
+  Filter,
 } from "lucide-react";
 import { creditAlertLevel } from "@/components/billing/CreditBalance";
 
@@ -21,6 +24,7 @@ interface WalletData {
   remainingPercentage: number;
   usedPercentage: number;
   status: string;
+  exchangeRate: number | null;
 }
 
 type PaymentStatus = "paid" | "failed" | "due" | "pending" | "refunded" | "trial" | "promo";
@@ -33,6 +37,13 @@ interface CreditTransaction {
   paymentStatus: PaymentStatus;
   description: string;
   createdAt: string;
+}
+
+interface OperationUsage {
+  id: string;
+  label: string;
+  calls: number;
+  spent: number;
 }
 
 const STATUS_STYLES: Record<PaymentStatus, string> = {
@@ -55,9 +66,33 @@ const STATUS_LABELS: Record<PaymentStatus, string> = {
   promo: "Promotional",
 };
 
+const PIE_COLORS = [
+  "#6366f1", "#8b5cf6", "#a855f7", "#d946ef",
+  "#ec4899", "#f43f5e", "#f97316", "#eab308",
+  "#22c55e", "#14b8a6", "#06b6d4", "#3b82f6",
+];
+
+function formatInr(usd: number, rate: number | null): string {
+  if (!rate) return `$${usd.toFixed(4)}`;
+  const inr = usd * rate;
+  return `₹${inr.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function formatDateInput(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+function defaultDateRange(): { from: string; to: string } {
+  const to = new Date();
+  const from = new Date();
+  from.setDate(from.getDate() - 30);
+  return { from: formatDateInput(from), to: formatDateInput(to) };
+}
+
 function BalanceCard({ wallet }: { wallet: WalletData }) {
   const pct = wallet.remainingPercentage;
   const level = creditAlertLevel(pct);
+  const rate = wallet.exchangeRate;
 
   const barGradient =
     level === "critical"
@@ -127,13 +162,13 @@ function BalanceCard({ wallet }: { wallet: WalletData }) {
         <div>
           <p className="text-xs text-gray-500">Available</p>
           <p className="text-lg font-bold tabular-nums">
-            ${wallet.balanceUsd.toFixed(4)}
+            {formatInr(wallet.balanceUsd, rate)}
           </p>
         </div>
         <div>
           <p className="text-xs text-gray-500">Total Credited</p>
           <p className="text-lg font-bold tabular-nums">
-            ${wallet.totalCreditsUsd.toFixed(4)}
+            {formatInr(wallet.totalCreditsUsd, rate)}
           </p>
         </div>
         <div>
@@ -159,12 +194,190 @@ function BalanceCard({ wallet }: { wallet: WalletData }) {
         />
       </div>
 
+      {rate && (
+        <p className="mt-3 text-[10px] text-gray-400">
+          Exchange rate: ₹{rate.toFixed(2)}/USD (at last credit top-up)
+        </p>
+      )}
+
       {wallet.status === "frozen" && (
         <p className="mt-3 text-xs text-red-600 flex items-center gap-1">
           <Shield className="h-3 w-3" />
           Your account is frozen. Contact your administrator.
         </p>
       )}
+    </div>
+  );
+}
+
+function ExpenditurePieChart({
+  exchangeRate,
+}: {
+  exchangeRate: number | null;
+}) {
+  const [operations, setOperations] = useState<OperationUsage[]>([]);
+  const [totals, setTotals] = useState<{ spent: number; calls: number }>({ spent: 0, calls: 0 });
+  const [usageRate, setUsageRate] = useState<number | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const defaults = defaultDateRange();
+  const [from, setFrom] = useState(defaults.from);
+  const [to, setTo] = useState(defaults.to);
+
+  function fetchUsage(f: string, t: string) {
+    setIsLoading(true);
+    const params = new URLSearchParams({ from: f, to: t });
+    fetch(`/api/wallet/usage-by-operation?${params}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data) {
+          setOperations(data.operations ?? []);
+          setTotals(data.totals ?? { spent: 0, calls: 0 });
+          setUsageRate(data.exchangeRate ?? null);
+        }
+      })
+      .finally(() => setIsLoading(false));
+  }
+
+  const initRef = useState(false);
+  if (!initRef[0]) {
+    initRef[1](true);
+    fetchUsage(from, to);
+  }
+
+  const rate = usageRate ?? exchangeRate;
+
+  const header = (
+    <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center gap-2">
+        <PieChartIcon className="h-4 w-4 text-indigo-500" />
+        <h2 className="font-semibold text-gray-900 text-sm">Expenditure by Feature</h2>
+      </div>
+    </div>
+  );
+
+  const dateFilter = (
+    <div className="flex items-center gap-2 flex-wrap mb-4 pb-3 border-b border-gray-100">
+      <Filter className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+      <input
+        type="date"
+        value={from}
+        onChange={(e) => setFrom(e.target.value)}
+        className="rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-700 bg-white"
+      />
+      <span className="text-xs text-gray-400">to</span>
+      <input
+        type="date"
+        value={to}
+        onChange={(e) => setTo(e.target.value)}
+        className="rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-700 bg-white"
+      />
+      <button
+        onClick={() => fetchUsage(from, to)}
+        className="px-2.5 py-1 rounded-lg bg-indigo-50 text-xs font-medium text-indigo-600 hover:bg-indigo-100 transition-colors"
+      >
+        Apply
+      </button>
+    </div>
+  );
+
+  if (isLoading) {
+    return (
+      <div className="bg-white border border-gray-200 rounded-2xl p-6">
+        {header}
+        {dateFilter}
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-6 w-6 animate-spin text-indigo-400" />
+        </div>
+      </div>
+    );
+  }
+
+  if (operations.length === 0) {
+    return (
+      <div className="bg-white border border-gray-200 rounded-2xl p-6">
+        {header}
+        {dateFilter}
+        <p className="text-xs text-gray-400 text-center py-8">No usage recorded for this period</p>
+      </div>
+    );
+  }
+
+  const size = 160;
+  const cx = size / 2;
+  const cy = size / 2;
+  const radius = 60;
+  const innerRadius = 36;
+
+  function buildSlices() {
+    let cumAngle = -90;
+    return operations.map((op, i) => {
+      const pct = totals.spent > 0 ? op.spent / totals.spent : 0;
+      const angle = pct * 360;
+      const startAngle = cumAngle;
+      cumAngle += angle;
+      const endAngle = cumAngle;
+
+      const startRad = (startAngle * Math.PI) / 180;
+      const endRad = (endAngle * Math.PI) / 180;
+      const largeArc = angle > 180 ? 1 : 0;
+
+      const x1 = cx + radius * Math.cos(startRad);
+      const y1 = cy + radius * Math.sin(startRad);
+      const x2 = cx + radius * Math.cos(endRad);
+      const y2 = cy + radius * Math.sin(endRad);
+      const ix1 = cx + innerRadius * Math.cos(endRad);
+      const iy1 = cy + innerRadius * Math.sin(endRad);
+      const ix2 = cx + innerRadius * Math.cos(startRad);
+      const iy2 = cy + innerRadius * Math.sin(startRad);
+
+      const d = [
+        `M ${x1} ${y1}`,
+        `A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2}`,
+        `L ${ix1} ${iy1}`,
+        `A ${innerRadius} ${innerRadius} 0 ${largeArc} 0 ${ix2} ${iy2}`,
+        "Z",
+      ].join(" ");
+
+      return { ...op, d, color: PIE_COLORS[i % PIE_COLORS.length], pct };
+    });
+  }
+  const slices = buildSlices();
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-2xl p-6">
+      {header}
+      {dateFilter}
+
+      <div className="flex flex-col sm:flex-row items-center gap-6">
+        <div className="relative shrink-0">
+          <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+            {slices.map((s) => (
+              <path key={s.id} d={s.d} fill={s.color} stroke="white" strokeWidth={2} className="transition-opacity hover:opacity-80" />
+            ))}
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <p className="text-xs text-gray-500">Total</p>
+            <p className="text-sm font-bold">{formatInr(totals.spent, rate)}</p>
+            <p className="text-[10px] text-gray-400">{totals.calls} calls</p>
+          </div>
+        </div>
+
+        <div className="flex-1 w-full space-y-2">
+          {slices.map((s) => (
+            <div key={s.id} className="flex items-center gap-2">
+              <div className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
+              <span className="text-xs text-gray-700 flex-1 truncate">{s.label}</span>
+              <span className="text-xs font-medium text-gray-900 tabular-nums">
+                {formatInr(s.spent, rate)}
+              </span>
+              <span className="text-[10px] text-gray-400 tabular-nums w-14 text-right">
+                {s.calls} calls
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -260,7 +473,6 @@ function PaymentCard() {
       </div>
 
       <div className="space-y-4">
-        {/* Current plan */}
         <div className="p-4 bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-100 rounded-xl">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
@@ -279,7 +491,6 @@ function PaymentCard() {
           </p>
         </div>
 
-        {/* Payment method placeholder */}
         <div className="p-4 border border-dashed border-gray-200 rounded-xl">
           <div className="flex items-center justify-between">
             <div>
@@ -299,7 +510,6 @@ function PaymentCard() {
           </div>
         </div>
 
-        {/* Auto-recharge placeholder */}
         <div className="p-4 border border-dashed border-gray-200 rounded-xl">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -319,7 +529,6 @@ function PaymentCard() {
           </div>
         </div>
 
-        {/* Upgrade placeholder */}
         <div className="p-4 border border-dashed border-gray-200 rounded-xl">
           <div className="flex items-center justify-between">
             <div>
@@ -394,6 +603,7 @@ export function BillingView() {
 
       <div className="space-y-6">
         {wallet?.hasWallet && <BalanceCard wallet={wallet} />}
+        <ExpenditurePieChart exchangeRate={wallet?.exchangeRate ?? null} />
         <PaymentCard />
         <CreditHistoryCard transactions={transactions} />
       </div>

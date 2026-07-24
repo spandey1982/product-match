@@ -26,6 +26,7 @@ interface AnalyticsData {
   daily: AnalyticsDay[];
   totals: { spent: number; calls: number };
   stores: StoreOption[];
+  exchangeRate: number | null;
 }
 
 function formatDateInput(d: Date): string {
@@ -40,19 +41,24 @@ function defaultDateRange(): { from: string; to: string } {
 }
 
 function buildCsv(analytics: AnalyticsData, storeName: string): string {
+  const rate = analytics.exchangeRate;
+  const fmtSpent = (usd: number) =>
+    rate ? (usd * rate).toFixed(2) : usd.toFixed(6);
+  const currLabel = rate ? "Spent (INR)" : "Spent (USD)";
+
   const lines = [`Usage Analytics${storeName ? ` — ${storeName}` : " — All Stores"}`];
   lines.push("");
-  lines.push("Operation,Calls,Spent (USD)");
+  lines.push(`Operation,Calls,${currLabel}`);
   for (const op of analytics.operations) {
-    lines.push(`"${op.label}",${op.calls},${op.spent.toFixed(6)}`);
+    lines.push(`"${op.label}",${op.calls},${fmtSpent(op.spent)}`);
   }
   lines.push("");
-  lines.push("Date,Calls,Spent (USD)");
+  lines.push(`Date,Calls,${currLabel}`);
   for (const d of analytics.daily) {
-    lines.push(`${d.date},${d.calls},${d.spent.toFixed(6)}`);
+    lines.push(`${d.date},${d.calls},${fmtSpent(d.spent)}`);
   }
   lines.push("");
-  lines.push(`Total,${analytics.totals.calls},${analytics.totals.spent.toFixed(6)}`);
+  lines.push(`Total,${analytics.totals.calls},${fmtSpent(analytics.totals.spent)}`);
   return lines.join("\n");
 }
 
@@ -66,7 +72,13 @@ function downloadCsvBlob(csv: string, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-function SpendingBar({ ops }: { ops: AnalyticsOp[] }) {
+function formatInr(usd: number, rate: number | null): string {
+  if (!rate) return `$${usd.toFixed(4)}`;
+  const inr = usd * rate;
+  return `₹${inr.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function SpendingBar({ ops, exchangeRate }: { ops: AnalyticsOp[]; exchangeRate: number | null }) {
   const max = Math.max(...ops.map((o) => o.spent), 0.000001);
 
   return (
@@ -82,8 +94,8 @@ function SpendingBar({ ops }: { ops: AnalyticsOp[] }) {
               style={{ width: `${(op.spent / max) * 100}%` }}
             />
           </div>
-          <span className="text-xs tabular-nums text-gray-700 w-20 text-right">
-            ${op.spent.toFixed(4)}
+          <span className="text-xs tabular-nums text-gray-700 w-24 text-right">
+            {formatInr(op.spent, exchangeRate)}
           </span>
           <span className="text-[10px] tabular-nums text-gray-400 w-14 text-right">
             {op.calls} calls
@@ -94,7 +106,7 @@ function SpendingBar({ ops }: { ops: AnalyticsOp[] }) {
   );
 }
 
-function DailyChart({ daily }: { daily: AnalyticsDay[] }) {
+function DailyChart({ daily, exchangeRate }: { daily: AnalyticsDay[]; exchangeRate: number | null }) {
   if (daily.length === 0) return null;
 
   const max = Math.max(...daily.map((d) => d.spent), 0.000001);
@@ -112,7 +124,7 @@ function DailyChart({ daily }: { daily: AnalyticsDay[] }) {
               width: barWidth,
               height: `${Math.max((d.spent / max) * 100, 2)}%`,
             }}
-            title={`${d.date}: $${d.spent.toFixed(4)} (${d.calls} calls)`}
+            title={`${d.date}: ${formatInr(d.spent, exchangeRate)} (${d.calls} calls)`}
           />
         ))}
       </div>
@@ -242,7 +254,7 @@ export function UsageAnalyticsCard() {
               <div className="p-3 bg-gray-50 rounded-xl">
                 <p className="text-[10px] text-gray-500 uppercase tracking-wide">Total Spent</p>
                 <p className="text-lg font-bold tabular-nums text-gray-900">
-                  ${analytics.totals.spent.toFixed(4)}
+                  {formatInr(analytics.totals.spent, analytics.exchangeRate)}
                 </p>
               </div>
               <div className="p-3 bg-gray-50 rounded-xl">
@@ -254,8 +266,8 @@ export function UsageAnalyticsCard() {
             </div>
 
             <p className="text-xs text-gray-500 mb-2">Spending by operation</p>
-            <SpendingBar ops={analytics.operations} />
-            <DailyChart daily={analytics.daily} />
+            <SpendingBar ops={analytics.operations} exchangeRate={analytics.exchangeRate} />
+            <DailyChart daily={analytics.daily} exchangeRate={analytics.exchangeRate} />
           </>
         )}
       </div>

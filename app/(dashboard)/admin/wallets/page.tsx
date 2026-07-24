@@ -20,6 +20,7 @@ async function loadWallets() {
           totalCreditsUsd: true,
           status: true,
           updatedAt: true,
+          lastExchangeRate: true,
         },
       },
     },
@@ -82,7 +83,7 @@ export default async function WalletsPage() {
               <tr className="bg-gray-50 border-b border-gray-200">
                 <th className="text-left px-4 py-3 font-medium text-gray-600">Retailer</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600">Store</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Balance (USD)</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600">Balance</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600">Credits Remaining</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600">Status</th>
                 <th className="text-right px-4 py-3 font-medium text-gray-600">Actions</th>
@@ -100,7 +101,9 @@ export default async function WalletsPage() {
                   <td className="px-4 py-3 text-gray-600">{u.storeName || "—"}</td>
                   <td className="px-4 py-3 tabular-nums text-gray-700">
                     {u.wallet
-                      ? `$${u.wallet.balanceUsd.toFixed(4)}`
+                      ? u.wallet.lastExchangeRate
+                        ? `₹${(u.wallet.balanceUsd * u.wallet.lastExchangeRate).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        : `$${u.wallet.balanceUsd.toFixed(4)}`
                       : "No wallet"}
                   </td>
                   <td className="px-4 py-3">
