@@ -3,6 +3,12 @@
 import { useMemo, useState } from "react";
 import { Plus, Minus, RotateCcw, Lock, Unlock, Filter } from "lucide-react";
 
+function formatInr(usd: number, rate: number | null): string {
+  if (!rate) return `$${usd.toFixed(4)}`;
+  const inr = usd * rate;
+  return `₹${inr.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 interface WalletData {
   id: string;
   balanceUsd: number;
@@ -214,11 +220,11 @@ export function WalletDetailView({ userId, userName, storeName, wallet, transact
             <div className="grid grid-cols-3 gap-4 mb-4">
               <div>
                 <p className="text-xs text-gray-500">Balance</p>
-                <p className="text-lg font-bold tabular-nums">${walletState.balanceUsd.toFixed(4)}</p>
+                <p className="text-lg font-bold tabular-nums">{formatInr(walletState.balanceUsd, walletState.lastExchangeRate)}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-500">Total Credited</p>
-                <p className="text-lg font-bold tabular-nums">${walletState.totalCreditsUsd.toFixed(4)}</p>
+                <p className="text-lg font-bold tabular-nums">{formatInr(walletState.totalCreditsUsd, walletState.lastExchangeRate)}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-500">Remaining</p>
@@ -400,7 +406,7 @@ export function WalletDetailView({ userId, userName, storeName, wallet, transact
               <tr className="bg-gray-50 border-b border-gray-200">
                 <th className="text-left px-4 py-2 font-medium text-gray-600 text-xs">Date</th>
                 <th className="text-left px-4 py-2 font-medium text-gray-600 text-xs">Type</th>
-                <th className="text-right px-4 py-2 font-medium text-gray-600 text-xs">Amount (USD)</th>
+                <th className="text-right px-4 py-2 font-medium text-gray-600 text-xs">Amount</th>
                 <th className="text-right px-4 py-2 font-medium text-gray-600 text-xs">Balance After</th>
                 <th className="text-left px-4 py-2 font-medium text-gray-600 text-xs">Description</th>
               </tr>
@@ -417,10 +423,10 @@ export function WalletDetailView({ userId, userName, storeName, wallet, transact
                     </span>
                   </td>
                   <td className={`px-4 py-2 text-right tabular-nums text-xs font-medium ${tx.amountUsd >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-                    {tx.amountUsd >= 0 ? "+" : ""}{tx.amountUsd.toFixed(6)}
+                    {(tx.amountUsd >= 0 ? "+" : "-") + formatInr(Math.abs(tx.amountUsd), walletState?.lastExchangeRate ?? null)}
                   </td>
                   <td className="px-4 py-2 text-right tabular-nums text-xs text-gray-600">
-                    ${tx.balanceAfter.toFixed(6)}
+                    {formatInr(tx.balanceAfter, walletState?.lastExchangeRate ?? null)}
                   </td>
                   <td className="px-4 py-2 text-xs text-gray-600 max-w-xs">
                     <span className="block truncate cursor-default group relative" title={tx.description}>

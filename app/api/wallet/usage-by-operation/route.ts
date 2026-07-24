@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth";
+import { requireAuth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { getWalletByUserId } from "@/lib/billing/wallet";
 import { BILLING_OPERATIONS, type BillingOperation } from "@/lib/billing/types";
 
 function parseOperationFromDescription(desc: string): BillingOperation | "other" {
@@ -34,12 +35,15 @@ const OPERATION_LABELS: Record<string, string> = {
 
 export async function GET(request: NextRequest) {
   try {
-    await requireAdmin();
+    const session = await requireAuth();
+    const wallet = await getWalletByUserId(session.id);
+    if (!wallet) {
+      return NextResponse.json({ operations: [], totals: { spent: 0, calls: 0 } });
+    }
 
     const url = new URL(request.url);
     const from = url.searchParams.get("from");
     const to = url.searchParams.get("to");
-    const storeUserId = url.searchParams.get("store");
 
     const dateFilter: { gte?: Date; lte?: Date } = {};
     if (from) dateFilter.gte = new Date(from);
@@ -49,38 +53,16 @@ export async function GET(request: NextRequest) {
       dateFilter.lte = end;
     }
 
-    const walletWhere: Record<string, unknown> = {};
-    if (storeUserId) {
-      const wallet = await db.wallet.findUnique({ where: { userId: storeUserId } });
-      if (!wallet) {
-        return NextResponse.json({ operations: [], daily: [], totals: { spent: 0, calls: 0 }, stores: [] });
-      }
-      walletWhere.walletId = wallet.id;
-    }
-
-    const [deductions, stores, latestWallet] = await Promise.all([
-      db.walletTransaction.findMany({
-        where: {
-          type: "DEDUCT",
-          ...walletWhere,
-          ...(Object.keys(dateFilter).length > 0 ? { createdAt: dateFilter } : {}),
-        },
-        orderBy: { createdAt: "asc" },
-        select: { amountUsd: true, description: true, createdAt: true, walletId: true },
-      }),
-      db.user.findMany({
-        where: { role: "RETAILER", wallet: { isNot: null } },
-        select: { id: true, storeName: true, name: true },
-        orderBy: { storeName: "asc" },
-      }),
-      storeUserId
-        ? db.wallet.findUnique({ where: { userId: storeUserId }, select: { lastExchangeRate: true } })
-        : db.wallet.findFirst({ where: { lastExchangeRate: { not: null } }, orderBy: { updatedAt: "desc" }, select: { lastExchangeRate: true } }),
-    ]);
+    const deductions = await db.walletTransaction.findMany({
+      where: {
+        walletId: wallet.id,
+        type: "DEDUCT",
+        ...(Object.keys(dateFilter).length > 0 ? { createdAt: dateFilter } : {}),
+      },
+      select: { amountUsd: true, description: true },
+    });
 
     const opMap = new Map<string, { calls: number; spent: number; label: string }>();
-    const dayMap = new Map<string, { calls: number; spent: number }>();
-
     let totalSpent = 0;
     let totalCalls = 0;
 
@@ -93,12 +75,6 @@ export async function GET(request: NextRequest) {
       existing.calls += count;
       existing.spent += spent;
       opMap.set(op, existing);
-
-      const day = tx.createdAt.toISOString().slice(0, 10);
-      const dayEntry = dayMap.get(day) ?? { calls: 0, spent: 0 };
-      dayEntry.calls += count;
-      dayEntry.spent += spent;
-      dayMap.set(day, dayEntry);
 
       totalSpent += spent;
       totalCalls += count;
@@ -113,23 +89,10 @@ export async function GET(request: NextRequest) {
       }))
       .sort((a, b) => b.spent - a.spent);
 
-    const daily = Array.from(dayMap.entries())
-      .map(([date, data]) => ({
-        date,
-        calls: data.calls,
-        spent: parseFloat(data.spent.toFixed(6)),
-      }))
-      .sort((a, b) => a.date.localeCompare(b.date));
-
     return NextResponse.json({
       operations,
-      daily,
-      totals: {
-        spent: parseFloat(totalSpent.toFixed(6)),
-        calls: totalCalls,
-      },
-      stores: stores.map((s) => ({ id: s.id, label: s.storeName || s.name })),
-      exchangeRate: latestWallet?.lastExchangeRate ?? null,
+      totals: { spent: parseFloat(totalSpent.toFixed(6)), calls: totalCalls },
+      exchangeRate: wallet.lastExchangeRate,
     });
   } catch (err) {
     if ((err as Error).message === "Unauthorized") {
