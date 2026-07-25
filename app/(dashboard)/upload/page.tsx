@@ -27,11 +27,10 @@ const isGeminiPath = (p: CatalogueStyle) => p === "gemini";
 const isVertexPath = (p: CatalogueStyle) => p === "vertex";
 
 const CATEGORIES = [
-  "Saree", "Lehenga", "Blouse", "Dupatta", "Kurta", "Kurti",
-  "Salwar", "Anarkali", "Sharara", "Palazzo",
-  "Jewellery", "Footwear", "Clutch", "Handbag",
-  "Suit", "Tie", "Shirt", "T-shirt", "Waistcoat",
-  "Trouser", "Jeans", "Other",
+  "Anarkali", "Blouse", "Clutch", "Dupatta", "Fancy Dress", "Footwear",
+  "Handbag", "Jeans", "Jewellery", "Kurta", "Kurti", "Lehenga", "Palazzo",
+  "Saree", "Salwar", "Sharara", "Shirt", "Suit", "T-shirt", "Tie", "Trouser",
+  "Waistcoat", "Other",
 ];
 
 const OCCASIONS = [

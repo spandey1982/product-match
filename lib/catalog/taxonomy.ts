@@ -1,7 +1,6 @@
 export const CATEGORIES = [
-  "All", "Saree", "Lehenga", "Blouse", "Dupatta", "Kurta",
-  "Anarkali", "Sharara", "Palazzo", "Jewellery", "Footwear", "Clutch", "Handbag",
-  "Shirt",
+  "All", "Anarkali", "Blouse", "Clutch", "Dupatta", "Fancy Dress", "Footwear",
+  "Handbag", "Jewellery", "Kurta", "Lehenga", "Palazzo", "Saree", "Sharara", "Shirt",
 ];
 
 export const OCCASIONS = ["Wedding", "Festive", "Bridal", "Party", "Casual", "Formal"];
