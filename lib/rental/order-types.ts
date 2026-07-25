@@ -28,6 +28,14 @@ export const LIFECYCLE_STAGES: OrderStatus[] = ORDER_STATUSES.filter(
 );
 
 /**
+ * Orthogonal to OrderStatus above — this tracks money, not fulfillment.
+ * "pending" is a valid, permanent state for a Pay-at-Doorstep booking, not
+ * an error. Only a verified Razorpay payment moves it to "paid".
+ */
+export const PAYMENT_STATUSES = ["pending", "paid", "failed", "refunded"] as const;
+export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
+
+/**
  * A mocked rental request — persisted client-side only (localStorage), not
  * in the database. No auth, no payment; this just captures intent to rent.
  */
@@ -64,7 +72,10 @@ export interface RentalOrder {
   deliveryDate: string; // ISO date, computed
   expectedTrialWindow: string; // display string, computed
 
-  paymentMethod: "Pay at Doorstep";
+  /** "Pay at Doorstep" until the customer prepays via Razorpay, at which point it becomes "Razorpay". Both are permanent, valid end states. */
+  paymentMethod: "Pay at Doorstep" | "Razorpay";
   /** Set at creation ("requested"), by the customer's Cancel action ("cancelled"), or by a retailer manually advancing it from the Rental Orders admin page. */
   status: OrderStatus;
+  /** See PaymentStatus — independent of `status` above. */
+  paymentStatus: PaymentStatus;
 }

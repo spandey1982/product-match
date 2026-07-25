@@ -18,34 +18,7 @@ import {
   Filter,
 } from "lucide-react";
 import { creditAlertLevel } from "@/components/billing/CreditBalance";
-
-declare global {
-  interface Window {
-    Razorpay?: new (options: RazorpayCheckoutOptions) => RazorpayCheckoutInstance;
-  }
-}
-
-interface RazorpayCheckoutOptions {
-  key: string;
-  amount: number;
-  currency: string;
-  name: string;
-  description: string;
-  order_id: string;
-  handler: (response: RazorpayPaymentResponse) => void;
-  modal?: { ondismiss?: () => void };
-  theme?: { color: string };
-}
-
-interface RazorpayCheckoutInstance {
-  open: () => void;
-}
-
-interface RazorpayPaymentResponse {
-  razorpay_order_id: string;
-  razorpay_payment_id: string;
-  razorpay_signature: string;
-}
+import { loadRazorpayScript, type RazorpayPaymentResponse } from "@/lib/razorpay-client";
 
 interface BillingConfig {
   enabled: boolean;
@@ -500,17 +473,6 @@ function CreditHistoryCard({
       </div>
     </div>
   );
-}
-
-function loadRazorpayScript(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (window.Razorpay) { resolve(); return; }
-    const script = document.createElement("script");
-    script.src = "https://checkout.razorpay.com/v1/checkout.js";
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Failed to load Razorpay checkout"));
-    document.head.appendChild(script);
-  });
 }
 
 function AddCreditsCard({ onSuccess }: { onSuccess: () => void }) {

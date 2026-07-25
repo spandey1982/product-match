@@ -12,6 +12,7 @@ import {
   ORDER_STATUS_LABEL,
   formatDisplayDate,
   getDisplayStatus,
+  getPaymentBadge,
 } from "@/lib/rental/order-mock";
 import { cancelRentalOrder } from "@/lib/rental/rental-orders-client";
 
@@ -27,6 +28,7 @@ export function RentalOrderCard({ order, onCancelled }: RentalOrderCardProps) {
   const [cancelling, setCancelling] = useState(false);
 
   const status = getDisplayStatus(order);
+  const paymentBadge = getPaymentBadge(order);
   const canCancel = status !== "cancelled" && status !== "completed";
   const orderNumber = order.id.slice(0, 8).toUpperCase();
 
@@ -59,9 +61,14 @@ export function RentalOrderCard({ order, onCancelled }: RentalOrderCardProps) {
               <p className="text-sm font-semibold text-gray-900 truncate">{order.productTitle}</p>
               <p className="text-xs text-gray-400 font-mono mt-0.5">#{orderNumber}</p>
             </div>
-            <Badge variant={ORDER_STATUS_BADGE_VARIANT[status]} className="shrink-0">
-              {ORDER_STATUS_LABEL[status]}
-            </Badge>
+            <div className="flex flex-col items-end gap-1 shrink-0">
+              <Badge variant={ORDER_STATUS_BADGE_VARIANT[status]}>
+                {ORDER_STATUS_LABEL[status]}
+              </Badge>
+              <Badge variant={paymentBadge.variant} className="text-[10px] px-2 py-0.5">
+                {paymentBadge.label}
+              </Badge>
+            </div>
           </div>
 
           <p className="text-xs text-gray-500 mt-1.5">Rental Date {formatDisplayDate(order.eventDate)}</p>

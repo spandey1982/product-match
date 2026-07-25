@@ -8,6 +8,7 @@ import {
   ORDER_STATUS_LABEL,
   formatDisplayDate,
   getDisplayStatus,
+  getPaymentBadge,
 } from "@/lib/rental/order-mock";
 import { formatCurrency } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -59,6 +60,7 @@ export default async function RentalOrdersPage() {
               <th className="px-4 py-3 font-medium whitespace-nowrap">Customer</th>
               <th className="px-4 py-3 font-medium whitespace-nowrap">Event Date</th>
               <th className="px-4 py-3 font-medium whitespace-nowrap">Status</th>
+              <th className="px-4 py-3 font-medium whitespace-nowrap">Payment</th>
               <th className="px-4 py-3 font-medium whitespace-nowrap">Rental Price</th>
               <th className="px-4 py-3 font-medium whitespace-nowrap">Deposit</th>
             </tr>
@@ -66,13 +68,14 @@ export default async function RentalOrdersPage() {
           <tbody>
             {orders.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-gray-400">
+                <td colSpan={8} className="px-4 py-10 text-center text-gray-400">
                   No rental requests yet.
                 </td>
               </tr>
             ) : (
               orders.map((order) => {
                 const status = getDisplayStatus(order);
+                const paymentBadge = getPaymentBadge(order);
                 return (
                   <tr key={order.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
                     <td className="px-4 py-3 whitespace-nowrap">
@@ -93,6 +96,9 @@ export default async function RentalOrdersPage() {
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       <Badge variant={ORDER_STATUS_BADGE_VARIANT[status]}>{ORDER_STATUS_LABEL[status]}</Badge>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <Badge variant={paymentBadge.variant}>{paymentBadge.label}</Badge>
                     </td>
                     <td className="px-4 py-3 text-gray-800 whitespace-nowrap">
                       {formatCurrency(order.rentalPricePerDay)}/day

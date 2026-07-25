@@ -2,13 +2,14 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Clock, Truck, CalendarClock, ShieldCheck, Wallet } from "lucide-react";
+import { ArrowLeft, Clock, Truck, CalendarClock, ShieldCheck, Wallet, CreditCard, Hash, CalendarDays } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatCurrency, cn } from "@/lib/utils";
 import { Fact, SummaryRow } from "@/components/rental/OrderDetailPrimitives";
 import { RentalOrder, LIFECYCLE_STAGES, OrderStatus } from "@/lib/rental/order-types";
+import { PaymentSummary } from "@/lib/rental/payment";
 import {
   EXPECTED_CONFIRMATION_MINUTES,
   ORDER_STATUS_BADGE_VARIANT,
@@ -16,6 +17,7 @@ import {
   deliveryWindowLabel,
   formatDisplayDate,
   getDisplayStatus,
+  getPaymentBadge,
 } from "@/lib/rental/order-mock";
 
 const SLOT_LABEL: Record<string, string> = {
@@ -26,6 +28,7 @@ const SLOT_LABEL: Record<string, string> = {
 
 interface RentalOrderAdminViewProps {
   order: RentalOrder;
+  payment: PaymentSummary | null;
 }
 
 /**
@@ -34,13 +37,14 @@ interface RentalOrderAdminViewProps {
  * Browsing (this isn't a receipt, it's a working view), plus the one thing a
  * retailer actually needs here: a way to advance or cancel the order.
  */
-export function RentalOrderAdminView({ order }: RentalOrderAdminViewProps) {
+export function RentalOrderAdminView({ order, payment }: RentalOrderAdminViewProps) {
   const router = useRouter();
   const [updating, setUpdating] = useState<OrderStatus | null>(null);
   const [error, setError] = useState("");
 
   const orderNumber = order.id.slice(0, 8).toUpperCase();
   const displayStatus = getDisplayStatus(order);
+  const paymentBadge = getPaymentBadge(order);
   const isCancelled = displayStatus === "cancelled";
 
   async function updateStatus(status: OrderStatus) {
@@ -91,9 +95,14 @@ export function RentalOrderAdminView({ order }: RentalOrderAdminViewProps) {
             <p className="text-[11px] text-gray-400 tracking-wide mt-1.5">Order Number</p>
             <p className="text-sm font-semibold text-gray-900 font-mono truncate">#{orderNumber}</p>
           </div>
-          <Badge variant={ORDER_STATUS_BADGE_VARIANT[displayStatus]} className="text-sm px-3 py-1 shrink-0">
-            {ORDER_STATUS_LABEL[displayStatus]}
-          </Badge>
+          <div className="flex flex-col items-end gap-1.5 shrink-0">
+            <Badge variant={ORDER_STATUS_BADGE_VARIANT[displayStatus]} className="text-sm px-3 py-1">
+              {ORDER_STATUS_LABEL[displayStatus]}
+            </Badge>
+            <Badge variant={paymentBadge.variant} className="text-xs px-2.5 py-0.5">
+              {paymentBadge.label}
+            </Badge>
+          </div>
         </CardContent>
       </Card>
 
@@ -108,9 +117,30 @@ export function RentalOrderAdminView({ order }: RentalOrderAdminViewProps) {
           />
           <Fact icon={CalendarClock} label="Rental Price" value={`${formatCurrency(order.rentalPricePerDay)} / day`} />
           <Fact icon={ShieldCheck} label="Deposit" value={formatCurrency(order.deposit)} />
-          <Fact icon={Wallet} label="Payment" value="Pay at Doorstep" className="col-span-2" />
+          <Fact icon={Wallet} label="Payment Method" value={order.paymentMethod} className="col-span-2" />
         </CardContent>
       </Card>
+
+      {/* Payment details — only when an online payment was attempted; Pay at Doorstep bookings have no Payment row at all */}
+      {payment && (
+        <Card className="rounded-3xl overflow-hidden bg-white/90 mb-4">
+          <CardHeader className="px-5 pt-4 pb-1">
+            <CardTitle className="font-heading text-base font-medium">Payment</CardTitle>
+          </CardHeader>
+          <CardContent className="p-5 grid grid-cols-2 gap-x-4 gap-y-5">
+            <Fact icon={CreditCard} label="Payment Status" value={getPaymentBadge(order).label} />
+            <Fact icon={Wallet} label="Amount" value={formatCurrency(payment.amountInr)} />
+            <Fact icon={Hash} label="Payment ID" value={payment.razorpayPaymentId ?? "—"} />
+            <Fact icon={Hash} label="Order ID" value={payment.razorpayOrderId} />
+            <Fact
+              icon={CalendarDays}
+              label="Payment Date"
+              value={formatDisplayDate(payment.createdAt)}
+              className="col-span-2"
+            />
+          </CardContent>
+        </Card>
+      )}
 
       {/* Status management */}
       <Card className="rounded-3xl overflow-hidden bg-white/90 mb-4">

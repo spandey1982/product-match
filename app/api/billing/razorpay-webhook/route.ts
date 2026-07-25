@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verifyWebhookSignature } from "@/lib/billing/razorpay";
 import { creditWalletForPaymentOrder } from "@/lib/billing/wallet";
+import { markRentalOrderPaid, markRentalPaymentFailed } from "@/lib/rental/payment";
 
 interface RazorpayWebhookPayload {
   event: string;
@@ -19,10 +20,16 @@ interface RazorpayWebhookPayload {
 }
 
 /**
- * Server-to-server fallback for when the client never calls verify-payment
+ * Server-to-server fallback for when the client never calls its verify API
  * (tab closed mid-checkout, network drop after payment succeeded, etc.).
- * `creditWalletForPaymentOrder` is safe to call from both this and
- * verify-payment for the same order — only one of them ever actually credits.
+ * Shared by both Razorpay integrations in this app — the retailer AI-credit
+ * wallet top-up (`PaymentOrder`) and rental booking prepayment (`Payment`) —
+ * rather than registering two webhook URLs for the same signature-verification
+ * logic. A given razorpayOrderId only ever exists in one of the two tables,
+ * so checking PaymentOrder first and falling through to Payment is safe.
+ * The credit/mark-paid helpers are each safe to call from both this and
+ * their respective verify API for the same order — only one caller ever
+ * actually applies the change; the other sees `alreadyProcessed: true`.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -44,13 +51,21 @@ export async function POST(req: NextRequest) {
       const paymentOrder = await db.paymentOrder.findUnique({
         where: { razorpayOrderId: payment.order_id },
       });
-      if (!paymentOrder) {
-        console.warn("[razorpay-webhook] Unknown order:", payment.order_id);
-        return NextResponse.json({ status: "ignored" });
+      if (paymentOrder) {
+        const result = await creditWalletForPaymentOrder(paymentOrder.id, payment.id);
+        return NextResponse.json({ status: result.alreadyProcessed ? "already_processed" : "credited" });
       }
 
-      const result = await creditWalletForPaymentOrder(paymentOrder.id, payment.id);
-      return NextResponse.json({ status: result.alreadyProcessed ? "already_processed" : "credited" });
+      const rentalPayment = await db.payment.findUnique({
+        where: { razorpayOrderId: payment.order_id },
+      });
+      if (rentalPayment) {
+        const result = await markRentalOrderPaid(rentalPayment.id, payment.id);
+        return NextResponse.json({ status: result.alreadyProcessed ? "already_processed" : "paid" });
+      }
+
+      console.warn("[razorpay-webhook] Unknown order:", payment.order_id);
+      return NextResponse.json({ status: "ignored" });
     }
 
     if (payload.event === "payment.failed") {
@@ -61,6 +76,7 @@ export async function POST(req: NextRequest) {
         where: { razorpayOrderId: payment.order_id, status: { not: "paid" } },
         data: { status: "failed", razorpayPaymentId: payment.id },
       });
+      await markRentalPaymentFailed(payment.order_id, payment.id);
       return NextResponse.json({ status: "marked_failed" });
     }
 

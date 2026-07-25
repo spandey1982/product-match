@@ -1,6 +1,7 @@
 "use client";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   HeartHandshake,
@@ -11,6 +12,9 @@ import {
   Wallet,
   ChevronDown,
   ChevronUp,
+  CheckCircle2,
+  Loader2,
+  AlertTriangle,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/utils";
 import { Fact, SummaryRow } from "@/components/rental/OrderDetailPrimitives";
 import { RentalOrder } from "@/lib/rental/order-types";
+import { loadRazorpayScript, type RazorpayPaymentResponse } from "@/lib/razorpay-client";
 import {
   EXPECTED_CONFIRMATION_MINUTES,
   ORDER_STATUS_BADGE_VARIANT,
@@ -25,6 +30,7 @@ import {
   deliveryWindowLabel,
   formatDisplayDate,
   getDisplayStatus,
+  getPaymentBadge,
 } from "@/lib/rental/order-mock";
 
 const SLOT_LABEL: Record<string, string> = {
@@ -35,15 +41,18 @@ const SLOT_LABEL: Record<string, string> = {
 
 interface RentalOrderConfirmationViewProps {
   order: RentalOrder | null;
+  /** Is the viewer logged in as this order's own customer? Gates the Pay Now button — prepaying needs a real account, browsing/booking doesn't. */
+  canPayOnline: boolean;
 }
 
 /**
  * Rental request receipt — order now lives in Postgres (RentalOrder),
- * fetched server-side by page.tsx. No invoice, no payment integration; this
- * is purely a "we've got your request" confirmation, reachable without login
- * since a guest may have just placed it.
+ * fetched server-side by page.tsx. No invoice; this is purely a "we've got
+ * your request" confirmation, reachable without login since a guest may have
+ * just placed it. Pay at Doorstep remains the default — Pay Now (below) is
+ * an optional online-prepayment path on top of it, not a replacement.
  */
-export function RentalOrderConfirmationView({ order }: RentalOrderConfirmationViewProps) {
+export function RentalOrderConfirmationView({ order, canPayOnline }: RentalOrderConfirmationViewProps) {
   const [showTracking, setShowTracking] = useState(false);
 
   if (!order) {
@@ -63,6 +72,9 @@ export function RentalOrderConfirmationView({ order }: RentalOrderConfirmationVi
   const orderNumber = order.id.slice(0, 8).toUpperCase();
   const firstName = order.customer.name.trim().split(/\s+/)[0] || "there";
   const displayStatus = getDisplayStatus(order);
+  const paymentBadge = getPaymentBadge(order);
+  const amountInr = order.rentalPricePerDay * order.rentalDurationDays + order.deposit;
+  const canRetryOrPay = order.paymentStatus === "pending" || order.paymentStatus === "failed";
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -104,9 +116,14 @@ export function RentalOrderConfirmationView({ order }: RentalOrderConfirmationVi
             <p className="text-[11px] text-gray-400 tracking-wide mt-1.5">Order Number</p>
             <p className="text-sm font-semibold text-gray-900 font-mono truncate">#{orderNumber}</p>
           </div>
-          <Badge variant={ORDER_STATUS_BADGE_VARIANT[displayStatus]} className="text-sm px-3 py-1 shrink-0">
-            {ORDER_STATUS_LABEL[displayStatus]}
-          </Badge>
+          <div className="flex flex-col items-end gap-1.5 shrink-0">
+            <Badge variant={ORDER_STATUS_BADGE_VARIANT[displayStatus]} className="text-sm px-3 py-1">
+              {ORDER_STATUS_LABEL[displayStatus]}
+            </Badge>
+            <Badge variant={paymentBadge.variant} className="text-xs px-2.5 py-0.5">
+              {paymentBadge.label}
+            </Badge>
+          </div>
         </CardContent>
       </Card>
 
@@ -121,9 +138,19 @@ export function RentalOrderConfirmationView({ order }: RentalOrderConfirmationVi
           />
           <Fact icon={CalendarClock} label="Rental Price" value={`${formatCurrency(order.rentalPricePerDay)} / day`} />
           <Fact icon={ShieldCheck} label="Deposit" value={formatCurrency(order.deposit)} />
-          <Fact icon={Wallet} label="Payment" value="Pay at Doorstep" className="col-span-2" />
+          <Fact icon={Wallet} label="Payment Method" value={order.paymentMethod} className="col-span-2" />
         </CardContent>
       </Card>
+
+      {/* Online prepayment — optional; Pay at Doorstep is always available too */}
+      {canRetryOrPay && (
+        <PayNowCard
+          rentalOrderId={order.id}
+          amountInr={amountInr}
+          canPayOnline={canPayOnline}
+          failed={order.paymentStatus === "failed"}
+        />
+      )}
 
       {/* Track Order — mocked status timeline */}
       <Card className="rounded-3xl overflow-hidden bg-white/90 mb-4">
@@ -181,10 +208,149 @@ export function RentalOrderConfirmationView({ order }: RentalOrderConfirmationVi
       </Card>
 
       <p className="text-xs text-gray-400 text-center pb-8">
-        This is a mocked rental request for demo purposes — no invoice has been generated and no
-        payment has been collected.
+        This is a mocked rental request for demo purposes — no invoice has been generated.
       </p>
     </div>
+  );
+}
+
+interface PayNowCardProps {
+  rentalOrderId: string;
+  amountInr: number;
+  canPayOnline: boolean;
+  failed: boolean;
+}
+
+/** Optional online-prepayment card — Pay at Doorstep remains available regardless of whether this is used. */
+function PayNowCard({ rentalOrderId, amountInr, canPayOnline, failed }: PayNowCardProps) {
+  const router = useRouter();
+  const [processing, setProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [paid, setPaid] = useState(false);
+
+  const handlePayNow = useCallback(async () => {
+    setError(null);
+    setProcessing(true);
+
+    try {
+      const orderRes = await fetch("/api/payments/create-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rentalOrderId }),
+      });
+
+      if (!orderRes.ok) {
+        const data = await orderRes.json();
+        throw new Error(data.error ?? "Failed to start payment");
+      }
+
+      const order = (await orderRes.json()) as {
+        orderId: string;
+        amount: number;
+        currency: string;
+        keyId: string;
+      };
+
+      await loadRazorpayScript();
+      if (!window.Razorpay) throw new Error("Razorpay not loaded");
+
+      const rzp = new window.Razorpay({
+        key: order.keyId,
+        amount: order.amount,
+        currency: order.currency,
+        name: "Mentis",
+        description: "Rental booking payment",
+        order_id: order.orderId,
+        handler: async (response: RazorpayPaymentResponse) => {
+          try {
+            const verifyRes = await fetch("/api/payments/verify", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(response),
+            });
+
+            if (!verifyRes.ok) {
+              const data = await verifyRes.json();
+              throw new Error(data.error ?? "Verification failed");
+            }
+
+            setPaid(true);
+            router.refresh();
+          } catch (err) {
+            setError((err as Error).message);
+          } finally {
+            setProcessing(false);
+          }
+        },
+        modal: { ondismiss: () => setProcessing(false) },
+        theme: { color: "#4f46e5" },
+      });
+
+      rzp.open();
+    } catch (err) {
+      setError((err as Error).message);
+      setProcessing(false);
+    }
+  }, [rentalOrderId, router]);
+
+  if (paid) {
+    return (
+      <Card className="rounded-3xl overflow-hidden bg-white/90 mb-4 border-emerald-100">
+        <CardContent className="p-5 flex items-center gap-3">
+          <CheckCircle2 className="h-6 w-6 text-emerald-500 shrink-0" />
+          <div>
+            <p className="text-sm font-semibold text-gray-900">Payment received</p>
+            <p className="text-xs text-gray-500 mt-0.5">Your booking is now fully prepaid.</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="rounded-3xl overflow-hidden bg-white/90 mb-4">
+      <CardContent className="p-5">
+        <div className="flex items-center justify-between gap-3 mb-1">
+          <p className="text-sm font-semibold text-gray-900">
+            {failed ? "Payment didn't go through" : "Prefer to pay online?"}
+          </p>
+          <span className="text-sm font-bold text-gray-900">{formatCurrency(amountInr)}</span>
+        </div>
+        <p className="text-xs text-gray-500 mb-3">
+          {failed
+            ? "You can retry the payment, or simply pay at your doorstep instead."
+            : "Pay rental + deposit now, or continue with Pay at Doorstep — whichever you prefer."}
+        </p>
+
+        {error && (
+          <p className="text-xs text-red-600 flex items-center gap-1 mb-3">
+            <AlertTriangle className="h-3 w-3" />
+            {error}
+          </p>
+        )}
+
+        {canPayOnline ? (
+          <Button onClick={handlePayNow} disabled={processing} className="w-full">
+            {processing ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Processing…
+              </>
+            ) : failed ? (
+              "Retry Payment"
+            ) : (
+              "Pay Now"
+            )}
+          </Button>
+        ) : (
+          <Link href={`/rent/login?returnTo=/rent/orders/${rentalOrderId}`}>
+            <Button variant="outline" className="w-full">
+              Sign in to pay online
+            </Button>
+          </Link>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

@@ -1,4 +1,4 @@
-import { LIFECYCLE_STAGES, OrderStatus, RentalOrder } from "./order-types";
+import { LIFECYCLE_STAGES, OrderStatus, PaymentStatus, RentalOrder } from "./order-types";
 
 /** Earliest selectable event date — tomorrow, as a yyyy-mm-dd string for <input type="date">. */
 export function tomorrowDateInputValue(): string {
@@ -107,3 +107,25 @@ export const ORDER_STATUS_BADGE_VARIANT: Record<OrderStatus, OrderStatusBadgeVar
   completed: "success",
   cancelled: "error",
 };
+
+/**
+ * Display badge for a booking's payment state — independent of the
+ * fulfillment `status` above. "pending" is Pay-at-Doorstep's normal,
+ * permanent resting state, not an error; both payment options stay valid.
+ */
+export function getPaymentBadge(order: { paymentStatus: PaymentStatus }): {
+  label: string;
+  variant: OrderStatusBadgeVariant;
+} {
+  switch (order.paymentStatus) {
+    case "paid":
+      return { label: "Paid", variant: "success" };
+    case "failed":
+      return { label: "Payment Failed", variant: "error" };
+    case "refunded":
+      return { label: "Refunded", variant: "info" };
+    case "pending":
+    default:
+      return { label: "Pay at Doorstep", variant: "outline" };
+  }
+}
