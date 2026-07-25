@@ -79,11 +79,11 @@ export function RentalOrderConfirmationView({ order, canPayOnline }: RentalOrder
   return (
     <div className="max-w-2xl mx-auto">
       <Link
-        href="/rent"
+        href="/rent/orders"
         className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 mb-6"
       >
         <ArrowLeft className="h-4 w-4" />
-        Back to Rent
+        Back to My Orders
       </Link>
 
       {/* Warm hero */}
