@@ -119,6 +119,15 @@ export function ProductCard({ product }: ProductCardProps) {
             </h3>
           </div>
 
+          {product.isForRent && (
+            <div className="flex items-center gap-1.5 flex-wrap mb-2">
+              <Badge variant="purple">For Rent</Badge>
+              <span className="text-[11px] text-gray-500">
+                {formatCurrency(product.rentalPricePerDay ?? 0)}/day · Deposit {formatCurrency(product.rentalDeposit ?? 0)}
+              </span>
+            </div>
+          )}
+
 <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
               <div

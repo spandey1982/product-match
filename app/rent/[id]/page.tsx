@@ -11,7 +11,7 @@ interface Props {
 export async function generateMetadata({ params }: Props) {
   const { id } = await params;
   const product = await db.product.findFirst({
-    where: { id, isActive: true },
+    where: { id, isActive: true, isForRent: true },
     select: { title: true },
   });
   return { title: product ? `${product.title} — Rent — Mentis` : "Rent — Mentis" };
@@ -21,7 +21,7 @@ export default async function RentProductPage({ params }: Props) {
   const { id } = await params;
 
   const raw = await db.product.findFirst({
-    where: { id, isActive: true },
+    where: { id, isActive: true, isForRent: true },
     include: {
       generatedImages: {
         orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],

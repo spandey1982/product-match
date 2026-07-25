@@ -166,6 +166,14 @@ model Product {
   inStock  Boolean @default(true)
   isActive Boolean @default(true)
 
+  // Rental marketplace opt-in. A product can be sellable and rentable at
+  // once — this only gates whether it appears on the public /rent
+  // marketplace, not the retailer's own catalog. Price/deposit are required
+  // at creation whenever this is true (enforced in the API route, not here).
+  isForRent         Boolean @default(false)
+  rentalPricePerDay Float?
+  rentalDeposit     Float?
+
   sku String? @unique
 
   userId String

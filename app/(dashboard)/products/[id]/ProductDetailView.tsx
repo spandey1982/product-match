@@ -47,7 +47,7 @@ import { framedImageUrl, FULL_MODEL_VIEWS } from "@/lib/image-normalize";
 import { formatLabel } from "@/lib/product-detail/format";
 import { colorSwatchHex, colorDescriptor, pairingSuggestions, pairingNote } from "@/lib/product-detail/color-presentation";
 import { materialDescriptor, occasionDescriptor, categoryDescriptor, styleValue } from "@/lib/product-detail/descriptors";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import { useGenerationStatus } from "@/components/generation/GenerationStatusProvider";
 import { GenerationSettingsModal, useGenerationSettingsModal, type GenerationSettings } from "@/components/generation/GenerationSettingsModal";
 import { getMockRentalInfo } from "@/lib/rental/mock-data";
@@ -752,6 +752,16 @@ export function ProductDetailView({
                 <IndianRupee className="h-5 w-5" strokeWidth={1.75} />
                 <span className="font-body text-xl sm:text-2xl font-semibold">
                   {displayProduct.price.toLocaleString("en-IN")}
+                </span>
+              </div>
+            )}
+
+            {!rentalMode && !editing && displayProduct.isForRent && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge variant="purple">Available for Rent</Badge>
+                <span className="text-sm text-gray-600 font-body">
+                  {formatCurrency(displayProduct.rentalPricePerDay ?? 0)}/day · Deposit{" "}
+                  {formatCurrency(displayProduct.rentalDeposit ?? 0)}
                 </span>
               </div>
             )}

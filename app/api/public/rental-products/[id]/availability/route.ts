@@ -23,8 +23,8 @@ export async function GET(
     }
 
     const product = await db.product.findFirst({
-      where: { id, isActive: true },
-      select: { id: true, price: true },
+      where: { id, isActive: true, isForRent: true },
+      select: { id: true, rentalPricePerDay: true, rentalDeposit: true },
     });
 
     if (!product) {
@@ -32,7 +32,12 @@ export async function GET(
     }
 
     return NextResponse.json(
-      getMockRentalInfoForAge(product.id, product.price, age as AgeGroup)
+      getMockRentalInfoForAge(
+        product.id,
+        product.rentalPricePerDay ?? 0,
+        product.rentalDeposit ?? 0,
+        age as AgeGroup
+      )
     );
   } catch (err) {
     console.error(err);

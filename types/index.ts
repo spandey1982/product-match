@@ -38,6 +38,9 @@ export type Product = {
   gender: string;
   season: string[];
   price: number;
+  isForRent: boolean;
+  rentalPricePerDay?: number | null;
+  rentalDeposit?: number | null;
   imageUrl?: string | null;
   backImageUrl?: string | null;
   thumbnailUrl?: string | null;

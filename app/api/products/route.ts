@@ -84,6 +84,9 @@ export async function POST(req: NextRequest) {
       gender,
       season,
       price,
+      isForRent,
+      rentalPricePerDay,
+      rentalDeposit,
       imageUrl,
       backImageUrl,
       partImages,
@@ -93,6 +96,13 @@ export async function POST(req: NextRequest) {
     if (!title || !category || !color || !price) {
       return NextResponse.json(
         { error: "title, category, color, and price are required" },
+        { status: 400 }
+      );
+    }
+
+    if (isForRent && (!rentalPricePerDay || !rentalDeposit)) {
+      return NextResponse.json(
+        { error: "Rental price and deposit are required when a product is available for rent" },
         { status: 400 }
       );
     }
@@ -112,6 +122,9 @@ export async function POST(req: NextRequest) {
         gender: gender || "WOMEN",
         season: serializeArray(season || []),
         price: parseFloat(price),
+        isForRent: Boolean(isForRent),
+        rentalPricePerDay: isForRent ? parseFloat(rentalPricePerDay) : null,
+        rentalDeposit: isForRent ? parseFloat(rentalDeposit) : null,
         imageUrl,
         backImageUrl: backImageUrl || null,
         // Detail close-ups (extraction-only). Stored as JSON; ignored if not a

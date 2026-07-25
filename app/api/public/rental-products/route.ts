@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "24");
 
-    const where: Prisma.ProductWhereInput = { isActive: true };
+    const where: Prisma.ProductWhereInput = { isActive: true, isForRent: true };
     if (category) where.category = category;
     if (occasion) where.occasion = { contains: occasion };
 

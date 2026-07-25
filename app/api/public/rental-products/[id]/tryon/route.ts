@@ -39,7 +39,7 @@ export async function POST(
     const { id } = await params;
 
     const product = await db.product.findFirst({
-      where: { id, isActive: true },
+      where: { id, isActive: true, isForRent: true },
     });
 
     if (!product) {
