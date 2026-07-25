@@ -45,7 +45,7 @@ export function RentalOrderCard({ order, onCancelled }: RentalOrderCardProps) {
 
   return (
     <Card className="rounded-2xl overflow-hidden bg-white">
-      <div className="flex gap-4 p-4">
+      <Link href={`/rent/orders/${order.id}`} className="flex gap-4 p-4 hover:bg-gray-50/60 transition-colors">
         <div className="h-24 w-20 sm:h-28 sm:w-24 rounded-xl overflow-hidden bg-gray-50 shrink-0">
           {order.productImage ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -81,7 +81,7 @@ export function RentalOrderCard({ order, onCancelled }: RentalOrderCardProps) {
             <span className="text-xs text-gray-400">Deposit {formatCurrency(order.deposit)}</span>
           </div>
         </div>
-      </div>
+      </Link>
 
       <div className="px-4 pb-4">
         {confirmingCancel ? (
