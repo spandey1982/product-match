@@ -1,8 +1,9 @@
 # Railway / Nixpacks build configuration.
-# Use npm install (not npm ci) to handle Windows→Linux lockfile drift
-# for platform-specific native packages (tailwindcss-oxide, emnapi, etc).
-[phases.install]
-cmds = ["npm install --no-audit --no-fund"]
+# INSTALL_CMD overrides the Node.js provider's default (npm ci) so that
+# platform-specific lockfile drift (Windows → Linux wasm32 deps) never
+# breaks deploys.  [phases.install].cmds only appends — it doesn't replace.
+[variables]
+INSTALL_CMD = "npm install --no-audit --no-fund"
 
 [phases.build]
 cmds = ["npm run build"]
