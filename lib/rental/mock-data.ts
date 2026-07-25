@@ -18,14 +18,33 @@ function hashString(value: string): number {
   return Math.abs(hash);
 }
 
+/** Deterministic per-(product, age) availability — the single source both getMockRentalInfoForAge and the overall aggregator below read from. */
+function getMockAvailabilityForAge(productId: string, age: AgeGroup): RentalAvailability {
+  const seed = hashString(`${productId}:${age}`);
+  return AVAILABILITY[seed % AVAILABILITY.length];
+}
+
+/**
+ * Overall availability across every size — "available" as long as at least
+ * one age group still has stock, so the list/detail badge never shows
+ * "Rented Out" while a customer could still get it in a different size.
+ * Falls back to "reserved"/"rented_out" only once no size is available.
+ */
+function getMockOverallAvailability(productId: string): RentalAvailability {
+  const statuses = AGE_GROUPS.map((age) => getMockAvailabilityForAge(productId, age));
+  if (statuses.includes("available")) return "available";
+  if (statuses.includes("reserved")) return "reserved";
+  return "rented_out";
+}
+
 /**
  * Rental price/deposit come from the retailer's own entry (Product.
  * rentalPricePerDay / rentalDeposit) whenever set — the formula below is
  * only a fallback for the retailer's own "preview as rental" toggle on a
  * product that isn't actually marked for rent (getMockRentalInfoForAge, used
  * by the public marketplace, is never reached for such a product). The rest
- * (availability, duration, late fee, delivery, home trial) has no real data
- * model yet and stays mocked.
+ * (duration, late fee, delivery, home trial) has no real data model yet and
+ * stays mocked.
  */
 export function getMockRentalInfo(product: Product): RentalInfo {
   const seed = hashString(product.id);
@@ -37,7 +56,7 @@ export function getMockRentalInfo(product: Product): RentalInfo {
   return {
     rentalPricePerDay,
     deposit,
-    availability: AVAILABILITY[Math.floor(seed / 7) % AVAILABILITY.length],
+    availability: getMockOverallAvailability(product.id),
     rentalDurationDays: DURATIONS[seed % DURATIONS.length],
     lateFeePerDay: Math.max(50, Math.round((rentalPricePerDay * 0.25) / 10) * 10),
     deliveryInfo: DELIVERY_OPTIONS[seed % DELIVERY_OPTIONS.length],
@@ -60,11 +79,10 @@ export function getMockRentalInfoForAge(
   age: AgeGroup
 ): AgeRentalQuote {
   const ageIndex = AGE_GROUPS.indexOf(age);
-  const seed = hashString(`${productId}:${age}`);
   const sizeMultiplier = 1 + ageIndex * 0.04;
 
   return {
-    availability: AVAILABILITY[seed % AVAILABILITY.length],
+    availability: getMockAvailabilityForAge(productId, age),
     rentalPricePerDay: Math.max(199, Math.round((baseRentalPricePerDay * sizeMultiplier) / 10) * 10),
     deposit: Math.max(500, Math.round((baseDeposit * sizeMultiplier) / 50) * 50),
   };
