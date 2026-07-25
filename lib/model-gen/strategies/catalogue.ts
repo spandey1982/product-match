@@ -19,6 +19,7 @@ import { resolveReferenceVariant } from "../reference-selection";
 import { loadReferenceImage, type ModelType, type ReferenceImage } from "../reference-models";
 import { sampleStudioColor } from "../studio-anchor";
 import { resolveCatalogueStack } from "../catalogue-cards";
+import { cropRegionFor } from "../crop-templates";
 import { genReferencesFor, type PartImage } from "@/lib/product/part-slots";
 import type { GeneratedImage } from "../persist";
 import type { GenerationQuality } from "../quality";
@@ -81,6 +82,13 @@ export async function runCatalogueStrategy(opts: {
    */
   existingFrontUrl?: string | null;
   existingBackUrl?: string | null;
+  /**
+   * Resume mode: pre-built base shots from a previous run. These views are
+   * NOT re-generated — they're included in the card stack for correct
+   * ordering and crop derivation. Images sourced from these are flagged
+   * `existing: true` so the engine skips branding and recording for them.
+   */
+  existingBaseShots?: Partial<Record<"front" | "back", { url: string; provider: string }>>;
 }): Promise<{ images: GeneratedImage[] }> {
   const { product, modelType, provider = "gemini", userId, backdrop, partImages = [], quality, casting = null } = opts;
   const existingFrontUrl = opts.existingFrontUrl ?? null;
@@ -135,6 +143,27 @@ export async function runCatalogueStrategy(opts: {
   // Minimal background data from the first (front) shot — pins later views to its
   // realized backdrop colour without re-sending the whole image. Non-fatal.
   let studioAnchor: string | null = null;
+
+  // Resume mode: pre-populate with existing base shots so they're included in
+  // the card stack but not re-generated. Sample the front's studio colour so a
+  // newly-generated back is pinned to the same backdrop.
+  const existingViewSet = new Set<string>();
+  if (opts.existingBaseShots) {
+    for (const [view, ref] of Object.entries(opts.existingBaseShots)) {
+      baseShots[view as "front" | "back"] = {
+        url: ref.url,
+        provider: (ref.provider === "vertex" ? "vertex" : "gemini") as CatalogueBackend,
+        model: null,
+        width: null,
+        height: null,
+        bytes: null,
+      };
+      existingViewSet.add(view);
+    }
+    if (baseShots.front) {
+      studioAnchor = await sampleStudioColor(baseShots.front.url);
+    }
+  }
 
   /** Generate one base shot via the chosen provider, with Gemini fallback. */
   async function generateBaseShot(
@@ -210,6 +239,9 @@ export async function runCatalogueStrategy(opts: {
 
   // Sequential: keeps within provider rate limits and orders results by view.
   for (const view of baseViews) {
+    // Resume mode: skip views that already have a base shot.
+    if (existingViewSet.has(view.id)) continue;
+
     const isBack = view.id === "back";
     const reference = isBack ? backRef : frontRef;
     // Use the real back image for the back view when available.
@@ -345,7 +377,20 @@ export async function runCatalogueStrategy(opts: {
   });
 
   // Merge the generation metadata back onto the AI base cards (for recording).
+  // Resume mode: flag images whose base shot was carried over (not generated
+  // this run) so the engine skips branding and analytics for them. For crops,
+  // look up which base view the crop derives from via the crop-template.
   const images: GeneratedImage[] = stack.map((card) => {
+    let isExisting = false;
+    if (existingViewSet.size > 0) {
+      if (card.source === "ai-base") {
+        isExisting = existingViewSet.has(card.view);
+      } else if (card.source === "model-crop") {
+        const region = cropRegionFor(product.category, card.view);
+        isExisting = region ? existingViewSet.has(region.from) : false;
+      }
+    }
+    const existing = isExisting || undefined;
     if (card.source === "ai-base") {
       const b = baseShots[card.view as "front" | "back"];
       return {
@@ -357,9 +402,10 @@ export async function runCatalogueStrategy(opts: {
         width: b?.width ?? null,
         height: b?.height ?? null,
         bytes: b?.bytes ?? null,
+        existing,
       };
     }
-    return { url: card.url, view: card.view, provider: card.provider, source: card.source };
+    return { url: card.url, view: card.view, provider: card.provider, source: card.source, existing };
   });
 
   return { images };

@@ -28,7 +28,7 @@ import { getScene, SCENES } from "./scenes/library";
 import { selectSceneVariation } from "./scenes/rule-engine";
 import { resolvePaletteAccent } from "./scenes/color-harmony";
 import { renderScenePrompt } from "./scenes/prompt-builder";
-import type { BackdropSection } from "./scenes/selection";
+import { isSceneIntensity, isSceneDensity, type BackdropSection } from "./scenes/selection";
 import { persistGeneratedImages, type GeneratedImage } from "./persist";
 import { recordGenerations } from "./generation-record";
 import { maybeReviewGenerations } from "./ai-review";
@@ -99,6 +99,13 @@ export interface GenerateModelImagesInput {
    * if the feature flag is on.
    */
   useCasting?: boolean;
+  /**
+   * "resume" fills in only what's missing from a previous partial generation
+   * (skips existing views, carries forward the original scene settings).
+   * "recreate" discards existing generated images and regenerates everything.
+   * Absent / undefined behaves like "recreate" (backward-compatible default).
+   */
+  mode?: "resume" | "recreate";
 }
 
 export interface GenerateModelImagesResult {
@@ -112,6 +119,8 @@ export interface GenerateModelImagesResult {
    * - "generation_failed": generation ran but produced no stored images.
    */
   failure?: "storage_unreachable" | "generation_failed" | "insufficient_credits";
+  /** True when resume mode found nothing to fill in — catalogue is already complete. */
+  resumeComplete?: boolean;
 }
 
 export async function generateModelImages(
@@ -267,6 +276,47 @@ export async function generateModelImages(
     if (resolved.face) casting = resolved;
   }
 
+  // ── Resume mode: detect existing views, determine what's missing ─────
+  const isResumeMode = input.mode === "resume";
+  const isCatalogue = objective !== "quick_listing";
+  let existingBaseShots: Partial<Record<"front" | "back", { url: string; provider: string }>> | undefined;
+  let missingViewCount = isCatalogue ? 2 : 1;
+  let resumePrevSceneId: string | null = null;
+  let resumePrevSceneIntensity: string | null = null;
+  let resumePrevSceneDensity: string | null = null;
+
+  if (isResumeMode && isCatalogue) {
+    const existingImages = await db.productImage.findMany({
+      where: { productId: product.id, view: { in: ["front", "back"] }, objective: "catalogue" },
+      orderBy: { createdAt: "desc" },
+      select: { view: true, url: true },
+      take: 2,
+    });
+    existingBaseShots = {};
+    for (const img of existingImages) {
+      const v = img.view as "front" | "back";
+      if (v === "front" || v === "back") {
+        existingBaseShots[v] = { url: img.url, provider: "previous" };
+      }
+    }
+    missingViewCount = 2 - Object.keys(existingBaseShots).length;
+    if (missingViewCount === 0) {
+      return { objective, modelType, images: [], resumeComplete: true };
+    }
+    // Carry forward the scene/backdrop from the previous generation so the
+    // new view matches the existing one visually.
+    const prevRecord = await db.generationRecord.findFirst({
+      where: { productId: product.id, objective: "catalogue" },
+      orderBy: { createdAt: "desc" },
+      select: { sceneId: true, sceneIntensity: true, sceneDensity: true },
+    });
+    if (prevRecord) {
+      resumePrevSceneId = prevRecord.sceneId;
+      resumePrevSceneIntensity = prevRecord.sceneIntensity;
+      resumePrevSceneDensity = prevRecord.sceneDensity;
+    }
+  }
+
   // Resolve the backdrop/scene fragment. Two peer sections, same output shape
   // (a single deterministic prompt string + a branding fallback hint) so
   // everything downstream — buildViewPrompt, branding placement, recording —
@@ -279,10 +329,17 @@ export async function generateModelImages(
   // the reference model's studio). Force Studio here so recorded metadata
   // matches what actually happened — a stale client can't get us to log a
   // scenic run against a Vertex generation.
-  const useScenic =
-    catalogueProvider === "gemini" &&
-    (input.backdropSection ?? "studio") === "scenic" &&
-    isScenicCollectionEnabled();
+  let useScenic: boolean;
+  if (isResumeMode && resumePrevSceneId !== null) {
+    useScenic = true;
+  } else if (isResumeMode && resumePrevSceneId === null && missingViewCount < 2) {
+    useScenic = false;
+  } else {
+    useScenic =
+      catalogueProvider === "gemini" &&
+      (input.backdropSection ?? "studio") === "scenic" &&
+      isScenicCollectionEnabled();
+  }
 
   // Quality: per-request override wins; otherwise use the retailer's
   // remembered setting. Vertex ignores the field internally (single output
@@ -294,19 +351,25 @@ export async function generateModelImages(
   let sceneMeta: { sceneId: string; intensity: string; density: string } | null = null;
 
   if (useScenic) {
-    const scene = getScene(settings.scenic.sceneId) ?? SCENES[0];
+    // Resume mode: use the previous generation's scene settings so the new
+    // view matches the existing one. Fall back to current settings if the
+    // previous record's scene is no longer available.
+    const sceneId = resumePrevSceneId ?? settings.scenic.sceneId;
+    const sceneIntensity = isSceneIntensity(resumePrevSceneIntensity) ? resumePrevSceneIntensity : settings.scenic.intensity;
+    const sceneDensity = isSceneDensity(resumePrevSceneDensity) ? resumePrevSceneDensity : settings.scenic.density;
+    const scene = getScene(sceneId) ?? SCENES[0];
     const variation = selectSceneVariation(scene, {
       color: product.color,
       category: product.category,
       pattern: product.pattern,
     });
     const accent = resolvePaletteAccent(scene, product.color);
-    backdrop = renderScenePrompt(scene, variation, settings.scenic.intensity, settings.scenic.density, accent);
+    backdrop = renderScenePrompt(scene, variation, sceneIntensity, sceneDensity, accent);
     brandingHint = scene.brandingHint;
     sceneMeta = {
       sceneId: scene.id,
-      intensity: settings.scenic.intensity,
-      density: settings.scenic.density,
+      intensity: sceneIntensity,
+      density: sceneDensity,
     };
   } else {
     const backdropPreset =
@@ -326,8 +389,7 @@ export async function generateModelImages(
   }
 
   // ── Billing: charge for image generation ──────────────────────────────
-  const isCatalogue = objective !== "quick_listing";
-  const imageCount = isCatalogue ? 2 : 1;
+  const imageCount = isResumeMode ? missingViewCount : (isCatalogue ? 2 : 1);
   const imgOp: BillingOperation =
     catalogueProvider === "vertex"
       ? "vai_image_gen"
@@ -341,9 +403,10 @@ export async function generateModelImages(
   // previous partial run. If one view succeeded but the other failed, the
   // existing view's image is passed to the strategy as a cross-view
   // reference so the AI maintains model identity on retry.
-  let existingFrontUrl: string | null = null;
-  let existingBackUrl: string | null = null;
-  if (isCatalogue) {
+  // In resume mode, we already queried above — reuse those URLs.
+  let existingFrontUrl: string | null = existingBaseShots?.front?.url ?? null;
+  let existingBackUrl: string | null = existingBaseShots?.back?.url ?? null;
+  if (!isResumeMode && isCatalogue) {
     const existingImages = await db.productImage.findMany({
       where: { productId: product.id, view: { in: ["front", "back"] }, objective: "catalogue" },
       orderBy: { createdAt: "desc" },
@@ -385,6 +448,7 @@ export async function generateModelImages(
           casting,
           existingFrontUrl,
           existingBackUrl,
+          existingBaseShots: isResumeMode ? existingBaseShots : undefined,
         });
 
   // Brand each image (store logo, or store name) before persisting, so the
@@ -401,19 +465,22 @@ export async function generateModelImages(
   const willBrand =
     branding.enabled && (Boolean(branding.logoPublicId) || Boolean(branding.storeName?.trim()));
 
+  // Resume mode: skip branding for carried-over images (already branded
+  // in the original run). New images are branded as usual.
   const branded: GeneratedImage[] = await Promise.all(
     images.map(async (img) => {
-      if (!willBrand) return img;
+      if (!willBrand || img.existing) return img;
       const placement = await resolveBrandingPlacement(img.url, branding.position, fallbackAdapt);
       return { ...img, url: applyBranding(img.url, branding, placement) };
     })
   );
 
   if (branded.length > 0) {
-    await persistGeneratedImages(product.id, branded, objective);
-    // Record perf/quality rows (non-fatal) for analytics + scoring — only for the
-    // ACTUAL generations, not enhanced uploads (which aren't AI-generated).
-    const generated = branded.filter((img) => img.source !== "upload");
+    await persistGeneratedImages(product.id, branded, objective,
+      isResumeMode ? { replaceExisting: true } : undefined);
+    // Record perf/quality rows (non-fatal) for analytics + scoring — only for
+    // ACTUAL new generations, not enhanced uploads or carried-over images.
+    const generated = branded.filter((img) => img.source !== "upload" && !img.existing);
     const records = await recordGenerations({
       productId: product.id,
       userId: input.userId,
@@ -427,15 +494,16 @@ export async function generateModelImages(
     maybeReviewGenerations(records, { productImageUrl: product.imageUrl });
   }
 
-  // No AI-generated image survived (upload-sourced cards don't count) —
+  // No AI-generated image survived (upload-sourced cards don't count;
+  // carried-over images don't count — they were generated before) —
   // e.g. every upload failed after generation. Callers tell the retailer to
   // retry instead of silently showing nothing.
-  const generatedCount = branded.filter((img) => img.source !== "upload").length;
+  const generatedCount = branded.filter((img) => img.source !== "upload" && !img.existing).length;
   return {
     objective,
     modelType,
     images: branded,
-    ...(generatedCount === 0 ? { failure: "generation_failed" as const } : {}),
+    ...(generatedCount === 0 && !isResumeMode ? { failure: "generation_failed" as const } : {}),
   };
 }
 

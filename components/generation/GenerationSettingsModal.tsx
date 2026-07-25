@@ -60,6 +60,8 @@ interface GenerationSettingsModalProps {
   onGenerate: (settings: GenerationSettings) => void;
   generating: boolean;
   hasGeneratedImages?: boolean;
+  /** True when all expected catalogue views (front + back) already exist. */
+  catalogueComplete?: boolean;
 }
 
 async function fetchSettingsData(): Promise<SettingsData | null> {
@@ -138,6 +140,7 @@ export function GenerationSettingsModal({
   onGenerate,
   generating,
   hasGeneratedImages = false,
+  catalogueComplete = false,
   settingsData,
   settingsLoading,
 }: GenerationSettingsModalProps & {
@@ -284,11 +287,12 @@ export function GenerationSettingsModal({
             <Button
               variant="outline"
               onClick={() => handleAction("resume")}
-              disabled={loading || !data || generating}
+              disabled={loading || !data || generating || catalogueComplete}
               loading={generating}
               className="rounded-xl"
+              title={catalogueComplete ? "All catalogue images are complete" : undefined}
             >
-              {generating ? "Generating…" : "Resume"}
+              {generating ? "Generating…" : catalogueComplete ? "Complete" : "Resume"}
             </Button>
           ) : (
             <Button

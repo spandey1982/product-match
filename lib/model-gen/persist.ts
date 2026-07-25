@@ -25,6 +25,12 @@ export interface GeneratedImage {
   width?: number | null;
   height?: number | null;
   bytes?: number | null;
+  /**
+   * When true, this image carried over from a previous generation (resume
+   * mode). It is included in the persist call for correct ordering but should
+   * NOT be re-branded or re-recorded.
+   */
+  existing?: boolean;
 }
 
 /**
@@ -45,9 +51,16 @@ function primaryIndex(images: GeneratedImage[]): number {
 export async function persistGeneratedImages(
   productId: string,
   images: GeneratedImage[],
-  objective: GenerationObjective
+  objective: GenerationObjective,
+  opts?: { replaceExisting?: boolean }
 ): Promise<void> {
   if (images.length === 0) return;
+
+  if (opts?.replaceExisting) {
+    await db.productImage.deleteMany({
+      where: { productId, objective },
+    });
+  }
 
   const primary = primaryIndex(images);
 

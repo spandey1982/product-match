@@ -59,10 +59,13 @@ export async function POST(
         : undefined;
     const useCastingRaw = (body as { useCasting?: unknown }).useCasting;
     const useCasting = typeof useCastingRaw === "boolean" ? useCastingRaw : undefined;
+    const modeRaw = (body as { mode?: unknown }).mode;
+    const mode = modeRaw === "resume" || modeRaw === "recreate" ? modeRaw : undefined;
 
     // The engine handles per-call billing internally (chargeForCall at each
     // step boundary). No upfront estimation or reservation needed here.
     let failure: "storage_unreachable" | "generation_failed" | "insufficient_credits" | undefined;
+    let resumeComplete = false;
     if (isAiGenObjectivesEnabled()) {
       const result = await generateModelImages({
         productId: id,
@@ -73,8 +76,10 @@ export async function POST(
         backdropSection,
         signatureProfileId,
         useCasting,
+        mode,
       });
       failure = result.failure;
+      resumeComplete = result.resumeComplete ?? false;
     } else {
       await generateModelImage(id, quality);
     }
@@ -142,6 +147,7 @@ export async function POST(
       product: deserializeProduct(updated),
       generatedImages,
       ...(failure ? { failure, failureMessage } : {}),
+      ...(resumeComplete ? { resumeComplete } : {}),
     });
   } catch (err) {
     if ((err as Error).message === "Unauthorized") {

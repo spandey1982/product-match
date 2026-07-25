@@ -166,6 +166,8 @@ export function ProductDetailView({
       : [];
 
   const hasModelImage = onModel.length > 0 || hasFrontInCatalogue;
+  const hasBackInCatalogue = catalogueImages.some((g) => g.view === "back");
+  const catalogueComplete = hasFrontInCatalogue && hasBackInCatalogue;
 
   const genCtx = useGenerationStatus();
   const genStatus = genCtx.getStatus(product.id);
@@ -387,6 +389,7 @@ export function ProductDetailView({
         error?: string;
         message?: string;
         failureMessage?: string;
+        resumeComplete?: boolean;
         product?: { modelImageUrl?: string | null };
         generatedImages?: GeneratedImage[];
       };
@@ -395,6 +398,12 @@ export function ProductDetailView({
         const msg = data.message ?? "Not enough credits. Contact your admin to add more credits.";
         genCtx.failGeneration(product.id, msg);
         setLocalGenError(msg);
+        return;
+      }
+
+      if (data.resumeComplete) {
+        genCtx.stopTracking(product.id);
+        setLocalGenError("All catalogue images are already complete — nothing to resume.");
         return;
       }
 
@@ -993,6 +1002,7 @@ export function ProductDetailView({
         onGenerate={handleGenerateModelImage}
         generating={generating}
         hasGeneratedImages={hasModelImage}
+        catalogueComplete={catalogueComplete}
         settingsData={genSettingsModal.data}
         settingsLoading={genSettingsModal.loading}
       />
