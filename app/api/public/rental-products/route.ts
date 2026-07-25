@@ -14,14 +14,27 @@ export async function GET(req: NextRequest) {
 
     const category = searchParams.get("category");
     const occasion = searchParams.get("occasion");
+    const subcategory = searchParams.get("subcategory");
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "24");
 
     const where: Prisma.ProductWhereInput = { isActive: true, isForRent: true };
     if (category) where.category = category;
     if (occasion) where.occasion = { contains: occasion };
+    if (subcategory) where.subcategory = subcategory;
 
-    const [products, total] = await Promise.all([
+    // Subcategory is free text (no fixed taxonomy), so the filter's own
+    // options come from what retailers have actually entered — scoped to the
+    // selected category, since a subcategory is only meaningful within one
+    // (e.g. "Bridal Saree" shouldn't appear as an option under Lehenga).
+    const subcategoryWhere: Prisma.ProductWhereInput = {
+      isActive: true,
+      isForRent: true,
+      subcategory: { not: null },
+      ...(category ? { category } : {}),
+    };
+
+    const [products, total, subcategoryRows] = await Promise.all([
       db.product.findMany({
         where,
         orderBy: { createdAt: "desc" },
@@ -35,10 +48,21 @@ export async function GET(req: NextRequest) {
         },
       }),
       db.product.count({ where }),
+      db.product.findMany({
+        where: subcategoryWhere,
+        select: { subcategory: true },
+        distinct: ["subcategory"],
+      }),
     ]);
+
+    const subcategories = subcategoryRows
+      .map((r) => r.subcategory)
+      .filter((s): s is string => !!s && s.trim().length > 0)
+      .sort((a, b) => a.localeCompare(b));
 
     return NextResponse.json({
       products: products.map((p) => toPublicRentalProduct(p as unknown as Record<string, unknown>)),
+      subcategories,
       pagination: {
         page,
         limit,

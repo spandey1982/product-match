@@ -22,6 +22,7 @@ interface RentalViewProps {
 
 export function RentalView({ loggedIn }: RentalViewProps) {
   const [products, setProducts] = useState<PublicRentalProduct[]>([]);
+  const [subcategories, setSubcategories] = useState<string[]>([]);
   const [pagination, setPagination] = useState<Pagination | null>(null);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -29,6 +30,7 @@ export function RentalView({ loggedIn }: RentalViewProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [selectedOccasion, setSelectedOccasion] = useState("");
+  const [selectedSubcategory, setSelectedSubcategory] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const fetchProducts = useCallback(async () => {
@@ -37,16 +39,18 @@ export function RentalView({ loggedIn }: RentalViewProps) {
       const params = new URLSearchParams();
       if (selectedCategory && selectedCategory !== "All") params.set("category", selectedCategory);
       if (selectedOccasion) params.set("occasion", selectedOccasion);
+      if (selectedSubcategory) params.set("subcategory", selectedSubcategory);
       params.set("page", String(page));
       params.set("limit", "24");
       const res = await fetch(`/api/public/rental-products?${params}`);
       const data = await res.json();
       setProducts(data.products || []);
+      setSubcategories(data.subcategories || []);
       setPagination(data.pagination);
     } finally {
       setLoading(false);
     }
-  }, [selectedCategory, selectedOccasion, page]);
+  }, [selectedCategory, selectedOccasion, selectedSubcategory, page]);
 
   const searchProducts = useCallback(async (q: string) => {
     if (!q.trim()) { fetchProducts(); return; }
@@ -73,11 +77,13 @@ export function RentalView({ loggedIn }: RentalViewProps) {
   function resetFilters() {
     setSelectedCategory("All");
     setSelectedOccasion("");
+    setSelectedSubcategory("");
     setPage(1);
     setSearchQuery("");
   }
 
-  const hasFilters = selectedCategory !== "All" || selectedOccasion !== "" || searchQuery !== "";
+  const hasFilters =
+    selectedCategory !== "All" || selectedOccasion !== "" || selectedSubcategory !== "" || searchQuery !== "";
 
   return (
     <div>
@@ -91,9 +97,18 @@ export function RentalView({ loggedIn }: RentalViewProps) {
         searchQuery={searchQuery}
         onSearchChange={(v) => { setSearchQuery(v); setPage(1); }}
         selectedCategory={selectedCategory}
-        onCategoryChange={(cat) => { setSelectedCategory(cat); setPage(1); setSearchQuery(""); }}
+        onCategoryChange={(cat) => {
+          setSelectedCategory(cat);
+          setSelectedSubcategory("");
+          setPage(1);
+          setSearchQuery("");
+        }}
+        hideCategoryTabs
         selectedOccasion={selectedOccasion}
         onOccasionChange={(occ) => { setSelectedOccasion(occ); setPage(1); }}
+        subcategories={subcategories}
+        selectedSubcategory={selectedSubcategory}
+        onSubcategoryChange={(sub) => { setSelectedSubcategory(sub); setPage(1); }}
         filtersOpen={filtersOpen}
         onToggleFilters={() => setFiltersOpen((v) => !v)}
         hasFilters={hasFilters}
