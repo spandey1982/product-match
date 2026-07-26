@@ -33,11 +33,18 @@ export async function getWalletBalance(userId: string): Promise<WalletBalance | 
   };
 }
 
+/**
+ * Credits a wallet and records the transaction. `initiatedBy`/`description`
+ * default to the admin-top-up wording (existing behavior, unchanged for that
+ * caller); pass overrides for other credit sources — e.g. a Razorpay
+ * payment, where `initiatedBy` should identify the payment, not an admin.
+ */
 export async function addCredits(
   userId: string,
   amountInr: number,
-  adminUserId: string
-): Promise<{ walletId: string; creditedUsd: number; exchangeRate: number }> {
+  adminUserId: string,
+  overrides?: { initiatedBy?: string; description?: string }
+): Promise<{ walletId: string; creditedUsd: number; exchangeRate: number; walletTransactionId: string }> {
   const rate = await fetchExchangeRate();
   const creditUsd = convertInrToUsd(amountInr, rate);
 
@@ -58,21 +65,99 @@ export async function addCredits(
       },
     });
 
-    await tx.walletTransaction.create({
+    const walletTx = await tx.walletTransaction.create({
       data: {
         walletId: wallet.id,
         type: "CREDIT" satisfies TransactionType,
         amountUsd: creditUsd,
         balanceAfter: wallet.balanceUsd,
-        description: `Top-up: ₹${amountInr.toLocaleString("en-IN")} @ ₹${rate.toFixed(2)}/USD`,
-        initiatedBy: `admin:${adminUserId}`,
+        description:
+          overrides?.description ??
+          `Top-up: ₹${amountInr.toLocaleString("en-IN")} @ ₹${rate.toFixed(2)}/USD`,
+        initiatedBy: overrides?.initiatedBy ?? `admin:${adminUserId}`,
         originalAmountInr: amountInr,
         exchangeRate: rate,
       },
     });
 
-    return { walletId: wallet.id, creditedUsd: creditUsd, exchangeRate: rate };
+    return { walletId: wallet.id, creditedUsd: creditUsd, exchangeRate: rate, walletTransactionId: walletTx.id };
   });
+}
+
+/**
+ * Credits a wallet for a Razorpay `PaymentOrder`, called from both the
+ * client-side verify-payment flow and the server-side webhook — either can
+ * arrive first, or both can fire for the same order. The `status !== "paid"`
+ * transition is claimed atomically inside the transaction (via
+ * `updateMany`'s row count) so only one caller ever credits the wallet;
+ * the other sees `alreadyProcessed: true` instead of double-crediting.
+ */
+export async function creditWalletForPaymentOrder(
+  paymentOrderId: string,
+  razorpayPaymentId: string
+): Promise<{ creditedUsd: number; exchangeRate: number; alreadyProcessed: boolean }> {
+  const paymentOrder = await db.paymentOrder.findUnique({ where: { id: paymentOrderId } });
+  if (!paymentOrder) throw new Error("Payment order not found");
+
+  if (paymentOrder.status === "paid") {
+    return {
+      creditedUsd: paymentOrder.amountUsd ?? 0,
+      exchangeRate: paymentOrder.exchangeRate ?? 0,
+      alreadyProcessed: true,
+    };
+  }
+
+  const rate = await fetchExchangeRate();
+  const creditUsd = convertInrToUsd(paymentOrder.amountInr, rate);
+
+  const result = await db.$transaction(async (tx) => {
+    const claimed = await tx.paymentOrder.updateMany({
+      where: { id: paymentOrder.id, status: { not: "paid" } },
+      data: { status: "paid", razorpayPaymentId, amountUsd: creditUsd, exchangeRate: rate },
+    });
+    if (claimed.count === 0) return null; // lost the race — the other caller already processed this order
+
+    const wallet = await tx.wallet.upsert({
+      where: { userId: paymentOrder.userId },
+      create: {
+        userId: paymentOrder.userId,
+        balanceUsd: creditUsd,
+        totalCreditsUsd: creditUsd,
+        status: "active",
+        lastExchangeRate: rate,
+      },
+      update: {
+        balanceUsd: { increment: creditUsd },
+        totalCreditsUsd: { increment: creditUsd },
+        lastExchangeRate: rate,
+      },
+    });
+
+    const walletTx = await tx.walletTransaction.create({
+      data: {
+        walletId: wallet.id,
+        type: "CREDIT" satisfies TransactionType,
+        amountUsd: creditUsd,
+        balanceAfter: wallet.balanceUsd,
+        description: paymentOrder.description ?? `Credit top-up: ${paymentOrder.packLabel ?? "custom"}`,
+        initiatedBy: `razorpay:${razorpayPaymentId}`,
+        originalAmountInr: paymentOrder.amountInr,
+        exchangeRate: rate,
+      },
+    });
+
+    await tx.paymentOrder.update({
+      where: { id: paymentOrder.id },
+      data: { walletTransactionId: walletTx.id },
+    });
+
+    return { creditedUsd: creditUsd, exchangeRate: rate };
+  });
+
+  if (!result) {
+    return { creditedUsd: creditUsd, exchangeRate: rate, alreadyProcessed: true };
+  }
+  return { ...result, alreadyProcessed: false };
 }
 
 export async function adjustBalance(

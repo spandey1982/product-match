@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { toRentalOrderDTO } from "@/lib/rental/order-db";
+import { getLatestPaymentSummary } from "@/lib/rental/payment";
 import { RentalOrderAdminView } from "./RentalOrderAdminView";
 
 interface Props {
@@ -35,5 +36,7 @@ export default async function RentalOrderAdminPage({ params }: Props) {
   });
   if (!product) notFound();
 
-  return <RentalOrderAdminView order={toRentalOrderDTO(row)} />;
+  const payment = await getLatestPaymentSummary(row.id);
+
+  return <RentalOrderAdminView order={toRentalOrderDTO(row)} payment={payment} />;
 }

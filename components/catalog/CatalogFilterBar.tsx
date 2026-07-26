@@ -15,9 +15,16 @@ interface CatalogFilterBarProps {
 
   selectedCategory: string;
   onCategoryChange: (value: string) => void;
+  /** Hides the category tabs row entirely — e.g. the rental marketplace, which spans effectively one category and only needs Subcategory. */
+  hideCategoryTabs?: boolean;
 
   selectedOccasion: string;
   onOccasionChange: (value: string) => void;
+
+  /** Subcategory is free text (no fixed taxonomy) — omit all three to hide this filter entirely (e.g. the retailer catalog, which doesn't use it yet). */
+  subcategories?: string[];
+  selectedSubcategory?: string;
+  onSubcategoryChange?: (value: string) => void;
 
   /** Only relevant when a caller supports these filters (e.g. voice search) — omit to hide their badges entirely. */
   selectedColor?: string;
@@ -54,8 +61,12 @@ export function CatalogFilterBar({
   onSearchChange,
   selectedCategory,
   onCategoryChange,
+  hideCategoryTabs,
   selectedOccasion,
   onOccasionChange,
+  subcategories,
+  selectedSubcategory,
+  onSubcategoryChange,
   selectedColor,
   onClearColor,
   selectedGender,
@@ -218,21 +229,42 @@ export function CatalogFilterBar({
       {belowSearchBar}
 
       {/* Category tabs */}
-      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-        {categories.map((cat) => (
-          <button
-            key={cat}
-            onClick={() => onCategoryChange(cat)}
-            className={`shrink-0 px-3 py-1.5 rounded-xl text-sm font-medium transition-all ${
-              selectedCategory === cat
-                ? "bg-indigo-600 text-white shadow-sm"
-                : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
-            }`}
-          >
-            {cat}
-          </button>
-        ))}
-      </div>
+      {!hideCategoryTabs && (
+        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+          {categories.map((cat) => (
+            <button
+              key={cat}
+              onClick={() => onCategoryChange(cat)}
+              className={`shrink-0 px-3 py-1.5 rounded-xl text-sm font-medium transition-all ${
+                selectedCategory === cat
+                  ? "bg-indigo-600 text-white shadow-sm"
+                  : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
+              }`}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Subcategory tabs — only when the current selection has any (free text, no fixed taxonomy) */}
+      {onSubcategoryChange && subcategories && subcategories.length > 0 && (
+        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+          {subcategories.map((sub) => (
+            <button
+              key={sub}
+              onClick={() => onSubcategoryChange(sub === selectedSubcategory ? "" : sub)}
+              className={`shrink-0 px-3 py-1.5 rounded-xl text-sm font-medium transition-all ${
+                selectedSubcategory === sub
+                  ? "bg-indigo-600 text-white shadow-sm"
+                  : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
+              }`}
+            >
+              {sub}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Active filter badges */}
       {hasFilters && (
@@ -248,6 +280,12 @@ export function CatalogFilterBar({
             <Badge variant="info" className="gap-1">
               {selectedOccasion}
               <button onClick={() => onOccasionChange("")}><X className="h-3 w-3" /></button>
+            </Badge>
+          )}
+          {selectedSubcategory && onSubcategoryChange && (
+            <Badge variant="info" className="gap-1">
+              {selectedSubcategory}
+              <button onClick={() => onSubcategoryChange("")}><X className="h-3 w-3" /></button>
             </Badge>
           )}
           {selectedColor && onClearColor && (

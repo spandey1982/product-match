@@ -27,11 +27,10 @@ const isGeminiPath = (p: CatalogueStyle) => p === "gemini";
 const isVertexPath = (p: CatalogueStyle) => p === "vertex";
 
 const CATEGORIES = [
-  "Saree", "Lehenga", "Blouse", "Dupatta", "Kurta", "Kurti",
-  "Salwar", "Anarkali", "Sharara", "Palazzo",
-  "Jewellery", "Footwear", "Clutch", "Handbag",
-  "Suit", "Tie", "Shirt", "T-shirt", "Waistcoat",
-  "Trouser", "Jeans", "Other",
+  "Anarkali", "Blouse", "Clutch", "Dupatta", "Fancy Dress", "Footwear",
+  "Handbag", "Jeans", "Jewellery", "Kurta", "Kurti", "Lehenga", "Palazzo",
+  "Saree", "Salwar", "Sharara", "Shirt", "Suit", "T-shirt", "Tie", "Trouser",
+  "Waistcoat", "Other",
 ];
 
 const OCCASIONS = [
@@ -212,6 +211,9 @@ export default function UploadPage() {
     price: "",
     sku: "",
   });
+  const [isForRent, setIsForRent] = useState(false);
+  const [rentalPricePerDay, setRentalPricePerDay] = useState("");
+  const [rentalDeposit, setRentalDeposit] = useState("");
 
   const [selectedOccasions, setSelectedOccasions] = useState<string[]>([]);
   const [selectedStyles, setSelectedStyles] = useState<string[]>([]);
@@ -482,6 +484,10 @@ export default function UploadPage() {
       setError("Title, category, color, and price are required");
       return;
     }
+    if (isForRent && (!rentalPricePerDay || !rentalDeposit)) {
+      setError("Rental price and deposit are required when Available for Rent is on");
+      return;
+    }
     // Main product image is mandatory — extraction, model-gen, matching and
     // catalog listing all depend on it. A URL in the paste field counts as a
     // main image (imageUrlInput), otherwise the retailer must upload one.
@@ -553,6 +559,9 @@ export default function UploadPage() {
           occasion: selectedOccasions,
           styleTags: selectedStyles,
           season: selectedSeasons,
+          isForRent,
+          rentalPricePerDay: isForRent ? parseFloat(rentalPricePerDay) : undefined,
+          rentalDeposit: isForRent ? parseFloat(rentalDeposit) : undefined,
           imageUrl,
           backImageUrl,
           partImages,
@@ -1235,6 +1244,55 @@ export default function UploadPage() {
               required
               min={0}
             />
+          </div>
+
+          <div className="bg-gray-50 border border-gray-100 rounded-2xl p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-900">Available for Rent</p>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  List this product on the rental marketplace alongside your regular catalog
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsForRent((v) => !v)}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                  isForRent ? "bg-indigo-600" : "bg-gray-200"
+                }`}
+                role="switch"
+                aria-checked={isForRent}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ${
+                    isForRent ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+
+            {isForRent && (
+              <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-gray-200">
+                <Input
+                  label="Rental Price (₹/day) *"
+                  type="number"
+                  placeholder="310"
+                  value={rentalPricePerDay}
+                  onChange={(e) => setRentalPricePerDay(e.target.value)}
+                  required
+                  min={0}
+                />
+                <Input
+                  label="Deposit (₹) *"
+                  type="number"
+                  placeholder="1950"
+                  value={rentalDeposit}
+                  onChange={(e) => setRentalDeposit(e.target.value)}
+                  required
+                  min={0}
+                />
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">

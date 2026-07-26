@@ -113,12 +113,50 @@ model RentalOrder {
   // not a Prisma enum.
   status        String @default("requested")
 
+  // Orthogonal to `status` above — this tracks money, not fulfillment. Stays
+  // "pending" for the lifetime of a Pay-at-Doorstep order (a valid, final
+  // state, not an error); becomes "paid" only via a verified Razorpay
+  // payment. "pending" | "paid" | "failed" | "refunded" — plain string, same
+  // convention as `status`.
+  paymentStatus String @default("pending")
+
+  payments Payment[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([customerId])
   @@index([productId])
   @@map("rental_orders")
+}
+
+// One row per Razorpay checkout attempt against a RentalOrder — a booking
+// can have several (a failed/abandoned attempt shouldn't block a retry).
+// "At most one paid row per order" is enforced in application logic
+// (markRentalOrderPaid's atomic claim), not a DB constraint.
+model Payment {
+  id            String      @id @default(cuid())
+  rentalOrderId String
+  rentalOrder   RentalOrder @relation(fields: [rentalOrderId], references: [id], onDelete: Cascade)
+  // Denormalized for query convenience (e.g. "all payments by this
+  // customer") — not a duplication of booking detail, which stays on
+  // RentalOrder and is reached via rentalOrderId.
+  customerId    String
+
+  razorpayOrderId   String  @unique
+  razorpayPaymentId String?
+  razorpaySignature String?
+
+  amount   Int // paise
+  currency String @default("INR")
+  status   String @default("created") // created | paid | failed
+  method   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([rentalOrderId])
+  @@map("payments")
 }
 
 model Product {
@@ -165,6 +203,14 @@ model Product {
 
   inStock  Boolean @default(true)
   isActive Boolean @default(true)
+
+  // Rental marketplace opt-in. A product can be sellable and rentable at
+  // once — this only gates whether it appears on the public /rent
+  // marketplace, not the retailer's own catalog. Price/deposit are required
+  // at creation whenever this is true (enforced in the API route, not here).
+  isForRent         Boolean @default(false)
+  rentalPricePerDay Float?
+  rentalDeposit     Float?
 
   sku String? @unique
 
@@ -627,6 +673,38 @@ model WalletTransaction {
   @@index([type, createdAt])
   @@index([reservationId])
   @@map("wallet_transactions")
+}
+
+// Razorpay order/payment record — one row per checkout attempt. No relation
+// to User (deliberate: a financial/audit record should survive account
+// deletion, same durable-snapshot approach as RentalOrder.productId).
+model PaymentOrder {
+  id     String @id @default(cuid())
+  userId String
+
+  razorpayOrderId   String  @unique
+  razorpayPaymentId String?
+  razorpaySignature String?
+
+  amountInr    Int
+  amountUsd    Float?
+  exchangeRate Float?
+
+  currency String @default("INR")
+
+  status String @default("created") // created | attempted | paid | failed | refunded
+
+  packLabel   String?
+  description String?
+
+  walletTransactionId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([status])
+  @@map("payment_orders")
 }
 
 model PricingConfig {

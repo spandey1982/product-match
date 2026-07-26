@@ -26,6 +26,7 @@ export interface RentalOrderRow {
   expectedTrialWindow: string;
   paymentMethod: string;
   status: string;
+  paymentStatus: string;
 }
 
 /** Flattened DB columns <-> the nested RentalOrder shape the UI already expects — keeps the schema simple (no JSON columns) without touching every consumer. */
@@ -58,5 +59,6 @@ export function toRentalOrderDTO(row: RentalOrderRow): RentalOrder {
     expectedTrialWindow: row.expectedTrialWindow,
     paymentMethod: row.paymentMethod as RentalOrder["paymentMethod"],
     status: row.status as RentalOrder["status"],
+    paymentStatus: row.paymentStatus as RentalOrder["paymentStatus"],
   };
 }

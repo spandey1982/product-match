@@ -48,6 +48,13 @@ export async function PATCH(
       return NextResponse.json({ error: "Product not found" }, { status: 404 });
     }
 
+    if (body.isForRent && (!body.rentalPricePerDay || !body.rentalDeposit)) {
+      return NextResponse.json(
+        { error: "Rental price and deposit are required when a product is available for rent" },
+        { status: 400 }
+      );
+    }
+
     // Serialize array fields if present
     const updateData: Prisma.ProductUpdateInput = {
       ...body,

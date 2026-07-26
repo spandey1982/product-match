@@ -47,7 +47,7 @@ import { framedImageUrl, FULL_MODEL_VIEWS } from "@/lib/image-normalize";
 import { formatLabel } from "@/lib/product-detail/format";
 import { colorSwatchHex, colorDescriptor, pairingSuggestions, pairingNote } from "@/lib/product-detail/color-presentation";
 import { materialDescriptor, occasionDescriptor, categoryDescriptor, styleValue } from "@/lib/product-detail/descriptors";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import { useGenerationStatus } from "@/components/generation/GenerationStatusProvider";
 import { GenerationSettingsModal, useGenerationSettingsModal, type GenerationSettings } from "@/components/generation/GenerationSettingsModal";
 import { getMockRentalInfo } from "@/lib/rental/mock-data";
@@ -136,6 +136,9 @@ export function ProductDetailView({
     subcategory: product.subcategory ?? "",
     occasion: product.occasion.join(", "),
     styleTags: product.styleTags.join(", "),
+    isForRent: product.isForRent,
+    rentalPricePerDay: product.rentalPricePerDay != null ? String(product.rentalPricePerDay) : "",
+    rentalDeposit: product.rentalDeposit != null ? String(product.rentalDeposit) : "",
   });
   // Live display values (updated on save)
   const [displayProduct, setDisplayProduct] = useState(product);
@@ -343,6 +346,9 @@ export function ProductDetailView({
       subcategory: displayProduct.subcategory ?? "",
       occasion: displayProduct.occasion.join(", "),
       styleTags: displayProduct.styleTags.join(", "),
+      isForRent: displayProduct.isForRent,
+      rentalPricePerDay: displayProduct.rentalPricePerDay != null ? String(displayProduct.rentalPricePerDay) : "",
+      rentalDeposit: displayProduct.rentalDeposit != null ? String(displayProduct.rentalDeposit) : "",
     });
     setEditing(false);
   }
@@ -359,6 +365,9 @@ export function ProductDetailView({
       subcategory: editFields.subcategory.trim() || null,
       occasion: split(editFields.occasion),
       styleTags: split(editFields.styleTags),
+      isForRent: editFields.isForRent,
+      rentalPricePerDay: editFields.isForRent ? parseFloat(editFields.rentalPricePerDay) || 0 : null,
+      rentalDeposit: editFields.isForRent ? parseFloat(editFields.rentalDeposit) || 0 : null,
     };
     const res = await fetch(`/api/products/${product.id}`, {
       method: "PATCH",
@@ -742,20 +751,76 @@ export function ProductDetailView({
                 initialRental={rentalInfo}
               />
             ) : editing ? (
-              <div>
-                <label className="text-xs font-medium text-gray-400 mb-1 block font-body">Price (₹)</label>
-                <input
-                  type="number"
-                  value={editFields.price}
-                  onChange={(e) => setEditFields((f) => ({ ...f, price: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 font-body"
-                />
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-400 mb-1 block font-body">Price (₹)</label>
+                  <input
+                    type="number"
+                    value={editFields.price}
+                    onChange={(e) => setEditFields((f) => ({ ...f, price: e.target.value }))}
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 font-body"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-medium text-gray-400 font-body">Available for Rent</label>
+                  <button
+                    type="button"
+                    onClick={() => setEditFields((f) => ({ ...f, isForRent: !f.isForRent }))}
+                    className={cn(
+                      "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none",
+                      editFields.isForRent ? "bg-indigo-600" : "bg-gray-200"
+                    )}
+                    role="switch"
+                    aria-checked={editFields.isForRent}
+                  >
+                    <span
+                      className={cn(
+                        "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200",
+                        editFields.isForRent ? "translate-x-5" : "translate-x-0"
+                      )}
+                    />
+                  </button>
+                </div>
+
+                {editFields.isForRent && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-medium text-gray-400 mb-1 block font-body">Rental Price (₹/day)</label>
+                      <input
+                        type="number"
+                        value={editFields.rentalPricePerDay}
+                        onChange={(e) => setEditFields((f) => ({ ...f, rentalPricePerDay: e.target.value }))}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 font-body"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-400 mb-1 block font-body">Deposit (₹)</label>
+                      <input
+                        type="number"
+                        value={editFields.rentalDeposit}
+                        onChange={(e) => setEditFields((f) => ({ ...f, rentalDeposit: e.target.value }))}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 font-body"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="flex items-center gap-0.5 text-gray-800 pt-1">
                 <IndianRupee className="h-5 w-5" strokeWidth={1.75} />
                 <span className="font-body text-xl sm:text-2xl font-semibold">
                   {displayProduct.price.toLocaleString("en-IN")}
+                </span>
+              </div>
+            )}
+
+            {!rentalMode && !editing && displayProduct.isForRent && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge variant="purple">Available for Rent</Badge>
+                <span className="text-sm text-gray-600 font-body">
+                  {formatCurrency(displayProduct.rentalPricePerDay ?? 0)}/day · Deposit{" "}
+                  {formatCurrency(displayProduct.rentalDeposit ?? 0)}
                 </span>
               </div>
             )}

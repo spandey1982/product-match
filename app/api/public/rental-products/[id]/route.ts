@@ -11,7 +11,7 @@ export async function GET(
     const { id } = await params;
 
     const raw = await db.product.findFirst({
-      where: { id, isActive: true },
+      where: { id, isActive: true, isForRent: true },
       include: {
         generatedImages: {
           orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],

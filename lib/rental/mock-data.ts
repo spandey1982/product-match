@@ -18,21 +18,45 @@ function hashString(value: string): number {
   return Math.abs(hash);
 }
 
+/** Deterministic per-(product, age) availability — the single source both getMockRentalInfoForAge and the overall aggregator below read from. */
+function getMockAvailabilityForAge(productId: string, age: AgeGroup): RentalAvailability {
+  const seed = hashString(`${productId}:${age}`);
+  return AVAILABILITY[seed % AVAILABILITY.length];
+}
+
 /**
- * Placeholder rental facts that don't depend on the selected age group,
- * derived deterministically from the product itself. No rental fields exist
- * on Product yet — this stands in until that data model is designed and
- * approved (see CLAUDE.md's schema-change process).
+ * Overall availability across every size — "available" as long as at least
+ * one age group still has stock, so the list/detail badge never shows
+ * "Rented Out" while a customer could still get it in a different size.
+ * Falls back to "reserved"/"rented_out" only once no size is available.
+ */
+function getMockOverallAvailability(productId: string): RentalAvailability {
+  const statuses = AGE_GROUPS.map((age) => getMockAvailabilityForAge(productId, age));
+  if (statuses.includes("available")) return "available";
+  if (statuses.includes("reserved")) return "reserved";
+  return "rented_out";
+}
+
+/**
+ * Rental price/deposit come from the retailer's own entry (Product.
+ * rentalPricePerDay / rentalDeposit) whenever set — the formula below is
+ * only a fallback for the retailer's own "preview as rental" toggle on a
+ * product that isn't actually marked for rent (getMockRentalInfoForAge, used
+ * by the public marketplace, is never reached for such a product). The rest
+ * (duration, late fee, delivery, home trial) has no real data model yet and
+ * stays mocked.
  */
 export function getMockRentalInfo(product: Product): RentalInfo {
   const seed = hashString(product.id);
-  const rentalPricePerDay = Math.max(199, Math.round((product.price * 0.08) / 10) * 10);
-  const deposit = Math.max(500, Math.round((product.price * 0.5) / 50) * 50);
+  const rentalPricePerDay =
+    product.rentalPricePerDay ?? Math.max(199, Math.round((product.price * 0.08) / 10) * 10);
+  const deposit =
+    product.rentalDeposit ?? Math.max(500, Math.round((product.price * 0.5) / 50) * 50);
 
   return {
     rentalPricePerDay,
     deposit,
-    availability: AVAILABILITY[Math.floor(seed / 7) % AVAILABILITY.length],
+    availability: getMockOverallAvailability(product.id),
     rentalDurationDays: DURATIONS[seed % DURATIONS.length],
     lateFeePerDay: Math.max(50, Math.round((rentalPricePerDay * 0.25) / 10) * 10),
     deliveryInfo: DELIVERY_OPTIONS[seed % DELIVERY_OPTIONS.length],
@@ -44,19 +68,22 @@ export function getMockRentalInfo(product: Product): RentalInfo {
  * Age-dependent quote — larger sizes cost marginally more, and availability
  * is tracked independently per size (a product can be rented out in one age
  * group while available in another). Deterministic per (productId, age).
+ * `baseRentalPricePerDay`/`baseDeposit` are the retailer's own entered
+ * values (Product.rentalPricePerDay / rentalDeposit) — the size multiplier
+ * scales those directly, it's no longer derived from the selling price.
  */
 export function getMockRentalInfoForAge(
   productId: string,
-  basePrice: number,
+  baseRentalPricePerDay: number,
+  baseDeposit: number,
   age: AgeGroup
 ): AgeRentalQuote {
   const ageIndex = AGE_GROUPS.indexOf(age);
-  const seed = hashString(`${productId}:${age}`);
   const sizeMultiplier = 1 + ageIndex * 0.04;
 
   return {
-    availability: AVAILABILITY[seed % AVAILABILITY.length],
-    rentalPricePerDay: Math.max(199, Math.round((basePrice * 0.08 * sizeMultiplier) / 10) * 10),
-    deposit: Math.max(500, Math.round((basePrice * 0.5 * sizeMultiplier) / 50) * 50),
+    availability: getMockAvailabilityForAge(productId, age),
+    rentalPricePerDay: Math.max(199, Math.round((baseRentalPricePerDay * sizeMultiplier) / 10) * 10),
+    deposit: Math.max(500, Math.round((baseDeposit * sizeMultiplier) / 50) * 50),
   };
 }

@@ -16,6 +16,7 @@ export async function GET(req: NextRequest) {
     const products = await db.product.findMany({
       where: {
         isActive: true,
+        isForRent: true,
         OR: [
           { title: { contains: q } },
           { category: { contains: q } },

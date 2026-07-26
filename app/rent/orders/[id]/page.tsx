@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { toRentalOrderDTO } from "@/lib/rental/order-db";
+import { getCustomerSession } from "@/lib/customer-auth";
 import { RentalOrderConfirmationView } from "./RentalOrderConfirmationView";
 
 interface Props {
@@ -13,13 +14,23 @@ export async function generateMetadata({ params }: Props) {
 }
 
 /**
- * Rental request receipt — no invoice, no payment integration. Deliberately
- * NOT gated by session: a guest who just placed a request needs to see this
- * confirmation without ever having logged in.
+ * Rental request receipt — no invoice. Deliberately NOT gated by session: a
+ * guest who just placed a request needs to see this confirmation without
+ * ever having logged in. Online prepayment (Pay Now) is the one action that
+ * does require a session — `canPayOnline` tells the client view whether the
+ * viewer is logged in as this order's own customer, without exposing the
+ * session to a guest who isn't.
  */
 export default async function RentalOrderPage({ params }: Props) {
   const { id } = await params;
   const row = await db.rentalOrder.findUnique({ where: { id } });
+  const session = await getCustomerSession();
+  const canPayOnline = !!session && !!row && session.id === row.customerId;
 
-  return <RentalOrderConfirmationView order={row ? toRentalOrderDTO(row) : null} />;
+  return (
+    <RentalOrderConfirmationView
+      order={row ? toRentalOrderDTO(row) : null}
+      canPayOnline={canPayOnline}
+    />
+  );
 }
