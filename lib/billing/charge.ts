@@ -88,3 +88,43 @@ export async function chargeForCall(
     };
   });
 }
+
+/**
+ * Reverse a charge that was taken but shouldn't have been — e.g. a Gemini 429
+ * (our own provider quota, not the retailer's balance) that leaves a run with
+ * zero successful images despite `chargeForCall` already having succeeded.
+ * Restores `balanceUsd` only; deliberately does NOT touch `totalCreditsUsd`
+ * (unlike `adjustBalance`, which is for admin-granted credit and correctly
+ * inflates it) — this is undoing an erroneous deduction, not granting new
+ * credit. No-op for a non-positive amount or a missing wallet.
+ */
+export async function refundCharge(
+  userId: string,
+  amountUsd: number,
+  description: string
+): Promise<void> {
+  if (amountUsd <= 0) return;
+
+  await db.$transaction(async (tx) => {
+    const wallet = await tx.wallet.findUnique({ where: { userId } });
+    if (!wallet) return;
+
+    const newBalance = wallet.balanceUsd + amountUsd;
+
+    await tx.wallet.update({
+      where: { id: wallet.id },
+      data: { balanceUsd: newBalance },
+    });
+
+    await tx.walletTransaction.create({
+      data: {
+        walletId: wallet.id,
+        type: "RELEASE" satisfies TransactionType,
+        amountUsd,
+        balanceAfter: newBalance,
+        description,
+        initiatedBy: "system",
+      },
+    });
+  });
+}

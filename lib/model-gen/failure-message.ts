@@ -8,7 +8,7 @@
  */
 
 export type GenerationFailureReason =
-  | "credits"
+  | "provider_capacity"
   | "network"
   | "storage"
   | "server"
@@ -20,8 +20,17 @@ export interface GenerationFailure {
 }
 
 const MESSAGES: Record<GenerationFailureReason, string> = {
-  credits:
-    "Not enough credits to generate images. Contact your admin to add more credits.",
+  // This function only ever classifies an error string logged from the AI
+  // PROVIDER call itself (Gemini/Vertex) — a genuine retailer wallet
+  // shortfall is caught earlier, before any provider call, by chargeForCall's
+  // own insufficientCredits check, and never reaches here. So a "quota" or
+  // "credit"-shaped message here is ALWAYS our own provider-side quota/rate
+  // limit, never the retailer's balance — say so explicitly, since the old
+  // wording ("not enough credits") wrongly told retailers to add money for a
+  // failure that isn't theirs and (as of the fix alongside this file) isn't
+  // charged to them either.
+  provider_capacity:
+    "Our AI provider hit a temporary capacity limit — this is on our end, not your credit balance, and you have not been charged for this attempt. Please try again shortly.",
   network:
     "A network problem interrupted image generation. Please check your connection and try again in a few minutes.",
   storage:
@@ -39,9 +48,10 @@ const MESSAGES: Record<GenerationFailureReason, string> = {
 export function categorizeGenerationError(raw: string | null | undefined): GenerationFailure {
   const s = (raw ?? "").toLowerCase();
 
-  // Out of credits / quota / billing (Gemini: RESOURCE_EXHAUSTED / 429).
+  // Provider quota/rate-limit (Gemini: RESOURCE_EXHAUSTED / 429) — OUR
+  // account hitting its own API quota, never the retailer's wallet balance.
   if (/quota|resource_exhausted|exhausted|billing|credit|insufficient|permission_denied|429/.test(s)) {
-    return { reason: "credits", message: MESSAGES.credits };
+    return { reason: "provider_capacity", message: MESSAGES.provider_capacity };
   }
   // Storage (Cloudinary) upload failures — recorded as "cloudinary_upload: …".
   if (/cloudinary|storage|upload/.test(s)) {

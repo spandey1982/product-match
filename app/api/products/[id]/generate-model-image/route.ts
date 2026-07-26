@@ -11,6 +11,8 @@ import { isGenerationObjective } from "@/lib/model-gen/objectives";
 import { isModelType } from "@/lib/model-gen/reference-models";
 import { isGenerationQuality } from "@/lib/model-gen/quality";
 import { isBackdropSection } from "@/lib/model-gen/scenes/selection";
+import { isBackdropPresetId } from "@/lib/model-gen/backdrops";
+import { isSceneId } from "@/lib/model-gen/scenes/library";
 import { categorizeGenerationError, genericFailureMessage } from "@/lib/model-gen/failure-message";
 import { recordAiUsage } from "@/lib/ai-usage/record";
 
@@ -48,6 +50,15 @@ export async function POST(
     // `quality`, never a sticky default. Absent/invalid → Studio.
     const backdropSectionRaw = (body as { backdropSection?: unknown }).backdropSection;
     const backdropSection = isBackdropSection(backdropSectionRaw) ? backdropSectionRaw : undefined;
+    // Explicit studio preset / scenic scene, chosen in the generation-settings
+    // modal — the single source of truth for backdrop choice on this entry
+    // point (see GenerateModelImagesInput). A stale/unknown id degrades to
+    // undefined so the engine falls back to the retailer's saved default
+    // rather than erroring the request.
+    const backdropPresetIdRaw = (body as { backdropPresetId?: unknown }).backdropPresetId;
+    const backdropPresetId = isBackdropPresetId(backdropPresetIdRaw) ? backdropPresetIdRaw : undefined;
+    const sceneIdRaw = (body as { sceneId?: unknown }).sceneId;
+    const sceneId = isSceneId(sceneIdRaw) ? sceneIdRaw : undefined;
     // AI Casting — Signature Model id (optional). Format is validated
     // shallowly here; ownership + soft-delete are checked inside the engine
     // via getModelProfile, so a stale id degrades to auto-pick rather than
@@ -64,7 +75,7 @@ export async function POST(
 
     // The engine handles per-call billing internally (chargeForCall at each
     // step boundary). No upfront estimation or reservation needed here.
-    let failure: "storage_unreachable" | "generation_failed" | "insufficient_credits" | undefined;
+    let failure: "storage_unreachable" | "generation_failed" | "insufficient_credits" | "provider_capacity" | undefined;
     let resumeComplete = false;
     if (isAiGenObjectivesEnabled()) {
       const result = await generateModelImages({
@@ -74,6 +85,8 @@ export async function POST(
         modelType: isModelType(modelType) ? modelType : undefined,
         quality,
         backdropSection,
+        backdropPresetId,
+        sceneId,
         signatureProfileId,
         useCasting,
         mode,
@@ -121,13 +134,15 @@ export async function POST(
 
     // Retailer-facing failure messaging: honest about what happened AND what
     // it cost. storage_unreachable is pre-flight (nothing attempted, nothing
-    // spent). generation_failed means the run produced no stored images — read
-    // the just-recorded error to say WHY (out of credits, network, server…).
+    // spent). provider_capacity means the engine already refunded the charge
+    // and identified the exact reason — no need to re-derive it. generation_failed
+    // means the run produced no stored images for some OTHER reason — read the
+    // just-recorded error to say WHY (network, storage, server…).
     let failureMessage: string | undefined;
     if (failure === "storage_unreachable") {
       failureMessage =
         "Image storage is temporarily unreachable, so generation was not started — no AI usage was spent. Please try again in a few minutes.";
-    } else if (failure === "generation_failed") {
+    } else if (failure === "provider_capacity" || failure === "generation_failed") {
       const lastGen = await db.aiUsageEvent.findFirst({
         where: {
           productId: id,

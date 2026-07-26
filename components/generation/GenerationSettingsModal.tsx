@@ -21,6 +21,10 @@ export interface GenerationSettings {
   objective: string;
   quality: GenerationQuality;
   backdropSection?: "studio" | "scenic";
+  /** Explicit studio preset id — sent when backdropSection is "studio". */
+  backdropPresetId?: string;
+  /** Explicit scenic scene id — sent when backdropSection is "scenic". */
+  sceneId?: string;
   signatureProfileId?: string;
   useCasting?: boolean;
   mode?: "resume" | "recreate";
@@ -97,11 +101,60 @@ export function useGenerationSettingsModal() {
   }};
 }
 
-function SettingsRow({ label, children }: { label: string; children: React.ReactNode }) {
+function Chip({
+  active,
+  onClick,
+  disabled = false,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      disabled={disabled}
+      onClick={onClick}
+      className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs font-medium transition-all ${
+        disabled
+          ? "border-gray-200 bg-gray-50 text-gray-300 cursor-not-allowed"
+          : active
+            ? "border-indigo-300 bg-gradient-to-br from-indigo-50 to-purple-50 text-indigo-700 ring-1 ring-purple-200"
+            : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** Label on the left, a row of chips on the right — Style / Model style / Quality. */
+function ChipRow<T extends string>({
+  label,
+  value,
+  onChange,
+  options,
+  disabled = false,
+}: {
+  label: string;
+  value: T;
+  onChange: (v: T) => void;
+  options: { value: T; label: string }[];
+  disabled?: boolean;
+}) {
   return (
     <div className="flex items-center justify-between gap-3">
       <label className="text-sm font-medium text-gray-700 shrink-0">{label}</label>
-      {children}
+      <div className="flex flex-wrap justify-end gap-2">
+        {options.map((o) => (
+          <Chip key={o.value} active={value === o.value} disabled={disabled} onClick={() => onChange(o.value)}>
+            {o.label}
+          </Chip>
+        ))}
+      </div>
     </div>
   );
 }
@@ -153,6 +206,8 @@ export function GenerationSettingsModal({
   const [objective, setObjective] = useState("catalogue");
   const [quality, setQuality] = useState<GenerationQuality>(DEFAULT_GENERATION_QUALITY);
   const [backdropSection, setBackdropSection] = useState<"studio" | "scenic">("studio");
+  const [backdropPresetId, setBackdropPresetId] = useState("");
+  const [sceneId, setSceneId] = useState("");
   const [modelMode, setModelMode] = useState<"classic" | "personalised">("personalised");
   const [castingSelection, setCastingSelection] = useState("auto");
 
@@ -160,6 +215,12 @@ export function GenerationSettingsModal({
     setObjective(d.settings.defaultObjective ?? "catalogue");
     setQuality(d.settings.quality ?? DEFAULT_GENERATION_QUALITY);
     setBackdropSection("studio");
+    // Pre-select the retailer's saved defaults, but every field stays
+    // explicit and editable right here — this modal no longer relies on a
+    // pick persisted from when the product was first added (that carryover
+    // wasn't applying reliably on Resume/Recreate).
+    setBackdropPresetId(d.settings.backdrop.presetId || d.backdrops[0]?.id || "");
+    setSceneId(d.settings.scenic.sceneId || d.scenes[0]?.id || "");
     setCastingSelection("auto");
   }, []);
 
@@ -195,14 +256,19 @@ export function GenerationSettingsModal({
     })),
   ];
 
-  const sceneOptions = [
-    { value: "studio" as const, label: "Studio" },
-    { value: "scenic" as const, label: "Scenic" },
-  ];
+  const backdropDropdownOptions = (data?.backdrops ?? []).map((b) => ({
+    value: b.id,
+    label: b.label,
+  }));
+
+  const sceneDropdownOptions = (data?.scenes ?? []).map((s) => ({
+    value: s.id,
+    label: s.label,
+  }));
 
   const qualityOptions = [
-    { value: "standard" as const, label: "Standard (1K)" },
-    { value: "enhanced" as const, label: "Enhanced (2K)" },
+    { value: "standard" as const, label: "Standard" },
+    { value: "enhanced" as const, label: "Enhanced" },
   ];
 
   const styleLocked = hasGeneratedImages;
@@ -212,6 +278,8 @@ export function GenerationSettingsModal({
       objective,
       quality,
       backdropSection: showScene ? backdropSection : undefined,
+      backdropPresetId: showScene && backdropSection === "studio" ? backdropPresetId : undefined,
+      sceneId: showScene && backdropSection === "scenic" ? sceneId : undefined,
       signatureProfileId:
         showCasting && castingSelection !== "auto" ? castingSelection : undefined,
       useCasting: modelMode === "personalised",
@@ -251,33 +319,59 @@ export function GenerationSettingsModal({
             )}
 
             {data.enabled && objectiveOptions.length > 1 && (
-              <SettingsRow label="Style">
-                <CompactSelect value={objective} onChange={setObjective} options={objectiveOptions} disabled={styleLocked} />
-              </SettingsRow>
+              <ChipRow label="Style" value={objective} onChange={setObjective} options={objectiveOptions} disabled={styleLocked} />
             )}
 
             {showScene && (
-              <SettingsRow label="Scene">
-                <CompactSelect value={backdropSection} onChange={setBackdropSection} options={sceneOptions} />
-              </SettingsRow>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <label className="text-sm font-medium text-gray-700 shrink-0">Scene</label>
+                  <div className="flex gap-2">
+                    <Chip active={backdropSection === "studio"} onClick={() => setBackdropSection("studio")}>
+                      Studio
+                    </Chip>
+                    <Chip active={backdropSection === "scenic"} onClick={() => setBackdropSection("scenic")}>
+                      Scenic
+                    </Chip>
+                  </div>
+                </div>
+                <div className="flex justify-end">
+                  {backdropSection === "studio" ? (
+                    <CompactSelect
+                      value={backdropPresetId}
+                      onChange={setBackdropPresetId}
+                      options={backdropDropdownOptions}
+                    />
+                  ) : (
+                    <CompactSelect
+                      value={sceneId}
+                      onChange={setSceneId}
+                      options={sceneDropdownOptions}
+                    />
+                  )}
+                </div>
+              </div>
             )}
 
             {showModelMode && (
-              <SettingsRow label="Model style">
-                <CompactSelect value={modelMode} onChange={setModelMode} options={modelModeOptions} />
-              </SettingsRow>
-            )}
-
-            {showCasting && castingOptions.length > 1 && (
-              <SettingsRow label="Model">
-                <CompactSelect value={castingSelection} onChange={setCastingSelection} options={castingOptions} />
-              </SettingsRow>
+              <div className="space-y-2">
+                <ChipRow label="Model style" value={modelMode} onChange={setModelMode} options={modelModeOptions} />
+                {/* No label here by design — this dropdown reads as part of
+                    the "Model style" row above it, not a separate setting.
+                    Frozen (disabled) under Classic; live under Personalised. */}
+                <div className="flex justify-end">
+                  <CompactSelect
+                    value={castingSelection}
+                    onChange={setCastingSelection}
+                    options={castingOptions}
+                    disabled={!showCasting}
+                  />
+                </div>
+              </div>
             )}
 
             {showQuality && (
-              <SettingsRow label="Quality">
-                <CompactSelect value={quality} onChange={setQuality} options={qualityOptions} />
-              </SettingsRow>
+              <ChipRow label="Quality" value={quality} onChange={setQuality} options={qualityOptions} />
             )}
           </div>
         )}

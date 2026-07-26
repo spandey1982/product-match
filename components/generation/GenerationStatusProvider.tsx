@@ -28,6 +28,7 @@ type StatusRemover = (productId: string) => void;
 interface GenerationStatusContextValue {
   startTracking: (productId: string) => void;
   stopTracking: (productId: string) => void;
+  completeGeneration: (productId: string, data: CompletionData) => void;
   failGeneration: (productId: string, error: string) => void;
   clearError: (productId: string) => void;
   getStatus: (productId: string) => GenerationStatus | undefined;
@@ -217,6 +218,20 @@ export function GenerationStatusProvider({ children }: { children: React.ReactNo
     r.removeStatus.current(productId);
   }, []);
 
+  // Single broadcaster for "generation finished, here's the result" — used by
+  // BOTH the background poll (add-product flow) and direct-click triggers
+  // (Generate/Resume/Recreate from the product detail page). Updates the
+  // shared cache AND notifies every subscriber (any mounted card for this
+  // product, not just the caller), so a card sitting elsewhere in the app
+  // picks up the new images without a manual refresh. Direct-click callers
+  // must route through this instead of patching their own local state +
+  // stopTracking — that split is what let this regress silently before.
+  const completeGeneration = useCallback((productId: string, data: CompletionData) => {
+    const r = refsRef.current;
+    markDone(r, productId, null);
+    notifyListeners(r, productId, data, null);
+  }, []);
+
   const failGeneration = useCallback((productId: string, error: string) => {
     const r = refsRef.current;
     stopPolling(r, productId);
@@ -256,7 +271,7 @@ export function GenerationStatusProvider({ children }: { children: React.ReactNo
 
   return (
     <GenerationStatusContext.Provider
-      value={{ startTracking, stopTracking, failGeneration, clearError, getStatus, subscribe, unsubscribe }}
+      value={{ startTracking, stopTracking, completeGeneration, failGeneration, clearError, getStatus, subscribe, unsubscribe }}
     >
       {children}
     </GenerationStatusContext.Provider>

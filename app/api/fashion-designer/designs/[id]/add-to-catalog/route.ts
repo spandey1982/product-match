@@ -111,14 +111,18 @@ export async function POST(
       },
     });
 
-    // Create ProductImage records for all generated views so they appear in
-    // the catalog carousel (generatedImages) in order: front first, then back.
-    const imageRecords: { productId: string; url: string; view: string; objective: string; isPrimary: boolean }[] = [];
-    imageRecords.push({ productId: product.id, url: design.flatFrontUrl, view: "front", objective: "catalogue", isPrimary: true });
-    if (design.flatBackUrl) {
-      imageRecords.push({ productId: product.id, url: design.flatBackUrl, view: "back", objective: "catalogue", isPrimary: false });
-    }
-    await db.productImage.createMany({ data: imageRecords });
+    // Deliberately NOT creating catalogue ProductImage rows (front/back cards)
+    // here. The design's flat front/back shots are studio garment photos, not
+    // model shots — they went into product.imageUrl/backImageUrl above as the
+    // INPUT for model generation, exactly like a plain uploaded product that
+    // hasn't been generated yet. The catalog shows the single product.imageUrl
+    // until the retailer actually runs generation (from the product detail
+    // page), which then populates real front/back catalogue cards through the
+    // normal pipeline. Previously this route also inserted the flat images
+    // directly as "front"/"back" ProductImage rows, so a later generation
+    // appended NEW front/back cards after them instead of replacing them —
+    // retailers ended up with the flat design images permanently stuck as
+    // cards 1-2 and the actual generated models pushed to cards 3-4.
 
     // Persist the link so the UI can show "View in Catalog" after page refresh
     await db.fashionDesign.update({

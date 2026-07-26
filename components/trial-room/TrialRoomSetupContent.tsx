@@ -37,7 +37,7 @@ interface Props {
 }
 
 export function TrialRoomSetupContent({ onComplete, onCancel }: Props) {
-  const { photo, photoPreviewUrl, setPhoto, clearPhoto, tryOns, isPhotoLocked } =
+  const { photo, photoPreviewUrl, setPhoto, clearPhoto, tryOns, isPhotoLocked, tryOnLimit, setTryOnLimit } =
     useTrialRoom();
 
   const [preview, setPreview] = useState<string | null>(null);
@@ -137,6 +137,24 @@ export function TrialRoomSetupContent({ onComplete, onCancel }: Props) {
                   )}
                 </div>
               )}
+            </div>
+
+            <div className="flex items-center justify-between px-1">
+              <label htmlFor="tryon-limit" className="text-xs text-gray-500">
+                Try-on limit this session
+              </label>
+              <input
+                id="tryon-limit"
+                type="number"
+                min={1}
+                max={50}
+                value={tryOnLimit}
+                onChange={(e) => {
+                  const n = parseInt(e.target.value, 10);
+                  if (!Number.isNaN(n)) setTryOnLimit(n);
+                }}
+                className="w-16 rounded-lg border border-gray-200 px-2 py-1 text-center text-sm text-gray-700 focus:border-indigo-300 focus:ring-1 focus:ring-indigo-200 outline-none"
+              />
             </div>
 
             <div className="grid grid-cols-2 gap-1.5">
