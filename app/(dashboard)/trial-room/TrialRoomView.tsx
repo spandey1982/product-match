@@ -55,6 +55,8 @@ function CustomerProfile({
     setPhoto,
     clearPhoto,
     isPhotoLocked,
+    tryOnLimit,
+    setTryOnLimit,
   } = useTrialRoom();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -142,6 +144,25 @@ function CustomerProfile({
           accept="image/jpeg,image/png,image/webp"
           className="sr-only"
           onChange={handleFileChange}
+        />
+      </div>
+
+      {/* ── Try-on limit ── */}
+      <div className="flex items-center justify-between px-4 py-2.5 border-t border-gray-100">
+        <label htmlFor="tryon-limit" className="text-xs text-gray-500">
+          Try-on limit this session
+        </label>
+        <input
+          id="tryon-limit"
+          type="number"
+          min={1}
+          max={50}
+          value={tryOnLimit}
+          onChange={(e) => {
+            const n = parseInt(e.target.value, 10);
+            if (!Number.isNaN(n)) setTryOnLimit(n);
+          }}
+          className="w-16 rounded-lg border border-gray-200 px-2 py-1 text-center text-sm text-gray-700 focus:border-indigo-300 focus:ring-1 focus:ring-indigo-200 outline-none"
         />
       </div>
 
