@@ -15,8 +15,15 @@ import { TryOnEntry, TryOnStatus, WishlistEntry } from "@/lib/trial-room-types";
 
 // ─── Limit ────────────────────────────────────────────────────────────────────
 
-/** Maximum number of non-failed try-ons allowed at the same time. */
+/** Default maximum number of non-failed try-ons allowed at the same time — used
+ * to seed a fresh session; the customer can raise or lower it from the setup
+ * screen (see tryOnLimit / setTryOnLimit below). */
 export const TRYON_LIMIT = 5;
+
+/** Sane bounds for the customer-configurable limit — guards against a stray
+ * huge value (e.g. pasted/typo'd) without being restrictive in practice. */
+const MIN_TRYON_LIMIT = 1;
+const MAX_TRYON_LIMIT = 50;
 
 // ─── Storage key ─────────────────────────────────────────────────────────────
 
@@ -32,6 +39,8 @@ interface TrialRoomState {
   photoDataUrl: string | null;
   tryOns: TryOnEntry[];
   wishlist: WishlistEntry[];
+  /** Customer-configurable cap on simultaneous non-failed try-ons. */
+  tryOnLimit: number;
 }
 
 export interface TrialRoomContextValue extends Omit<TrialRoomState, "photoDataUrl"> {
@@ -66,8 +75,12 @@ export interface TrialRoomContextValue extends Omit<TrialRoomState, "photoDataUr
   findAnyTryOn: (productId: string) => TryOnEntry | undefined;
   /** Number of non-failed try-ons currently in the session. */
   activeTryOnCount: number;
-  /** True when activeTryOnCount has reached TRYON_LIMIT. */
+  /** True when activeTryOnCount has reached tryOnLimit. */
   isAtLimit: boolean;
+  /** Current session's try-on cap — defaults to TRYON_LIMIT, customer-editable. */
+  tryOnLimit: number;
+  /** Set the session's try-on cap, clamped to [1, 50]. */
+  setTryOnLimit: (limit: number) => void;
   /**
    * True once the first product has been added to the try-on queue.
    * When locked, the customer photo cannot be replaced to prevent
@@ -114,6 +127,7 @@ const INITIAL_STATE: TrialRoomState = {
   photoDataUrl: null,
   tryOns: [],
   wishlist: [],
+  tryOnLimit: TRYON_LIMIT,
 };
 
 /**
@@ -129,10 +143,11 @@ function loadPersistedState(storageKey: string): TrialRoomState {
     const raw = localStorage.getItem(storageKey);
     if (!raw) return INITIAL_STATE;
 
-    const { photoDataUrl, tryOns, wishlist } = JSON.parse(raw) as {
+    const { photoDataUrl, tryOns, wishlist, tryOnLimit } = JSON.parse(raw) as {
       photoDataUrl?: string | null;
       tryOns?: TryOnEntry[];
       wishlist?: WishlistEntry[];
+      tryOnLimit?: number;
     };
 
     // Any entry that was mid-generation when the page was closed can never
@@ -163,6 +178,10 @@ function loadPersistedState(storageKey: string): TrialRoomState {
       photoDataUrl: photoDataUrl ?? null,
       tryOns: restoredTryOns,
       wishlist: wishlist ?? [],
+      tryOnLimit:
+        typeof tryOnLimit === "number" && tryOnLimit >= MIN_TRYON_LIMIT && tryOnLimit <= MAX_TRYON_LIMIT
+          ? tryOnLimit
+          : TRYON_LIMIT,
     };
   } catch {
     return INITIAL_STATE;
@@ -174,12 +193,13 @@ function persistState(
   storageKey: string,
   photoDataUrl: string | null,
   tryOns: TryOnEntry[],
-  wishlist: WishlistEntry[]
+  wishlist: WishlistEntry[],
+  tryOnLimit: number
 ) {
   try {
     localStorage.setItem(
       storageKey,
-      JSON.stringify({ photoDataUrl, tryOns, wishlist })
+      JSON.stringify({ photoDataUrl, tryOns, wishlist, tryOnLimit })
     );
   } catch {
     // Storage quota exceeded — non-fatal
@@ -243,8 +263,8 @@ export function TrialRoomProvider({
   // data before it has been loaded.
   useEffect(() => {
     if (!hydrated) return;
-    persistState(storageKey, state.photoDataUrl, state.tryOns, state.wishlist);
-  }, [hydrated, storageKey, state.photoDataUrl, state.tryOns, state.wishlist]);
+    persistState(storageKey, state.photoDataUrl, state.tryOns, state.wishlist, state.tryOnLimit);
+  }, [hydrated, storageKey, state.photoDataUrl, state.tryOns, state.wishlist, state.tryOnLimit]);
 
   const triggerSetupHint = useCallback(() => {
     if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
@@ -359,7 +379,7 @@ export function TrialRoomProvider({
 
     // Enforce the active-try-on limit (failed entries don't count)
     const activeCount = current.filter((t) => t.status !== "failed").length;
-    if (activeCount >= TRYON_LIMIT) return;
+    if (activeCount >= stateRef.current.tryOnLimit) return;
 
     const entry: TryOnEntry = {
       id: crypto.randomUUID(),
@@ -430,12 +450,22 @@ export function TrialRoomProvider({
     }));
   }, []);
 
+  // ── Try-on limit ───────────────────────────────────────────────────────────
+
+  const setTryOnLimit = useCallback((limit: number) => {
+    if (!Number.isFinite(limit)) return;
+    const clamped = Math.max(MIN_TRYON_LIMIT, Math.min(MAX_TRYON_LIMIT, Math.floor(limit)));
+    setState((prev) => ({ ...prev, tryOnLimit: clamped }));
+  }, []);
+
   // ── Clear all — also wipes localStorage ───────────────────────────────────
+  // "Next Customer" — a fresh session for a new person, so the limit resets to
+  // the default too, not just the photo/try-ons.
 
   const clearAll = useCallback(() => {
     setState((prev) => {
       if (prev.photoPreviewUrl?.startsWith("blob:")) URL.revokeObjectURL(prev.photoPreviewUrl);
-      return { photo: null, photoPreviewUrl: null, photoDataUrl: null, tryOns: [], wishlist: [] };
+      return { photo: null, photoPreviewUrl: null, photoDataUrl: null, tryOns: [], wishlist: [], tryOnLimit: TRYON_LIMIT };
     });
     try { localStorage.removeItem(storageKey); } catch { /* ignore */ }
   }, [storageKey]);
@@ -460,7 +490,7 @@ export function TrialRoomProvider({
     (t) => t.status !== "failed"
   ).length;
 
-  const isAtLimit = activeTryOnCount >= TRYON_LIMIT;
+  const isAtLimit = activeTryOnCount >= state.tryOnLimit;
 
   // Photo is locked as soon as the first try-on is queued.
   const isPhotoLocked = state.tryOns.length > 0;
@@ -490,6 +520,8 @@ export function TrialRoomProvider({
       findAnyTryOn,
       activeTryOnCount,
       isAtLimit,
+      tryOnLimit: state.tryOnLimit,
+      setTryOnLimit,
       isPhotoLocked,
       setupHintActive,
       triggerSetupHint,
@@ -509,6 +541,7 @@ export function TrialRoomProvider({
       findAnyTryOn,
       activeTryOnCount,
       isAtLimit,
+      setTryOnLimit,
       isPhotoLocked,
       setupHintActive,
       triggerSetupHint,

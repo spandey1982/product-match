@@ -7,12 +7,14 @@ import {
 } from "lucide-react";
 import { HangerPlusIcon } from "@/components/icons/HangerPlusIcon";
 import { cn, formatCurrency } from "@/lib/utils";
-import { Product } from "@/types";
+import { Product, ProductImage } from "@/types";
+import { masterUrl } from "@/lib/images/variants";
+import { framedImageUrl } from "@/lib/image-normalize";
 import { ProductCard } from "@/components/catalog/ProductCard";
 import { CatalogFilterBar } from "@/components/catalog/CatalogFilterBar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useTrialRoom, TRYON_LIMIT } from "@/components/trial-room/TrialRoomProvider";
+import { useTrialRoom } from "@/components/trial-room/TrialRoomProvider";
 import { TrialRoomSetupModal } from "@/components/trial-room/TrialRoomSetupModal";
 import { CATEGORIES, OCCASIONS } from "@/lib/catalog/taxonomy";
 
@@ -73,23 +75,53 @@ export function CatalogView({ storeName, logoUrl }: CatalogViewProps = {}) {
     setSelectedIds(new Set(products.map((p) => p.id)));
   }
 
+  function downloadUrl(img: ProductImage): string {
+    return masterUrl(framedImageUrl(img.url, img.view));
+  }
+
   async function handleBulkDownload() {
     if (selectedIds.size === 0) return;
     setDownloading(true);
     try {
       const selected = products.filter((p) => selectedIds.has(p.id));
-      const urls = selected
-        .map((p) => p.modelImageUrl || p.generatedImages?.[0]?.url || p.imageUrl)
-        .filter(Boolean) as string[];
 
-      if (urls.length === 0) return;
+      // Collect all downloadable images per product.
+      const entries: { folder: string; filename: string; url: string }[] = [];
+      for (const p of selected) {
+        const slug = p.title.replace(/[^a-zA-Z0-9]/g, "_");
+        const images = p.generatedImages ?? [];
+        if (images.length > 0) {
+          images.forEach((img, i) => {
+            entries.push({
+              folder: slug,
+              filename: `${img.view || "image"}-${i + 1}.jpg`,
+              url: downloadUrl(img),
+            });
+          });
+        } else if (p.modelImageUrl) {
+          entries.push({
+            folder: slug,
+            filename: "model.jpg",
+            url: masterUrl(p.modelImageUrl),
+          });
+        } else if (p.imageUrl) {
+          entries.push({
+            folder: slug,
+            filename: "product.jpg",
+            url: masterUrl(p.imageUrl),
+          });
+        }
+      }
 
-      if (urls.length === 1) {
-        const res = await fetch(urls[0]);
+      if (entries.length === 0) return;
+
+      // Single image from a single product — direct download, no zip.
+      if (selected.length === 1 && entries.length === 1) {
+        const res = await fetch(entries[0].url);
         const blob = await res.blob();
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
-        a.download = `${selected[0].title.replace(/[^a-zA-Z0-9]/g, "_")}.jpg`;
+        a.download = `${entries[0].folder}_${entries[0].filename}`;
         a.click();
         URL.revokeObjectURL(a.href);
         exitBulkMode();
@@ -99,11 +131,10 @@ export function CatalogView({ storeName, logoUrl }: CatalogViewProps = {}) {
       const { default: JSZip } = await import("jszip");
       const zip = new JSZip();
       const results = await Promise.allSettled(
-        urls.map(async (url, i) => {
-          const res = await fetch(url);
+        entries.map(async (entry) => {
+          const res = await fetch(entry.url);
           const blob = await res.blob();
-          const name = selected[i].title.replace(/[^a-zA-Z0-9]/g, "_");
-          zip.file(`${name}_${i + 1}.jpg`, blob);
+          zip.file(`${entry.folder}/${entry.filename}`, blob);
         }),
       );
       const succeeded = results.filter((r) => r.status === "fulfilled").length;
@@ -122,7 +153,7 @@ export function CatalogView({ storeName, logoUrl }: CatalogViewProps = {}) {
   }
 
   // ── trial room ─────────────────────────────────────────────────────────────
-  const { photo, isAtLimit, activeTryOnCount, clearAll, setupHintActive } = useTrialRoom();
+  const { photo, isAtLimit, activeTryOnCount, tryOnLimit, clearAll, setupHintActive } = useTrialRoom();
   const [emptyToast, setEmptyToast] = useState(false);
   const emptyToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [setupModalOpen, setSetupModalOpen] = useState(false);
@@ -504,7 +535,7 @@ export function CatalogView({ storeName, logoUrl }: CatalogViewProps = {}) {
           <AlertCircle className="h-4 w-4 text-amber-500 shrink-0" />
           <p className="text-sm text-amber-800 flex-1">
             Try-on limit reached&nbsp;
-            <span className="font-semibold">({activeTryOnCount}/{TRYON_LIMIT})</span>.
+            <span className="font-semibold">({activeTryOnCount}/{tryOnLimit})</span>.
             {" "}Remove a try-on to add more.
           </p>
           <Link

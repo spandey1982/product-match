@@ -422,11 +422,15 @@ export function ProductDetailView({
         setLocalGenError(msg);
         return;
       }
-      if (data.generatedImages) setGenImages(data.generatedImages);
-      if (data.product?.modelImageUrl !== undefined) setModelUrl(data.product.modelImageUrl ?? null);
-      genCtx.stopTracking(product.id);
-      setLocalGenError(null);
-      router.refresh();
+      // Route through the shared broadcaster (not stopTracking + local state)
+      // so any other mounted card for this product — e.g. its catalog card,
+      // if still around in Next's client-side nav cache — also picks up the
+      // new images. This component's own subscribe handler above applies the
+      // same local update, so nothing is lost by not setting state here.
+      genCtx.completeGeneration(product.id, {
+        modelImageUrl: data.product?.modelImageUrl ?? null,
+        generatedImages: data.generatedImages ?? [],
+      });
     } catch {
       const msg = "Couldn't reach the server. Please check your connection and try again.";
       genCtx.failGeneration(product.id, msg);

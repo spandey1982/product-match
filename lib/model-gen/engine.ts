@@ -22,7 +22,7 @@ import { getAiGenSettings } from "./settings";
 // resolveAutoProvider was used when catalogueProvider had an "auto" tier
 // (retired). Kept out of imports now — the setting is explicit.
 import { getBrandingConfig, applyBranding, resolveBrandingPlacement } from "./branding";
-import { resolveBackdropPreset, renderBackdropPrompt } from "./backdrops";
+import { resolveBackdropPreset, renderBackdropPrompt, getBackdropPreset } from "./backdrops";
 import { pickSmartBackdrop } from "./backdrop-match";
 import { getScene, SCENES } from "./scenes/library";
 import { selectSceneVariation } from "./scenes/rule-engine";
@@ -32,6 +32,7 @@ import { isSceneIntensity, isSceneDensity, type BackdropSection } from "./scenes
 import { persistGeneratedImages, type GeneratedImage } from "./persist";
 import { recordGenerations } from "./generation-record";
 import { maybeReviewGenerations } from "./ai-review";
+import { categorizeGenerationError } from "./failure-message";
 import { runQuickListingStrategy } from "./strategies/quick-listing";
 import { runCatalogueStrategy, type StrategyProduct } from "./strategies/catalogue";
 import type { GenerationQuality } from "./quality";
@@ -41,7 +42,7 @@ import { parsePartImages, findBackPart } from "@/lib/product/part-slots";
 import { isAiCastingEnabled, getModelProfile, listModelProfiles } from "./casting";
 import { resolveCasting, type CastingResult, type CastingProfileInput } from "./casting-match";
 import { parseArray } from "@/lib/serialize";
-import { chargeForCall } from "@/lib/billing/charge";
+import { chargeForCall, refundCharge } from "@/lib/billing/charge";
 import type { BillingOperation } from "@/lib/billing/types";
 
 /**
@@ -86,6 +87,19 @@ export interface GenerateModelImagesInput {
    */
   backdropSection?: BackdropSection;
   /**
+   * Explicit studio preset id, chosen in the generation-settings modal.
+   * Takes priority over the retailer's saved Smart-match/Choose default and
+   * over any resume scene carryover — the modal is now the single source of
+   * truth for backdrop choice on this entry point, not a persisted pick from
+   * when the product was first added.
+   */
+  backdropPresetId?: string;
+  /**
+   * Explicit scenic scene id, chosen in the generation-settings modal. Same
+   * override priority as `backdropPresetId` above.
+   */
+  sceneId?: string;
+  /**
    * AI Casting — retailer's Signature Model for this generation. When set,
    * the resolver pins the face + brief from this profile; unset falls back
    * to AI Casting's auto-pick. Ignored entirely when ENABLE_AI_CASTING is
@@ -117,8 +131,11 @@ export interface GenerateModelImagesResult {
    * - "storage_unreachable": pre-flight found image storage down — NOTHING
    *   was attempted or spent; retrying later is free and safe.
    * - "generation_failed": generation ran but produced no stored images.
+   * - "provider_capacity": the AI provider (Gemini/Vertex) hit its own quota
+   *   or rate limit — our fault, not the retailer's balance. The image-gen
+   *   charge already taken for this attempt is automatically refunded.
    */
-  failure?: "storage_unreachable" | "generation_failed" | "insufficient_credits";
+  failure?: "storage_unreachable" | "generation_failed" | "insufficient_credits" | "provider_capacity";
   /** True when resume mode found nothing to fill in — catalogue is already complete. */
   resumeComplete?: boolean;
 }
@@ -351,10 +368,11 @@ export async function generateModelImages(
   let sceneMeta: { sceneId: string; intensity: string; density: string } | null = null;
 
   if (useScenic) {
-    // Resume mode: use the previous generation's scene settings so the new
-    // view matches the existing one. Fall back to current settings if the
-    // previous record's scene is no longer available.
-    const sceneId = resumePrevSceneId ?? settings.scenic.sceneId;
+    // Explicit choice from the generation-settings modal wins outright — it's
+    // the single source of truth for this entry point now. Falls back to the
+    // resume carryover (matches an in-progress catalogue's existing view),
+    // then the retailer's saved default, only when the caller didn't specify.
+    const sceneId = input.sceneId ?? resumePrevSceneId ?? settings.scenic.sceneId;
     const sceneIntensity = isSceneIntensity(resumePrevSceneIntensity) ? resumePrevSceneIntensity : settings.scenic.intensity;
     const sceneDensity = isSceneDensity(resumePrevSceneDensity) ? resumePrevSceneDensity : settings.scenic.density;
     const scene = getScene(sceneId) ?? SCENES[0];
@@ -372,8 +390,11 @@ export async function generateModelImages(
       density: sceneDensity,
     };
   } else {
-    const backdropPreset =
-      settings.backdrop.mode === "smart"
+    // Same override priority as scenic above: an explicit modal choice wins;
+    // otherwise fall back to the retailer's saved Smart-match/Choose default.
+    const backdropPreset = input.backdropPresetId
+      ? (getBackdropPreset(input.backdropPresetId) ?? resolveBackdropPreset(settings.backdrop))
+      : settings.backdrop.mode === "smart"
         ? pickSmartBackdrop({
             color: product.color,
             category: product.category,
@@ -499,12 +520,40 @@ export async function generateModelImages(
   // e.g. every upload failed after generation. Callers tell the retailer to
   // retry instead of silently showing nothing.
   const generatedCount = branded.filter((img) => img.source !== "upload" && !img.existing).length;
-  return {
-    objective,
-    modelType,
-    images: branded,
-    ...(generatedCount === 0 && !isResumeMode ? { failure: "generation_failed" as const } : {}),
-  };
+
+  if (generatedCount === 0 && !isResumeMode) {
+    // Distinguish "our AI provider hit its own quota" (Gemini 429 /
+    // RESOURCE_EXHAUSTED — never the retailer's wallet balance, since an
+    // actual shortfall is already caught pre-flight above by chargeForCall,
+    // before any provider call happens) from every other failure reason. The
+    // image-gen charge was already taken for this attempt; refund it so a
+    // provider-side outage never costs the retailer money for zero images.
+    // Other failure reasons are unchanged by this fix — still charged, still
+    // reported as the generic "generation_failed".
+    const lastGen = await db.aiUsageEvent.findFirst({
+      where: {
+        productId: product.id,
+        feature: { in: ["catalogue", "model_gen", "quick_listing"] },
+        createdAt: { gte: new Date(Date.now() - 10 * 60 * 1000) },
+      },
+      orderBy: { createdAt: "desc" },
+      select: { status: true, errorMessage: true },
+    });
+    if (
+      lastGen?.status === "error" &&
+      categorizeGenerationError(lastGen.errorMessage).reason === "provider_capacity"
+    ) {
+      await refundCharge(
+        input.userId,
+        imgCharge.priceUsd,
+        `Refund: ${imgOp} failed — AI provider at capacity`
+      );
+      return { objective, modelType, images: branded, failure: "provider_capacity" };
+    }
+    return { objective, modelType, images: branded, failure: "generation_failed" };
+  }
+
+  return { objective, modelType, images: branded };
 }
 
 export { DEFAULT_OBJECTIVE, DEFAULT_MODEL_TYPE };

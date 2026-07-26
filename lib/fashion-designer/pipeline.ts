@@ -199,7 +199,12 @@ export async function runDesignPipeline(designId: string, userId?: string): Prom
   if (!design.flatFrontUrl) {
     await setStage(designId, "constructing");
 
-    const charge = await chargeForCall(effectiveUserId, "fashion_design_gen");
+    // garmentConstructionAgent always attempts BOTH a front and a back flat
+    // image (GenerationPlan.flatFrontPrompt/flatBackPrompt are both required,
+    // never optional) — charge for both up front, matching the catalogue
+    // engine's pre-charge-for-the-planned-batch pattern. Charging for a flat
+    // "1" here undercharged every design that produced two images.
+    const charge = await chargeForCall(effectiveUserId, "fashion_design_gen", 2);
     if ("insufficientCredits" in charge) {
       await failAtStage(designId, "constructing", "Insufficient credits to continue. Add credits and resume.");
       return;

@@ -50,11 +50,10 @@ interface CreditTransaction {
   createdAt: string;
 }
 
-interface OperationUsage {
+interface FeatureUsage {
   id: string;
   label: string;
-  calls: number;
-  spent: number;
+  count: number;
 }
 
 const STATUS_STYLES: Record<PaymentStatus, string> = {
@@ -221,15 +220,11 @@ function BalanceCard({ wallet }: { wallet: WalletData }) {
   );
 }
 
-function ExpenditurePieChart({
-  exchangeRate,
-}: {
-  exchangeRate: number | null;
-}) {
-  const [operations, setOperations] = useState<OperationUsage[]>([]);
-  const [totals, setTotals] = useState<{ spent: number; calls: number }>({ spent: 0, calls: 0 });
-  const [usageRate, setUsageRate] = useState<number | null>(null);
+function FeatureUsageChart() {
+  const [features, setFeatures] = useState<FeatureUsage[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [hoveredSlice, setHoveredSlice] = useState<string | null>(null);
 
   const defaults = defaultDateRange();
   const [from, setFrom] = useState(defaults.from);
@@ -238,13 +233,12 @@ function ExpenditurePieChart({
   function fetchUsage(f: string, t: string) {
     setIsLoading(true);
     const params = new URLSearchParams({ from: f, to: t });
-    fetch(`/api/wallet/usage-by-operation?${params}`)
+    fetch(`/api/wallet/feature-usage?${params}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data) {
-          setOperations(data.operations ?? []);
-          setTotals(data.totals ?? { spent: 0, calls: 0 });
-          setUsageRate(data.exchangeRate ?? null);
+          setFeatures(data.features ?? []);
+          setTotalCount(data.totalCount ?? 0);
         }
       })
       .finally(() => setIsLoading(false));
@@ -256,74 +250,17 @@ function ExpenditurePieChart({
     fetchUsage(from, to);
   }
 
-  const rate = usageRate ?? exchangeRate;
-
-  const header = (
-    <div className="flex items-center justify-between mb-4">
-      <div className="flex items-center gap-2">
-        <PieChartIcon className="h-4 w-4 text-indigo-500" />
-        <h2 className="font-semibold text-gray-900 text-sm">Expenditure by Feature</h2>
-      </div>
-    </div>
-  );
-
-  const dateFilter = (
-    <div className="flex items-center gap-2 flex-wrap mb-4 pb-3 border-b border-gray-100">
-      <Filter className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-      <input
-        type="date"
-        value={from}
-        onChange={(e) => setFrom(e.target.value)}
-        className="rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-700 bg-white"
-      />
-      <span className="text-xs text-gray-400">to</span>
-      <input
-        type="date"
-        value={to}
-        onChange={(e) => setTo(e.target.value)}
-        className="rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-700 bg-white"
-      />
-      <button
-        onClick={() => fetchUsage(from, to)}
-        className="px-2.5 py-1 rounded-lg bg-indigo-50 text-xs font-medium text-indigo-600 hover:bg-indigo-100 transition-colors"
-      >
-        Apply
-      </button>
-    </div>
-  );
-
-  if (isLoading) {
-    return (
-      <div className="bg-white border border-gray-200 rounded-2xl p-6">
-        {header}
-        {dateFilter}
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-indigo-400" />
-        </div>
-      </div>
-    );
-  }
-
-  if (operations.length === 0) {
-    return (
-      <div className="bg-white border border-gray-200 rounded-2xl p-6">
-        {header}
-        {dateFilter}
-        <p className="text-xs text-gray-400 text-center py-8">No usage recorded for this period</p>
-      </div>
-    );
-  }
-
-  const size = 160;
+  const size = 180;
   const cx = size / 2;
   const cy = size / 2;
-  const radius = 60;
-  const innerRadius = 36;
+  const radius = 72;
+  const innerRadius = 44;
 
   function buildSlices() {
+    if (totalCount === 0) return [];
     let cumAngle = -90;
-    return operations.map((op, i) => {
-      const pct = totals.spent > 0 ? op.spent / totals.spent : 0;
+    return features.map((feat, i) => {
+      const pct = feat.count / totalCount;
       const angle = pct * 360;
       const startAngle = cumAngle;
       cumAngle += angle;
@@ -350,43 +287,119 @@ function ExpenditurePieChart({
         "Z",
       ].join(" ");
 
-      return { ...op, d, color: PIE_COLORS[i % PIE_COLORS.length], pct };
+      // Tooltip anchor — midpoint of the arc on the outer edge.
+      const midRad = ((startAngle + endAngle) / 2) * (Math.PI / 180);
+      const tx = cx + (radius + 8) * Math.cos(midRad);
+      const ty = cy + (radius + 8) * Math.sin(midRad);
+
+      return { ...feat, d, color: PIE_COLORS[i % PIE_COLORS.length], pct, tx, ty };
     });
   }
   const slices = buildSlices();
 
-  return (
-    <div className="bg-white border border-gray-200 rounded-2xl p-6">
-      {header}
-      {dateFilter}
+  const dateFilter = (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center gap-2">
+        <PieChartIcon className="h-4 w-4 text-indigo-500" />
+        <h2 className="font-semibold text-gray-900 text-sm">Feature Usage</h2>
+      </div>
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center gap-2">
+          <Filter className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+          <span className="text-xs text-gray-500">Date range</span>
+        </div>
+        <input
+          type="date"
+          value={from}
+          onChange={(e) => setFrom(e.target.value)}
+          className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs text-gray-700 bg-white w-full"
+        />
+        <input
+          type="date"
+          value={to}
+          onChange={(e) => setTo(e.target.value)}
+          className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs text-gray-700 bg-white w-full"
+        />
+        <button
+          onClick={() => fetchUsage(from, to)}
+          className="px-2.5 py-1.5 rounded-lg bg-indigo-50 text-xs font-medium text-indigo-600 hover:bg-indigo-100 transition-colors w-full"
+        >
+          Apply
+        </button>
+      </div>
+    </div>
+  );
 
-      <div className="flex flex-col sm:flex-row items-center gap-6">
-        <div className="relative shrink-0">
-          <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-            {slices.map((s) => (
-              <path key={s.id} d={s.d} fill={s.color} stroke="white" strokeWidth={2} className="transition-opacity hover:opacity-80" />
-            ))}
-          </svg>
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <p className="text-xs text-gray-500">Total</p>
-            <p className="text-sm font-bold">{formatInr(totals.spent, rate)}</p>
-            <p className="text-[10px] text-gray-400">{totals.calls} calls</p>
+  if (isLoading) {
+    return (
+      <div className="bg-white border border-gray-200 rounded-2xl p-6">
+        <div className="flex flex-col sm:flex-row gap-6">
+          <div className="sm:w-40 shrink-0">{dateFilter}</div>
+          <div className="flex-1 flex items-center justify-center py-8">
+            <Loader2 className="h-6 w-6 animate-spin text-indigo-400" />
           </div>
         </div>
+      </div>
+    );
+  }
 
-        <div className="flex-1 w-full space-y-2">
-          {slices.map((s) => (
-            <div key={s.id} className="flex items-center gap-2">
-              <div className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
-              <span className="text-xs text-gray-700 flex-1 truncate">{s.label}</span>
-              <span className="text-xs font-medium text-gray-900 tabular-nums">
-                {formatInr(s.spent, rate)}
-              </span>
-              <span className="text-[10px] text-gray-400 tabular-nums w-14 text-right">
-                {s.calls} calls
-              </span>
+  if (features.length === 0) {
+    return (
+      <div className="bg-white border border-gray-200 rounded-2xl p-6">
+        <div className="flex flex-col sm:flex-row gap-6">
+          <div className="sm:w-40 shrink-0">{dateFilter}</div>
+          <div className="flex-1 flex items-center justify-center py-8">
+            <p className="text-xs text-gray-400">No usage recorded for this period</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-2xl p-6">
+      <div className="flex flex-col sm:flex-row gap-6">
+        <div className="sm:w-40 shrink-0">{dateFilter}</div>
+
+        <div className="flex-1 flex items-center justify-center">
+          <div className="relative">
+            <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+              {slices.map((s) => (
+                <path
+                  key={s.id}
+                  d={s.d}
+                  fill={s.color}
+                  stroke="white"
+                  strokeWidth={2}
+                  className="transition-opacity cursor-pointer"
+                  opacity={hoveredSlice && hoveredSlice !== s.id ? 0.4 : 1}
+                  onMouseEnter={() => setHoveredSlice(s.id)}
+                  onMouseLeave={() => setHoveredSlice(null)}
+                />
+              ))}
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <p className="text-[10px] text-gray-500">Total</p>
+              <p className="text-lg font-bold tabular-nums">{totalCount}</p>
             </div>
-          ))}
+
+            {slices.map((s) =>
+              hoveredSlice === s.id ? (
+                <div
+                  key={s.id}
+                  className="absolute z-10 bg-gray-900 text-white text-xs rounded-lg px-3 py-1.5 shadow-lg pointer-events-none whitespace-nowrap"
+                  style={{
+                    left: s.tx,
+                    top: s.ty,
+                    transform: "translate(-50%, -50%)",
+                  }}
+                >
+                  <span className="font-medium">{s.label}</span>
+                  <span className="text-gray-300 ml-1.5">{s.count}</span>
+                </div>
+              ) : null,
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -805,7 +818,7 @@ export function BillingView() {
       <div className="space-y-6">
         {wallet?.hasWallet && <BalanceCard wallet={wallet} />}
         <AddCreditsCard onSuccess={loadData} />
-        <ExpenditurePieChart exchangeRate={wallet?.exchangeRate ?? null} />
+        <FeatureUsageChart />
         <PlanCard />
         <CreditHistoryCard transactions={transactions} />
       </div>
