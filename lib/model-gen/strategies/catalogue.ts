@@ -23,6 +23,7 @@ import { cropRegionFor } from "../crop-templates";
 import { genReferencesFor, type PartImage } from "@/lib/product/part-slots";
 import type { GeneratedImage } from "../persist";
 import type { GenerationQuality } from "../quality";
+import type { ImageGenModel } from "../image-gen-models";
 import { loadFaceImage } from "../faces-loader";
 import { renderCastingSuffix, IDENTITY_FACE_LABEL } from "../casting-prompt";
 import type { CastingResult } from "../casting-match";
@@ -66,6 +67,8 @@ export async function runCatalogueStrategy(opts: {
   partImages?: PartImage[];
   /** Native Gemini output quality for this run. Defaults to "standard". */
   quality?: GenerationQuality;
+  /** Image-generation model for the Gemini path (testing knob). */
+  model?: ImageGenModel;
   /**
    * AI Casting result (null = legacy path, no face-decoupling). Non-null adds
    * the face identity reference and appends appearance/persona tokens to the
@@ -90,7 +93,7 @@ export async function runCatalogueStrategy(opts: {
    */
   existingBaseShots?: Partial<Record<"front" | "back", { url: string; provider: string }>>;
 }): Promise<{ images: GeneratedImage[] }> {
-  const { product, modelType, provider = "gemini", userId, backdrop, partImages = [], quality, casting = null } = opts;
+  const { product, modelType, provider = "gemini", userId, backdrop, partImages = [], quality, model, casting = null } = opts;
   const existingFrontUrl = opts.existingFrontUrl ?? null;
   const existingBackUrl = opts.existingBackUrl ?? null;
   // Same store + acting user for every call in this run; feature is "catalogue".
@@ -219,6 +222,7 @@ export async function runCatalogueStrategy(opts: {
       view: viewId,
       usage,
       quality,
+      model,
       // Region references (pallu/border/…) — Gemini path only; Vertex VTO has
       // no equivalent. Empty unless region conditioning is enabled + uploads
       // matched a category's generation references. AI Casting adds the face

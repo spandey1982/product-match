@@ -8,8 +8,9 @@ import { getBrandingConfig, applyBranding } from "@/lib/model-gen/branding";
 import { preprocessProductImage } from "@/lib/images/preprocess";
 import { reencodeGeneratedImage } from "@/lib/images/reencode";
 import { getQualityProfile, type GenerationQuality } from "@/lib/model-gen/quality";
+import { DEFAULT_IMAGE_GEN_MODEL, type ImageGenModel } from "@/lib/model-gen/image-gen-models";
 
-const GEMINI_MODEL = "gemini-3.1-flash-image";
+const GEMINI_MODEL: ImageGenModel = DEFAULT_IMAGE_GEN_MODEL;
 
 /** Build a prompt tailored to the product category and gender */
 function buildPrompt(category: string, color: string, gender: string, detailNotes?: string | null): string {
@@ -114,6 +115,12 @@ export interface GeminiImageGenInput {
   /** Native output quality. Defaults to "standard" (1K, 3:4) — see lib/model-gen/quality.ts. */
   quality?: GenerationQuality;
   /**
+   * Image-generation model to call. Defaults to the standing GEMINI_MODEL
+   * (gemini-3.1-flash-image) — see lib/model-gen/image-gen-models.ts. An
+   * internal testing knob for comparing candidate models.
+   */
+  model?: ImageGenModel;
+  /**
    * Additional labelled reference images (region close-ups — pallu, border,
    * …) shown to the generator so it reproduces those regions from PIXELS, not
    * only the text note. Preprocessed and appended AFTER the product image in
@@ -143,9 +150,11 @@ export async function runGeminiImageGen(
     productId, productTitle, productCategory, productColor,
     productBuffer, productMime, referenceBuffer, referenceMime,
     prompt, folder = "product-match/models", view = "model", usage, quality,
+    model,
     extraReferences = [],
   } = input;
   const qualityProfile = getQualityProfile(quality);
+  const modelId: ImageGenModel = model ?? GEMINI_MODEL;
 
   const feature = usage?.feature ?? "model_gen";
   const storeId = usage?.storeId ?? null;
@@ -212,7 +221,7 @@ export async function runGeminiImageGen(
 
     const t0 = Date.now();
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -233,7 +242,7 @@ export async function runGeminiImageGen(
       console.error(`[model-image] Gemini error ${res.status}:`, err.slice(0, 200));
       void recordAiUsage({
         provider: "gemini",
-        model: GEMINI_MODEL,
+        model: modelId,
         feature,
         operation: view,
         durationMs: generationMs,
@@ -274,7 +283,7 @@ export async function runGeminiImageGen(
       console.error(`[model-image] No image in Gemini response (finish: ${finishReason})`);
       void recordAiUsage({
         provider: "gemini",
-        model: GEMINI_MODEL,
+        model: modelId,
         feature,
         operation: view,
         inputTokens: tokenInput,
@@ -344,7 +353,7 @@ export async function runGeminiImageGen(
       const detail = e?.error?.message ?? e?.message ?? String(uploadError);
       void recordAiUsage({
         provider: "gemini",
-        model: GEMINI_MODEL,
+        model: modelId,
         feature,
         operation: view,
         inputTokens: tokenInput,
@@ -381,7 +390,7 @@ export async function runGeminiImageGen(
 
     void recordAiUsage({
       provider: "gemini",
-      model: GEMINI_MODEL,
+      model: modelId,
       feature,
       operation: view,
       inputTokens: tokenInput,
@@ -417,7 +426,7 @@ export async function runGeminiImageGen(
       width: outDims?.width ?? null,
       height: outDims?.height ?? null,
       bytes: storedBuffer.length,
-      model: GEMINI_MODEL,
+      model: modelId,
     };
   } catch (err) {
     // Upload failures are handled (and usage-recorded) above and no longer
@@ -436,11 +445,15 @@ export async function runGeminiImageGen(
  * Gemini, saves the result, and updates the product record.
  *
  * This is the original single-image flow — unchanged in behavior other than
- * the optional quality param. The richer objective-based generation lives in
- * lib/model-gen and reuses the helpers above. Fire-and-forget safe — all
- * errors are caught internally.
+ * the optional quality/model params. The richer objective-based generation
+ * lives in lib/model-gen and reuses the helpers above. Fire-and-forget safe —
+ * all errors are caught internally.
  */
-export async function generateModelImage(productId: string, quality?: GenerationQuality): Promise<void> {
+export async function generateModelImage(
+  productId: string,
+  quality?: GenerationQuality,
+  model?: ImageGenModel
+): Promise<void> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || apiKey === "your-gemini-api-key-here") return;
 
@@ -470,6 +483,7 @@ export async function generateModelImage(productId: string, quality?: Generation
       prompt,
       usage: { feature: "model_gen", storeId: product.userId, userId: product.userId },
       quality,
+      model,
     });
     if (!result) return;
 

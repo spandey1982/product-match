@@ -15,11 +15,14 @@ import type { BackdropOption } from "@/components/product/BackdropSelect";
 import type { ScenicValue } from "@/components/product/ScenicCollectionSelect";
 import type { SceneOptionView } from "@/lib/model-gen/scenes/library";
 import { DEFAULT_GENERATION_QUALITY, type GenerationQuality } from "@/lib/model-gen/quality";
+import { DEFAULT_IMAGE_GEN_MODEL, type ImageGenModel } from "@/lib/model-gen/image-gen-models";
 import { Sparkles, CheckCircle2, Loader2 } from "lucide-react";
 
 export interface GenerationSettings {
   objective: string;
   quality: GenerationQuality;
+  /** Image-generation model — internal testing knob. */
+  model?: ImageGenModel;
   backdropSection?: "studio" | "scenic";
   /** Explicit studio preset id — sent when backdropSection is "studio". */
   backdropPresetId?: string;
@@ -44,10 +47,12 @@ interface SettingsData {
   scenicEnabled: boolean;
   castingEnabled?: boolean;
   signatureModels?: SignatureModelOption[];
+  imageGenModels?: { id: ImageGenModel; label: string }[];
   settings: {
     defaultObjective: string;
     catalogueProvider: "gemini" | "vertex";
     quality: GenerationQuality;
+    imageGenModel?: ImageGenModel;
     backdrop: { mode: string; presetId: string };
     scenic: ScenicValue;
   };
@@ -205,6 +210,7 @@ export function GenerationSettingsModal({
 
   const [objective, setObjective] = useState("catalogue");
   const [quality, setQuality] = useState<GenerationQuality>(DEFAULT_GENERATION_QUALITY);
+  const [model, setModel] = useState<ImageGenModel>(DEFAULT_IMAGE_GEN_MODEL);
   const [backdropSection, setBackdropSection] = useState<"studio" | "scenic">("studio");
   const [backdropPresetId, setBackdropPresetId] = useState("");
   const [sceneId, setSceneId] = useState("");
@@ -214,6 +220,7 @@ export function GenerationSettingsModal({
   const resetToDefaults = useCallback((d: SettingsData) => {
     setObjective(d.settings.defaultObjective ?? "catalogue");
     setQuality(d.settings.quality ?? DEFAULT_GENERATION_QUALITY);
+    setModel(d.settings.imageGenModel ?? DEFAULT_IMAGE_GEN_MODEL);
     setBackdropSection("studio");
     // Pre-select the retailer's saved defaults, but every field stays
     // explicit and editable right here — this modal no longer relies on a
@@ -271,6 +278,11 @@ export function GenerationSettingsModal({
     { value: "enhanced" as const, label: "Enhanced" },
   ];
 
+  const modelOptions = (data?.imageGenModels ?? []).map((m) => ({
+    value: m.id,
+    label: m.label,
+  }));
+
   const styleLocked = hasGeneratedImages;
 
   function handleAction(mode: "resume" | "recreate") {
@@ -283,6 +295,7 @@ export function GenerationSettingsModal({
       signatureProfileId:
         showCasting && castingSelection !== "auto" ? castingSelection : undefined,
       useCasting: modelMode === "personalised",
+      model: isGemini ? model : undefined,
       mode,
     };
     onGenerate(settings);
@@ -372,6 +385,15 @@ export function GenerationSettingsModal({
 
             {showQuality && (
               <ChipRow label="Quality" value={quality} onChange={setQuality} options={qualityOptions} />
+            )}
+
+            {isGemini && modelOptions.length > 0 && (
+              <div className="flex items-center justify-between gap-3">
+                <label className="text-sm font-medium text-gray-700 shrink-0">
+                  Test model
+                </label>
+                <CompactSelect value={model} onChange={setModel} options={modelOptions} />
+              </div>
             )}
           </div>
         )}

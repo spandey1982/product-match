@@ -10,6 +10,7 @@ import {
 import { isGenerationObjective } from "@/lib/model-gen/objectives";
 import { isModelType } from "@/lib/model-gen/reference-models";
 import { isGenerationQuality } from "@/lib/model-gen/quality";
+import { isImageGenModel } from "@/lib/model-gen/image-gen-models";
 import { isBackdropSection } from "@/lib/model-gen/scenes/selection";
 import { isBackdropPresetId } from "@/lib/model-gen/backdrops";
 import { isSceneId } from "@/lib/model-gen/scenes/library";
@@ -46,6 +47,11 @@ export async function POST(
     const modelType = (body as { modelType?: unknown }).modelType;
     const qualityRaw = (body as { quality?: unknown }).quality;
     const quality = isGenerationQuality(qualityRaw) ? qualityRaw : undefined;
+    // Image-generation model — internal testing knob. A stale/unknown id
+    // degrades to undefined so the engine falls back to the retailer's
+    // stored default rather than erroring the request.
+    const modelRaw = (body as { model?: unknown }).model;
+    const model = isImageGenModel(modelRaw) ? modelRaw : undefined;
     // Studio vs Scenic for THIS run only — a per-generation choice like
     // `quality`, never a sticky default. Absent/invalid → Studio.
     const backdropSectionRaw = (body as { backdropSection?: unknown }).backdropSection;
@@ -84,6 +90,7 @@ export async function POST(
         objective: isGenerationObjective(objective) ? objective : undefined,
         modelType: isModelType(modelType) ? modelType : undefined,
         quality,
+        model,
         backdropSection,
         backdropPresetId,
         sceneId,
@@ -94,7 +101,7 @@ export async function POST(
       failure = result.failure;
       resumeComplete = result.resumeComplete ?? false;
     } else {
-      await generateModelImage(id, quality);
+      await generateModelImage(id, quality, model);
     }
 
     if (failure === "insufficient_credits") {

@@ -24,6 +24,7 @@ import { loadReferenceImage, type ModelType } from "../reference-models";
 import type { GeneratedImage } from "../persist";
 import type { StrategyProduct } from "./catalogue";
 import type { GenerationQuality } from "../quality";
+import type { ImageGenModel } from "../image-gen-models";
 import { loadFaceImage } from "../faces-loader";
 import { renderCastingSuffix, IDENTITY_FACE_LABEL } from "../casting-prompt";
 import type { CastingResult } from "../casting-match";
@@ -37,6 +38,8 @@ export async function runQuickListingStrategy(opts: {
   backdrop: string;
   /** Native Gemini output quality for the fallback path. Defaults to "standard". */
   quality?: GenerationQuality;
+  /** Image-generation model for the Gemini fallback path (testing knob). */
+  model?: ImageGenModel;
   /**
    * Retailer's chosen provider ("gemini" = Premium, "vertex" = Economy).
    * "vertex" (or omitted) preserves the historical behaviour: Vertex first,
@@ -55,7 +58,7 @@ export async function runQuickListingStrategy(opts: {
    */
   casting?: CastingResult | null;
 }): Promise<{ images: GeneratedImage[]; usedFallback: boolean }> {
-  const { product, modelType, userId, backdrop, quality, provider = "vertex", casting = null } = opts;
+  const { product, modelType, userId, backdrop, quality, model, provider = "vertex", casting = null } = opts;
   const usage = { feature: "quick_listing", storeId: userId ?? null, userId: userId ?? null };
 
   const variant = resolveReferenceVariant(product.category);
@@ -151,6 +154,7 @@ export async function runQuickListingStrategy(opts: {
     view: "front",
     usage,
     quality,
+    model,
     extraReferences: imageRefs,
   });
 

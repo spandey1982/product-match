@@ -14,9 +14,11 @@ import SceneModeSelect, { type BackdropSection } from "@/components/product/Scen
 import type { ScenicValue } from "@/components/product/ScenicCollectionSelect";
 import type { SceneOptionView } from "@/lib/model-gen/scenes/library";
 import { DEFAULT_GENERATION_QUALITY, type GenerationQuality } from "@/lib/model-gen/quality";
+import { DEFAULT_IMAGE_GEN_MODEL, type ImageGenModel } from "@/lib/model-gen/image-gen-models";
 import { useGenerationStatus } from "@/components/generation/GenerationStatusProvider";
 import { ObjectiveChooser } from "@/components/generation/ObjectiveChooser";
 import { QualityChooser } from "@/components/generation/QualityChooser";
+import { ImageGenModelChooser } from "@/components/generation/ImageGenModelChooser";
 import { CastingChooser } from "@/components/generation/CastingChooser";
 
 // Provider-gated helpers. Provider is stored on the retailer and drives every
@@ -80,9 +82,11 @@ interface AiGenConfig {
     brandingStyle: "classic" | "glass";
     catalogueProvider: CatalogueStyle;
     quality: GenerationQuality;
+    imageGenModel: ImageGenModel;
     backdrop: BackdropValue;
     scenic: ScenicValue;
   };
+  imageGenModels?: { id: ImageGenModel; label: string }[];
 }
 
 // Two provider paths, retailer-facing labels only ("Premium" = Gemini's
@@ -170,6 +174,8 @@ export default function UploadPage() {
   // patchBranding() below. Each new product starts on the retailer's
   // remembered value; the default here is only the pre-hydration seed.
   const [quality, setQuality] = useState<GenerationQuality>(DEFAULT_GENERATION_QUALITY);
+  // Image-generation model — internal testing knob, sticky like `quality`.
+  const [imageGenModel, setImageGenModel] = useState<ImageGenModel>(DEFAULT_IMAGE_GEN_MODEL);
 
   // Store branding for generated images (persisted immediately on change).
   const [brandingEnabled, setBrandingEnabled] = useState(true);
@@ -244,6 +250,7 @@ export default function UploadPage() {
           resolvedProvider === "vertex" && !data.vertexAvailable ? "gemini" : resolvedProvider
         );
         if (data.settings.quality) setQuality(data.settings.quality);
+        if (data.settings.imageGenModel) setImageGenModel(data.settings.imageGenModel);
         setBackdrops(data.backdrops ?? []);
         if (data.settings.backdrop) setBackdrop(data.settings.backdrop);
         setScenes(data.scenes ?? []);
@@ -265,6 +272,7 @@ export default function UploadPage() {
     brandingStyle?: "classic" | "glass";
     catalogueProvider?: CatalogueStyle;
     quality?: GenerationQuality;
+    imageGenModel?: ImageGenModel;
     backdrop?: BackdropValue;
     scenic?: ScenicValue;
   }) {
@@ -586,6 +594,7 @@ export default function UploadPage() {
             ? JSON.stringify({
                 objective,
                 quality,
+                model: imageGenModel,
                 backdropSection,
                 // Omit when "auto" so the engine selects the model per product.
                 ...(modelType && modelType !== "auto" ? { modelType } : {}),
@@ -1083,9 +1092,22 @@ export default function UploadPage() {
                 />
               )}
 
-              {/* Model selection is automatic for now (derived from the product's
-                  category + the gender detected at extraction). A picker for
-                  alternative models is planned. */}
+              {/* Store-model (person) selection is automatic for now (derived
+                  from the product's category + the gender detected at
+                  extraction). A picker for alternative store models is planned.
+                  This is a DIFFERENT axis from the image-gen test model below. */}
+
+              {/* Image-generation model — internal testing knob, Premium
+                  (Gemini) only, same gating as Quality. */}
+              {isGeminiPath(catalogueProvider) && (
+                <ImageGenModelChooser
+                  value={imageGenModel}
+                  onChange={(m) => {
+                    setImageGenModel(m);
+                    patchBranding({ imageGenModel: m });
+                  }}
+                />
+              )}
 
               {/* Image branding — store-level; applies to all generated images */}
               <div>

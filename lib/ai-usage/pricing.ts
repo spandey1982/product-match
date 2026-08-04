@@ -44,8 +44,17 @@ const PRICES: Record<string, ModelPrice> = {
   "gemini-2.5-flash": { inputPerMTok: 0.3, outputPerMTok: 2.5 },
   "gemini-2.5-flash-lite": { inputPerMTok: 0.1, outputPerMTok: 0.4 },
 
-  // Image generation (output image billed as output tokens)
+  // Image generation (output image billed as output tokens). The selectable
+  // "Nano Banana" family (lib/model-gen/image-gen-models.ts) — all four ids
+  // below are confirmed real via the live ListModels endpoint (2026-08-02).
+  // Placeholder tiering (flagship ≈ current default, "lite" cheaper, "pro"
+  // pricier) — NOT sourced from a live rate card, since none of these ids
+  // are on Google's public pricing pages yet. Correct before relying on
+  // these numbers for real billing decisions.
+  "gemini-2.5-flash-image": { inputPerMTok: 0.3, outputPerMTok: 30.0 },
+  "gemini-3.1-flash-lite-image": { inputPerMTok: 0.15, outputPerMTok: 15.0 },
   "gemini-3.1-flash-image": { inputPerMTok: 0.3, outputPerMTok: 30.0 },
+  "gemini-3-pro-image": { inputPerMTok: 0.5, outputPerMTok: 60.0 },
 
   // Vertex Virtual Try-On (per generated image, no tokens reported)
   "virtual-try-on-001": { perImageUsd: 0.04 },
