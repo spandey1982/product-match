@@ -33,9 +33,10 @@ export interface GarmentIntelligenceContext {
 function parseStored(data: string): GarmentIntelligence | null {
   try {
     const parsed = JSON.parse(data) as GarmentIntelligence;
-    // Version-strict: older shapes (v1 — no back analysis, no length capture)
-    // fall through to a fresh analysis rather than serving stale structure.
-    return parsed && parsed.version === 2 ? parsed : null;
+    // Version-strict: older shapes (v1 — no back analysis, no length capture;
+    // v2 — no saree structure/construction-method/absences) fall through to
+    // a fresh analysis rather than serving stale structure.
+    return parsed && parsed.version === 3 ? parsed : null;
   } catch {
     return null;
   }
@@ -103,9 +104,12 @@ export async function ensureGarmentIntelligence(
 
   // Retailer detail close-ups (extraction-only, never sent to the generator).
   // The back part is excluded here — it is the back-analysis input, not
-  // front close-up evidence.
+  // front close-up evidence. Capped generously above analyze.ts's own
+  // maxRegionsFor(category) (4 generic / 6 saree) so this cap is never the
+  // one that silently defeats the category-specific bump — analyze.ts's cap
+  // is authoritative.
   const partImages: Array<{ buffer: Buffer; mime: string; label: string }> = [];
-  for (const p of parts.filter((x) => x !== backPart).slice(0, 4)) {
+  for (const p of parts.filter((x) => x !== backPart).slice(0, 8)) {
     const buf = await fetchProductImageBuffer(p.url);
     if (buf) partImages.push({ buffer: buf.buffer, mime: buf.mime, label: p.label || p.slot });
   }
@@ -152,7 +156,7 @@ export async function ensureGarmentIntelligence(
         analyzedImageUrl: product.imageUrl,
         analyzedBackImageUrl: backImageUrl,
         model: GARMENT_INTELLIGENCE_MODEL,
-        version: 2,
+        version: 3,
       },
       update: {
         data,
@@ -161,7 +165,7 @@ export async function ensureGarmentIntelligence(
         analyzedImageUrl: product.imageUrl,
         analyzedBackImageUrl: backImageUrl,
         model: GARMENT_INTELLIGENCE_MODEL,
-        version: 2,
+        version: 3,
       },
     });
   } catch (err) {

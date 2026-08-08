@@ -39,6 +39,7 @@ import type { GenerationQuality } from "./quality";
 import type { ImageGenModel } from "./image-gen-models";
 import { ensureDetailNotes, ensureBackDetailNotes } from "@/lib/metadata/detail-notes";
 import { ensureGarmentIntelligence, isGarmentIntelligenceEnabled } from "@/lib/garment-intelligence/service";
+import type { GarmentIntelligence } from "@/lib/garment-intelligence/types";
 import { parsePartImages, findBackPart } from "@/lib/product/part-slots";
 import { isAiCastingEnabled, getModelProfile, listModelProfiles } from "./casting";
 import { resolveCasting, type CastingResult, type CastingProfileInput } from "./casting-match";
@@ -218,10 +219,12 @@ export async function generateModelImages(
   const ctx = { storeId: input.userId, userId: input.userId };
   let detailNotes: string | null;
   let backDetailNotes: string | null;
+  let garmentIntelligence: GarmentIntelligence | null = null;
   if (giEnabled) {
     const garmentIntel = await ensureGarmentIntelligence(product.id, ctx);
     detailNotes = garmentIntel?.promptNotes || null;
     backDetailNotes = garmentIntel?.backPromptNotes ?? null;
+    garmentIntelligence = garmentIntel?.intelligence ?? null;
   } else {
     detailNotes = await ensureDetailNotes(product.id, product.imageUrl, product.category, ctx);
     backDetailNotes = backImageUrl
@@ -239,6 +242,7 @@ export async function generateModelImages(
     backImageUrl,
     detailNotes,
     backDetailNotes,
+    garmentIntelligence,
   };
 
   // Catalogue backend — retailer's explicit Premium/Economy choice; this

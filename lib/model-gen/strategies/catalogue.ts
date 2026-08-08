@@ -14,7 +14,9 @@
 import { fetchProductImageBuffer, runGeminiImageGen } from "@/lib/generate-model-image";
 import { generateTryOnVertex, isVertexTryOnEnabled, getVertexConfig } from "@/lib/tryon-vertex";
 import type { TryOnMimeType } from "@/lib/tryon";
-import { resolvePromptSet, buildViewPrompt, CROSS_VIEW_LABEL } from "../prompt-sets";
+import { resolvePromptSet, buildViewPrompt, CROSS_VIEW_LABEL, GI_REGION_LABEL } from "../prompt-sets";
+import { giRegionReferences } from "@/lib/garment-intelligence/region-references";
+import type { GarmentIntelligence } from "@/lib/garment-intelligence/types";
 import { resolveReferenceVariant } from "../reference-selection";
 import { loadReferenceImage, type ModelType, type ReferenceImage } from "../reference-models";
 import { sampleStudioColor } from "../studio-anchor";
@@ -41,6 +43,14 @@ export interface StrategyProduct {
   detailNotes?: string | null;
   /** Back-image detail hints — used only for the back-view prompt. */
   backDetailNotes?: string | null;
+  /**
+   * Structured Garment Intelligence, when GI is enabled — the same object
+   * `detailNotes` was rendered from. Used by the GI region-references (Phase
+   * 3) path below to source real evidence images alongside the named
+   * pallu/border slots; null on the flag-off / no-GI path (unchanged
+   * behaviour — this field is purely additive).
+   */
+  garmentIntelligence?: GarmentIntelligence | null;
 }
 
 export type CatalogueBackend = "gemini" | "vertex";
@@ -102,6 +112,12 @@ export async function runCatalogueStrategy(opts: {
   // to the generator as visual references. Default OFF; independent of GI so it
   // can be A/B'd on its own.
   const regionConditioningEnabled = process.env.ENABLE_REGION_CONDITIONING === "true";
+  // Phase 3 (R&D) — extends region conditioning beyond the 2 named pallu/
+  // border slots using Garment Intelligence's own evidence (retailer part
+  // uploads + model-proposed ROI crops). Nested under regionConditioningEnabled
+  // so the base 2-slot mechanism can be validated/rolled back independently.
+  const giRegionReferencesEnabled =
+    regionConditioningEnabled && process.env.ENABLE_GI_REGION_REFERENCES === "true";
 
   const source = await fetchProductImageBuffer(product.imageUrl);
   if (!source) return { images: [] };
@@ -303,6 +319,34 @@ export async function runCatalogueStrategy(opts: {
         imageRefs.push({ buffer: buf.buffer, mime: buf.mime, label: ref.label });
         promptRefs.push({ label: ref.label, placement: ref.placement });
       }
+    }
+
+    // Phase 3 (R&D) — GI's own evidence (retailer uploads GI already looked
+    // at + model-proposed ROI crops), re-derived from the FRONT product image
+    // only (GI's region pass never runs on the back). Appended AFTER the
+    // named pallu/border refs so a duplicate of the same zone is dropped by
+    // the label-overlap dedupe inside giRegionReferences, not double-sent.
+    if (giRegionReferencesEnabled && provider === "gemini" && !isBack && product.garmentIntelligence) {
+      const extras = await giRegionReferences(
+        product.garmentIntelligence,
+        source.buffer,
+        partImages,
+        promptRefs.map((r) => r.label)
+      );
+      for (const ref of extras) {
+        imageRefs.push({ buffer: ref.buffer, mime: ref.mime, label: GI_REGION_LABEL });
+        promptRefs.push({ label: GI_REGION_LABEL, placement: ref.placement });
+      }
+    }
+
+    // Cost control: cap the TOTAL extra references for this view (identity +
+    // cross-view + named-slot + GI-sourced), trimming from the end so any
+    // truncation only ever drops the lowest-priority (GI-sourced) tail —
+    // identity/cross-view/named-slot refs are never cut.
+    const MAX_TOTAL_EXTRA_REFERENCES = 5;
+    if (imageRefs.length > MAX_TOTAL_EXTRA_REFERENCES) {
+      imageRefs.length = MAX_TOTAL_EXTRA_REFERENCES;
+      promptRefs.length = MAX_TOTAL_EXTRA_REFERENCES;
     }
 
     // Editorial pose mode drops the drape reference from the Gemini path so

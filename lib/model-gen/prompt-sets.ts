@@ -18,6 +18,18 @@ export interface PromptView {
 }
 
 export const CROSS_VIEW_LABEL = "__cross_view_ref__";
+/**
+ * Marks a reference image sourced from Garment Intelligence's own evidence
+ * (a retailer part upload or a model-proposed ROI crop, re-derived at
+ * generation time — see lib/garment-intelligence/region-references.ts).
+ * Unlike the generic close-up template below, these carry the FULL placement
+ * instruction (zone, axis, "trust this over the crop's own framing") in
+ * `placement` — text and image are deliberately split by what each is
+ * reliable for: the crop for surface/relief fidelity, the accompanying
+ * sentence for WHERE it goes, sourced from GI's structured data rather than
+ * left for the model to infer from the photo's own incidental orientation.
+ */
+export const GI_REGION_LABEL = "__gi_region__";
 
 // Saree drape is deterministic and IDENTICAL in intent across front and back
 // (only the camera side differs) — retailer testing (2026-07-15) found the
@@ -282,6 +294,9 @@ function extraImageClause(
     }
     if (r.label === CROSS_VIEW_LABEL_INTERNAL) {
       return `Image ${startIndex + i} is the ${r.placement} of this exact same model from this same photo session — the current view MUST show the exact same person: same hair (colour, length, style, parting), same skin tone, same body build and proportions, same outfit and accessories. Only the camera angle changes.`;
+    }
+    if (r.label === GI_REGION_LABEL) {
+      return `Image ${startIndex + i} is a real close-up photo of this exact same garment, for SURFACE TEXTURE AND RELIEF fidelity only. ${r.placement}`;
     }
     return `Image ${startIndex + i} is a real close-up photo of ${r.label} of this exact same garment — faithfully reproduce its exact design, motif, colour and surface texture on ${r.placement}.`;
   });
