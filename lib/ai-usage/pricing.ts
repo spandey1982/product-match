@@ -23,7 +23,7 @@
  */
 
 /** Bump whenever any rate below changes. Stamped onto every AiUsageEvent row. */
-export const PRICING_VERSION = "2026-06-google-estimate";
+export const PRICING_VERSION = "2026-08-08-verified-image-gen";
 
 export interface ModelPrice {
   /** USD per 1,000,000 input tokens. */
@@ -47,14 +47,29 @@ const PRICES: Record<string, ModelPrice> = {
   // Image generation (output image billed as output tokens). The selectable
   // "Nano Banana" family (lib/model-gen/image-gen-models.ts) — all four ids
   // below are confirmed real via the live ListModels endpoint (2026-08-02).
-  // Placeholder tiering (flagship ≈ current default, "lite" cheaper, "pro"
-  // pricier) — NOT sourced from a live rate card, since none of these ids
-  // are on Google's public pricing pages yet. Correct before relying on
-  // these numbers for real billing decisions.
+  //
+  // gemini-3.1-flash-image (Nano Banana 2) — VERIFIED 2026-08-08 against
+  // ai.google.dev/gemini-api/docs/pricing: output is $60/M tokens. The prior
+  // placeholder here (30.0, i.e. half the real rate) was reconciled against a
+  // real GCP bill: our own estimate for a day's testing came to ~₹66 at the
+  // old rate vs. an actual ₹102 charge — the 2x understatement on this model
+  // alone accounts for most of that gap.
+  "gemini-3.1-flash-image": { inputPerMTok: 0.3, outputPerMTok: 60.0 },
+  // gemini-3-pro-image (Nano Banana Pro) — Google's own docs state this
+  // model's real billing is closer to a FLAT per-image price by resolution
+  // tier (~$0.13 at 1K–2K, ~$0.24 at 4K) rather than a pure token rate — a
+  // different billing shape than the token-metered family above. Rather than
+  // restructure the cost-driver plumbing to a true perImageUsd (like the
+  // Vertex VTO entry below) right now, this is an EQUIVALENT token rate
+  // derived from our own observed output-token count for 2K images (~1305
+  // tokens/image): $0.13 / (1305/1e6) ≈ $99.6/M, rounded. Approximation, not
+  // a directly-quoted rate — will drift if actual output-token counts per
+  // image change; migrate to perImageUsd if/when that's worth the plumbing.
+  "gemini-3-pro-image": { inputPerMTok: 0.5, outputPerMTok: 100.0 },
+  // Still unverified placeholders — no live usage data to reconcile against
+  // yet. Correct before relying on these two for real billing decisions.
   "gemini-2.5-flash-image": { inputPerMTok: 0.3, outputPerMTok: 30.0 },
   "gemini-3.1-flash-lite-image": { inputPerMTok: 0.15, outputPerMTok: 15.0 },
-  "gemini-3.1-flash-image": { inputPerMTok: 0.3, outputPerMTok: 30.0 },
-  "gemini-3-pro-image": { inputPerMTok: 0.5, outputPerMTok: 60.0 },
 
   // Vertex Virtual Try-On (per generated image, no tokens reported)
   "virtual-try-on-001": { perImageUsd: 0.04 },
