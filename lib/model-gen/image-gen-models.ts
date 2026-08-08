@@ -33,14 +33,32 @@ export interface ImageGenModelProfile {
   label: string;
 }
 
+// Retailer-facing labels — deliberately NOT the provider's internal codenames
+// ("Nano Banana" etc.) — those are meaningless jargon to a store owner. Picked
+// to avoid colliding with other tier words already in this UI's vocabulary
+// (Premium/Economy = provider, Standard/Enhanced = quality, Classic/
+// Personalised = casting mode, Signature = casting profiles).
+// Only the two models actually under live test are retailer-selectable.
+// gemini-2.5-flash-image / gemini-3.1-flash-lite-image stay valid
+// ImageGenModel values (real, confirmed API ids) but are deliberately left
+// out of this list — no test evidence on them yet, and showing all four
+// alongside only two renamed labels read as duplicated, half-finished options.
 const IMAGE_GEN_MODEL_PROFILES: ImageGenModelProfile[] = [
-  { id: "gemini-2.5-flash-image", label: "Nano Banana (Gemini 2.5 Flash Image)" },
-  { id: "gemini-3.1-flash-lite-image", label: "Nano Banana 2 Lite (Gemini 3.1 Flash Lite Image)" },
-  { id: "gemini-3.1-flash-image", label: "Nano Banana 2 (Gemini 3.1 Flash Image) — current default" },
-  { id: "gemini-3-pro-image", label: "Nano Banana Pro (Gemini 3 Pro Image)" },
+  { id: "gemini-3.1-flash-image", label: "Balanced — current default" },
+  { id: "gemini-3-pro-image", label: "Fine Detail" },
 ];
 
 export const DEFAULT_IMAGE_GEN_MODEL: ImageGenModel = "gemini-3.1-flash-image";
+
+/**
+ * Whether the model chooser is shown to retailers at all. Default OFF — this
+ * is still an internal testing knob (single-sample results aren't enough to
+ * commit to a default yet). Flip via Railway env var + redeploy when ready to
+ * expose it; no code change needed either way.
+ */
+export function isImageGenModelChooserEnabled(): boolean {
+  return process.env.ENABLE_IMAGE_GEN_MODEL_CHOOSER === "true";
+}
 
 const MODEL_IDS = new Set<string>(IMAGE_GEN_MODEL_PROFILES.map((p) => p.id));
 

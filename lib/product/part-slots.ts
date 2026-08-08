@@ -32,6 +32,14 @@ const CATEGORY_SLOTS: Record<string, CategorySlots> = {
   saree: {
     main: "Main",
     others: [
+      // Superseded the earlier generic "Detail Close-up 1-6" slots that used
+      // to live here (2026-08 taxonomy work) — macros are now nested per-part
+      // in the upload UI itself (app/(dashboard)/upload/page.tsx PartRow),
+      // uploaded as slot ids like "pallu-detail-1"/"body-detail-1" at submit
+      // time. Retailer-labelled ground truth for which zone a macro belongs
+      // to, instead of a flat pool GI has to guess the relationship for — see
+      // docs/research/SAREE_ANATOMY_TAXONOMY.md, "no human narrator in
+      // production" (Sample 7) and "relationships over rigid labels" (Sample 10).
       { id: "pallu", label: "Pallu" },
       { id: "border", label: "Border" },
       { id: "blouse-front", label: "Blouse Front" },

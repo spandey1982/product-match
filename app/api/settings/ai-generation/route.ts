@@ -20,7 +20,7 @@ import { isVertexTryOnEnabled, getVertexConfig } from "@/lib/tryon-vertex";
 import { isAiCastingEnabled, listModelProfiles } from "@/lib/model-gen/casting";
 import { getFace } from "@/lib/model-gen/faces";
 import { isGenerationQuality } from "@/lib/model-gen/quality";
-import { listImageGenModels, isImageGenModel } from "@/lib/model-gen/image-gen-models";
+import { listImageGenModels, isImageGenModel, isImageGenModelChooserEnabled } from "@/lib/model-gen/image-gen-models";
 
 /** Resolve the store logo's delivery URL from its public_id, if uploaded. */
 async function logoUrl(userId: string): Promise<string | null> {
@@ -50,7 +50,10 @@ function options() {
     scenes: listSceneOptions(),
     brandPacks: BRAND_PACKS,
     scenicEnabled: isScenicCollectionEnabled(),
-    // Selectable image-gen test models (Gemini path only) — internal testing knob.
+    // Selectable image-gen test models (Gemini path only) — internal testing
+    // knob, hidden from retailers until isImageGenModelChooserEnabled() is
+    // flipped on (Railway env var, no redeploy-worthy code change needed).
+    imageGenModelChooserEnabled: isImageGenModelChooserEnabled(),
     imageGenModels: listImageGenModels(),
   };
 }
