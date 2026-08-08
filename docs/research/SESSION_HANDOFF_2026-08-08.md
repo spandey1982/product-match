@@ -1,8 +1,20 @@
 # Session handoff — saree craftsmanship fidelity (2026-08-08)
 
-For a new session picking this up. Read this first, then
+**If you are the assistant reading this in a new session:** this file is
+the entire handoff — the retailer's message pointing you here is
+deliberately just the file path, nothing else. Read this file, skim
 `docs/research/SAREE_ANATOMY_TAXONOMY.md` (the full 10-sample teaching log
-this is derived from) before touching code.
+this is derived from — you don't need every sample in depth yet, but know
+it's there and what it covers) and `git log --oneline -6` for the exact
+commits. Then **reply with a short summary in your own words** — the core
+problem, what's shipped, and the two next-phase priorities below — so the
+retailer can confirm the handoff actually landed before you touch any code.
+Do not start implementing anything yet. The retailer's own working rule,
+worth repeating back if you state it: a fix only counts once it's a
+schema/prompt change every future product runs through, not a patch for
+one product's photo. Everything below is a point-in-time snapshot as of
+2026-08-08 — verify current `.env` flag values and git branch/commit state
+rather than trusting these numbers if time has passed.
 
 ## What this work is for
 
@@ -68,11 +80,11 @@ generalize.
    codenames) gated behind `ENABLE_IMAGE_GEN_MODEL_CHOOSER` (off by
    default).
 
-All committed (3 commits on this branch, not yet pushed/merged — see
-`git log` for exact messages). `tsc`/lint clean throughout. **Not yet
-verified in an actual browser session** — Chrome extension wasn't
-connected when this was built; only `tsc`, lint, and a non-auth curl
-check confirmed the route doesn't 500.
+All committed (4 commits on this branch, not yet pushed/merged — see
+`git log --oneline -6` for exact messages, this handoff doc is the top one).
+`tsc`/lint clean throughout. **Not yet verified in an actual browser
+session** — Chrome extension wasn't connected when this was built; only
+`tsc`, lint, and a non-auth curl check confirmed the route doesn't 500.
 
 ## What's next (retailer's stated priorities, in order raised)
 
