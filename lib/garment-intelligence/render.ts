@@ -11,7 +11,13 @@
  * construction last and tersest. Budgeted so the fragment stays a helpful
  * hint, not a prompt takeover.
  */
-import type { BackIntelligence, GarmentIntelligence, SareeStructure, SurfaceTechnique } from "./types";
+import type {
+  BackIntelligence,
+  GarmentIntelligence,
+  RegionObservation,
+  SareeStructure,
+  SurfaceTechnique,
+} from "./types";
 
 /**
  * Hard cap on the rendered fragment (chars). A ceiling, not a floor — a
@@ -49,16 +55,52 @@ function renderTechnique(t: SurfaceTechnique): string {
 }
 
 /**
+ * True when a retailer-UPLOADED macro (pass 2's best evidence, not the
+ * model's own whole-image guess) reports raised/applied construction for
+ * content overlapping this technique — contradicting an overview-pass
+ * "woven-in" read. analyze.ts's own regionPrompt already tells the model
+ * "this close-up is your best evidence for this judgment; use it even if
+ * the overview pass already guessed" — but nothing previously enforced that
+ * once both passes came back, so a confidently wrong "do not add raised
+ * texture" instruction could reach the generator even when the retailer's
+ * own macro showed the opposite (2026-08-09 bug report: a scattered buti the
+ * overview called "woven, correctly flat" was, per the retailer's own
+ * close-up upload, dense raised embroidery standing 1-2mm proud of the
+ * fabric). Only upload-sourced regions count — a model-proposed ROI crop
+ * isn't stronger evidence than the pass that already guessed.
+ */
+function contradictedByRegionEvidence(t: SurfaceTechnique, regions: RegionObservation[]): boolean {
+  const words = `${t.type} ${t.placement}`
+    .toLowerCase()
+    .split(/\W+/)
+    .filter((w) => w.length > 3);
+  if (words.length === 0) return false;
+  return regions.some((r) => {
+    if (r.source !== "upload") return false;
+    const raised =
+      r.relief === "raised" || r.relief === "layered" || /appli|stitch|embroider|beadwork|stonework/i.test(r.constructionMethod);
+    if (!raised) return false;
+    const haystack = `${r.label} ${r.motif} ${r.detail} ${r.technique}`.toLowerCase();
+    return words.some((w) => haystack.includes(w));
+  });
+}
+
+/**
  * A photo alone can't reliably tell "genuinely flat" from "raised but lit
  * flat" — the technique's physical construction can. Keyword classification
  * of the free-text constructionMethod field (deliberately not an enum at
  * extraction time — see types.ts — so classification lives here instead).
+ * `regions` lets a "woven-in" read get overridden by contradicting close-up
+ * evidence — see contradictedByRegionEvidence above.
  */
-function classifyConstructionMethod(t: SurfaceTechnique): "woven-in" | "applied-on" | "unknown" {
+function classifyConstructionMethod(
+  t: SurfaceTechnique,
+  regions: RegionObservation[]
+): "woven-in" | "applied-on" | "unknown" {
   const s = t.constructionMethod.toLowerCase();
   if (!s) return "unknown";
   if (/applied|stitched|embroider|appliqu|stonework|beadwork/.test(s)) return "applied-on";
-  if (/woven|jacquard|brocade/.test(s)) return "woven-in";
+  if (/woven|jacquard|brocade/.test(s)) return contradictedByRegionEvidence(t, regions) ? "unknown" : "woven-in";
   return "unknown";
 }
 
@@ -76,9 +118,10 @@ function classifyConstructionMethod(t: SurfaceTechnique): "woven-in" | "applied-
  * falls back to the EXACT original heuristic.
  */
 function dimensionalContractClauses(gi: GarmentIntelligence): string[] {
-  const appliedOn = gi.surfaceTechniques.filter((t) => classifyConstructionMethod(t) === "applied-on");
-  const wovenIn = gi.surfaceTechniques.filter((t) => classifyConstructionMethod(t) === "woven-in");
-  const unknown = gi.surfaceTechniques.filter((t) => classifyConstructionMethod(t) === "unknown");
+  const classify = (t: SurfaceTechnique) => classifyConstructionMethod(t, gi.regions);
+  const appliedOn = gi.surfaceTechniques.filter((t) => classify(t) === "applied-on");
+  const wovenIn = gi.surfaceTechniques.filter((t) => classify(t) === "woven-in");
+  const unknown = gi.surfaceTechniques.filter((t) => classify(t) === "unknown");
 
   if (appliedOn.length === 0 && wovenIn.length === 0) {
     const dimensional =
@@ -204,12 +247,19 @@ function renderPalluCornerTreatment(s: SareeStructure): string {
  * Three tiers:
  * - `core`: never trimmed, kept deliberately small (surface work summary,
  *   the construction-method-aware dimensional contract, garment
- *   length/sleeves, and confirmed absences) — the generation-critical facts
- *   this feature exists to protect.
+ *   length/sleeves, confirmed absences, and the pallu/border relationship)
+ *   — the generation-critical facts this feature exists to protect. Pallu
+ *   relationship joined core after the 2026-08-09 bug report: it had been a
+ *   `priority` entry, trimmed away whenever the (much longer) region-detail
+ *   dump ate the budget first — the exact case that let a generator invent
+ *   a pallu design GI had already confirmed didn't exist.
  * - `priority`: an ORDERED list, highest-priority-first, trimmed from the
  *   low-priority end when over budget. Buti-population and border-structure
- *   facts sit highest (misplacement here is a directly-reported bug); pallu
- *   corner treatment sits lowest (real but secondary, per taxonomy notes).
+ *   facts sit highest (misplacement here is a directly-reported bug); the
+ *   raw region-detail dump sits LOWEST — it's the most verbose entry per
+ *   fact conveyed and every fact worth keeping from it is already distilled
+ *   into the structured fields above it, so it's the correct thing to lose
+ *   first when the budget is tight, never the structured facts.
  * - A raw char-slice is kept only as a final safety fallback; with `core`
  *   kept small it should essentially never fire.
  */
@@ -237,26 +287,16 @@ export function renderPromptNotes(gi: GarmentIntelligence): string {
 
   const s = gi.sareeStructure;
   if (s) {
+    // Pallu/border relationship — core, not priority (see doc comment above).
+    const palluRel = renderPalluRelationship(s);
+    if (palluRel) core.push(palluRel);
+
     const buti = renderButiPopulations(s);
     if (buti) priority.push(buti);
     const borders = renderBorderStructure(s);
     if (borders) priority.push(borders);
     const colorStructure = renderColorStructure(s);
     if (colorStructure) priority.push(colorStructure);
-  }
-
-  // Close-up region evidence — stitch-level physical truth from pass 2.
-  const regionDetails = gi.regions
-    .map((r) => r.detail)
-    .filter(Boolean)
-    .slice(0, 2);
-  if (regionDetails.length > 0) {
-    priority.push(`At close range: ${regionDetails.join("; ")}`);
-  }
-
-  if (s) {
-    const palluRel = renderPalluRelationship(s);
-    if (palluRel) priority.push(palluRel);
   }
 
   priority.push(...layeredReliefClauses(gi));
@@ -283,10 +323,25 @@ export function renderPromptNotes(gi: GarmentIntelligence): string {
   ].filter(Boolean);
   if (constructionBits.length > 0) priority.push(`Construction: ${constructionBits.join(", ")}`);
 
-  // Pallu corner treatment — real but secondary; always last.
+  // Pallu corner treatment — real but secondary.
   if (s) {
     const corner = renderPalluCornerTreatment(s);
     if (corner) priority.push(corner);
+  }
+
+  // Close-up region evidence, verbatim — stitch-level physical truth from
+  // pass 2, but the most verbose entry per fact conveyed (raw paragraphs,
+  // not distilled sentences) and the LEAST likely to be missed if trimmed:
+  // every fact worth keeping from it is already distilled into the
+  // structured fields above (surface work, dimensional contract, buti/
+  // border structure, pallu relationship). Pushed last so it's first to go
+  // under budget pressure, never a structured fact in its place.
+  const regionDetails = gi.regions
+    .map((r) => r.detail)
+    .filter(Boolean)
+    .slice(0, 2);
+  if (regionDetails.length > 0) {
+    priority.push(`At close range: ${regionDetails.join("; ")}`);
   }
 
   const compose = (kept: string[]) => {

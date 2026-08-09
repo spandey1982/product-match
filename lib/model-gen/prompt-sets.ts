@@ -34,10 +34,19 @@ export const GI_REGION_LABEL = "__gi_region__";
 // Saree drape is deterministic and IDENTICAL in intent across front and back
 // (only the camera side differs) — retailer testing (2026-07-15) found the
 // model otherwise improvised the pallu differently per view (front bunched/
-// short, back floor-length/spread). We standardize on the spread-open,
-// floor-length pallu because it shows the most surface area and craftsmanship.
+// short, back floor-length/spread). We standardize on a floor-length pallu
+// with its full design visible because that's what shows the most surface
+// area and craftsmanship — NOT on a flat, "spread open" rendering: retailer
+// testing (2026-08-09) found the earlier wording ("spread fully open...flat
+// and wide...edge-to-edge") pushed the model to render a second unfurled
+// sheet of fabric alongside the one already draped over the shoulder (front:
+// pallu appearing twice), and a stiff, gravity-defying flat rectangle on the
+// back — both a direct consequence of describing the pallu as a flat panel
+// instead of real cloth. Rewritten to keep the original intent (full pallu
+// visible, floor-length, never bunched/tucked/shortened, identical between
+// views) while describing physically real drape.
 const SAREE_DRAPE =
-  "The pallu is spread fully open and cascades straight down to floor length, displayed flat and wide with its entire design and border visible edge-to-edge — never bunched, folded, tucked or shortened. The saree is draped in a neat, elegant, presentable style that maximises the visible embroidered surface.";
+  "The pallu is a single continuous piece of fabric draped over one shoulder and falling to floor length, its full design and border visible along its length — never bunched, folded, tucked or shortened, and never rendered as a second or duplicate panel of fabric elsewhere on the body. It follows natural cloth physics: soft, gravity-led folds and drape, exactly one pallu per figure, never held flat, rigid or stiffly away from the body. The saree is draped in a neat, elegant, presentable style that maximises the visible embroidered surface without sacrificing realistic fabric behavior.";
 
 const SAREE: PromptView[] = [
   { id: "front",  label: "Front View",       modifier: `Full-length front view of the draped saree. ${SAREE_DRAPE}` },

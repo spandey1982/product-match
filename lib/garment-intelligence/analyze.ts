@@ -472,6 +472,29 @@ export async function analyzeGarment(
     sareeStructure: saree ? normalizeSareeStructure(overview.sareeStructure) : null,
   };
 
+  // Deterministic pallu default when the model has NO signal either way
+  // (palluRelationship "unknown") and the retailer didn't upload a dedicated
+  // pallu close-up: default to "same-rotated" with no distinct content,
+  // rather than leaving a gap the generator will fill in on its own.
+  // Genuine evidence is never overridden — this only fires when the model
+  // itself found nothing to go on. See docs/research/SESSION_HANDOFF_2026-08-08.md
+  // and the retailer's 2026-08-09 bug report: a saree always has a border
+  // and a pallu; the open question is only whether they match, and "no
+  // evidence of a difference" must mean "assume they match," never "invent
+  // a difference."
+  if (intelligence.sareeStructure && intelligence.sareeStructure.palluRelationship === "unknown") {
+    const hasPalluEvidence = (input.partImages ?? []).some((p) => /pallu/i.test(p.label));
+    if (!hasPalluEvidence) {
+      intelligence.sareeStructure = {
+        ...intelligence.sareeStructure,
+        palluRelationship: "same-rotated",
+        palluContent:
+          intelligence.sareeStructure.palluContent ||
+          "no separate pallu evidence provided — assume it continues the border design, rotated at the corner",
+      };
+    }
+  }
+
   // ── Pass 2: close-up evidence, one batched call ─────────────────────────
   // Retailer part close-ups first (real macro photos — the best evidence);
   // model-proposed ROI crops of the original buffer fill the remaining slots.

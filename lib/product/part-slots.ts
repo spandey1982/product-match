@@ -40,8 +40,14 @@ const CATEGORY_SLOTS: Record<string, CategorySlots> = {
       // to, instead of a flat pool GI has to guess the relationship for — see
       // docs/research/SAREE_ANATOMY_TAXONOMY.md, "no human narrator in
       // production" (Sample 7) and "relationships over rigid labels" (Sample 10).
-      { id: "pallu", label: "Pallu" },
+      // Border before Pallu (retailer's own upload-order convention, 2026-08-09):
+      // a saree always has a border, so it anchors first; pallu is only worth a
+      // separate upload when it carries a DIFFERENT design than the border. An
+      // omitted pallu upload is a deterministic fact ("same as border") the
+      // render layer now enforces — see renderPalluRelationship in render.ts —
+      // not a gap for the generator to fill in on its own.
       { id: "border", label: "Border" },
+      { id: "pallu", label: "Pallu" },
       { id: "blouse-front", label: "Blouse Front" },
       { id: "blouse-back", label: "Blouse Back" },
     ],
