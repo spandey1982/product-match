@@ -2,7 +2,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Upload, ArrowLeft, ImagePlus, Sparkles, Check, Wand2 } from "lucide-react";
+import { Upload, ArrowLeft, ImagePlus, Sparkles, Check, Wand2, Info, X, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -14,9 +14,11 @@ import SceneModeSelect, { type BackdropSection } from "@/components/product/Scen
 import type { ScenicValue } from "@/components/product/ScenicCollectionSelect";
 import type { SceneOptionView } from "@/lib/model-gen/scenes/library";
 import { DEFAULT_GENERATION_QUALITY, type GenerationQuality } from "@/lib/model-gen/quality";
+import { DEFAULT_IMAGE_GEN_MODEL, type ImageGenModel } from "@/lib/model-gen/image-gen-models";
 import { useGenerationStatus } from "@/components/generation/GenerationStatusProvider";
 import { ObjectiveChooser } from "@/components/generation/ObjectiveChooser";
 import { QualityChooser } from "@/components/generation/QualityChooser";
+import { ImageGenModelChooser } from "@/components/generation/ImageGenModelChooser";
 import { CastingChooser } from "@/components/generation/CastingChooser";
 
 // Provider-gated helpers. Provider is stored on the retailer and drives every
@@ -70,6 +72,8 @@ interface AiGenConfig {
   scenicEnabled: boolean;
   /** AI Casting — flag from the server. When false, hide the casting toggle. */
   castingEnabled?: boolean;
+  /** Image-gen model chooser — flag from the server. When false, hide it entirely (internal testing knob, not yet shown to retailers). */
+  imageGenModelChooserEnabled?: boolean;
   /** Retailer's active Signature Models; empty when castingEnabled is false. */
   signatureModels?: AiGenSignatureModel[];
   settings: {
@@ -80,9 +84,11 @@ interface AiGenConfig {
     brandingStyle: "classic" | "glass";
     catalogueProvider: CatalogueStyle;
     quality: GenerationQuality;
+    imageGenModel: ImageGenModel;
     backdrop: BackdropValue;
     scenic: ScenicValue;
   };
+  imageGenModels?: { id: ImageGenModel; label: string }[];
 }
 
 // Two provider paths, retailer-facing labels only ("Premium" = Gemini's
@@ -106,6 +112,138 @@ const CATALOGUE_STYLES: {
 ];
 
 
+/** Small (i) toggle that reveals a helper sentence — keeps section headers scannable at any width instead of always showing a paragraph of copy. */
+function InfoNote({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="relative inline-flex items-center">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-label="More information"
+        className="h-4 w-4 rounded-full border border-gray-200 text-gray-400 hover:border-indigo-300 hover:text-indigo-500 flex items-center justify-center shrink-0"
+      >
+        <Info className="h-2.5 w-2.5" />
+      </button>
+      {open && (
+        <span className="absolute z-10 top-6 left-0 w-64 rounded-xl border border-gray-100 bg-white p-3 text-xs leading-relaxed text-gray-500 shadow-lg">
+          {text}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/**
+ * One image-upload part (Main, Pallu, Border, …) as a single compact row:
+ * the primary photo on the left, macro close-ups nested beside it at a
+ * visibly smaller size — the size difference itself signals "these belong
+ * under this label," and the macro-add control stays visible but disabled
+ * until the part has its own photo, rather than disappearing outright.
+ */
+function PartRow({
+  label, required = false, statusText, thumbSrc, locked = false,
+  onThumbClick, onRemove, macroPreviews, macroLocked, onAddMacro, onRemoveMacro, cap,
+}: {
+  label: string;
+  required?: boolean;
+  statusText: string;
+  thumbSrc: string | null;
+  locked?: boolean;
+  onThumbClick: () => void;
+  onRemove?: () => void;
+  macroPreviews: string[];
+  macroLocked: boolean;
+  onAddMacro: () => void;
+  onRemoveMacro: (index: number) => void;
+  cap: number;
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border border-gray-100 p-2.5 flex-wrap">
+      <button
+        type="button"
+        disabled={locked}
+        onClick={onThumbClick}
+        className={`relative h-10 w-10 shrink-0 rounded-xl overflow-hidden border flex items-center justify-center ${
+          locked ? "border-gray-100 opacity-50 cursor-not-allowed" : "border-gray-200 hover:border-indigo-300"
+        } ${thumbSrc ? "bg-white" : "bg-gray-50"}`}
+      >
+        {thumbSrc ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={thumbSrc} alt={label} className="h-full w-full object-cover" />
+        ) : (
+          <ImagePlus className="h-4 w-4 text-gray-300" />
+        )}
+      </button>
+      <div className="min-w-[64px]">
+        <p className="text-[13px] font-semibold text-gray-800 leading-tight">
+          {label} {required && <span className="text-indigo-500">*</span>}
+        </p>
+        <p className="text-[11px] text-gray-400">{statusText}</p>
+      </div>
+      {thumbSrc && onRemove && (
+        <button type="button" onClick={onRemove} className="text-[11px] text-gray-400 hover:text-red-500 shrink-0">
+          Remove
+        </button>
+      )}
+      <div className="h-8 w-px bg-gray-100 shrink-0" />
+      <div className="flex items-center gap-1.5 flex-wrap flex-1 min-w-[90px]">
+        {macroPreviews.map((src, i) => (
+          <div key={i} className="relative h-6 w-6 rounded-md overflow-hidden border border-gray-100 shrink-0 group">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={src} alt={`${label} detail ${i + 1}`} className="h-full w-full object-cover" />
+            <button
+              type="button"
+              onClick={() => onRemoveMacro(i)}
+              className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
+              aria-label={`Remove ${label} detail ${i + 1}`}
+            >
+              <X className="h-3 w-3 text-white" />
+            </button>
+          </div>
+        ))}
+        {macroPreviews.length < cap && (
+          <button
+            type="button"
+            disabled={macroLocked}
+            onClick={onAddMacro}
+            title={macroLocked ? `Add the ${label.toLowerCase()} photo first` : `Add a ${label.toLowerCase()} close-up`}
+            className={`h-6 w-6 rounded-md border border-dashed flex items-center justify-center shrink-0 ${
+              macroLocked
+                ? "border-gray-200 text-gray-300 cursor-not-allowed"
+                : "border-gray-300 text-gray-400 hover:border-indigo-300 hover:text-indigo-500"
+            }`}
+          >
+            <Plus className="h-3 w-3" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const MACRO_CAP = 3;
+const RECENT_CATEGORIES_KEY = "pm_recent_categories";
+const RECENT_CATEGORIES_SHOWN = 3;
+
+/** Most-recently-used categories first (client-only, per-browser) — the long full list stays one dropdown away, never removed. */
+function loadRecentCategories(): string[] {
+  try {
+    const raw = localStorage.getItem(RECENT_CATEGORIES_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((c) => typeof c === "string") : [];
+  } catch {
+    return [];
+  }
+}
+function recordCategoryUse(category: string) {
+  try {
+    const existing = loadRecentCategories().filter((c) => c !== category);
+    localStorage.setItem(RECENT_CATEGORIES_KEY, JSON.stringify([category, ...existing].slice(0, 8)));
+  } catch {/* localStorage unavailable — quick-chips just stay on the default set */}
+}
+
 export default function UploadPage() {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -117,36 +255,52 @@ export default function UploadPage() {
   // Fingerprint of the last main image we extracted from — re-uploading the same
   // image skips the (paid) extraction call; a different image re-runs it.
   const [lastExtractedHash, setLastExtractedHash] = useState<string | null>(null);
-  // Multi-image uploader: one "active" (enlarged) slot at a time — slot 0 is the
-  // main product photo, the rest are category-specific detail close-ups.
+  // Per-part image uploads — each category card (Main, Pallu, Border, …) has
+  // one primary photo (partFiles/partPreviews, keyed by slot id) plus zero or
+  // more retailer-labelled macro close-ups NESTED under that same part
+  // (macroFiles/macroPreviews, keyed by slot id, or "main" for the body).
+  // Nesting beats a flat "extra detail" pool: the retailer's own act of
+  // adding a macro under "Pallu" tells the app exactly which part it belongs
+  // to — ground truth, not a guess Garment Intelligence has to infer later.
   const partInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const [partFiles, setPartFiles] = useState<Record<string, File>>({});
   const [partPreviews, setPartPreviews] = useState<Record<string, string>>({});
-  const [activeSlot, setActiveSlot] = useState<string>("main");
+  const macroInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const [macroFiles, setMacroFiles] = useState<Record<string, File[]>>({});
+  const [macroPreviews, setMacroPreviews] = useState<Record<string, string[]>>({});
   // Economy Catalogue — back product image (separate from part-slot close-ups).
   const backFileRef = useRef<HTMLInputElement>(null);
   const [backImageFile, setBackImageFile] = useState<File | null>(null);
   const [backImagePreview, setBackImagePreview] = useState<string | null>(null);
+  // Most-recently-used categories (client-only) for the quick-pick chips.
+  // Hydrated post-mount deliberately, not via a lazy useState initializer —
+  // localStorage isn't available during SSR, and reading it in the
+  // initializer would risk a server/client hydration mismatch instead.
+  const [recentCategories, setRecentCategories] = useState<string[]>([]);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setRecentCategories(loadRecentCategories());
+  }, []);
 
-  /** Ordered slot ids for the current category (main first, then close-ups). */
-  function slotIds(): string[] {
-    return ["main", ...partSlotsFor(form.category).map((s) => s.id)];
+  function clearPart(slotId: string) {
+    setPartFiles((prev) => { const n = { ...prev }; delete n[slotId]; return n; });
+    setPartPreviews((prev) => { const n = { ...prev }; delete n[slotId]; return n; });
+    setMacroFiles((prev) => { const n = { ...prev }; delete n[slotId]; return n; });
+    setMacroPreviews((prev) => { const n = { ...prev }; delete n[slotId]; return n; });
   }
-  /** Move focus to the next slot (cycling) — encourages filling them all. */
-  function advanceSlot(currentId: string) {
-    const ids = slotIds();
-    const idx = ids.indexOf(currentId);
-    setActiveSlot(ids[(idx + 1) % ids.length]);
+  async function handleMacroAdd(parentId: string, e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    const resized = await resizeImage(file);
+    setMacroFiles((prev) => ({ ...prev, [parentId]: [...(prev[parentId] ?? []), resized] }));
+    setMacroPreviews((prev) => ({ ...prev, [parentId]: [...(prev[parentId] ?? []), URL.createObjectURL(file)] }));
   }
-  function clearSlot(id: string) {
-    if (id === "main") {
-      setImageFile(null);
-      setImagePreview(null);
-      setImageUrlInput("");
-    } else {
-      clearPart(id);
-    }
+  function handleMacroRemove(parentId: string, index: number) {
+    setMacroFiles((prev) => ({ ...prev, [parentId]: (prev[parentId] ?? []).filter((_, i) => i !== index) }));
+    setMacroPreviews((prev) => ({ ...prev, [parentId]: (prev[parentId] ?? []).filter((_, i) => i !== index) }));
   }
+
   const [extracting, setExtracting] = useState(false);
   const [extractError, setExtractError] = useState("");
   const [generateModel, setGenerateModel] = useState(false);
@@ -170,6 +324,8 @@ export default function UploadPage() {
   // patchBranding() below. Each new product starts on the retailer's
   // remembered value; the default here is only the pre-hydration seed.
   const [quality, setQuality] = useState<GenerationQuality>(DEFAULT_GENERATION_QUALITY);
+  // Image-generation model — internal testing knob, sticky like `quality`.
+  const [imageGenModel, setImageGenModel] = useState<ImageGenModel>(DEFAULT_IMAGE_GEN_MODEL);
 
   // Store branding for generated images (persisted immediately on change).
   const [brandingEnabled, setBrandingEnabled] = useState(true);
@@ -244,6 +400,7 @@ export default function UploadPage() {
           resolvedProvider === "vertex" && !data.vertexAvailable ? "gemini" : resolvedProvider
         );
         if (data.settings.quality) setQuality(data.settings.quality);
+        if (data.settings.imageGenModel) setImageGenModel(data.settings.imageGenModel);
         setBackdrops(data.backdrops ?? []);
         if (data.settings.backdrop) setBackdrop(data.settings.backdrop);
         setScenes(data.scenes ?? []);
@@ -265,6 +422,7 @@ export default function UploadPage() {
     brandingStyle?: "classic" | "glass";
     catalogueProvider?: CatalogueStyle;
     quality?: GenerationQuality;
+    imageGenModel?: ImageGenModel;
     backdrop?: BackdropValue;
     scenic?: ScenicValue;
   }) {
@@ -324,7 +482,6 @@ export default function UploadPage() {
     setImageUrlInput("");
     const resized = await resizeImage(file);   // max 1280px JPEG for upload + AI
     setImageFile(resized);
-    advanceSlot("main"); // move on to the next slot to encourage more uploads
 
     // Skip the (paid) extraction when the SAME image is re-uploaded; only a new
     // image (even of the same product) re-runs it.
@@ -459,12 +616,6 @@ export default function UploadPage() {
     const resized = await resizeImage(file);
     setPartFiles((prev) => ({ ...prev, [slotId]: resized }));
     setPartPreviews((prev) => ({ ...prev, [slotId]: URL.createObjectURL(file) }));
-    advanceSlot(slotId); // auto-advance to the next slot
-  }
-
-  function clearPart(slotId: string) {
-    setPartFiles((prev) => { const n = { ...prev }; delete n[slotId]; return n; });
-    setPartPreviews((prev) => { const n = { ...prev }; delete n[slotId]; return n; });
   }
 
   async function handleBackImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -523,17 +674,32 @@ export default function UploadPage() {
       // any locally-uploaded close-ups in state so they resurface if the
       // retailer switches back to Premium mid-form.
       const partImages: { slot: string; label: string; url: string }[] = [];
+      /** Upload one file and push it into partImages under (slot, label) — shared by primary part photos and nested macros. */
+      async function uploadPart(file: File, slot: string, label: string) {
+        try {
+          const pfd = new FormData();
+          pfd.append("file", file);
+          const pRes = await fetch("/api/upload", { method: "POST", body: pfd });
+          const pData = await pRes.json();
+          if (pRes.ok) partImages.push({ slot, label, url: pData.url });
+        } catch {/* optional — ignore a close-up upload failure */}
+      }
       if (objective === "catalogue" && isGeminiPath(catalogueProvider)) {
         for (const slot of partSlotsFor(form.category)) {
           const file = partFiles[slot.id];
-          if (!file) continue;
-          try {
-            const pfd = new FormData();
-            pfd.append("file", file);
-            const pRes = await fetch("/api/upload", { method: "POST", body: pfd });
-            const pData = await pRes.json();
-            if (pRes.ok) partImages.push({ slot: slot.id, label: slot.label, url: pData.url });
-          } catch {/* optional — ignore a close-up upload failure */}
+          if (file) await uploadPart(file, slot.id, slot.label);
+          // Macro close-ups nested under this part — retailer-labelled ground
+          // truth for which zone each detail belongs to (see part-slots.ts).
+          const macros = macroFiles[slot.id] ?? [];
+          for (let i = 0; i < macros.length; i++) {
+            await uploadPart(macros[i], `${slot.id}-detail-${i + 1}`, `${slot.label} detail ${i + 1}`);
+          }
+        }
+        // Macros nested under the main/body photo — no existing named slot for
+        // these, so a synthetic "body-detail" id (never collides with a real slot).
+        const bodyMacros = macroFiles["main"] ?? [];
+        for (let i = 0; i < bodyMacros.length; i++) {
+          await uploadPart(bodyMacros[i], `body-detail-${i + 1}`, `Body detail ${i + 1}`);
         }
       }
 
@@ -586,6 +752,7 @@ export default function UploadPage() {
             ? JSON.stringify({
                 objective,
                 quality,
+                model: imageGenModel,
                 backdropSection,
                 // Omit when "auto" so the engine selects the model per product.
                 ...(modelType && modelType !== "auto" ? { modelType } : {}),
@@ -650,21 +817,32 @@ export default function UploadPage() {
     );
   }
 
-  // Image slots for the active-card uploader (main + category cards).
   const slotCfg = categorySlotsFor(form.category);
-  const imageSlots = [
-    { id: "main", label: slotCfg.main },
-    ...slotCfg.others.map((s) => ({ id: s.id, label: s.label })),
-  ];
-  const activeId = imageSlots.some((s) => s.id === activeSlot) ? activeSlot : "main";
-  const activeSlotObj = imageSlots.find((s) => s.id === activeId) ?? imageSlots[0];
-  const slotPreview = (id: string): string | null =>
-    id === "main" ? imagePreview : partPreviews[id] ?? null;
-  const openSlotPicker = (id: string) =>
-    id === "main" ? fileRef.current?.click() : partInputRefs.current[id]?.click();
+  const otherSlots = slotCfg.others;
+  // Quick-pick chips: most recently used categories first (client-only), a
+  // sensible default set before any history exists, then the full list stays
+  // one dropdown away — never removed, just not first.
+  const quickCategories = (
+    recentCategories.length > 0
+      ? recentCategories
+      : ["Saree", "Kurti", "Lehenga"]
+  ).filter((c) => CATEGORIES.includes(c)).slice(0, RECENT_CATEGORIES_SHOWN);
+
+  function selectCategory(cat: string) {
+    setForm((prev) => ({ ...prev, category: cat }));
+    // Different category → different detail slots; reset close-ups, macros and
+    // the extraction fingerprint (the same image must re-extract under the new category).
+    setPartFiles({});
+    setPartPreviews({});
+    setMacroFiles({});
+    setMacroPreviews({});
+    setLastExtractedHash(null);
+    recordCategoryUse(cat);
+    setRecentCategories(loadRecentCategories());
+  }
 
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="max-w-5xl mx-auto">
       <Link
         href="/catalog"
         className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 mb-6 transition-colors"
@@ -683,30 +861,39 @@ export default function UploadPage() {
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit}>
+      <div className="grid gap-6 lg:grid-cols-[1fr_320px] lg:items-start">
+      <div className="space-y-6 min-w-0">
         {/* Step 1 — Category first. Drives accurate AI auto-fill (no
             mis-classification) and the category-specific image guidance below. */}
         <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm">
-          <h2 className="text-sm font-semibold text-gray-900 mb-1">
-            Product category <span className="text-indigo-500">*</span>
-          </h2>
-          <p className="text-xs text-gray-400 mb-4">
-            Select this first — it&apos;s used to recognise your product correctly and guide the image analysis.
-          </p>
+          <div className="flex items-center gap-1.5 mb-3">
+            <h2 className="text-sm font-semibold text-gray-900">
+              Product category <span className="text-indigo-500">*</span>
+            </h2>
+            <InfoNote text="Select this first — it's used to recognise your product correctly and guide the image analysis." />
+          </div>
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            {quickCategories.map((cat) => (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => selectCategory(cat)}
+                className={`px-3.5 py-1.5 rounded-xl text-sm font-medium border transition-all ${
+                  form.category === cat
+                    ? "bg-indigo-50 border-indigo-200 text-indigo-700"
+                    : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
           <Select
             value={form.category}
-            onChange={(e) => {
-              setForm({ ...form, category: e.target.value });
-              // Different category → different detail slots; reset close-ups and
-              // the extraction fingerprint (the same image must re-extract under
-              // the new category).
-              setPartFiles({});
-              setPartPreviews({});
-              setActiveSlot("main");
-              setLastExtractedHash(null);
-            }}
+            onChange={(e) => selectCategory(e.target.value)}
             options={CATEGORIES.map((c) => ({ value: c, label: c }))}
-            placeholder="Select a category"
+            placeholder="All categories"
             required
           />
         </div>
@@ -714,15 +901,15 @@ export default function UploadPage() {
         {/* Step 2 — Catalogue style + generation objective. Provider and
             objective are surfaced together so the downstream cards can react. */}
         {aiGen?.enabled && (
-        <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm space-y-5">
+        <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm space-y-4">
           {/* Generation objective — Quick Listing or Catalogue & Social */}
           <div>
-            <h2 className="text-sm font-semibold text-gray-900 mb-1">
-              Catalogue style <span className="text-indigo-500">*</span>
-            </h2>
-            <p className="text-xs text-gray-400 mb-3">
-              Quick Listing produces a single front shot. Catalogue &amp; Social generates a full multi-view set.
-            </p>
+            <div className="flex items-center gap-1.5 mb-2">
+              <h2 className="text-sm font-semibold text-gray-900">
+                Catalogue style <span className="text-indigo-500">*</span>
+              </h2>
+              <InfoNote text="Quick Listing produces a single front shot. Catalogue & Social generates a full multi-view set." />
+            </div>
             <ObjectiveChooser
               objectives={aiGen.objectives}
               value={objective}
@@ -730,14 +917,13 @@ export default function UploadPage() {
             />
           </div>
 
-          {/* Provider — Premium (Gemini) or Economy (Vertex) */}
+          {/* Provider — Premium (Gemini) or Economy (Vertex) — compact segmented toggle */}
           <div>
-            <p className="text-xs font-medium text-gray-500 mb-2">Provider</p>
-            <p className="text-xs text-gray-400 mb-3">
-              Premium unlocks casting, scenes and quality tiers.
-              Economy is the fast, low-cost path.
-            </p>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="flex items-center gap-1.5 mb-2">
+              <p className="text-xs font-medium text-gray-500">Provider</p>
+              <InfoNote text="Premium unlocks casting, scenes and quality tiers. Economy is the fast, low-cost path." />
+            </div>
+            <div className="grid grid-cols-2 gap-1.5 p-1 bg-gray-50 rounded-2xl">
               {CATALOGUE_STYLES.map((s) => {
                 const active = catalogueProvider === s.id;
                 const disabled = s.id === "vertex" && !aiGen.vertexAvailable;
@@ -751,115 +937,80 @@ export default function UploadPage() {
                       patchBranding({ catalogueProvider: s.id });
                     }}
                     aria-pressed={active}
-                    className={`text-left rounded-2xl border p-3 transition-all ${
-                      active
-                        ? "border-indigo-300 bg-gradient-to-br from-indigo-50 to-purple-50 ring-1 ring-purple-200"
-                        : "border-gray-100 bg-white hover:border-gray-200"
+                    className={`rounded-xl px-3 py-2 text-sm font-semibold transition-all ${
+                      active ? "bg-white text-indigo-700 shadow-sm" : "text-gray-500 hover:text-gray-700"
                     } ${disabled ? "opacity-40 cursor-not-allowed" : ""}`}
                   >
-                    <span className="text-sm font-semibold text-gray-900">{s.label}</span>
-                    <span className="block text-xs text-gray-500 mt-0.5 leading-snug">
-                      {s.description}
-                    </span>
+                    {s.label}
                   </button>
                 );
               })}
             </div>
+            <p className="text-xs text-gray-400 mt-2">
+              {CATALOGUE_STYLES.find((s) => s.id === catalogueProvider)?.description}
+            </p>
           </div>
         </div>
         )}
 
         {/* Step 3 — Product image (revealed once a category is chosen).
-            Slot visibility depends on objective + provider:
+            Each part is one compact row: primary photo + nested macro
+            close-ups beside it. Slot visibility depends on objective + provider:
             Quick Listing (any) → main only
-            Catalogue + Premium → main + category close-ups
+            Catalogue + Premium → main + category parts, each with macros
             Catalogue + Economy → front + back */}
         {form.category && (
         <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm">
-          <h2 className="text-sm font-semibold text-gray-900 mb-4">
-            Product Image <span className="text-indigo-500">*</span>
-          </h2>
-
-          {objective === "catalogue" && isGeminiPath(catalogueProvider) && imageSlots.length > 1 && (
-            <p className="text-xs text-gray-400 -mt-2 mb-3">
-              Add the main photo first — the other cards then unlock and each saved card moves you to the next. Tap any card to switch.
-            </p>
-          )}
+          <div className="flex items-center gap-1.5 mb-1">
+            <h2 className="text-sm font-semibold text-gray-900">
+              Product Image <span className="text-indigo-500">*</span>
+            </h2>
+            {objective === "catalogue" && isGeminiPath(catalogueProvider) && (
+              <InfoNote text="Each part is its own row. Add a macro close-up beside a part once it has a photo — sized down on purpose, and the app now knows exactly which part that detail belongs to." />
+            )}
+          </div>
           {objective === "catalogue" && isVertexPath(catalogueProvider) && (
-            <p className="text-xs text-gray-400 -mt-2 mb-3">
+            <p className="text-xs text-gray-400 mb-3">
               Upload front and back product images — each is paired with a reference model to generate the catalogue set.
             </p>
           )}
           {objective === "quick_listing" && (
-            <p className="text-xs text-gray-400 -mt-2 mb-3">
+            <p className="text-xs text-gray-400 mb-3">
               Upload your product image — a single on-model front shot will be generated.
             </p>
           )}
 
-          {/* Active (enlarged) card — landscape, the only one you can upload from */}
-          <button
-            type="button"
-            onClick={() => openSlotPicker(activeId)}
-            className="relative w-full h-44 rounded-2xl overflow-hidden border-2 border-dashed border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/30 transition-all flex flex-col items-center justify-center group bg-gray-50/40"
-          >
-            {slotPreview(activeId) ? (
-              <>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={slotPreview(activeId)!} alt={activeSlotObj.label} className="absolute inset-0 w-full h-full object-contain bg-white" />
-                <span className="absolute bottom-0 inset-x-0 bg-black/45 text-white text-[11px] font-medium py-1.5 text-center">
-                  {activeSlotObj.label} · tap to change
-                </span>
-              </>
-            ) : (
-              <>
-                <ImagePlus className="h-8 w-8 text-gray-300 group-hover:text-indigo-400 mb-2 transition-colors" />
-                <p className="text-sm font-medium text-gray-500 group-hover:text-indigo-600">Upload {activeSlotObj.label}</p>
-                <p className="text-[11px] text-gray-400 mt-0.5">JPEG, PNG, WebP</p>
-              </>
-            )}
-          </button>
-          {slotPreview(activeId) && (
-            <button type="button" onClick={() => clearSlot(activeId)} className="mt-1.5 block text-[11px] text-gray-400 hover:text-red-500">
-              Remove
-            </button>
-          )}
-
-          {/* Premium close-up slots — Catalogue + Premium only */}
-          {objective === "catalogue" && isGeminiPath(catalogueProvider) && imageSlots.filter((s) => s.id !== activeId).length > 0 && (
-            <div className="mt-3 space-y-2">
-              {imageSlots.filter((s) => s.id !== activeId).map((s) => {
-                const preview = slotPreview(s.id);
-                const locked = s.id !== "main" && !imageFile;
-                return (
-                  <button
-                    key={s.id}
-                    type="button"
-                    disabled={locked}
-                    onClick={() => setActiveSlot(s.id)}
-                    className={`w-full flex items-center gap-3 rounded-xl border p-2 text-left transition-colors ${
-                      locked ? "border-gray-100 opacity-60 cursor-not-allowed" : "border-gray-200 bg-white hover:border-indigo-300"
-                    }`}
-                  >
-                    <div className="h-11 w-11 rounded-lg overflow-hidden bg-gray-50 border border-gray-100 flex items-center justify-center shrink-0">
-                      {preview ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={preview} alt={s.label} className="h-full w-full object-cover" />
-                      ) : (
-                        <ImagePlus className="h-4 w-4 text-gray-300" />
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-gray-800 truncate">{s.label}</p>
-                      <p className="text-xs text-gray-400">
-                        {locked ? "Add the main photo first" : preview ? "Uploaded · tap to change" : "Tap to add"}
-                      </p>
-                    </div>
-                    {preview && <Check className="h-4 w-4 text-emerald-500 shrink-0" />}
-                  </button>
-                );
-              })}
-            </div>
-          )}
+          <div className="mt-3 space-y-2">
+            <PartRow
+              label={slotCfg.main}
+              required
+              statusText={imagePreview ? "Uploaded" : "Tap to add"}
+              thumbSrc={imagePreview}
+              onThumbClick={() => fileRef.current?.click()}
+              onRemove={imagePreview ? () => { setImageFile(null); setImagePreview(null); setImageUrlInput(""); } : undefined}
+              macroPreviews={macroPreviews["main"] ?? []}
+              macroLocked={!imageFile}
+              onAddMacro={() => macroInputRefs.current["main"]?.click()}
+              onRemoveMacro={(i) => handleMacroRemove("main", i)}
+              cap={MACRO_CAP}
+            />
+            {objective === "catalogue" && isGeminiPath(catalogueProvider) && otherSlots.map((slot) => (
+              <PartRow
+                key={slot.id}
+                label={slot.label}
+                statusText={!imageFile ? "Add the main photo first" : partPreviews[slot.id] ? "Uploaded" : "Tap to add"}
+                thumbSrc={partPreviews[slot.id] ?? null}
+                locked={!imageFile}
+                onThumbClick={() => partInputRefs.current[slot.id]?.click()}
+                onRemove={partPreviews[slot.id] ? () => clearPart(slot.id) : undefined}
+                macroPreviews={macroPreviews[slot.id] ?? []}
+                macroLocked={!partFiles[slot.id]}
+                onAddMacro={() => macroInputRefs.current[slot.id]?.click()}
+                onRemoveMacro={(i) => handleMacroRemove(slot.id, i)}
+                cap={MACRO_CAP}
+              />
+            ))}
+          </div>
 
           {/* Economy back image slot — Catalogue + Economy only */}
           {objective === "catalogue" && isVertexPath(catalogueProvider) && (
@@ -900,8 +1051,8 @@ export default function UploadPage() {
             </div>
           )}
 
-          {/* Hidden file inputs */}
-          {objective === "catalogue" && isGeminiPath(catalogueProvider) && partSlotsFor(form.category).map((slot) => (
+          {/* Hidden file inputs — primary photo per part, plus one per part's macro-add slot. */}
+          {objective === "catalogue" && isGeminiPath(catalogueProvider) && otherSlots.map((slot) => (
             <input
               key={slot.id}
               ref={(el) => { partInputRefs.current[slot.id] = el; }}
@@ -909,6 +1060,25 @@ export default function UploadPage() {
               accept="image/jpeg,image/png,image/webp"
               className="hidden"
               onChange={(e) => handlePartSelect(slot.id, e)}
+            />
+          ))}
+          {objective === "catalogue" && isGeminiPath(catalogueProvider) && (
+            <input
+              ref={(el) => { macroInputRefs.current["main"] = el; }}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              onChange={(e) => handleMacroAdd("main", e)}
+            />
+          )}
+          {objective === "catalogue" && isGeminiPath(catalogueProvider) && otherSlots.map((slot) => (
+            <input
+              key={`macro-${slot.id}`}
+              ref={(el) => { macroInputRefs.current[slot.id] = el; }}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              onChange={(e) => handleMacroAdd(slot.id, e)}
             />
           ))}
           <input
@@ -995,32 +1165,34 @@ export default function UploadPage() {
               {/* Model selection mode — Classic (legacy reference models) or
                   Personalised (AI Casting with Signature Models). Only shown
                   on Premium path (Casting doesn't apply to Vertex). */}
-              {aiGen.castingEnabled && isGeminiPath(catalogueProvider) && (
-                <div>
-                  <p className="text-xs font-medium text-gray-500 mb-2">Model selection</p>
-                  <div className="flex gap-2">
-                    {([
-                      { id: "classic", label: "Classic", desc: "Curated reference models" },
-                      { id: "personalised", label: "Personalised", desc: "AI Casting & Signature Models" },
-                    ] as const).map((m) => (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onClick={() => setModelMode(m.id)}
-                        aria-pressed={modelMode === m.id}
-                        className={`flex-1 text-left rounded-xl border p-2.5 transition-all ${
-                          modelMode === m.id
-                            ? "border-indigo-300 bg-gradient-to-br from-indigo-50 to-purple-50 ring-1 ring-purple-200"
-                            : "border-gray-100 bg-white hover:border-gray-200"
-                        }`}
-                      >
-                        <span className="text-xs font-semibold text-gray-900">{m.label}</span>
-                        <span className="block text-[11px] text-gray-500 mt-0.5">{m.desc}</span>
-                      </button>
-                    ))}
+              {aiGen.castingEnabled && isGeminiPath(catalogueProvider) && (() => {
+                const modeOptions = [
+                  { id: "classic" as const, label: "Classic", desc: "Curated reference models" },
+                  { id: "personalised" as const, label: "Personalised", desc: "AI Casting & Signature Models" },
+                ];
+                const selected = modeOptions.find((m) => m.id === modelMode);
+                return (
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 mb-2">Model selection</p>
+                    <div className="grid grid-cols-2 gap-1.5 p-1 bg-gray-50 rounded-2xl">
+                      {modeOptions.map((m) => (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => setModelMode(m.id)}
+                          aria-pressed={modelMode === m.id}
+                          className={`rounded-xl px-3 py-2 text-sm font-semibold transition-all ${
+                            modelMode === m.id ? "bg-white text-indigo-700 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                          }`}
+                        >
+                          {m.label}
+                        </button>
+                      ))}
+                    </div>
+                    {selected && <p className="text-xs text-gray-400 mt-2">{selected.desc}</p>}
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* AI Casting — Signature Model chooser. Only when Personalised
                   is selected AND on the Premium (Gemini) path. */}
@@ -1083,9 +1255,24 @@ export default function UploadPage() {
                 />
               )}
 
-              {/* Model selection is automatic for now (derived from the product's
-                  category + the gender detected at extraction). A picker for
-                  alternative models is planned. */}
+              {/* Store-model (person) selection is automatic for now (derived
+                  from the product's category + the gender detected at
+                  extraction). A picker for alternative store models is planned.
+                  This is a DIFFERENT axis from the image-gen test model below. */}
+
+              {/* Image-generation model — internal testing knob, Premium
+                  (Gemini) only, same gating as Quality, PLUS a separate
+                  server flag so it can stay hidden from retailers until
+                  there's enough test evidence to commit to exposing it. */}
+              {isGeminiPath(catalogueProvider) && aiGen.imageGenModelChooserEnabled && (
+                <ImageGenModelChooser
+                  value={imageGenModel}
+                  onChange={(m) => {
+                    setImageGenModel(m);
+                    patchBranding({ imageGenModel: m });
+                  }}
+                />
+              )}
 
               {/* Image branding — store-level; applies to all generated images */}
               <div>
@@ -1433,6 +1620,35 @@ export default function UploadPage() {
             )}
           </Button>
         </div>
+      </div>
+
+      {/* Right column — a live summary of what's actually configured so far.
+          Deliberately NOT a preview of the generated image: there is no
+          honest way to show that without paying for a real generation. */}
+      <div className="space-y-4 lg:sticky lg:top-6">
+        <div className="bg-white border border-gray-100 rounded-3xl p-5 shadow-sm">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Current configuration</p>
+          <div className="flex flex-wrap gap-1.5">
+            {form.category && <Badge variant="outline">{form.category}</Badge>}
+            {aiGen?.enabled && (
+              <Badge variant="outline">{CATALOGUE_STYLES.find((s) => s.id === catalogueProvider)?.label}</Badge>
+            )}
+            {aiGen?.enabled && objective && (
+              <Badge variant="outline">{aiGen.objectives.find((o) => o.id === objective)?.label ?? objective}</Badge>
+            )}
+            {generateModel && isGeminiPath(catalogueProvider) && (
+              <Badge variant="outline">{quality === "enhanced" ? "Enhanced · 2K" : "Standard · 1K"}</Badge>
+            )}
+            {generateModel && isGeminiPath(catalogueProvider) && aiGen?.imageGenModelChooserEnabled && (
+              <Badge variant="outline">{aiGen.imageGenModels?.find((m) => m.id === imageGenModel)?.label ?? imageGenModel}</Badge>
+            )}
+            {!generateModel && (
+              <Badge variant="outline">Generation off</Badge>
+            )}
+          </div>
+        </div>
+      </div>
+      </div>
       </form>
     </div>
   );

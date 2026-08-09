@@ -20,31 +20,33 @@ interface ObjectiveChooserProps {
 }
 
 export function ObjectiveChooser({ objectives, value, onChange }: ObjectiveChooserProps) {
+  const selected = objectives.find((o) => o.id === value);
+  const selectedMeta = selected ? OBJECTIVE_META[selected.id] : undefined;
   return (
-    <div className="grid grid-cols-2 gap-2">
-      {objectives.map((o) => {
-        const active = value === o.id;
-        const meta = OBJECTIVE_META[o.id];
-        return (
-          <button
-            key={o.id}
-            type="button"
-            onClick={() => onChange(o.id)}
-            aria-pressed={active}
-            className={cn(
-              "text-left rounded-2xl border p-3 transition-all",
-              active
-                ? "border-indigo-300 bg-gradient-to-br from-indigo-50 to-purple-50 ring-1 ring-purple-200"
-                : "border-gray-100 bg-white hover:border-gray-200"
-            )}
-          >
-            <span className="text-sm font-semibold text-gray-900">{meta?.label ?? o.label}</span>
-            <span className="block text-xs text-gray-500 mt-0.5 leading-snug">
-              {meta?.desc ?? o.description}
-            </span>
-          </button>
-        );
-      })}
+    <div>
+      <div className="grid grid-cols-2 gap-1.5 p-1 bg-gray-50 rounded-2xl">
+        {objectives.map((o) => {
+          const active = value === o.id;
+          const meta = OBJECTIVE_META[o.id];
+          return (
+            <button
+              key={o.id}
+              type="button"
+              onClick={() => onChange(o.id)}
+              aria-pressed={active}
+              className={cn(
+                "rounded-xl px-3 py-2 text-sm font-semibold transition-all",
+                active ? "bg-white text-indigo-700 shadow-sm" : "text-gray-500 hover:text-gray-700"
+              )}
+            >
+              {meta?.label ?? o.label}
+            </button>
+          );
+        })}
+      </div>
+      {selected && (
+        <p className="text-xs text-gray-400 mt-2">{selectedMeta?.desc ?? selected.description}</p>
+      )}
     </div>
   );
 }

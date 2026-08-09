@@ -5,8 +5,8 @@
  *
  *   Pass 1 (whole image): structured overview — construction, pattern,
  *     texture, surface techniques, craftsmanship — PLUS up to
- *     MAX_REGIONS regions of interest (normalized bounding boxes) where
- *     surface work deserves close-up inspection.
+ *     maxRegionsFor(category) regions of interest (normalized bounding
+ *     boxes) where surface work deserves close-up inspection.
  *
  *   Pass 2 (one batched call): every ROI is cropped LOCALLY from the
  *     original full-resolution buffer with sharp — crops keep native pixel
@@ -23,9 +23,14 @@ import sharp from "sharp";
 import { recordAiUsage } from "@/lib/ai-usage/record";
 import type {
   BackIntelligence,
+  ButiPopulation,
   GarmentIntelligence,
   RegionObservation,
   RegionOfInterest,
+  SareeBorder,
+  SareeBorderSubBand,
+  SareeColorZone,
+  SareeStructure,
   SurfaceTechnique,
 } from "./types";
 
@@ -33,7 +38,22 @@ import type {
 export const GARMENT_INTELLIGENCE_MODEL =
   process.env.GARMENT_INTELLIGENCE_MODEL || "gemini-2.5-flash";
 
-const MAX_REGIONS = 4;
+/**
+ * Saree/dupatta structurally has more independent zones than a generic
+ * garment (2 independent borders + pallu + potentially several buti
+ * populations) — a flat region budget assumed for a plain kurta undersells
+ * it. Same call shape either way (batched pass-2 call doesn't scale with
+ * region count), just a larger per-call token budget for this category.
+ */
+function isSareeLike(category: string): boolean {
+  const c = category.trim().toLowerCase();
+  return c === "saree" || c === "dupatta";
+}
+
+function maxRegionsFor(category: string): number {
+  return isSareeLike(category) ? 6 : 4;
+}
+
 /** Whole-image analysis input cap (longest edge, px). */
 const OVERVIEW_MAX_PX = 1024;
 /** Per-crop input cap (longest edge, px). */
@@ -155,24 +175,62 @@ const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
 const strArr = (v: unknown): string[] =>
   Array.isArray(v) ? v.map(str).filter(Boolean).slice(0, 8) : [];
 
+/**
+ * Saree/dupatta anatomy vocabulary, injected only for those categories so
+ * every other category's prompt stays byte-identical to before. Translates
+ * the verified rules from docs/research/SAREE_ANATOMY_TAXONOMY.md directly
+ * into extraction instructions rather than leaving the model to rediscover
+ * them per product.
+ */
+function sareeVocabularyBlock(): string {
+  return `
+Saree-specific anatomy — report this as "sareeStructure":
+- GEOMETRIC BORDER RULE (never guess from photo framing): a saree's border runs along its two LONG edges (the full length); the pallu is the SHORT edge at one end. To tell top from bottom: stand at the pallu edge, face into the body of the saree, fabric right-side-up — the border on your right hand is the TOP border, on your left is the BOTTOM border. The bottom border is the one nearest the wearer's feet and anchors the front pleats. Apply this rule; do not infer top/bottom from which side of the photo a border happens to appear on. If the photo genuinely doesn't show enough to apply the rule, use edge "unspecified" rather than guessing.
+- Describe the TOP and BOTTOM borders INDEPENDENTLY — they are frequently different in design AND width, never assume symmetry. Each border may itself be a STACK of distinct sub-bands (e.g. a wide motif panel plus a narrower stone trim plus an edge finish) — list each sub-band in order, outer edge first, rather than collapsing the border into one description.
+- Classify how the pallu relates to the border: "same-rotated" (same design, turned 90° at the corner), "boxed-nested" (the border continues as a frame around the pallu, which carries its own distinct interior content), "independent" (unrelated designs), or "unknown". When boxed-nested, describe the pallu's interior content SEPARATELY from the continuing border-frame. Note the corner treatment briefly (low priority, but real). Note tassel/fringe placement precisely (pallu end only? along a border? — never assume it's universal).
+- Enumerate ALL distinct buti (body motif) populations — sarees frequently carry MORE THAN ONE, not just a single repeated motif. For each: its placement zone (e.g. "all-over body", "confined to the bottom border only", "one color zone only" — this is also where a motif that bridges two zones, like a border band merging into a buti band, gets described in free text rather than forced into one category), whether it is "discrete" (a small self-contained repeat unit) or "continuous" (a connected/flowing pattern like a trailing vine with no single repeatable unit — mark this clearly, since a continuous population must never be treated as a stamped motif), and its running axis relative to the pallu: "perpendicular" (spans border-to-border across the width), "parallel" (runs along the length, hugging one specific border), or "none" (radially symmetric or non-directional, no orientation signal).
+- Classify the color structure: is the base a single solid color, a gradient, or a HARD LINE split (the whole width changes together at one point along the length — distinct from a gradient)? If hard-split, describe each color zone and whether that zone's border or buti design differs from the saree's default (many hard-split sarees carry two semi-independent decorative systems, not just two colors of the same design). If a sheer/see-through fabric makes one zone's motif appear to show through onto an adjacent zone, report that as an ABSENCE on the zone it shows through onto (it belongs to its true source zone), not as real content there.`;
+}
+
 function overviewPrompt(category: string): string {
+  const saree = isSareeLike(category);
+  const maxRegions = maxRegionsFor(category);
+  const surfaceTechniqueShape =
+    `{"type": "", "relief": "flat|low|raised|layered", "density": "sparse|scattered|medium|dense|all-over", "handcrafted": true, "colors": [], "placement": "", "stitchCharacteristics": "", ` +
+    `"constructionMethod": "", "materialComposition": [], "physicallyLayered": false, "layeringNote": ""}`;
+  const sareeStructureShape = saree
+    ? `,
+ "sareeStructure": {
+   "borders": [{"edge": "top|bottom|unspecified", "design": "", "subBands": [{"order": 0, "description": "", "width": "", "technique": ""}], "edgeAddition": ""}],
+   "palluRelationship": "same-rotated|boxed-nested|independent|unknown",
+   "palluContent": "", "palluCornerTreatment": "", "palluTassels": "",
+   "butiPopulations": [{"label": "", "placementZone": "", "patternType": "discrete|continuous", "axis": "perpendicular|parallel|none", "motif": "", "technique": "", "colors": []}],
+   "colorZones": [{"label": "", "colorMechanism": "", "colors": [], "decorativeOverrideNote": ""}],
+   "hardSplit": false
+ }`
+    : "";
   return `You are a senior fashion merchandiser analyzing a ${category} (Indian ethnic fashion) for catalogue reproduction. This product IS a ${category} — never reclassify it.
 Study the garment and return JSON with EXACTLY this shape:
 {
  "construction": {"silhouette": "", "length": "", "neckline": "", "sleeves": "", "details": []},
- "surfaceTechniques": [{"type": "", "relief": "flat|low|raised|layered", "density": "sparse|scattered|medium|dense|all-over", "handcrafted": true, "colors": [], "placement": "", "stitchCharacteristics": ""}],
+ "surfaceTechniques": [${surfaceTechniqueShape}],
  "pattern": {"motifs": [], "layout": "", "scale": ""},
  "texture": {"baseFabric": "", "finish": "", "drape": ""},
- "craftsmanship": {"overallDensity": "", "handcrafted": true, "highlights": []},
+ "craftsmanship": {"overallDensity": "", "handcrafted": true, "highlights": [], "captureRisk": ""},
  "regionsOfInterest": [{"label": "", "reason": "", "x": 0, "y": 0, "width": 0, "height": 0}],
- "confidence": "high|medium|low"
+ "confidence": "high|medium|low",
+ "explicitAbsences": []${sareeStructureShape}
 }
 Rules:
 - construction.length: the garment's PRECISE hem level in body-landmark terms — "hip-length", "mid-thigh", "knee-length", "mid-shin", "ankle-length"... There is no universal ${category} length; state exactly where THIS one ends. construction.sleeves: the PRECISE sleeve length — "sleeveless", "cap sleeves", "half sleeves", "elbow-length", "three-quarter sleeves", "full sleeves". Both are mandatory whenever the garment has a hem/sleeves — when they are partially occluded or hard to see (folded garment, cropped photo), give your single most likely estimate anyway; NEVER leave them empty. An empty field lets every generated view invent its own answer, which is worse than a consistent best estimate.
 - surfaceTechniques: name the SPECIFIC technique (chikankari, zari, mirror work, sequins, bead work, applique, lace, crochet, jacquard, quilting, smocking, block print, digital print...) — never just "embroidery" if a more precise name applies. Distinguish printed/flat work from dimensional stitched work; "relief" and "handcrafted" must reflect the physical surface, not the visual pattern.
-- craftsmanship.highlights: the 2-4 things a generated catalogue image must NOT lose.
-- regionsOfInterest: up to ${MAX_REGIONS} regions where surface work/craftsmanship is best visible and deserves close-up analysis (x,y,width,height normalized 0..1 on this image, garment areas only — skip faces/background). Empty array if the garment is plain.
-- Report only what is clearly visible. Unknown fields: empty string/array.`;
+- constructionMethod: state HOW the technique is physically made — "woven into the fabric structure" (jacquard/brocade — authentically lower-relief, flat is CORRECT for these) vs "applied onto the surface after weaving" (embroidery/appliqué/stitched thread/stonework — genuinely raised even when photographed under light that makes it look flat). This determines whether a flat photographic read is authentic or a fidelity loss to correct for — judge it from what the technique physically IS, not only from how this particular photo happens to light it.
+- materialComposition: when a single motif/technique combines multiple distinct material classes (e.g. metallic thread petals + a stone ring + a contrast velvet centre), list each; empty when single-material.
+- physicallyLayered / layeringNote: true only when techniques are physically stacked on top of each other (e.g. a zari base layer, then thread stitching over it, then mirror discs set on top of that) producing cumulative real thickness — not just one raised layer. Describe the stack order in layeringNote when true.
+- craftsmanship.highlights: the 2-4 things a generated catalogue image must NOT lose. craftsmanship.captureRisk: state plainly when an embellishment's color closely matches the base fabric color — such work can be nearly invisible in a normal photo and needs to be flagged, not silently under-reported.
+- explicitAbsences: list anything a viewer familiar with this garment category would reasonably expect but that is CONFIRMED ABSENT here (e.g. "no buti on the plain end of the fabric") — never leave an absence to silence; a generator with no negative signal defaults to inventing plausible detail where none exists.
+- regionsOfInterest: up to ${maxRegions} regions where surface work/craftsmanship is best visible and deserves close-up analysis (x,y,width,height normalized 0..1 on this image, garment areas only — skip faces/background). Empty array if the garment is plain.
+- Report only what is clearly visible. Unknown fields: empty string/array.${saree ? sareeVocabularyBlock() : ""}`;
 }
 
 function backPrompt(category: string): string {
@@ -193,18 +251,23 @@ interface EvidenceImage {
   provenance: string;
   mime: string;
   data: Buffer;
+  /** Which evidence lane produced this image. */
+  source: "upload" | "roi";
+  /** Normalized bbox on the analyzed main image; null for retailer uploads (a separate photo, no position on the main image). */
+  bbox: { x: number; y: number; width: number; height: number } | null;
 }
 
-function regionPrompt(category: string, evidence: EvidenceImage[]): string {
+function regionPrompt(category: string, evidence: EvidenceImage[], saree: boolean): string {
   const list = evidence.map((e, i) => `Image ${i + 1}: "${e.label}" — ${e.provenance}`).join("\n");
   return `These are close-up views of the SAME ${category} you would analyze as a fashion merchandiser. For each image, describe the surface work at stitch level.
 ${list}
 Return JSON: an array with EXACTLY one object per image, in order:
-[{"label": "", "technique": "", "relief": "flat|low|raised|layered", "detail": "", "motif": ""}]
+[{"label": "", "technique": "", "relief": "flat|low|raised|layered", "detail": "", "motif": "", "constructionMethod": ""}]
 Rules:
 - "detail": the stitch/work characteristics visible at THIS scale — thread thickness, stitch length and separation, knots, layering, shadows cast by raised threads, irregularity that signals handwork. Be concrete and physical ("individually visible 2-3mm running stitches sitting proud of the fabric"), never generic ("nice embroidery").
 - "motif": the geometric structure inside the image (lattice, boxes, flower centers, arcs...).
-- If an image shows printed/flat work, say so plainly — relief "flat", detail describing the printed appearance.`;
+- "constructionMethod": same vocabulary as the overview pass — "woven into the fabric structure" vs "applied onto the surface after weaving". This close-up is your best evidence for this judgment; use it even if the overview pass already guessed.
+- If an image shows printed/flat work, say so plainly — relief "flat", detail describing the printed appearance.${saree ? '\n- For a saree, also state which named buti population or border sub-band (from the overview) this crop belongs to, if identifiable, folded into "detail".' : ""}`;
 }
 
 /** Clamp an ROI to sane normalized bounds; null when degenerate. */
@@ -237,6 +300,96 @@ function normalizeTechnique(t: unknown): SurfaceTechnique | null {
     colors: strArr(o.colors),
     placement: str(o.placement),
     stitchCharacteristics: str(o.stitchCharacteristics),
+    constructionMethod: str(o.constructionMethod),
+    materialComposition: strArr(o.materialComposition),
+    physicallyLayered: o.physicallyLayered === true,
+    layeringNote: str(o.layeringNote),
+  };
+}
+
+function normalizeBorderSubBand(b: unknown): SareeBorderSubBand | null {
+  if (!b || typeof b !== "object") return null;
+  const o = b as Record<string, unknown>;
+  const description = str(o.description);
+  if (!description) return null;
+  const order = typeof o.order === "number" && Number.isFinite(o.order) ? o.order : 0;
+  return { order, description, width: str(o.width), technique: str(o.technique) };
+}
+
+function normalizeBorder(b: unknown): SareeBorder | null {
+  if (!b || typeof b !== "object") return null;
+  const o = b as Record<string, unknown>;
+  const design = str(o.design);
+  const subBands = Array.isArray(o.subBands)
+    ? o.subBands.map(normalizeBorderSubBand).filter((s): s is SareeBorderSubBand => s !== null).slice(0, 5)
+    : [];
+  if (!design && subBands.length === 0) return null;
+  const edgeRaw = str(o.edge);
+  const edge: SareeBorder["edge"] =
+    edgeRaw === "top" || edgeRaw === "bottom" ? edgeRaw : "unspecified";
+  return { edge, design, subBands, edgeAddition: str(o.edgeAddition) };
+}
+
+function normalizeButiPopulation(b: unknown): ButiPopulation | null {
+  if (!b || typeof b !== "object") return null;
+  const o = b as Record<string, unknown>;
+  const motif = str(o.motif);
+  const label = str(o.label);
+  if (!motif && !label) return null;
+  const patternType: ButiPopulation["patternType"] = o.patternType === "continuous" ? "continuous" : "discrete";
+  const axisRaw = str(o.axis);
+  const axis: ButiPopulation["axis"] =
+    axisRaw === "perpendicular" || axisRaw === "parallel" ? axisRaw : "none";
+  return {
+    label: label || motif,
+    placementZone: str(o.placementZone),
+    patternType,
+    axis,
+    motif,
+    technique: str(o.technique),
+    colors: strArr(o.colors),
+  };
+}
+
+function normalizeColorZone(z: unknown): SareeColorZone | null {
+  if (!z || typeof z !== "object") return null;
+  const o = z as Record<string, unknown>;
+  const label = str(o.label);
+  if (!label) return null;
+  return {
+    label,
+    colorMechanism: str(o.colorMechanism),
+    colors: strArr(o.colors),
+    decorativeOverrideNote: str(o.decorativeOverrideNote),
+  };
+}
+
+function normalizeSareeStructure(s: unknown): SareeStructure | null {
+  if (!s || typeof s !== "object") return null;
+  const o = s as Record<string, unknown>;
+  const borders = Array.isArray(o.borders)
+    ? o.borders.map(normalizeBorder).filter((b): b is SareeBorder => b !== null).slice(0, 2)
+    : [];
+  const butiPopulations = Array.isArray(o.butiPopulations)
+    ? o.butiPopulations.map(normalizeButiPopulation).filter((b): b is ButiPopulation => b !== null).slice(0, 6)
+    : [];
+  const colorZones = Array.isArray(o.colorZones)
+    ? o.colorZones.map(normalizeColorZone).filter((z): z is SareeColorZone => z !== null).slice(0, 4)
+    : [];
+  // Nothing usable extracted — treat as no structure rather than an empty shell.
+  if (borders.length === 0 && butiPopulations.length === 0 && colorZones.length === 0) return null;
+  const relRaw = str(o.palluRelationship);
+  const palluRelationship: SareeStructure["palluRelationship"] =
+    relRaw === "same-rotated" || relRaw === "boxed-nested" || relRaw === "independent" ? relRaw : "unknown";
+  return {
+    borders,
+    palluRelationship,
+    palluContent: str(o.palluContent),
+    palluCornerTreatment: str(o.palluCornerTreatment),
+    palluTassels: str(o.palluTassels),
+    butiPopulations,
+    colorZones,
+    hardSplit: o.hardSplit === true,
   };
 }
 
@@ -248,6 +401,8 @@ interface OverviewPayload {
   craftsmanship?: Record<string, unknown>;
   regionsOfInterest?: unknown[];
   confidence?: unknown;
+  explicitAbsences?: unknown[];
+  sareeStructure?: unknown;
 }
 
 /**
@@ -264,6 +419,9 @@ export async function analyzeGarment(
     .jpeg({ quality: 88 })
     .toBuffer();
 
+  const saree = isSareeLike(input.category);
+  const maxRegions = maxRegionsFor(input.category);
+
   const overviewRes = await callGeminiVision(
     [{ mime: "image/jpeg", data: overviewImage }],
     overviewPrompt(input.category),
@@ -279,7 +437,7 @@ export async function analyzeGarment(
   const craftsmanship = overview.craftsmanship ?? {};
 
   const intelligence: GarmentIntelligence = {
-    version: 2,
+    version: 3,
     construction: {
       silhouette: str(construction.silhouette),
       length: str(construction.length),
@@ -305,11 +463,37 @@ export async function analyzeGarment(
       overallDensity: str(craftsmanship.overallDensity),
       handcrafted: craftsmanship.handcrafted === true,
       highlights: strArr(craftsmanship.highlights),
+      captureRisk: str(craftsmanship.captureRisk),
     },
     regions: [],
     back: null,
     confidence: str(overview.confidence) || "medium",
+    explicitAbsences: strArr(overview.explicitAbsences),
+    sareeStructure: saree ? normalizeSareeStructure(overview.sareeStructure) : null,
   };
+
+  // Deterministic pallu default when the model has NO signal either way
+  // (palluRelationship "unknown") and the retailer didn't upload a dedicated
+  // pallu close-up: default to "same-rotated" with no distinct content,
+  // rather than leaving a gap the generator will fill in on its own.
+  // Genuine evidence is never overridden — this only fires when the model
+  // itself found nothing to go on. See docs/research/SESSION_HANDOFF_2026-08-08.md
+  // and the retailer's 2026-08-09 bug report: a saree always has a border
+  // and a pallu; the open question is only whether they match, and "no
+  // evidence of a difference" must mean "assume they match," never "invent
+  // a difference."
+  if (intelligence.sareeStructure && intelligence.sareeStructure.palluRelationship === "unknown") {
+    const hasPalluEvidence = (input.partImages ?? []).some((p) => /pallu/i.test(p.label));
+    if (!hasPalluEvidence) {
+      intelligence.sareeStructure = {
+        ...intelligence.sareeStructure,
+        palluRelationship: "same-rotated",
+        palluContent:
+          intelligence.sareeStructure.palluContent ||
+          "no separate pallu evidence provided — assume it continues the border design, rotated at the corner",
+      };
+    }
+  }
 
   // ── Pass 2: close-up evidence, one batched call ─────────────────────────
   // Retailer part close-ups first (real macro photos — the best evidence);
@@ -317,7 +501,7 @@ export async function analyzeGarment(
   try {
     const evidence: EvidenceImage[] = [];
 
-    for (const part of (input.partImages ?? []).slice(0, MAX_REGIONS)) {
+    for (const part of (input.partImages ?? []).slice(0, maxRegions)) {
       try {
         const resized = await sharp(part.buffer)
           .rotate()
@@ -329,6 +513,8 @@ export async function analyzeGarment(
           provenance: "a real close-up photo of this area uploaded by the retailer",
           mime: "image/jpeg",
           data: resized,
+          source: "upload",
+          bbox: null,
         });
       } catch {
         /* skip a bad part image; the rest still run */
@@ -338,7 +524,7 @@ export async function analyzeGarment(
     const regions = (overview.regionsOfInterest ?? [])
       .map(clampRegion)
       .filter((r): r is RegionOfInterest => r !== null)
-      .slice(0, Math.max(0, MAX_REGIONS - evidence.length));
+      .slice(0, Math.max(0, maxRegions - evidence.length));
 
     if (regions.length > 0) {
       const meta = await sharp(input.buffer).rotate().metadata();
@@ -363,6 +549,8 @@ export async function analyzeGarment(
               provenance: `a crop of the main photo — ${r.reason || "flagged for close-up analysis"}`,
               mime: "image/jpeg",
               data: crop,
+              source: "roi",
+              bbox: { x: r.x, y: r.y, width: r.width, height: r.height },
             });
           } catch {
             /* skip a bad crop; the rest still run */
@@ -374,7 +562,7 @@ export async function analyzeGarment(
     if (evidence.length > 0) {
       const regionRes = await callGeminiVision(
         evidence.map((e) => ({ mime: e.mime, data: e.data })),
-        regionPrompt(input.category, evidence),
+        regionPrompt(input.category, evidence, saree),
         "regions",
         input
       );
@@ -391,6 +579,9 @@ export async function analyzeGarment(
               relief: str(o.relief),
               detail: str(o.detail),
               motif: str(o.motif),
+              constructionMethod: str(o.constructionMethod),
+              bbox: evidence[i].bbox,
+              source: evidence[i].source,
             };
           })
           .filter((o): o is RegionObservation => o !== null);

@@ -36,8 +36,10 @@ import { categorizeGenerationError } from "./failure-message";
 import { runQuickListingStrategy } from "./strategies/quick-listing";
 import { runCatalogueStrategy, type StrategyProduct } from "./strategies/catalogue";
 import type { GenerationQuality } from "./quality";
+import type { ImageGenModel } from "./image-gen-models";
 import { ensureDetailNotes, ensureBackDetailNotes } from "@/lib/metadata/detail-notes";
 import { ensureGarmentIntelligence, isGarmentIntelligenceEnabled } from "@/lib/garment-intelligence/service";
+import type { GarmentIntelligence } from "@/lib/garment-intelligence/types";
 import { parsePartImages, findBackPart } from "@/lib/product/part-slots";
 import { isAiCastingEnabled, getModelProfile, listModelProfiles } from "./casting";
 import { resolveCasting, type CastingResult, type CastingProfileInput } from "./casting-match";
@@ -77,6 +79,12 @@ export interface GenerateModelImagesInput {
    * persisted, the retailer chooses it fresh per generation (lib/model-gen/quality.ts).
    */
   quality?: GenerationQuality;
+  /**
+   * Image-generation model for THIS run (internal testing knob). Defaults to
+   * the retailer's stored default (settings.imageGenModel). Only affects the
+   * Gemini path — Vertex ignores it.
+   */
+  model?: ImageGenModel;
   /**
    * Studio (default) or Scenic for THIS run. Like `quality`, this is a
    * per-generation choice, never a sticky default — Studio is always what
@@ -211,10 +219,12 @@ export async function generateModelImages(
   const ctx = { storeId: input.userId, userId: input.userId };
   let detailNotes: string | null;
   let backDetailNotes: string | null;
+  let garmentIntelligence: GarmentIntelligence | null = null;
   if (giEnabled) {
     const garmentIntel = await ensureGarmentIntelligence(product.id, ctx);
     detailNotes = garmentIntel?.promptNotes || null;
     backDetailNotes = garmentIntel?.backPromptNotes ?? null;
+    garmentIntelligence = garmentIntel?.intelligence ?? null;
   } else {
     detailNotes = await ensureDetailNotes(product.id, product.imageUrl, product.category, ctx);
     backDetailNotes = backImageUrl
@@ -232,6 +242,7 @@ export async function generateModelImages(
     backImageUrl,
     detailNotes,
     backDetailNotes,
+    garmentIntelligence,
   };
 
   // Catalogue backend — retailer's explicit Premium/Economy choice; this
@@ -362,6 +373,8 @@ export async function generateModelImages(
   // remembered setting. Vertex ignores the field internally (single output
   // size) so this only affects the Gemini path.
   const effectiveQuality = input.quality ?? settings.quality;
+  // Same override priority for the image-gen model test knob.
+  const effectiveModel = input.model ?? settings.imageGenModel;
 
   let backdrop: string;
   let brandingHint: { preferredLogo: "dark" | "light"; brightness: number };
@@ -448,6 +461,7 @@ export async function generateModelImages(
           userId: input.userId,
           backdrop,
           quality: effectiveQuality,
+          model: effectiveModel,
           // Route Quick Listing by the retailer's Premium/Economy pick just
           // like Catalogue. "vertex" preserves the historic Gemini fallback
           // safety net; "gemini" skips Vertex entirely.
@@ -466,6 +480,7 @@ export async function generateModelImages(
           // up quietly ignored (and never billed for) — clearer intent.
           partImages: catalogueProvider === "gemini" ? partImages : [],
           quality: effectiveQuality,
+          model: effectiveModel,
           casting,
           existingFrontUrl,
           existingBackUrl,
@@ -497,8 +512,14 @@ export async function generateModelImages(
   );
 
   if (branded.length > 0) {
-    await persistGeneratedImages(product.id, branded, objective,
-      isResumeMode ? { replaceExisting: true } : undefined);
+    // `branded` is always the complete, authoritative image set for this
+    // objective at this point — in "recreate" it's the fresh full
+    // regeneration, in "resume" it's the existing carried-over views plus
+    // the newly-filled-in ones (strategies pre-populate existingBaseShots).
+    // Always replace what's stored rather than append, or a second full
+    // regeneration (e.g. picking a different test model and hitting
+    // Recreate) duplicates every card instead of superseding it.
+    await persistGeneratedImages(product.id, branded, objective, { replaceExisting: true });
     // Record perf/quality rows (non-fatal) for analytics + scoring — only for
     // ACTUAL new generations, not enhanced uploads or carried-over images.
     const generated = branded.filter((img) => img.source !== "upload" && !img.existing);

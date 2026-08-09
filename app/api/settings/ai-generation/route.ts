@@ -20,6 +20,7 @@ import { isVertexTryOnEnabled, getVertexConfig } from "@/lib/tryon-vertex";
 import { isAiCastingEnabled, listModelProfiles } from "@/lib/model-gen/casting";
 import { getFace } from "@/lib/model-gen/faces";
 import { isGenerationQuality } from "@/lib/model-gen/quality";
+import { listImageGenModels, isImageGenModel, isImageGenModelChooserEnabled } from "@/lib/model-gen/image-gen-models";
 
 /** Resolve the store logo's delivery URL from its public_id, if uploaded. */
 async function logoUrl(userId: string): Promise<string | null> {
@@ -49,6 +50,11 @@ function options() {
     scenes: listSceneOptions(),
     brandPacks: BRAND_PACKS,
     scenicEnabled: isScenicCollectionEnabled(),
+    // Selectable image-gen test models (Gemini path only) — internal testing
+    // knob, hidden from retailers until isImageGenModelChooserEnabled() is
+    // flipped on (Railway env var, no redeploy-worthy code change needed).
+    imageGenModelChooserEnabled: isImageGenModelChooserEnabled(),
+    imageGenModels: listImageGenModels(),
   };
 }
 
@@ -98,6 +104,7 @@ export async function PATCH(req: NextRequest) {
     const rawBrandingStyle = (body as { brandingStyle?: unknown }).brandingStyle;
     const rawCatalogueProvider = (body as { catalogueProvider?: unknown }).catalogueProvider;
     const rawQuality = (body as { quality?: unknown }).quality;
+    const rawImageGenModel = (body as { imageGenModel?: unknown }).imageGenModel;
     const rawBackdrop = (body as { backdrop?: unknown }).backdrop;
     const rawScenic = (body as { scenic?: unknown }).scenic;
 
@@ -143,6 +150,12 @@ export async function PATCH(req: NextRequest) {
         { status: 400 }
       );
     }
+    if (rawImageGenModel !== undefined && !isImageGenModel(rawImageGenModel)) {
+      return NextResponse.json(
+        { error: "Invalid image-generation model." },
+        { status: 400 }
+      );
+    }
     if (rawBackdrop !== undefined && !isBackdropSelection(rawBackdrop)) {
       return NextResponse.json(
         { error: "Invalid backdrop." },
@@ -166,6 +179,7 @@ export async function PATCH(req: NextRequest) {
       brandingStyle: isBrandingStyle(rawBrandingStyle) ? rawBrandingStyle : current.brandingStyle,
       catalogueProvider: isCatalogueProvider(rawCatalogueProvider) ? rawCatalogueProvider : current.catalogueProvider,
       quality: isGenerationQuality(rawQuality) ? rawQuality : current.quality,
+      imageGenModel: isImageGenModel(rawImageGenModel) ? rawImageGenModel : current.imageGenModel,
       backdrop: isBackdropSelection(rawBackdrop) ? rawBackdrop : current.backdrop,
       scenic: isScenicSelection(rawScenic) ? rawScenic : current.scenic,
     };

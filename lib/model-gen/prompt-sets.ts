@@ -18,14 +18,35 @@ export interface PromptView {
 }
 
 export const CROSS_VIEW_LABEL = "__cross_view_ref__";
+/**
+ * Marks a reference image sourced from Garment Intelligence's own evidence
+ * (a retailer part upload or a model-proposed ROI crop, re-derived at
+ * generation time — see lib/garment-intelligence/region-references.ts).
+ * Unlike the generic close-up template below, these carry the FULL placement
+ * instruction (zone, axis, "trust this over the crop's own framing") in
+ * `placement` — text and image are deliberately split by what each is
+ * reliable for: the crop for surface/relief fidelity, the accompanying
+ * sentence for WHERE it goes, sourced from GI's structured data rather than
+ * left for the model to infer from the photo's own incidental orientation.
+ */
+export const GI_REGION_LABEL = "__gi_region__";
 
 // Saree drape is deterministic and IDENTICAL in intent across front and back
 // (only the camera side differs) — retailer testing (2026-07-15) found the
 // model otherwise improvised the pallu differently per view (front bunched/
-// short, back floor-length/spread). We standardize on the spread-open,
-// floor-length pallu because it shows the most surface area and craftsmanship.
+// short, back floor-length/spread). We standardize on a floor-length pallu
+// with its full design visible because that's what shows the most surface
+// area and craftsmanship — NOT on a flat, "spread open" rendering: retailer
+// testing (2026-08-09) found the earlier wording ("spread fully open...flat
+// and wide...edge-to-edge") pushed the model to render a second unfurled
+// sheet of fabric alongside the one already draped over the shoulder (front:
+// pallu appearing twice), and a stiff, gravity-defying flat rectangle on the
+// back — both a direct consequence of describing the pallu as a flat panel
+// instead of real cloth. Rewritten to keep the original intent (full pallu
+// visible, floor-length, never bunched/tucked/shortened, identical between
+// views) while describing physically real drape.
 const SAREE_DRAPE =
-  "The pallu is spread fully open and cascades straight down to floor length, displayed flat and wide with its entire design and border visible edge-to-edge — never bunched, folded, tucked or shortened. The saree is draped in a neat, elegant, presentable style that maximises the visible embroidered surface.";
+  "The pallu is a single continuous piece of fabric draped over one shoulder and falling to floor length, its full design and border visible along its length — never bunched, folded, tucked or shortened, and never rendered as a second or duplicate panel of fabric elsewhere on the body. It follows natural cloth physics: soft, gravity-led folds and drape, exactly one pallu per figure, never held flat, rigid or stiffly away from the body. The saree is draped in a neat, elegant, presentable style that maximises the visible embroidered surface without sacrificing realistic fabric behavior.";
 
 const SAREE: PromptView[] = [
   { id: "front",  label: "Front View",       modifier: `Full-length front view of the draped saree. ${SAREE_DRAPE}` },
@@ -282,6 +303,9 @@ function extraImageClause(
     }
     if (r.label === CROSS_VIEW_LABEL_INTERNAL) {
       return `Image ${startIndex + i} is the ${r.placement} of this exact same model from this same photo session — the current view MUST show the exact same person: same hair (colour, length, style, parting), same skin tone, same body build and proportions, same outfit and accessories. Only the camera angle changes.`;
+    }
+    if (r.label === GI_REGION_LABEL) {
+      return `Image ${startIndex + i} is a real close-up photo of this exact same garment, for SURFACE TEXTURE AND RELIEF fidelity only. ${r.placement}`;
     }
     return `Image ${startIndex + i} is a real close-up photo of ${r.label} of this exact same garment — faithfully reproduce its exact design, motif, colour and surface texture on ${r.placement}.`;
   });

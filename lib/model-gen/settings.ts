@@ -32,6 +32,11 @@ import {
   isGenerationQuality,
   type GenerationQuality,
 } from "./quality";
+import {
+  DEFAULT_IMAGE_GEN_MODEL,
+  isImageGenModel,
+  type ImageGenModel,
+} from "./image-gen-models";
 
 /** Where the brand watermark sits on generated model images. */
 export type BrandingPosition = "top-left" | "top-right";
@@ -81,6 +86,12 @@ export interface AiGenSettings {
    * remembered value unless they change it.
    */
   quality: GenerationQuality;
+  /**
+   * Image-generation model — internal testing knob (lib/model-gen/image-gen-models.ts).
+   * Only consumed on the Gemini path; Vertex ignores it. Remembered like
+   * `quality`, but per-request/product tests are expected to override it.
+   */
+  imageGenModel: ImageGenModel;
   /** Studio backdrop for generated images (Smart match, or a chosen preset). */
   backdrop: BackdropSelection;
   /**
@@ -103,6 +114,7 @@ export const DEFAULT_AI_GEN_SETTINGS: AiGenSettings = {
   // casting / scenes / quality / multi-image.
   catalogueProvider: "vertex",
   quality: DEFAULT_GENERATION_QUALITY,
+  imageGenModel: DEFAULT_IMAGE_GEN_MODEL,
   backdrop: { ...DEFAULT_BACKDROP_SELECTION },
   scenic: { ...DEFAULT_SCENIC_SELECTION },
 };
@@ -139,6 +151,9 @@ export function parseAiGenSettings(raw: string | null | undefined): AiGenSetting
       quality: isGenerationQuality(parsed.quality)
         ? parsed.quality
         : DEFAULT_AI_GEN_SETTINGS.quality,
+      imageGenModel: isImageGenModel(parsed.imageGenModel)
+        ? parsed.imageGenModel
+        : DEFAULT_AI_GEN_SETTINGS.imageGenModel,
       backdrop: parseBackdropSelection(parsed.backdrop),
       scenic: parseScenicSelection(parsed.scenic),
     };

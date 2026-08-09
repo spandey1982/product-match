@@ -32,8 +32,22 @@ const CATEGORY_SLOTS: Record<string, CategorySlots> = {
   saree: {
     main: "Main",
     others: [
-      { id: "pallu", label: "Pallu" },
+      // Superseded the earlier generic "Detail Close-up 1-6" slots that used
+      // to live here (2026-08 taxonomy work) — macros are now nested per-part
+      // in the upload UI itself (app/(dashboard)/upload/page.tsx PartRow),
+      // uploaded as slot ids like "pallu-detail-1"/"body-detail-1" at submit
+      // time. Retailer-labelled ground truth for which zone a macro belongs
+      // to, instead of a flat pool GI has to guess the relationship for — see
+      // docs/research/SAREE_ANATOMY_TAXONOMY.md, "no human narrator in
+      // production" (Sample 7) and "relationships over rigid labels" (Sample 10).
+      // Border before Pallu (retailer's own upload-order convention, 2026-08-09):
+      // a saree always has a border, so it anchors first; pallu is only worth a
+      // separate upload when it carries a DIFFERENT design than the border. An
+      // omitted pallu upload is a deterministic fact ("same as border") the
+      // render layer now enforces — see renderPalluRelationship in render.ts —
+      // not a gap for the generator to fill in on its own.
       { id: "border", label: "Border" },
+      { id: "pallu", label: "Pallu" },
       { id: "blouse-front", label: "Blouse Front" },
       { id: "blouse-back", label: "Blouse Back" },
     ],
