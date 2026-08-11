@@ -292,6 +292,13 @@ model ProductImage {
   objective String
   isPrimary Boolean @default(false)
 
+  // One-step undo for the erase/fix-region feature (lib/model-gen/erase.ts):
+  // an edit overwrites `url` but keeps the immediately-prior version here, so
+  // a bad edit can be reverted once. Not a full history — a second edit
+  // before reverting the first overwrites this again. Null until first edit.
+  previousUrl String?
+  editedAt    DateTime?
+
   createdAt DateTime @default(now())
 
   @@index([productId])

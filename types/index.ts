@@ -43,6 +43,8 @@ export type Product = {
   rentalDeposit?: number | null;
   imageUrl?: string | null;
   backImageUrl?: string | null;
+  /** JSON-string array of { slot, label, url } — parse with lib/product/part-slots.ts's parsePartImages, never by hand. */
+  partImages?: string | null;
   thumbnailUrl?: string | null;
   modelImageUrl?: string | null;
   generatedImages?: ProductImage[];

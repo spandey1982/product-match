@@ -26,6 +26,7 @@ const OP_LABELS: Record<BillingOperation, string> = {
   ai_review: "AI Review",
   auto_catalog_classify: "Catalog Classify",
   auto_catalog_verify: "Catalog Verify",
+  erase: "Fix Region (Erase)",
 };
 
 function PriceFields({

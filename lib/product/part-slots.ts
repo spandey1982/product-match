@@ -38,8 +38,7 @@ const CATEGORY_SLOTS: Record<string, CategorySlots> = {
       // uploaded as slot ids like "pallu-detail-1"/"body-detail-1" at submit
       // time. Retailer-labelled ground truth for which zone a macro belongs
       // to, instead of a flat pool GI has to guess the relationship for — see
-      // docs/research/SAREE_ANATOMY_TAXONOMY.md, "no human narrator in
-      // production" (Sample 7) and "relationships over rigid labels" (Sample 10).
+      // PROJECT_KNOWLEDGE.md, saree anatomy vocabulary section.
       // Border before Pallu (retailer's own upload-order convention, 2026-08-09):
       // a saree always has a border, so it anchors first; pallu is only worth a
       // separate upload when it carries a DIFFERENT design than the border. An

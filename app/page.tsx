@@ -17,8 +17,6 @@ import {
   TrendingUp,
   Clock,
   ShoppingBag,
-  Star,
-  Zap,
 } from "lucide-react";
 
 // ─── Animated counter hook ───────────────────────────────────────────────────

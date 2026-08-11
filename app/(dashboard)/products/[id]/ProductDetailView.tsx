@@ -38,6 +38,7 @@ import {
   MoreVertical,
   Heart,
   Download,
+  Eraser,
 } from "lucide-react";
 import { ProductImageViewer } from "@/components/product/ProductImageViewer";
 import { ProductThumbnailRail } from "@/components/product/ProductThumbnailRail";
@@ -53,11 +54,17 @@ import { GenerationSettingsModal, useGenerationSettingsModal, type GenerationSet
 import { getMockRentalInfo } from "@/lib/rental/mock-data";
 import { downloadImage } from "@/lib/share-image";
 import { RentalInfoPanel } from "@/components/rental/RentalInfoPanel";
+import { EraseRegionModal } from "@/components/product/EraseRegionModal";
+import { parsePartImages } from "@/lib/product/part-slots";
 
 interface GeneratedImage {
+  /** ProductImage.id — absent for legacy synthetic entries (on-model fallback) with no backing row. */
+  id?: string;
   url: string;
   view: string;
   objective?: string;
+  /** Set once this image has been edited via the erase/fix-region feature — enables one-step undo. */
+  previousUrl?: string | null;
 }
 
 interface Props {
@@ -120,6 +127,12 @@ export function ProductDetailView({
   const [wishlisted, setWishlisted] = useState(false);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [eraseModalOpen, setEraseModalOpen] = useState(false);
+  const partImages = parsePartImages(product.partImages);
+  // Fix Region is base-shots only — cropped cards (pleats/pallu/blouse) are
+  // re-derived from the base via the finalize cascade, never edited directly
+  // (see EraseRegionModal's onFinalized handler below).
+  const isBaseImageView = (v?: string) => v === "front" || v === "back";
 
   const [genImages, setGenImages] = useState<GeneratedImage[]>(generatedImages);
   const [modelUrl, setModelUrl] = useState<string | null>(product.modelImageUrl ?? null);
@@ -302,6 +315,24 @@ export function ProductDetailView({
     try {
       await downloadImage(masterUrl(framedImageUrl(img.url, img.view)), filename);
     } catch { /* silent */ }
+  }
+
+  /** Patch the edited/reverted image's url+previousUrl in place — no full reload needed. */
+  function handleErased(imageId: string, newUrl: string, previousUrl: string | null) {
+    setGenImages((prev) =>
+      prev.map((g) => (g.id === imageId ? { ...g, url: newUrl, previousUrl } : g))
+    );
+  }
+
+  /** Patch every crop card the finalize cascade regenerated from the newly-edited base (pleats/blouse from front, pallu from back). */
+  function handleFinalized(updates: Array<{ view: string; url: string }>) {
+    if (updates.length === 0) return;
+    setGenImages((prev) =>
+      prev.map((g) => {
+        const match = updates.find((u) => u.view === g.view);
+        return match ? { ...g, url: match.url } : g;
+      })
+    );
   }
 
   async function handleDownloadAll() {
@@ -623,7 +654,7 @@ export function ProductDetailView({
               )}
 
               {allImages.length > 0 && (
-                <div className="absolute bottom-3 left-3 z-30 pointer-events-auto" onClick={(e) => e.stopPropagation()}>
+                <div className="absolute bottom-3 left-3 z-30 pointer-events-auto flex gap-2" onClick={(e) => e.stopPropagation()}>
                   <button
                     type="button"
                     aria-label="Download image"
@@ -632,6 +663,16 @@ export function ProductDetailView({
                   >
                     <Download className="h-3.5 w-3.5" strokeWidth={2} />
                   </button>
+                  {allImages[safeActiveIndex]?.id && isBaseImageView(allImages[safeActiveIndex]?.view) && (
+                    <button
+                      type="button"
+                      aria-label="Fix region"
+                      onClick={() => setEraseModalOpen(true)}
+                      className="h-8 w-8 rounded-full bg-white/90 backdrop-blur-sm shadow-md flex items-center justify-center text-gray-600 hover:text-indigo-600 hover:bg-white transition-colors"
+                    >
+                      <Eraser className="h-3.5 w-3.5" strokeWidth={2} />
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -1074,6 +1115,25 @@ export function ProductDetailView({
         catalogueComplete={catalogueComplete}
         settingsData={genSettingsModal.data}
         settingsLoading={genSettingsModal.loading}
+      />
+
+      <EraseRegionModal
+        key={allImages[safeActiveIndex]?.id ?? "none"}
+        open={eraseModalOpen}
+        onOpenChange={setEraseModalOpen}
+        productId={product.id}
+        image={
+          allImages[safeActiveIndex]?.id && isBaseImageView(allImages[safeActiveIndex]?.view)
+            ? {
+                id: allImages[safeActiveIndex].id!,
+                url: allImages[safeActiveIndex].url,
+                previousUrl: allImages[safeActiveIndex].previousUrl,
+              }
+            : null
+        }
+        partImages={partImages}
+        onUpdated={handleErased}
+        onFinalized={handleFinalized}
       />
     </div>
   );

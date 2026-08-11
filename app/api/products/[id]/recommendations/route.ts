@@ -5,7 +5,6 @@ import {
   getStoredRecommendations,
 } from "@/lib/matching-engine/scorer";
 import { deserializeProduct, parseArray } from "@/lib/serialize";
-import { db } from "@/lib/db";
 
 export async function GET(
   req: NextRequest,

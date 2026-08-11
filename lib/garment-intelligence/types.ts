@@ -6,7 +6,7 @@
  * rather than free-form prose so the same analysis can power catalogue
  * generation today and descriptions / search / recommendations / analytics
  * later, each rendering it differently — see
- * docs/research/GARMENT_INTELLIGENCE_RND.md ("Structured vs prose").
+ * PROJECT_KNOWLEDGE.md ("Why structured JSON, not prose").
  *
  * Values are intentionally loose strings (not enums): vision output vocabulary
  * varies, and clamping it to enums at extraction time would silently discard
@@ -36,8 +36,8 @@ export interface SurfaceTechnique {
    * weaving (embroidery/appliqué/stitched/stonework)". Determines whether a
    * flat photographic read is authentic (woven-in) or a fidelity loss to
    * correct for (applied-on) — a photo alone can't reliably tell the two
-   * apart (see docs/research/SAREE_ANATOMY_TAXONOMY.md, construction-method
-   * refinement). Empty when not determinable.
+   * apart (see PROJECT_KNOWLEDGE.md, "Construction method determines whether
+   * \"flat\" is correct or a bug"). Empty when not determinable.
    */
   constructionMethod: string;
   /**
