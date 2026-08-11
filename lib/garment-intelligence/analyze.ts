@@ -178,9 +178,9 @@ const strArr = (v: unknown): string[] =>
 /**
  * Saree/dupatta anatomy vocabulary, injected only for those categories so
  * every other category's prompt stays byte-identical to before. Translates
- * the verified rules from docs/research/SAREE_ANATOMY_TAXONOMY.md directly
- * into extraction instructions rather than leaving the model to rediscover
- * them per product.
+ * the verified rules (see PROJECT_KNOWLEDGE.md, "Saree/dupatta anatomy
+ * vocabulary") directly into extraction instructions rather than leaving the
+ * model to rediscover them per product.
  */
 function sareeVocabularyBlock(): string {
   return `
@@ -477,11 +477,10 @@ export async function analyzeGarment(
   // pallu close-up: default to "same-rotated" with no distinct content,
   // rather than leaving a gap the generator will fill in on its own.
   // Genuine evidence is never overridden — this only fires when the model
-  // itself found nothing to go on. See docs/research/SESSION_HANDOFF_2026-08-08.md
-  // and the retailer's 2026-08-09 bug report: a saree always has a border
-  // and a pallu; the open question is only whether they match, and "no
-  // evidence of a difference" must mean "assume they match," never "invent
-  // a difference."
+  // itself found nothing to go on. See PROJECT_KNOWLEDGE.md, saree anatomy
+  // vocabulary section: a saree always has a border and a pallu; the open
+  // question is only whether they match, and "no evidence of a difference"
+  // must mean "assume they match," never "invent a difference."
   if (intelligence.sareeStructure && intelligence.sareeStructure.palluRelationship === "unknown") {
     const hasPalluEvidence = (input.partImages ?? []).some((p) => /pallu/i.test(p.label));
     if (!hasPalluEvidence) {

@@ -45,7 +45,7 @@ export interface EraseRegionModalProps {
 
 /**
  * Mask-painting + correction modal for the erase/fix-region feature
- * (docs/research/SESSION_HANDOFF_2026-08-08.md priority #2).
+ * (see PROJECT_KNOWLEDGE.md, "Erase / fix-region feature").
  *
  * The canvas's INTERNAL resolution is set to the displayed image's natural
  * (source) pixel size, so the exported mask PNG is already at the same

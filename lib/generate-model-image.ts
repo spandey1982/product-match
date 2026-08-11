@@ -307,7 +307,7 @@ export async function runGeminiImageGen(
 
     // Re-encode before storing — Gemini's own JPEG encoder is not size-optimal
     // (see lib/images/reencode.ts). Same pixels, ~80% smaller, no perceptible
-    // quality change (docs/research/IMAGE_RND_LOG.md, 2026-07-04).
+    // quality change (PROJECT_KNOWLEDGE.md, "Storage and re-encoding").
     const { buffer: storedBuffer, mime: storedMime } = await reencodeGeneratedImage(outBuffer, outMime);
     const outDims = getImageDimensions(storedBuffer, storedMime);
     console.log(`[model-image] Output (re-encoded, stored): ${fmtBytes(storedBuffer.length)}  mime=${storedMime}  ${outDims ? `${outDims.width}×${outDims.height}px` : "dims=unknown"}`);

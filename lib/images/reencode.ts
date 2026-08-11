@@ -3,8 +3,8 @@
  * Gemini's response and before the Cloudinary upload.
  *
  * Why this exists: Gemini's own JPEG encoder is not size-optimal. Verified via
- * local A/B (docs/research/IMAGE_RND_LOG.md, 2026-07-04) — mozjpeg re-encode at
- * quality 90 lands at ~17-19% of Gemini's original file size across 1K/2K/4K,
+ * local A/B (see PROJECT_KNOWLEDGE.md, "Storage and re-encoding") — mozjpeg
+ * re-encode at quality 90 lands at ~17-19% of Gemini's original file size across 1K/2K/4K,
  * visually indistinguishable on detail-crop comparisons (embroidery, zari,
  * lace). This is strictly post-generation: the exact same pixels Gemini
  * decided to draw, just encoded without the waste — never a substitute for

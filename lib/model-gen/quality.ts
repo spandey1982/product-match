@@ -1,10 +1,13 @@
 /**
  * Generation QUALITY — native Gemini output resolution, chosen per generation.
  *
- * Confirmed by local R&D benchmarking (docs/research/IMAGE_RND_LOG.md,
- * 2026-07-03): native 2K reproduces fine fabric/embroidery detail more
- * faithfully than the previous implicit default, at a modest token-cost
- * increase. Not yet a durable "quality tier" system — no entitlements,
+ * Confirmed by local R&D benchmarking (see PROJECT_KNOWLEDGE.md, "Resolution
+ * and hallucination risk"): native 2K reproduces fine fabric/embroidery detail
+ * more faithfully than the previous implicit default, at a modest token-cost
+ * increase — but going ABOVE 2K to native 4K has been observed to fabricate
+ * detail that isn't on the real product, so never raise this default past
+ * what's already here without re-reading that section first. Not yet a
+ * durable "quality tier" system — no entitlements,
  * persistence or subscription logic. A retailer picks Enhanced per
  * generation; it never carries over to the next one.
  */

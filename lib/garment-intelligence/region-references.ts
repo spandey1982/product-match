@@ -11,7 +11,7 @@
  * that evidence today dead-ends at TEXT (regions[].detail). This module
  * reconnects that same evidence to the generator as real image inputs, for
  * however many distinctive zones a product actually has, not a fixed 2 (see
- * docs/research/SAREE_ANATOMY_TAXONOMY.md, "no human narrator in production").
+ * PROJECT_KNOWLEDGE.md, "two independent mechanisms don't automatically compose").
  *
  * Text vs. image split is deliberate, not redundant: a macro crop shown alone
  * carries no information about WHERE it belongs or which way is "up" — that's

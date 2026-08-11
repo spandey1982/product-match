@@ -1,6 +1,6 @@
 /**
  * Erase / fix-region — a targeted edit of an already-generated ProductImage
- * (docs/research/SESSION_HANDOFF_2026-08-08.md priority #2).
+ * (see PROJECT_KNOWLEDGE.md, "Erase / fix-region feature").
  *
  * Gemini's generateContent API has no structured mask parameter — a mask is
  * just another image input plus a text instruction, interpreted in-context

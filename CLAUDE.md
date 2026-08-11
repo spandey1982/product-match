@@ -704,7 +704,7 @@ Documentation should remain synchronized with implementation.
 
 Reference:
 
-docs/PROJECT_KNOWLEDGE.md
+PROJECT_KNOWLEDGE.md
 
 When significant project knowledge is discovered:
 

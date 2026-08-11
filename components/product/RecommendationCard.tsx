@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { Product, Recommendation } from "@/types";
-import { formatCurrency, formatPercent } from "@/lib/utils";
+import { formatCurrency } from "@/lib/utils";
 import { ProductImage } from "./ProductImage";
 import { thumbnailUrl } from "@/lib/images/variants";
 import { Badge } from "@/components/ui/badge";

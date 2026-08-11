@@ -107,8 +107,8 @@ function classifyConstructionMethod(
 /**
  * Dimensional-contract clauses, construction-method-aware. Replaces the old
  * blanket "everything is raised" assumption, which actively pushed
- * authentic woven jacquard/brocade toward looking wrong (Sample 7,
- * docs/research/SAREE_ANATOMY_TAXONOMY.md) — a technique woven into the
+ * authentic woven jacquard/brocade toward looking wrong (see
+ * PROJECT_KNOWLEDGE.md, saree anatomy vocabulary) — a technique woven into the
  * fabric structure is correctly flat; only applied-on techniques
  * (embroidery, appliqué, stitched thread, stonework) are genuinely raised
  * regardless of how the photo happens to be lit.
