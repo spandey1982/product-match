@@ -41,7 +41,7 @@ export default async function ProductDetailPage({ params, searchParams }: Props)
     db.productImage.findMany({
       where: { productId: id },
       orderBy: { createdAt: "asc" },
-      select: { url: true, view: true, objective: true },
+      select: { id: true, url: true, view: true, objective: true, previousUrl: true },
     }),
     db.garmentIntelligence.findUnique({
       where: { productId: id },
