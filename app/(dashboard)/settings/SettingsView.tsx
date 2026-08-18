@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Sparkles, Check, Loader2, AlertCircle, Lock } from "lucide-react";
+import { Sparkles, Check, Loader2, AlertCircle, Lock, Phone, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 type Mode = "gemini" | "vertex" | "auto";
 
@@ -15,6 +17,8 @@ interface ProviderOption {
 interface Props {
   current: Mode;
   providers: ProviderOption[];
+  initialStorePhone: string;
+  initialStoreAddress: string;
 }
 
 // Friendly, non-technical labels — the headline effect of each choice. The
@@ -40,11 +44,42 @@ interface ModeOption {
   enabled: boolean;
 }
 
-export function SettingsView({ current, providers }: Props) {
+export function SettingsView({ current, providers, initialStorePhone, initialStoreAddress }: Props) {
   const [selected, setSelected] = useState<Mode>(current);
   const [saving, setSaving] = useState<Mode | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+
+  const [storePhone, setStorePhone] = useState(initialStorePhone);
+  const [storeAddress, setStoreAddress] = useState(initialStoreAddress);
+  const [contactSaving, setContactSaving] = useState(false);
+  const [contactError, setContactError] = useState<string | null>(null);
+  const [contactSaved, setContactSaved] = useState(false);
+
+  async function saveStoreContact() {
+    setContactSaving(true);
+    setContactError(null);
+    setContactSaved(false);
+    try {
+      const res = await fetch("/api/settings/store-contact", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ storePhone, storeAddress }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setContactError(data.error || "Could not save your store details. Please try again.");
+        return;
+      }
+      setStorePhone(data.storePhone);
+      setStoreAddress(data.storeAddress);
+      setContactSaved(true);
+    } catch {
+      setContactError("Network error. Please try again.");
+    } finally {
+      setContactSaving(false);
+    }
+  }
 
   // "Auto" first, then each concrete provider. Auto is always selectable.
   const options: ModeOption[] = [
@@ -88,6 +123,58 @@ export function SettingsView({ current, providers }: Props) {
       <p className="text-sm text-gray-500 mt-1">
         Configure how your store generates virtual try-ons.
       </p>
+
+      <section className="mt-8">
+        <div className="flex items-center gap-2 mb-1">
+          <MapPin className="h-4 w-4 text-indigo-500" />
+          <h2 className="text-sm font-semibold text-gray-900">
+            Store Contact &amp; Address
+          </h2>
+        </div>
+        <p className="text-xs text-gray-500 mb-4">
+          Shown to shoppers on your rental listings, along with a map link for directions.
+        </p>
+
+        <div className="space-y-3 rounded-2xl border border-gray-100 bg-white p-4">
+          <Input
+            label="Phone"
+            type="tel"
+            value={storePhone}
+            onChange={(e) => setStorePhone(e.target.value)}
+            leftIcon={<Phone className="h-4 w-4" />}
+            placeholder="+91 98765 43210"
+          />
+          <div>
+            <label htmlFor="storeAddress" className="text-sm font-medium text-gray-700 mb-1.5 block">
+              Address
+            </label>
+            <textarea
+              id="storeAddress"
+              value={storeAddress}
+              onChange={(e) => setStoreAddress(e.target.value)}
+              rows={3}
+              placeholder="Shop no., street, area, city, state, pincode"
+              className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
+            />
+          </div>
+
+          <div className="flex items-center gap-3 pt-1">
+            <Button size="sm" onClick={saveStoreContact} loading={contactSaving}>
+              Save
+            </Button>
+            {contactSaved && !contactError && (
+              <span className="text-xs text-green-600 flex items-center gap-1">
+                <Check className="h-3.5 w-3.5" /> Saved
+              </span>
+            )}
+          </div>
+          {contactError && (
+            <p className="text-xs text-red-500 flex items-center gap-1">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" /> {contactError}
+            </p>
+          )}
+        </div>
+      </section>
 
       <section className="mt-8">
         <div className="flex items-center gap-2 mb-1">

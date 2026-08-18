@@ -197,7 +197,7 @@ export function RentalInfoPanel({
           size="lg"
           onClick={enableRequestFlow ? () => setModalOpen(true) : undefined}
         >
-          Request Rental
+          Request for Home Trial
         </Button>
         <p className="text-[11px] text-gray-400 text-center font-body">
           {enableRequestFlow

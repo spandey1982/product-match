@@ -7,6 +7,7 @@ import { ImageCarousel } from "@/components/product/ImageCarousel";
 import { ProductThumbnailRail } from "@/components/product/ProductThumbnailRail";
 import { getProductCardImages, getProductCardImageLabels } from "@/lib/product/card-images";
 import { RentalInfoPanel } from "@/components/rental/RentalInfoPanel";
+import { StoreLocationCard } from "@/components/rental/StoreLocationCard";
 import { TryOnQueueButton } from "@/components/trial-room/TryOnQueueButton";
 import { getMockRentalInfo } from "@/lib/rental/mock-data";
 import { Badge } from "@/components/ui/badge";
@@ -42,9 +43,16 @@ export function RentalProductDetailView({
   initialAddresses,
 }: RentalProductDetailViewProps) {
   const rental = getMockRentalInfo(product);
+  const hasStoreContact = Boolean(product.storePhone || product.storeAddress);
   const styleInfo = styleValue(product.styleTags);
-  const images = getProductCardImages(product);
-  const imageLabels = getProductCardImageLabels(product);
+  // getProductCardImages appends the retailer's raw uploaded photo last (label
+  // "Product") — drop it here so customers only see the generated/model shots,
+  // as long as at least one of those exists (never leave the carousel empty).
+  const cardImages = getProductCardImages(product);
+  const cardImageLabels = getProductCardImageLabels(product);
+  const hasTrailingRawImage = Boolean(product.imageUrl) && cardImages.length > 1;
+  const images = hasTrailingRawImage ? cardImages.slice(0, -1) : cardImages;
+  const imageLabels = hasTrailingRawImage ? cardImageLabels.slice(0, -1) : cardImageLabels;
   const [activeIndex, setActiveIndex] = useState(0);
   const safeActiveIndex = Math.min(activeIndex, Math.max(images.length - 1, 0));
 
@@ -96,6 +104,17 @@ export function RentalProductDetailView({
                 </div>
               </div>
             </div>
+
+            {hasStoreContact && (
+              <div className="mt-4">
+                <StoreLocationCard
+                  storeName={product.storeName}
+                  phone={product.storePhone}
+                  address={product.storeAddress}
+                />
+              </div>
+            )}
+
             {sessionPhone && (
               <div className={`hidden md:block mt-4 ${images.length >= 2 ? "lg:pl-[76px]" : ""}`}>
                 <TryOnQueueButton product={product} myTryOnsHref="/rent/my-try-ons" />

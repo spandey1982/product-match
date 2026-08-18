@@ -13,6 +13,9 @@ model User {
   password     String
   role         String  @default("RETAILER")
   storeName    String?
+  /** Shown to shoppers on the public rental listing (contact card + map link). */
+  storePhone   String?
+  storeAddress String?
   // Business classification picked at signup — purely descriptive, distinct
   // from `role` (which gates ADMIN vs RETAILER access). "RETAILER" |
   // "MANUFACTURER" | "RENTAL_STORE", plain string per this schema's

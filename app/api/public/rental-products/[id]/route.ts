@@ -16,7 +16,7 @@ export async function GET(
         generatedImages: {
           orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
         },
-        user: { select: { storeName: true } },
+        user: { select: { storeName: true, storePhone: true, storeAddress: true } },
       },
     });
 

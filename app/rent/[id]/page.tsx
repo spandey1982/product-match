@@ -26,7 +26,7 @@ export default async function RentProductPage({ params }: Props) {
       generatedImages: {
         orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
       },
-      user: { select: { storeName: true } },
+      user: { select: { storeName: true, storePhone: true, storeAddress: true } },
     },
   });
 
