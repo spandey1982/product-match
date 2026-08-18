@@ -1,4 +1,6 @@
-import { Phone, MapPin, Navigation } from "lucide-react";
+"use client";
+import { useEffect, useRef, useState } from "react";
+import { Phone, MapPin, Navigation, PhoneCall, Copy, Check } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface StoreLocationCardProps {
@@ -12,13 +14,52 @@ interface StoreLocationCardProps {
  * links out to Google Maps for real directions. The preview is a stylized
  * SVG, not live map tiles — there's no maps provider wired up yet, and
  * pulling one in just for a static thumbnail would be a new dependency for
- * no real benefit. Always renders contact/address on the left and the map on
- * the right, at every breakpoint — only the map's size shrinks on small
- * screens, it never drops below the text.
+ * no real benefit. Shared by /rent and /shop's product detail pages.
  */
 export function StoreLocationCard({ storeName, phone, address }: StoreLocationCardProps) {
   const mapQuery = storeName && address ? `${storeName}, ${address}` : address || storeName || "";
   const directionsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`;
+
+  const [phoneMenuOpen, setPhoneMenuOpen] = useState(false);
+  const [phoneCopied, setPhoneCopied] = useState(false);
+  const [addressCopied, setAddressCopied] = useState(false);
+  const phoneMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!phoneMenuOpen) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (phoneMenuRef.current && !phoneMenuRef.current.contains(e.target as Node)) {
+        setPhoneMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [phoneMenuOpen]);
+
+  async function copyPhone() {
+    if (!phone) return;
+    try {
+      await navigator.clipboard.writeText(phone);
+      setPhoneCopied(true);
+      setTimeout(() => {
+        setPhoneCopied(false);
+        setPhoneMenuOpen(false);
+      }, 1200);
+    } catch {
+      /* clipboard unavailable — silently no-op, the Call option still works */
+    }
+  }
+
+  async function copyAddress() {
+    if (!address) return;
+    try {
+      await navigator.clipboard.writeText(address);
+      setAddressCopied(true);
+      setTimeout(() => setAddressCopied(false), 1500);
+    } catch {
+      /* clipboard unavailable — silently no-op */
+    }
+  }
 
   return (
     <Card className="rounded-3xl overflow-hidden bg-white/90">
@@ -31,26 +72,70 @@ export function StoreLocationCard({ storeName, phone, address }: StoreLocationCa
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1 space-y-3">
             {phone && (
-              <div className="flex items-center gap-2.5">
-                <div className="h-8 w-8 rounded-xl shrink-0 bg-gray-50 border border-gray-100 flex items-center justify-center">
-                  <Phone className="h-3.5 w-3.5 text-gray-400" strokeWidth={1.5} />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[10px] font-medium text-gray-400 tracking-wide font-body">Contact</p>
-                  <p className="text-sm font-semibold text-gray-900 font-body truncate">{phone}</p>
-                </div>
+              <div className="relative" ref={phoneMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => setPhoneMenuOpen((v) => !v)}
+                  className="flex items-center gap-2.5 w-full text-left rounded-xl -m-1 p-1 hover:bg-gray-50 transition-colors"
+                >
+                  <div className="h-8 w-8 rounded-xl shrink-0 bg-gray-50 border border-gray-100 flex items-center justify-center">
+                    <Phone className="h-3.5 w-3.5 text-gray-400" strokeWidth={1.5} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-medium text-gray-400 tracking-wide font-body">Contact</p>
+                    <p className="text-sm font-semibold text-gray-900 font-body truncate">{phone}</p>
+                  </div>
+                </button>
+
+                {phoneMenuOpen && (
+                  <div className="absolute left-0 top-full mt-1 z-20 w-44 bg-white border border-gray-100 rounded-2xl shadow-lg p-1 overflow-hidden">
+                    <a
+                      href={`tel:${phone}`}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                    >
+                      <PhoneCall className="h-3.5 w-3.5 text-indigo-500" />
+                      Call
+                    </a>
+                    <button
+                      type="button"
+                      onClick={copyPhone}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                    >
+                      {phoneCopied ? (
+                        <>
+                          <Check className="h-3.5 w-3.5 text-emerald-500" />
+                          Copied
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="h-3.5 w-3.5 text-gray-400" />
+                          Copy number
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
               </div>
             )}
+
             {address && (
-              <div className="flex items-start gap-2.5">
+              <button
+                type="button"
+                onClick={copyAddress}
+                title="Tap to copy address"
+                className="flex items-start gap-2.5 w-full text-left rounded-xl -m-1 p-1 hover:bg-gray-50 transition-colors"
+              >
                 <div className="h-8 w-8 rounded-xl shrink-0 bg-gray-50 border border-gray-100 flex items-center justify-center">
                   <MapPin className="h-3.5 w-3.5 text-gray-400" strokeWidth={1.5} />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-[10px] font-medium text-gray-400 tracking-wide font-body">Address</p>
+                  <p className="text-[10px] font-medium text-gray-400 tracking-wide font-body flex items-center gap-1">
+                    Address
+                    {addressCopied && <span className="text-emerald-500">· Copied</span>}
+                  </p>
                   <p className="text-sm font-semibold text-gray-900 font-body leading-snug">{address}</p>
                 </div>
-              </div>
+              </button>
             )}
           </div>
 

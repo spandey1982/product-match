@@ -5,6 +5,7 @@ import { Sparkles, Check, Loader2, AlertCircle, Lock, Phone, MapPin } from "luci
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { CITY_NAMES } from "@/lib/geo/city-coordinates";
 
 type Mode = "gemini" | "vertex" | "auto";
 
@@ -19,6 +20,7 @@ interface Props {
   providers: ProviderOption[];
   initialStorePhone: string;
   initialStoreAddress: string;
+  initialStoreCity: string;
 }
 
 // Friendly, non-technical labels — the headline effect of each choice. The
@@ -44,7 +46,7 @@ interface ModeOption {
   enabled: boolean;
 }
 
-export function SettingsView({ current, providers, initialStorePhone, initialStoreAddress }: Props) {
+export function SettingsView({ current, providers, initialStorePhone, initialStoreAddress, initialStoreCity }: Props) {
   const [selected, setSelected] = useState<Mode>(current);
   const [saving, setSaving] = useState<Mode | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -52,6 +54,7 @@ export function SettingsView({ current, providers, initialStorePhone, initialSto
 
   const [storePhone, setStorePhone] = useState(initialStorePhone);
   const [storeAddress, setStoreAddress] = useState(initialStoreAddress);
+  const [storeCity, setStoreCity] = useState(initialStoreCity);
   const [contactSaving, setContactSaving] = useState(false);
   const [contactError, setContactError] = useState<string | null>(null);
   const [contactSaved, setContactSaved] = useState(false);
@@ -64,7 +67,7 @@ export function SettingsView({ current, providers, initialStorePhone, initialSto
       const res = await fetch("/api/settings/store-contact", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ storePhone, storeAddress }),
+        body: JSON.stringify({ storePhone, storeAddress, storeCity }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -73,6 +76,7 @@ export function SettingsView({ current, providers, initialStorePhone, initialSto
       }
       setStorePhone(data.storePhone);
       setStoreAddress(data.storeAddress);
+      setStoreCity(data.storeCity);
       setContactSaved(true);
     } catch {
       setContactError("Network error. Please try again.");
@@ -132,7 +136,7 @@ export function SettingsView({ current, providers, initialStorePhone, initialSto
           </h2>
         </div>
         <p className="text-xs text-gray-500 mb-4">
-          Shown to shoppers on your rental listings, along with a map link for directions.
+          Shown to shoppers on your rental and shop listings, along with a map link for directions. City powers the location-radius filter on /shop.
         </p>
 
         <div className="space-y-3 rounded-2xl border border-gray-100 bg-white p-4">
@@ -156,6 +160,22 @@ export function SettingsView({ current, providers, initialStorePhone, initialSto
               placeholder="Shop no., street, area, city, state, pincode"
               className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
             />
+          </div>
+          <div>
+            <label htmlFor="storeCity" className="text-sm font-medium text-gray-700 mb-1.5 block">
+              City
+            </label>
+            <select
+              id="storeCity"
+              value={storeCity}
+              onChange={(e) => setStoreCity(e.target.value)}
+              className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
+            >
+              <option value="">Select a city…</option>
+              {CITY_NAMES.map((city) => (
+                <option key={city} value={city}>{city}</option>
+              ))}
+            </select>
           </div>
 
           <div className="flex items-center gap-3 pt-1">

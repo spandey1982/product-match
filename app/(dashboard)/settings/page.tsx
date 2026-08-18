@@ -13,7 +13,7 @@ export default async function SettingsPage() {
 
   const user = await db.user.findUnique({
     where: { id: session.id },
-    select: { tryOnProvider: true, storePhone: true, storeAddress: true },
+    select: { tryOnProvider: true, storePhone: true, storeAddress: true, storeCity: true },
   });
 
   const current: TryOnMode = isTryOnMode(user?.tryOnProvider)
@@ -32,6 +32,7 @@ export default async function SettingsPage() {
       providers={providers}
       initialStorePhone={user?.storePhone ?? ""}
       initialStoreAddress={user?.storeAddress ?? ""}
+      initialStoreCity={user?.storeCity ?? ""}
     />
   );
 }

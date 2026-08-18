@@ -26,6 +26,12 @@ export const VARIANT_TRANSFORM = {
   master: `${AUTO},c_scale,w_2048,e_sharpen:60`,
   display: `${AUTO},c_limit,w_1200`,
   thumbnail: `${AUTO},c_limit,w_400`,
+  // Slight gravity-aware zoom (25%) for the /shop PDP's "Additional Info"
+  // card — a chained transform (crop+zoom, then the usual delivery resize),
+  // not a single step like the other three. insertDeliveryTransform below
+  // splices this whole string in as-is, so the embedded "/" becomes a
+  // second real path segment in the resulting Cloudinary URL.
+  zoomed: `c_crop,g_auto,z_1.25/${AUTO},c_limit,w_1200`,
 } as const;
 
 export type VariantType = keyof typeof VARIANT_TRANSFORM;
@@ -60,6 +66,7 @@ export function variantUrl(url: string, variant: VariantType): string {
 export const masterUrl = (url: string) => variantUrl(url, "master");
 export const displayUrl = (url: string) => variantUrl(url, "display");
 export const thumbnailUrl = (url: string) => variantUrl(url, "thumbnail");
+export const zoomedUrl = (url: string) => variantUrl(url, "zoomed");
 
 export interface ImageVariants {
   master: string;
