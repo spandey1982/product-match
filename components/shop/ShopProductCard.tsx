@@ -19,13 +19,21 @@ interface ShopProductCardProps {
 }
 
 export function ShopProductCard({ product, initialWishlisted, loggedIn, onWishlistToggled }: ShopProductCardProps) {
+  // Same trailing-raw-upload trim as both PDPs — getProductCardImages
+  // appends the retailer's raw uploaded photo last (label "Product");
+  // customers only see the generated/model shots, as long as at least one
+  // exists (never leave the carousel empty).
+  const cardImages = getProductCardImages(product);
+  const hasTrailingRawImage = Boolean(product.imageUrl) && cardImages.length > 1;
+  const images = hasTrailingRawImage ? cardImages.slice(0, -1) : cardImages;
+
   return (
     <Link href={`/shop/${product.id}`} className="group block">
       <div className="rounded-2xl bg-white border border-gray-100 overflow-hidden shadow-sm hover:shadow-md transition-all duration-200 hover:-translate-y-0.5">
         <div className="relative aspect-[3/4]">
           <div className="absolute inset-0 overflow-hidden rounded-t-2xl bg-gray-50">
             <ImageCarousel
-              images={getProductCardImages(product)}
+              images={images}
               title={product.title}
               category={product.category}
               className="w-full h-full"
