@@ -1,24 +1,25 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { Phone, MapPin, Navigation, PhoneCall, Copy, Check } from "lucide-react";
+import { Store, Phone, MapPin, Navigation, PhoneCall, Copy, Check } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface StoreLocationCardProps {
   storeName?: string | null;
   phone?: string | null;
   address?: string | null;
-  /** Extra content rendered below the contact/map row — e.g. /shop's "Request for Home Trial" CTA. Purely a slot: this component stays agnostic of what it renders. */
-  children?: React.ReactNode;
 }
 
 /**
- * Store contact + address, with a small clipped map preview (right side) that
- * links out to Google Maps for real directions. The preview is a stylized
- * SVG, not live map tiles — there's no maps provider wired up yet, and
- * pulling one in just for a static thumbnail would be a new dependency for
- * no real benefit. Shared by /rent and /shop's product detail pages.
+ * Store name/contact/address, with a small clipped map preview (right side)
+ * that links out to Google Maps for real directions. The preview is a
+ * stylized SVG, not live map tiles — there's no maps provider wired up yet,
+ * and pulling one in just for a static thumbnail would be a new dependency
+ * for no real benefit. Shared by /rent and /shop's product detail pages.
+ * No per-row text labels (Contact/Address) — each row's icon carries that
+ * meaning on its own, and copy/call feedback swaps the icon itself rather
+ * than adding a label.
  */
-export function StoreLocationCard({ storeName, phone, address, children }: StoreLocationCardProps) {
+export function StoreLocationCard({ storeName, phone, address }: StoreLocationCardProps) {
   const mapQuery = storeName && address ? `${storeName}, ${address}` : address || storeName || "";
   const directionsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`;
 
@@ -66,13 +67,20 @@ export function StoreLocationCard({ storeName, phone, address, children }: Store
   return (
     <Card className="rounded-3xl overflow-hidden bg-white/90">
       <CardHeader className="px-4 sm:px-5 pt-3.5 pb-1">
-        <CardTitle className="font-heading text-base font-medium">
-          {storeName ? <>Visit <span className="font-bold">{storeName}</span></> : "Store Location"}
-        </CardTitle>
+        <CardTitle className="font-heading text-base font-medium">Store Details</CardTitle>
       </CardHeader>
       <CardContent className="px-4 sm:px-5 pb-4 pt-2">
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1 space-y-3">
+            {storeName && (
+              <div className="flex items-center gap-2.5">
+                <div className="h-8 w-8 rounded-xl shrink-0 bg-gray-50 border border-gray-100 flex items-center justify-center">
+                  <Store className="h-3.5 w-3.5 text-gray-400" strokeWidth={1.5} />
+                </div>
+                <p className="text-sm font-semibold text-gray-900 font-body truncate">{storeName}</p>
+              </div>
+            )}
+
             {phone && (
               <div className="relative" ref={phoneMenuRef}>
                 <button
@@ -83,10 +91,7 @@ export function StoreLocationCard({ storeName, phone, address, children }: Store
                   <div className="h-8 w-8 rounded-xl shrink-0 bg-gray-50 border border-gray-100 flex items-center justify-center">
                     <Phone className="h-3.5 w-3.5 text-gray-400" strokeWidth={1.5} />
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-[10px] font-medium text-gray-400 tracking-wide font-body">Contact</p>
-                    <p className="text-sm font-semibold text-gray-900 font-body truncate">{phone}</p>
-                  </div>
+                  <p className="text-sm font-semibold text-gray-900 font-body truncate">{phone}</p>
                 </button>
 
                 {phoneMenuOpen && (
@@ -128,15 +133,13 @@ export function StoreLocationCard({ storeName, phone, address, children }: Store
                 className="flex items-start gap-2.5 w-full text-left rounded-xl -m-1 p-1 hover:bg-gray-50 transition-colors"
               >
                 <div className="h-8 w-8 rounded-xl shrink-0 bg-gray-50 border border-gray-100 flex items-center justify-center">
-                  <MapPin className="h-3.5 w-3.5 text-gray-400" strokeWidth={1.5} />
+                  {addressCopied ? (
+                    <Check className="h-3.5 w-3.5 text-emerald-500" />
+                  ) : (
+                    <MapPin className="h-3.5 w-3.5 text-gray-400" strokeWidth={1.5} />
+                  )}
                 </div>
-                <div className="min-w-0">
-                  <p className="text-[10px] font-medium text-gray-400 tracking-wide font-body flex items-center gap-1">
-                    Address
-                    {addressCopied && <span className="text-emerald-500">· Copied</span>}
-                  </p>
-                  <p className="text-sm font-semibold text-gray-900 font-body leading-snug">{address}</p>
-                </div>
+                <p className="text-sm font-semibold text-gray-900 font-body leading-snug">{address}</p>
               </button>
             )}
           </div>
@@ -176,7 +179,6 @@ export function StoreLocationCard({ storeName, phone, address, children }: Store
             </a>
           )}
         </div>
-        {children}
       </CardContent>
     </Card>
   );

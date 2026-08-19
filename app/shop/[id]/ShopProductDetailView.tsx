@@ -10,7 +10,6 @@ import { ProductImageViewer } from "@/components/product/ProductImageViewer";
 import { getProductCardFramedImages, getProductCardImageLabels } from "@/lib/product/card-images";
 import { displayUrl, masterUrl, thumbnailUrl, zoomedUrl } from "@/lib/images/variants";
 import { WishlistButton } from "@/components/shop/WishlistButton";
-import { ShopCheckoutModal } from "@/components/shop/ShopCheckoutModal";
 import { ShopTryOnButton } from "@/components/shop/ShopTryOnButton";
 import { StoreLocationCard } from "@/components/rental/StoreLocationCard";
 import { RentalRequestModal } from "@/components/rental/RentalRequestModal";
@@ -31,16 +30,19 @@ import { cn } from "@/lib/utils";
  * own ProductDetailView (the one with Product Information + "Pairs
  * beautifully with" cards) minus every retailer-only control
  * (edit/delete/generate-image/download/erase-region), same posture
- * RentalProductDetailView already took for /rent. Purchase is the main
- * flow (Buy Now → ShopCheckoutModal); "Request for Home Trial" lives
- * uniformly inside the store card for every product (not conditioned on
- * isForRent, so it doesn't differ per-item the way it used to) and opens
- * RentalRequestModal directly — reusing the same request pipeline /rent
- * uses, just without RentalInfoPanel's own pricing/availability/age-selector
- * grid, which doesn't fit inside a compact store card. getMockRentalInfo
- * already produces sensible mock economics for a product the retailer never
- * explicitly priced for rental, the same fallback ProductDetailView's own
- * rental-preview toggle relies on.
+ * RentalProductDetailView already took for /rent. "Request for Home Trial"
+ * is the page's sole primary action (right after the store card) — per
+ * explicit direction there is no separate purchase/checkout CTA here.
+ * ShopCheckoutModal/ShopOrder/the /shop/orders confirmation page still
+ * exist (ShopProductCard's catalog-grid CTA still says "Buy Now" and links
+ * here) but nothing on this page triggers them anymore; worth flagging if
+ * that catalog-card copy should change too. Uniform for every product, not
+ * conditioned on isForRent, and opens RentalRequestModal directly — reusing
+ * the same request pipeline /rent uses, just without RentalInfoPanel's own
+ * pricing/availability/age-selector grid, which doesn't fit inside a
+ * compact store card. getMockRentalInfo already produces sensible mock
+ * economics for a product the retailer never explicitly priced for rental,
+ * the same fallback ProductDetailView's own rental-preview toggle relies on.
  */
 interface ShopProductDetailViewProps {
   product: PublicShopProduct;
@@ -91,7 +93,6 @@ export function ShopProductDetailView({
   const isInfoSlideActive = safeActiveSlot === infoSlot && realFramedImages.length > 0;
 
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
-  const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [trialModalOpen, setTrialModalOpen] = useState(false);
   const rental = getMockRentalInfo(product);
 
@@ -249,19 +250,15 @@ export function ShopProductDetailView({
                   {product.price.toLocaleString("en-IN")}
                 </span>
               </div>
-
-              <Button size="lg" className="w-full" onClick={() => setCheckoutOpen(true)}>
-                Buy Now
-              </Button>
             </div>
 
             {hasStoreContact && (
-              <StoreLocationCard storeName={product.storeName} phone={product.storePhone} address={product.storeAddress}>
-                <Button variant="outline" className="w-full mt-3" onClick={() => setTrialModalOpen(true)}>
-                  Request for Home Trial
-                </Button>
-              </StoreLocationCard>
+              <StoreLocationCard storeName={product.storeName} phone={product.storePhone} address={product.storeAddress} />
             )}
+
+            <Button size="lg" className="w-full" onClick={() => setTrialModalOpen(true)}>
+              Request for Home Trial
+            </Button>
 
             <Card className="rounded-3xl overflow-hidden bg-white/90">
               <CardHeader className="px-4 sm:px-5 pt-3.5 pb-1">
@@ -319,20 +316,6 @@ export function ShopProductDetailView({
           initialAccount={initialAccount}
           initialAddresses={initialAddresses}
           onClose={() => setTrialModalOpen(false)}
-        />
-      )}
-
-      {checkoutOpen && (
-        <ShopCheckoutModal
-          productId={product.id}
-          productTitle={product.title}
-          productImage={thumbImages[0] ?? null}
-          storeName={product.storeName}
-          unitPrice={product.price}
-          sessionPhone={sessionPhone}
-          initialAccount={initialAccount}
-          initialAddresses={initialAddresses}
-          onClose={() => setCheckoutOpen(false)}
         />
       )}
     </div>
