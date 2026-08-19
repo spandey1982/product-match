@@ -1,10 +1,14 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { Search, SlidersHorizontal, X, IndianRupee } from "lucide-react";
+import { Search, SlidersHorizontal, X, IndianRupee, MapPin, Navigation } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/utils";
+
+// City-grained distance (see lib/geo) can't meaningfully support a "5 km"
+// option — these presets reflect what the underlying accuracy can honor.
+const RADIUS_OPTIONS = [10, 25, 50, 100, 200];
 
 interface CatalogFilterBarProps {
   categories: string[];
@@ -37,6 +41,21 @@ interface CatalogFilterBarProps {
   onPriceMinChange?: (value: number) => void;
   priceMax?: number;
   onPriceMaxChange?: (value: number) => void;
+
+  /**
+   * Location-radius filter (city-grained, see lib/geo) — omit onRadiusChange
+   * to hide this block entirely (e.g. the dashboard catalog and /rent, which
+   * have no cross-store distance concept). onUseMyLocation is optional even
+   * when radius is shown — provide it to offer real browser-geolocation
+   * precision alongside the city dropdown fallback.
+   */
+  cityOptions?: string[];
+  selectedCity?: string;
+  onCityChange?: (value: string) => void;
+  radiusKm?: number;
+  onRadiusChange?: (value: number) => void;
+  onUseMyLocation?: () => void;
+  locationSource?: "city" | "geolocation" | null;
 
   filtersOpen: boolean;
   onToggleFilters: () => void;
@@ -75,6 +94,13 @@ export function CatalogFilterBar({
   onPriceMinChange,
   priceMax,
   onPriceMaxChange,
+  cityOptions,
+  selectedCity,
+  onCityChange,
+  radiusKm,
+  onRadiusChange,
+  onUseMyLocation,
+  locationSource,
   filtersOpen,
   onToggleFilters,
   hasFilters,
@@ -221,6 +247,62 @@ export function CatalogFilterBar({
                   </div>
                 </div>
               )}
+
+              {onRadiusChange && (
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <MapPin className="h-3.5 w-3.5 text-gray-500" />
+                    <span className="text-sm font-medium text-gray-700">Location &amp; Radius</span>
+                    {!!radiusKm && (
+                      <button onClick={() => onRadiusChange(0)} className="text-xs text-gray-400 hover:text-gray-600">
+                        Clear
+                      </button>
+                    )}
+                  </div>
+
+                  {onUseMyLocation && (
+                    <button
+                      type="button"
+                      onClick={onUseMyLocation}
+                      className="mb-2 inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800"
+                    >
+                      <Navigation className="h-3 w-3" />
+                      {locationSource === "geolocation" ? "Using your current location" : "Use my current location"}
+                    </button>
+                  )}
+
+                  {onCityChange && (
+                    <select
+                      value={selectedCity ?? ""}
+                      onChange={(e) => onCityChange(e.target.value)}
+                      className="w-full mb-2 rounded-xl border border-gray-200 px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:border-indigo-300 focus:ring-1 focus:ring-indigo-200 bg-white"
+                    >
+                      <option value="">
+                        {locationSource === "geolocation" ? "Or pick a city instead…" : "Select your city…"}
+                      </option>
+                      {(cityOptions ?? []).map((city) => (
+                        <option key={city} value={city}>{city}</option>
+                      ))}
+                    </select>
+                  )}
+
+                  <div className="flex flex-wrap gap-2">
+                    {RADIUS_OPTIONS.map((km) => (
+                      <button
+                        key={km}
+                        onClick={() => onRadiusChange(km === radiusKm ? 0 : km)}
+                        className={`px-3 py-1 rounded-full text-sm border transition-all ${
+                          radiusKm === km
+                            ? "bg-indigo-600 text-white border-indigo-600"
+                            : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                        }`}
+                      >
+                        {km} km
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -308,6 +390,12 @@ export function CatalogFilterBar({
                 ? `${formatCurrency(priceMin!)}+`
                 : `Up to ${formatCurrency(priceMax!)}`}
               <button onClick={() => { onPriceMinChange(0); onPriceMaxChange?.(0); }}><X className="h-3 w-3" /></button>
+            </Badge>
+          )}
+          {!!radiusKm && onRadiusChange && (
+            <Badge variant="purple" className="gap-1">
+              Within {radiusKm} km
+              <button onClick={() => onRadiusChange(0)}><X className="h-3 w-3" /></button>
             </Badge>
           )}
           {searchQuery && (

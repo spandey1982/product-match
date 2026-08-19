@@ -13,6 +13,11 @@ model User {
   password     String
   role         String  @default("RETAILER")
   storeName    String?
+  /** Shown to shoppers on the public rental listing (contact card + map link). */
+  storePhone   String?
+  storeAddress String?
+  /** Fixed-list city (lib/geo/city-coordinates.ts) used for /shop's location-radius filter — city-grained, not a geocoded address. */
+  storeCity    String?
   // Business classification picked at signup — purely descriptive, distinct
   // from `role` (which gates ADMIN vs RETAILER access). "RETAILER" |
   // "MANUFACTURER" | "RENTAL_STORE", plain string per this schema's
@@ -44,13 +49,60 @@ model Customer {
   name  String?
   email String?
 
+  /** Virtual try-on credit balance for /shop — starts at 5 free credits. See CreditTopUp for the ledger. */
+  tryOnCredits Int @default(5)
+
   addresses    CustomerAddress[]
   rentalOrders RentalOrder[]
+  wishlist     Wishlist[]
+  creditTopUps CreditTopUp[]
+  shopOrders   ShopOrder[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@map("customers")
+}
+
+// Server-persisted wishlist for the /shop marketplace — the only prior
+// "wishlist" (Trial Room's) is a client-side, try-on-gated localStorage list
+// scoped to the retailer dashboard; this is the first real one, and it's
+// scoped to whichever Customer is signed in.
+model Wishlist {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  productId String
+
+  createdAt DateTime @default(now())
+
+  @@unique([customerId, productId])
+  @@index([customerId])
+  @@map("wishlists")
+}
+
+// Customer-facing virtual try-on credit ledger — append-only, same
+// "durable log, don't just mutate a counter" convention as AiUsageEvent/
+// WalletTransaction elsewhere in this schema. `source` is "purchase" (a
+// credit-package top-up — Phase 1 mocked, see lib/vto-credits/packages.ts)
+// or "reward" (the ₹500-spent-per-credit bonus, awarded on ShopOrder
+// creation).
+model CreditTopUp {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  credits     Int
+  amountPaise Int?
+
+  source  String // "purchase" | "reward"
+  orderId String?
+
+  createdAt DateTime @default(now())
+
+  @@index([customerId, createdAt])
+  @@map("credit_topups")
 }
 
 model CustomerAddress {
@@ -157,6 +209,53 @@ model Payment {
 
   @@index([rentalOrderId])
   @@map("payments")
+}
+
+// Buy/rent order placed via /shop — deliberately separate from RentalOrder
+// (whose fields — ageGroup, deposit, rentalDurationDays, trial window — are
+// rental-marketplace-specific and don't apply to a plain purchase). Same
+// durable-snapshot rationale as RentalOrder: productId is NOT a relation, so
+// this survives the product being edited or deleted later.
+model ShopOrder {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  // "buy" | "rent" — plain string per this schema's existing stage-field convention.
+  orderType String
+
+  productId    String
+  productTitle String
+  productImage String?
+  storeName    String?
+
+  quantity    Int   @default(1)
+  unitPrice   Float
+  amountTotal Float
+
+  customerName  String
+  customerPhone String
+  customerEmail String?
+
+  addressLine1    String
+  addressPincode  String
+  addressLandmark String?
+
+  deliverySlot        String?
+  specialInstructions String?
+
+  paymentMethod String @default("Pay at Doorstep")
+  // "requested" | "confirmed" | "preparing" | "out_for_delivery" | "delivered" | "cancelled"
+  status        String @default("requested")
+  // "pending" | "paid" | "failed" | "refunded" — mocked for Phase 1, no live gateway yet.
+  paymentStatus String @default("pending")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([customerId])
+  @@index([productId])
+  @@map("shop_orders")
 }
 
 model Product {

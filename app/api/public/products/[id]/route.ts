@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { toPublicRentalProduct } from "@/lib/rental/public-product";
+import { toPublicShopProduct } from "@/lib/shop/public-product";
 
-/** Public, unauthenticated single-product lookup for the /rent detail page. */
+/** Public, unauthenticated single-product lookup for the /shop detail page. */
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -11,12 +11,12 @@ export async function GET(
     const { id } = await params;
 
     const raw = await db.product.findFirst({
-      where: { id, isActive: true, isForRent: true },
+      where: { id, isActive: true },
       include: {
         generatedImages: {
           orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
         },
-        user: { select: { storeName: true, storePhone: true, storeAddress: true } },
+        user: { select: { storeName: true, storePhone: true, storeAddress: true, storeCity: true } },
       },
     });
 
@@ -25,7 +25,7 @@ export async function GET(
     }
 
     return NextResponse.json({
-      product: toPublicRentalProduct(raw as unknown as Record<string, unknown>),
+      product: toPublicShopProduct(raw as unknown as Record<string, unknown>),
     });
   } catch (err) {
     console.error(err);
