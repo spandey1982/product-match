@@ -10,7 +10,7 @@ interface WishlistButtonProps {
   /** Whether a customer session exists — a guest is sent to sign in instead of toggling. */
   loggedIn: boolean;
   className?: string;
-  size?: "sm" | "md";
+  size?: "xs" | "sm" | "md";
   /** Fired after a successful toggle — e.g. the wishlist page uses this to drop a card once unheart. */
   onToggled?: (wishlisted: boolean) => void;
 }
@@ -59,8 +59,8 @@ export function WishlistButton({ productId, initialWishlisted, loggedIn, classNa
     }
   }
 
-  const dims = size === "sm" ? "h-9 w-9" : "h-11 w-11";
-  const iconDims = size === "sm" ? "h-4 w-4" : "h-5 w-5";
+  const dims = size === "xs" ? "h-6 w-6" : size === "sm" ? "h-9 w-9" : "h-11 w-11";
+  const iconDims = size === "xs" ? "h-3 w-3" : size === "sm" ? "h-4 w-4" : "h-5 w-5";
 
   return (
     <button

@@ -1,19 +1,21 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Palette, Shirt, Layers, Crown, IndianRupee, Sparkles } from "lucide-react";
+import { ArrowLeft, Palette, Shirt, Layers, Crown, IndianRupee } from "lucide-react";
 import { PublicShopProduct } from "@/lib/shop/public-product";
-import { ImageCarousel } from "@/components/product/ImageCarousel";
+import { HybridImageCarousel } from "@/components/product/HybridImageCarousel";
 import { AdditionalInfoSlide } from "@/components/product/AdditionalInfoSlide";
 import { ProductImage } from "@/components/product/ProductImage";
-import { getProductCardImages, getProductCardImageLabels } from "@/lib/product/card-images";
-import { zoomedUrl } from "@/lib/images/variants";
+import { ProductImageViewer } from "@/components/product/ProductImageViewer";
+import { getProductCardFramedImages, getProductCardImageLabels } from "@/lib/product/card-images";
+import { displayUrl, masterUrl, thumbnailUrl, zoomedUrl } from "@/lib/images/variants";
 import { WishlistButton } from "@/components/shop/WishlistButton";
 import { ShopCheckoutModal } from "@/components/shop/ShopCheckoutModal";
 import { ShopTryOnButton } from "@/components/shop/ShopTryOnButton";
-import { RentalInfoPanel } from "@/components/rental/RentalInfoPanel";
 import { StoreLocationCard } from "@/components/rental/StoreLocationCard";
+import { RentalRequestModal } from "@/components/rental/RentalRequestModal";
 import { getMockRentalInfo } from "@/lib/rental/mock-data";
+import { AGE_GROUPS } from "@/lib/rental/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,10 +31,16 @@ import { cn } from "@/lib/utils";
  * own ProductDetailView (the one with Product Information + "Pairs
  * beautifully with" cards) minus every retailer-only control
  * (edit/delete/generate-image/download/erase-region), same posture
- * RentalProductDetailView already took for /rent. Spans both buy and rent:
- * Buy always available, Rent (when the product is rental-enabled) reuses
- * RentalInfoPanel/RentalRequestModal exactly as /rent does — no reason to
- * fork that already-working flow for a plain purchase page.
+ * RentalProductDetailView already took for /rent. Purchase is the main
+ * flow (Buy Now → ShopCheckoutModal); "Request for Home Trial" lives
+ * uniformly inside the store card for every product (not conditioned on
+ * isForRent, so it doesn't differ per-item the way it used to) and opens
+ * RentalRequestModal directly — reusing the same request pipeline /rent
+ * uses, just without RentalInfoPanel's own pricing/availability/age-selector
+ * grid, which doesn't fit inside a compact store card. getMockRentalInfo
+ * already produces sensible mock economics for a product the retailer never
+ * explicitly priced for rental, the same fallback ProductDetailView's own
+ * rental-preview toggle relies on.
  */
 interface ShopProductDetailViewProps {
   product: PublicShopProduct;
@@ -53,37 +61,39 @@ export function ShopProductDetailView({
 }: ShopProductDetailViewProps) {
   const loggedIn = Boolean(sessionPhone);
   const styleInfo = styleValue(product.styleTags);
-  const rental = product.isForRent ? getMockRentalInfo(product) : null;
 
-  // Same trailing-raw-upload trim as /rent's PDP.
-  const cardImages = getProductCardImages(product);
+  // Same trailing-raw-upload trim as /rent's PDP — but framed only (no size
+  // variant baked in yet), so display/master/thumbnail can each be derived
+  // from the same base without chaining a second downscale on top of a
+  // first (which is what made these images look soft before).
+  const framedImages = getProductCardFramedImages(product);
   const cardImageLabels = getProductCardImageLabels(product);
-  const hasTrailingRawImage = Boolean(product.imageUrl) && cardImages.length > 1;
-  const realImages = hasTrailingRawImage ? cardImages.slice(0, -1) : cardImages;
+  const hasTrailingRawImage = Boolean(product.imageUrl) && framedImages.length > 1;
+  const realFramedImages = hasTrailingRawImage ? framedImages.slice(0, -1) : framedImages;
   const realLabels = hasTrailingRawImage ? cardImageLabels.slice(0, -1) : cardImageLabels;
+
+  const displayImages = realFramedImages.map(displayUrl); // main carousel
+  const masterImages = realFramedImages.map(masterUrl); // full-screen viewer
+  const thumbImages = realFramedImages.map(thumbnailUrl); // rail thumbnails
 
   // "Additional Info" occupies logical slot 2 (after front, back) — clamped
   // so a product with fewer than 2 real images still gets it appended, not
   // an out-of-range slot.
-  const infoSlot = Math.min(2, realImages.length);
-  const totalSlots = realImages.length + 1;
+  const infoSlot = Math.min(2, realFramedImages.length);
+  const totalSlots = realFramedImages.length + 1;
   const [activeSlot, setActiveSlot] = useState(0);
 
   function realIndexForSlot(slot: number): number {
     return slot < infoSlot ? slot : slot - 1;
   }
-  function slotForRealIndex(realIndex: number): number {
-    return realIndex < infoSlot ? realIndex : realIndex + 1;
-  }
 
   const safeActiveSlot = Math.min(activeSlot, Math.max(totalSlots - 1, 0));
-  const isInfoSlideActive = safeActiveSlot === infoSlot && realImages.length > 0;
-  const activeRealIndex = Math.min(
-    Math.max(realIndexForSlot(safeActiveSlot), 0),
-    Math.max(realImages.length - 1, 0)
-  );
+  const isInfoSlideActive = safeActiveSlot === infoSlot && realFramedImages.length > 0;
 
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [trialModalOpen, setTrialModalOpen] = useState(false);
+  const rental = getMockRentalInfo(product);
 
   const badgeLabels = Array.from(
     new Set([
@@ -122,18 +132,28 @@ export function ShopProductDetailView({
                           aria-current={slot === safeActiveSlot}
                           className={cn(
                             "relative w-14 sm:w-16 aspect-[3/4] shrink-0 rounded-xl overflow-hidden border-2 transition-colors",
-                            "bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center",
                             slot === safeActiveSlot ? "border-indigo-500 ring-2 ring-indigo-100" : "border-transparent"
                           )}
                         >
-                          <Sparkles className="h-4 w-4 text-white/80" />
+                          {/* Same slide as the main carousel, scaled down to fit the
+                              thumbnail — content spans the full width here rather than
+                              being confined to the left half, so it keeps as much room
+                              as it can once shrunk this far. */}
+                          <div className="absolute top-0 left-0 w-[300px] h-[400px] origin-top-left scale-[0.1867] sm:scale-[0.2133] pointer-events-none">
+                            <AdditionalInfoSlide
+                              imageUrl={zoomedUrl(realFramedImages[0])}
+                              title={product.title}
+                              color={product.color}
+                              fullWidthContent
+                            />
+                          </div>
                         </button>
                       );
                     }
                     const realIndex = realIndexForSlot(slot);
                     return (
                       <button
-                        key={`${realImages[realIndex]}-${slot}`}
+                        key={`${thumbImages[realIndex]}-${slot}`}
                         type="button"
                         onClick={() => setActiveSlot(slot)}
                         aria-label={`View ${realLabels[realIndex] ?? `image ${realIndex + 1}`}`}
@@ -143,7 +163,7 @@ export function ShopProductDetailView({
                           slot === safeActiveSlot ? "border-indigo-500 ring-2 ring-indigo-100" : "border-transparent"
                         )}
                       >
-                        <ProductImage src={realImages[realIndex]} title={product.title} category={product.category} className="w-full h-full" />
+                        <ProductImage src={thumbImages[realIndex]} title={product.title} category={product.category} className="w-full h-full" />
                       </button>
                     );
                   })}
@@ -151,23 +171,24 @@ export function ShopProductDetailView({
               )}
 
               <div className="relative rounded-3xl overflow-hidden aspect-[3/4] bg-gray-50 shadow-sm border border-gray-100 flex-1 min-w-0">
-                {isInfoSlideActive ? (
-                  <AdditionalInfoSlide
-                    imageUrl={zoomedUrl(realImages[0])}
-                    title={product.title}
-                    color={product.color}
-                  />
-                ) : (
-                  <ImageCarousel
-                    images={realImages}
-                    labels={realLabels}
-                    title={product.title}
-                    category={product.category}
-                    className="w-full h-full"
-                    index={activeRealIndex}
-                    onIndexChange={(ri) => setActiveSlot(slotForRealIndex(ri))}
-                  />
-                )}
+                <HybridImageCarousel
+                  images={displayImages}
+                  labels={realLabels}
+                  title={product.title}
+                  category={product.category}
+                  className="w-full h-full"
+                  infoSlot={infoSlot}
+                  renderInfoSlide={() => (
+                    <AdditionalInfoSlide
+                      imageUrl={zoomedUrl(realFramedImages[0])}
+                      title={product.title}
+                      color={product.color}
+                    />
+                  )}
+                  activeSlot={safeActiveSlot}
+                  onActiveSlotChange={setActiveSlot}
+                  onImageClick={(realIndex) => setViewerIndex(realIndex)}
+                />
                 {!isInfoSlideActive && (
                   <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/40 to-transparent p-4 z-20 pointer-events-none">
                     <Badge variant="purple" className="bg-white/90 text-indigo-700 backdrop-blur-sm">
@@ -180,6 +201,15 @@ export function ShopProductDetailView({
                   <WishlistButton productId={product.id} initialWishlisted={initialWishlisted} loggedIn={loggedIn} />
                 </div>
               </div>
+            </div>
+
+            <div className="mt-4">
+              <ShopTryOnButton
+                product={product}
+                loggedIn={loggedIn}
+                initialCredits={initialTryOnCredits}
+                myTryOnsHref="/shop/my-try-ons"
+              />
             </div>
           </div>
 
@@ -223,28 +253,15 @@ export function ShopProductDetailView({
               <Button size="lg" className="w-full" onClick={() => setCheckoutOpen(true)}>
                 Buy Now
               </Button>
-
-              {product.isForRent && rental && (
-                <RentalInfoPanel
-                  productId={product.id}
-                  productTitle={product.title}
-                  productImage={realImages[0] ?? null}
-                  storeName={product.storeName}
-                  sessionPhone={sessionPhone}
-                  initialAccount={initialAccount}
-                  initialAddresses={initialAddresses}
-                  initialRental={rental}
-                  enableRequestFlow
-                />
-              )}
-
-              <ShopTryOnButton
-                product={product}
-                loggedIn={loggedIn}
-                initialCredits={initialTryOnCredits}
-                myTryOnsHref="/shop/my-try-ons"
-              />
             </div>
+
+            {hasStoreContact && (
+              <StoreLocationCard storeName={product.storeName} phone={product.storePhone} address={product.storeAddress}>
+                <Button variant="outline" className="w-full mt-3" onClick={() => setTrialModalOpen(true)}>
+                  Request for Home Trial
+                </Button>
+              </StoreLocationCard>
+            )}
 
             <Card className="rounded-3xl overflow-hidden bg-white/90">
               <CardHeader className="px-4 sm:px-5 pt-3.5 pb-1">
@@ -275,19 +292,41 @@ export function ShopProductDetailView({
                 </FieldRow>
               </CardContent>
             </Card>
-
-            {hasStoreContact && (
-              <StoreLocationCard storeName={product.storeName} phone={product.storePhone} address={product.storeAddress} />
-            )}
           </div>
         </div>
       </div>
+
+      {viewerIndex !== null && masterImages.length > 0 && (
+        <ProductImageViewer
+          images={masterImages}
+          labels={realLabels}
+          initialIndex={viewerIndex}
+          onClose={() => setViewerIndex(null)}
+        />
+      )}
+
+      {trialModalOpen && (
+        <RentalRequestModal
+          productId={product.id}
+          productTitle={product.title}
+          productImage={thumbImages[0] ?? null}
+          storeName={product.storeName}
+          ageGroup={AGE_GROUPS[0]}
+          rentalPricePerDay={rental.rentalPricePerDay}
+          deposit={rental.deposit}
+          rentalDurationDays={rental.rentalDurationDays}
+          sessionPhone={sessionPhone}
+          initialAccount={initialAccount}
+          initialAddresses={initialAddresses}
+          onClose={() => setTrialModalOpen(false)}
+        />
+      )}
 
       {checkoutOpen && (
         <ShopCheckoutModal
           productId={product.id}
           productTitle={product.title}
-          productImage={realImages[0] ?? null}
+          productImage={thumbImages[0] ?? null}
           storeName={product.storeName}
           unitPrice={product.price}
           sessionPhone={sessionPhone}

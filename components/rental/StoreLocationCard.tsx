@@ -7,6 +7,8 @@ interface StoreLocationCardProps {
   storeName?: string | null;
   phone?: string | null;
   address?: string | null;
+  /** Extra content rendered below the contact/map row — e.g. /shop's "Request for Home Trial" CTA. Purely a slot: this component stays agnostic of what it renders. */
+  children?: React.ReactNode;
 }
 
 /**
@@ -16,7 +18,7 @@ interface StoreLocationCardProps {
  * pulling one in just for a static thumbnail would be a new dependency for
  * no real benefit. Shared by /rent and /shop's product detail pages.
  */
-export function StoreLocationCard({ storeName, phone, address }: StoreLocationCardProps) {
+export function StoreLocationCard({ storeName, phone, address, children }: StoreLocationCardProps) {
   const mapQuery = storeName && address ? `${storeName}, ${address}` : address || storeName || "";
   const directionsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`;
 
@@ -65,7 +67,7 @@ export function StoreLocationCard({ storeName, phone, address }: StoreLocationCa
     <Card className="rounded-3xl overflow-hidden bg-white/90">
       <CardHeader className="px-4 sm:px-5 pt-3.5 pb-1">
         <CardTitle className="font-heading text-base font-medium">
-          {storeName ? `Visit ${storeName}` : "Store Location"}
+          {storeName ? <>Visit <span className="font-bold">{storeName}</span></> : "Store Location"}
         </CardTitle>
       </CardHeader>
       <CardContent className="px-4 sm:px-5 pb-4 pt-2">
@@ -174,6 +176,7 @@ export function StoreLocationCard({ storeName, phone, address }: StoreLocationCa
             </a>
           )}
         </div>
+        {children}
       </CardContent>
     </Card>
   );

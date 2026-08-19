@@ -37,6 +37,9 @@ export function ShopTryOnButton({ product, loggedIn, initialCredits, iconOnly = 
   const [setupModalOpen, setSetupModalOpen] = useState(false);
   const [credits, setCredits] = useState(initialCredits);
   const [showTopUp, setShowTopUp] = useState(false);
+  // Guests see a normal-looking try-on CTA first — the account requirement
+  // only surfaces once they actually click it, not upfront.
+  const [revealSignIn, setRevealSignIn] = useState(false);
 
   const entry = findActiveTryOn(product.id);
   const prevStatusRef = useRef(entry?.status);
@@ -63,9 +66,9 @@ export function ShopTryOnButton({ product, loggedIn, initialCredits, iconOnly = 
     let disabled = false;
 
     if (needsSignIn) {
-      iconNode = <UserPlus size={20} />;
-      variantClass = "bg-white/95 text-indigo-500 border-2 border-indigo-300 backdrop-blur-sm hover:bg-white hover:text-indigo-600";
-      label = "Create an account to get 5 free virtual try-ons";
+      iconNode = <HangerPlusIcon size={20} />;
+      variantClass = "bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-indigo-300/50 hover:opacity-90";
+      label = "Try it on virtually";
       onClick = () => router.push(signInHref);
     } else if (!photo) {
       iconNode = <HangerPlusIcon size={20} />;
@@ -127,16 +130,31 @@ export function ShopTryOnButton({ product, loggedIn, initialCredits, iconOnly = 
     );
   }
 
-  // ── Signed out ──────────────────────────────────────────────────────────────
+  // ── Signed out — a normal-looking CTA; the account requirement only shows
+  // once clicked, not upfront ──────────────────────────────────────────────
   if (needsSignIn) {
-    return (
-      <div className="space-y-2">
-        <Link
-          href={signInHref}
+    if (!revealSignIn) {
+      return (
+        <button
+          onClick={() => setRevealSignIn(true)}
           className="w-full flex items-center justify-center gap-2 h-12 rounded-2xl text-sm font-semibold bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-md shadow-indigo-200/50 hover:opacity-90 active:scale-[0.98] transition-all"
         >
+          <HangerPlusIcon className="h-4 w-4" />
+          Try It On Virtually
+        </button>
+      );
+    }
+    return (
+      <div className="space-y-2 p-3 rounded-2xl border border-indigo-100 bg-indigo-50/50">
+        <p className="text-xs text-indigo-700 text-center">
+          Create an account to get 5 free virtual try-ons.
+        </p>
+        <Link
+          href={signInHref}
+          className="w-full flex items-center justify-center gap-2 h-11 rounded-xl text-sm font-semibold bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-sm hover:opacity-90 active:scale-[0.98] transition-all"
+        >
           <UserPlus className="h-4 w-4" />
-          Create an account for 5 free virtual try-ons
+          Sign In / Create Account
         </Link>
       </div>
     );

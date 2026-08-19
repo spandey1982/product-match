@@ -26,12 +26,14 @@ export const VARIANT_TRANSFORM = {
   master: `${AUTO},c_scale,w_2048,e_sharpen:60`,
   display: `${AUTO},c_limit,w_1200`,
   thumbnail: `${AUTO},c_limit,w_400`,
-  // Slight gravity-aware zoom (25%) for the /shop PDP's "Additional Info"
-  // card — a chained transform (crop+zoom, then the usual delivery resize),
-  // not a single step like the other three. insertDeliveryTransform below
-  // splices this whole string in as-is, so the embedded "/" becomes a
-  // second real path segment in the resulting Cloudinary URL.
-  zoomed: `c_crop,g_auto,z_1.25/${AUTO},c_limit,w_1200`,
+  // Slight center-crop zoom (25%) for the /shop PDP's "Additional Info"
+  // card — g_center (not g_auto) so the crop comes in equally from every
+  // side instead of favoring a detected focal point. A chained transform
+  // (crop+zoom, then the usual delivery resize), not a single step like the
+  // other three — insertDeliveryTransform below splices this whole string
+  // in as-is, so the embedded "/" becomes a second real path segment in the
+  // resulting Cloudinary URL.
+  zoomed: `c_crop,g_center,z_1.25/${AUTO},c_limit,w_1200`,
 } as const;
 
 export type VariantType = keyof typeof VARIANT_TRANSFORM;

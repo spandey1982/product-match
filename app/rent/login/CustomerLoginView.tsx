@@ -20,6 +20,10 @@ export function CustomerLoginView() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const returnTo = searchParams.get("returnTo") || "/rent";
+  // Shared login page — /shop is buy-only and its copy must never mention
+  // renting, so the heading is picked per calling context instead of one
+  // fixed "Sign in to rent" string.
+  const isShopContext = returnTo.startsWith("/shop");
 
   const [mode, setMode] = useState<Mode>(searchParams.get("intent") === "signup" ? "signup" : "signin");
   const [step, setStep] = useState<Step>("phone");
@@ -81,7 +85,13 @@ export function CustomerLoginView() {
       <div className="bg-white rounded-3xl border border-gray-100 shadow-xl shadow-indigo-100/30 p-8">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900">
-            {step === "otp" ? "Enter the code" : mode === "signup" ? "Create your account" : "Sign in to rent"}
+            {step === "otp"
+              ? "Enter the code"
+              : mode === "signup"
+              ? "Create your account"
+              : isShopContext
+              ? "Sign in to shop"
+              : "Sign in to rent"}
           </h1>
           <p className="text-sm text-gray-500 mt-1">
             {step === "phone"

@@ -44,6 +44,7 @@ export function ShopProductCard({ product, initialWishlisted, loggedIn, onWishli
               initialWishlisted={initialWishlisted}
               loggedIn={loggedIn}
               onToggled={onWishlistToggled}
+              size="xs"
             />
           </div>
         </div>
@@ -75,19 +76,8 @@ export function ShopProductCard({ product, initialWishlisted, loggedIn, onWishli
             <p className="text-sm font-bold text-gray-900">{formatCurrency(product.price)}</p>
           </div>
 
-          {product.isForRent && (
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <Badge variant="purple">For Rent</Badge>
-              {product.rentalPricePerDay != null && (
-                <span className="text-[11px] text-gray-500">
-                  {formatCurrency(product.rentalPricePerDay)}/day
-                </span>
-              )}
-            </div>
-          )}
-
           <Button size="sm" className="w-full mt-1">
-            {product.isForRent ? "Buy or Rent" : "Buy Now"}
+            Buy Now
           </Button>
         </div>
       </div>

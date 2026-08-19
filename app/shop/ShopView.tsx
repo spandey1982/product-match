@@ -177,10 +177,6 @@ export function ShopView({ loggedIn, wishlistedIds }: ShopViewProps) {
 
   return (
     <div>
-      <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
-        <h1 className="font-heading text-2xl sm:text-3xl font-medium text-gray-900">Shop</h1>
-      </div>
-
       <CatalogFilterBar
         categories={CATEGORIES}
         occasions={OCCASIONS}
