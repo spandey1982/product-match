@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { toPublicShopProduct } from "@/lib/shop/public-product";
 import { getCustomerSession } from "@/lib/customer-auth";
+import { peekGuestDeviceId } from "@/lib/shop/guest-device";
+import { FREE_TRYON_CREDITS } from "@/lib/vto-credits/packages";
 import { ShopProductDetailView } from "./ShopProductDetailView";
 
 interface Props {
@@ -64,6 +66,21 @@ export default async function ShopProductPage({ params }: Props) {
       initialTryOnCredits = customer.tryOnCredits;
     }
     initialWishlisted = Boolean(wishlistEntry);
+  } else {
+    // Guest — their pre-login try-on pool (GuestTryOnUsage), not a customer
+    // credit balance. No cookie yet means nothing's been spent (a fresh
+    // guest_tryon_usage row is only created on their first actual try-on
+    // POST, not just from visiting a page — see the tryon route).
+    const deviceId = await peekGuestDeviceId();
+    if (deviceId) {
+      const usage = await db.guestTryOnUsage.findUnique({
+        where: { deviceId },
+        select: { usedCount: true },
+      });
+      initialTryOnCredits = usage ? Math.max(0, FREE_TRYON_CREDITS - usage.usedCount) : FREE_TRYON_CREDITS;
+    } else {
+      initialTryOnCredits = FREE_TRYON_CREDITS;
+    }
   }
 
   return (

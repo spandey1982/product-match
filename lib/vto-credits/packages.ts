@@ -38,10 +38,16 @@ export function findCreditPackage(id: string): CreditPackage | null {
 // in, or open the top-up picker, instead of a dead-end "Retry"). TrialRoomProvider
 // only ever surfaces `data.error` as plain display text, with no separate error
 // code, so an exact string match is the only hook available.
-export const SIGN_IN_FOR_CREDITS_MESSAGE = "Create an account to get 5 free virtual try-ons.";
+//
+// SIGN_IN_FOR_CREDITS_MESSAGE fires in two cases: a guest who has spent their
+// pre-login pool (GuestTryOnUsage, see lib/shop/guest-device.ts), or a
+// logged-out customer attempting a request some other way — the copy covers
+// both since a fresh guest never sees this (they get the same generation flow
+// as a logged-in customer until their pool hits 0).
+export const SIGN_IN_FOR_CREDITS_MESSAGE = "You've used your 5 free try-ons — sign in to get 5 more, free.";
 export const INSUFFICIENT_CREDITS_MESSAGE = "You're out of free try-ons — top up to keep trying things on.";
 
-/** Free starting balance for a newly created Customer — kept alongside the packages it's spent from. */
+/** Free starting balance for a newly created Customer, and the pre-login guest pool (GuestTryOnUsage) — same number, two separate pools. */
 export const FREE_TRYON_CREDITS = 5;
 
 /** ₹500 spent ⇒ +1 bonus try-on credit (e.g. ₹700 → 1, ₹3699 → 7). Applied to a ShopOrder's amountTotal at creation. */
