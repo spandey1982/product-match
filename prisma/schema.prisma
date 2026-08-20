@@ -28,6 +28,13 @@ model User {
   aiGenSettings String?
   logoPublicId  String?
 
+  // Soft-delete marker for account-deletion requests. Null = active. Set to
+  // the request time when a retailer confirms deletion; a successful login
+  // while this is set and still within the 7-day grace window cancels it
+  // (see /api/auth/login). Permanently purged 7 days after this timestamp
+  // by the purge job — see lib/account/purge.ts.
+  deletedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -35,6 +42,7 @@ model User {
   modelProfiles ModelProfile[]
   wallet        Wallet?
 
+  @@index([deletedAt])
   @@map("users")
 }
 

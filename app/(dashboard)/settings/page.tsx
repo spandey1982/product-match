@@ -33,6 +33,7 @@ export default async function SettingsPage() {
       initialStorePhone={user?.storePhone ?? ""}
       initialStoreAddress={user?.storeAddress ?? ""}
       initialStoreCity={user?.storeCity ?? ""}
+      initialEmail={session.email}
     />
   );
 }

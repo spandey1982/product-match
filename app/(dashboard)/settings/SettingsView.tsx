@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Sparkles, Check, Loader2, AlertCircle, Lock, Phone, MapPin } from "lucide-react";
+import { Sparkles, Check, Loader2, AlertCircle, Lock, Phone, MapPin, Mail, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { CITY_NAMES } from "@/lib/geo/city-coordinates";
+import { DeleteAccountModal } from "@/components/account/DeleteAccountModal";
 
 type Mode = "gemini" | "vertex" | "auto";
 
@@ -21,6 +22,7 @@ interface Props {
   initialStorePhone: string;
   initialStoreAddress: string;
   initialStoreCity: string;
+  initialEmail: string;
 }
 
 // Friendly, non-technical labels — the headline effect of each choice. The
@@ -46,7 +48,7 @@ interface ModeOption {
   enabled: boolean;
 }
 
-export function SettingsView({ current, providers, initialStorePhone, initialStoreAddress, initialStoreCity }: Props) {
+export function SettingsView({ current, providers, initialStorePhone, initialStoreAddress, initialStoreCity, initialEmail }: Props) {
   const [selected, setSelected] = useState<Mode>(current);
   const [saving, setSaving] = useState<Mode | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +60,42 @@ export function SettingsView({ current, providers, initialStorePhone, initialSto
   const [contactSaving, setContactSaving] = useState(false);
   const [contactError, setContactError] = useState<string | null>(null);
   const [contactSaved, setContactSaved] = useState(false);
+
+  const [email, setEmail] = useState(initialEmail);
+  const [newEmail, setNewEmail] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [emailSaving, setEmailSaving] = useState(false);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [emailSaved, setEmailSaved] = useState(false);
+
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+
+  async function saveEmail() {
+    if (!newEmail.trim() || !currentPassword) return;
+    setEmailSaving(true);
+    setEmailError(null);
+    setEmailSaved(false);
+    try {
+      const res = await fetch("/api/settings/account", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ newEmail, currentPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setEmailError(data.error || "Could not update your email. Please try again.");
+        return;
+      }
+      setEmail(data.email);
+      setNewEmail("");
+      setCurrentPassword("");
+      setEmailSaved(true);
+    } catch {
+      setEmailError("Network error. Please try again.");
+    } finally {
+      setEmailSaving(false);
+    }
+  }
 
   async function saveStoreContact() {
     setContactSaving(true);
@@ -288,6 +326,83 @@ export function SettingsView({ current, providers, initialStorePhone, initialSto
           </p>
         )}
       </section>
+
+      <section className="mt-8">
+        <div className="flex items-center gap-2 mb-1">
+          <Mail className="h-4 w-4 text-indigo-500" />
+          <h2 className="text-sm font-semibold text-gray-900">
+            Account Email
+          </h2>
+        </div>
+        <p className="text-xs text-gray-500 mb-4">
+          Used to sign in. Changing it requires your current password.
+        </p>
+
+        <div className="space-y-3 rounded-2xl border border-gray-100 bg-white p-4">
+          <p className="text-sm text-gray-500">
+            Current: <span className="font-medium text-gray-900">{email}</span>
+          </p>
+          <Input
+            label="New email"
+            type="email"
+            value={newEmail}
+            onChange={(e) => setNewEmail(e.target.value)}
+            placeholder="you@brand.com"
+            autoComplete="email"
+          />
+          <Input
+            label="Current password"
+            type="password"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+            placeholder="••••••••"
+            autoComplete="current-password"
+          />
+
+          <div className="flex items-center gap-3 pt-1">
+            <Button size="sm" onClick={saveEmail} loading={emailSaving} disabled={!newEmail.trim() || !currentPassword}>
+              Save
+            </Button>
+            {emailSaved && !emailError && (
+              <span className="text-xs text-green-600 flex items-center gap-1">
+                <Check className="h-3.5 w-3.5" /> Saved
+              </span>
+            )}
+          </div>
+          {emailError && (
+            <p className="text-xs text-red-500 flex items-center gap-1">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" /> {emailError}
+            </p>
+          )}
+        </div>
+      </section>
+
+      <section className="mt-8">
+        <div className="flex items-center gap-2 mb-1">
+          <ShieldAlert className="h-4 w-4 text-red-500" />
+          <h2 className="text-sm font-semibold text-gray-900">
+            Danger Zone
+          </h2>
+        </div>
+        <p className="text-xs text-gray-500 mb-4">
+          Delete your account and everything in it. You get a 7-day window to
+          change your mind.
+        </p>
+
+        <div className="rounded-2xl border border-red-100 bg-red-50/40 p-4">
+          <p className="text-sm text-gray-700 mb-3">
+            Deleting your account removes your catalog, model profiles, and
+            wallet after 7 days. Logging back in with your password any time
+            before then cancels the deletion — nothing is lost until the
+            window closes.
+          </p>
+          <Button size="sm" variant="destructive" onClick={() => setDeleteModalOpen(true)}>
+            Delete My Account
+          </Button>
+        </div>
+      </section>
+
+      <DeleteAccountModal open={deleteModalOpen} onOpenChange={setDeleteModalOpen} />
     </div>
   );
 }

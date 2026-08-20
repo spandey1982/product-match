@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verifyPassword, setSession } from "@/lib/auth";
+import { DELETION_GRACE_PERIOD_MS } from "@/lib/account/purge";
 
 const DEMO_EMAIL = "demo@productmatch.ai";
 const DEMO_PASSWORD = "demo1234";
@@ -57,12 +58,30 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // An account past its 7-day deletion grace period is effectively gone —
+    // treat it the same as "no such user" rather than leaking deletion state.
+    const pastGracePeriod =
+      user.deletedAt !== null && Date.now() - user.deletedAt.getTime() >= DELETION_GRACE_PERIOD_MS;
+    if (pastGracePeriod) {
+      return NextResponse.json(
+        { error: "Invalid email or password" },
+        { status: 401 }
+      );
+    }
+
     const valid = await verifyPassword(password, user.password);
     if (!valid) {
       return NextResponse.json(
         { error: "Invalid email or password" },
         { status: 401 }
       );
+    }
+
+    // A correct login within the grace period is the recovery action —
+    // cancel the pending deletion.
+    const recovered = user.deletedAt !== null;
+    if (recovered) {
+      await db.user.update({ where: { id: user.id }, data: { deletedAt: null } });
     }
 
     await setSession({
@@ -75,6 +94,7 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json({
+      recovered,
       user: {
         id: user.id,
         email: user.email,
