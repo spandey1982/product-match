@@ -35,7 +35,7 @@ interface RentalInfoPanelProps {
   /** Server-fetched account/address book for that same logged-in customer — never populated for a guest. */
   initialAccount?: { name: string; email?: string };
   initialAddresses?: CustomerAddress[];
-  /** Primary button text — defaults to the real /rent marketplace copy; the dashboard's rental-preview overrides this to match /shop and /catalog's unified "Try/Buy" wording. */
+  /** Primary button text — defaults to the real /rent marketplace copy; the dashboard's rental-preview overrides this to match /shop and /catalog's unified "Try & Buy" wording. */
   ctaLabel?: string;
 }
 

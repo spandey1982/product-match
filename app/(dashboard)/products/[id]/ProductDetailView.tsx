@@ -144,6 +144,8 @@ export function ProductDetailView({
     title: product.title,
     description: product.description ?? "",
     price: String(product.price),
+    mrpPrice: product.mrpPrice != null ? String(product.mrpPrice) : "",
+    discountPercent: product.discountPercent != null ? String(product.discountPercent) : "",
     color: product.color,
     material: product.material ?? "",
     subcategory: product.subcategory ?? "",
@@ -155,6 +157,18 @@ export function ProductDetailView({
   });
   // Live display values (updated on save)
   const [displayProduct, setDisplayProduct] = useState(product);
+
+  // Selling price is auto-calculated from MRP - discount% whenever both are
+  // valid, so the retailer never has to do the math (and can't get it
+  // wrong) — computed directly in the MRP/discount input handlers below
+  // (event-driven, not an effect) so it lands in the same state update.
+  // MRP alone (no discount) leaves price manually editable.
+  function priceFromMrpDiscount(mrpStr: string, discountStr: string): string | null {
+    const mrp = parseFloat(mrpStr);
+    const discount = parseInt(discountStr, 10);
+    if (!(mrp > 0) || !Number.isInteger(discount) || discount < 1 || discount > 100) return null;
+    return String(Math.round(mrp * (1 - discount / 100)));
+  }
 
   // Mocked rental data — only computed when viewing this page from /rent.
   const rentalInfo = rentalMode ? getMockRentalInfo(displayProduct) : null;
@@ -372,6 +386,8 @@ export function ProductDetailView({
       title: displayProduct.title,
       description: displayProduct.description ?? "",
       price: String(displayProduct.price),
+      mrpPrice: displayProduct.mrpPrice != null ? String(displayProduct.mrpPrice) : "",
+      discountPercent: displayProduct.discountPercent != null ? String(displayProduct.discountPercent) : "",
       color: displayProduct.color,
       material: displayProduct.material ?? "",
       subcategory: displayProduct.subcategory ?? "",
@@ -391,6 +407,8 @@ export function ProductDetailView({
       title: editFields.title.trim(),
       description: editFields.description.trim() || null,
       price: parseFloat(editFields.price) || 0,
+      mrpPrice: editFields.mrpPrice.trim() ? parseFloat(editFields.mrpPrice) : null,
+      discountPercent: editFields.discountPercent.trim() ? parseInt(editFields.discountPercent, 10) : null,
       color: editFields.color.trim(),
       material: editFields.material.trim() || null,
       subcategory: editFields.subcategory.trim() || null,
@@ -790,18 +808,70 @@ export function ProductDetailView({
                 productId={displayProduct.id}
                 productTitle={displayProduct.title}
                 initialRental={rentalInfo}
-                ctaLabel="Try/Buy"
+                ctaLabel="Try & Buy"
               />
             ) : editing ? (
               <div className="space-y-3">
-                <div>
-                  <label className="text-xs font-medium text-gray-400 mb-1 block font-body">Price (₹)</label>
-                  <input
-                    type="number"
-                    value={editFields.price}
-                    onChange={(e) => setEditFields((f) => ({ ...f, price: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 font-body"
-                  />
+                {(() => {
+                  const priceAutoCalculated = Boolean(editFields.mrpPrice.trim() && editFields.discountPercent.trim());
+                  return (
+                    <div>
+                      <label className="text-xs font-medium text-gray-400 mb-1 block font-body">Price (₹)</label>
+                      <input
+                        type="number"
+                        value={editFields.price}
+                        onChange={(e) => setEditFields((f) => ({ ...f, price: e.target.value }))}
+                        disabled={priceAutoCalculated}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 font-body disabled:bg-gray-50 disabled:text-gray-500"
+                      />
+                      {priceAutoCalculated && (
+                        <p className="text-[11px] text-gray-400 mt-1 font-body">Calculated from MRP − discount</p>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-medium text-gray-400 mb-1 block font-body">MRP (₹)</label>
+                    <input
+                      type="number"
+                      value={editFields.mrpPrice}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setEditFields((f) => {
+                          if (!value.trim()) return { ...f, mrpPrice: "", discountPercent: "" };
+                          const computed = priceFromMrpDiscount(value, f.discountPercent);
+                          return { ...f, mrpPrice: value, price: computed ?? f.price };
+                        });
+                      }}
+                      placeholder="Optional"
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 font-body"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-400 mb-1 block font-body">Discount %</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={100}
+                      step={1}
+                      value={editFields.discountPercent}
+                      disabled={!editFields.mrpPrice.trim()}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        if (raw === "") { setEditFields((f) => ({ ...f, discountPercent: "" })); return; }
+                        const n = Number(raw);
+                        if (!Number.isInteger(n) || n < 1 || n > 100) return;
+                        setEditFields((f) => {
+                          const computed = priceFromMrpDiscount(f.mrpPrice, raw);
+                          return { ...f, discountPercent: raw, price: computed ?? f.price };
+                        });
+                      }}
+                      placeholder="Optional"
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 font-body disabled:bg-gray-50 disabled:text-gray-400"
+                    />
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-between">
@@ -849,11 +919,18 @@ export function ProductDetailView({
                 )}
               </div>
             ) : (
-              <div className="flex items-center gap-0.5 text-gray-800 pt-1">
-                <IndianRupee className="h-5 w-5" strokeWidth={1.75} />
-                <span className="font-body text-xl sm:text-2xl font-semibold">
-                  {displayProduct.price.toLocaleString("en-IN")}
-                </span>
+              <div className="flex items-baseline gap-2 pt-1">
+                <div className="flex items-center gap-0.5 text-gray-800">
+                  <IndianRupee className="h-5 w-5" strokeWidth={1.75} />
+                  <span className="font-body text-xl sm:text-2xl font-semibold">
+                    {displayProduct.price.toLocaleString("en-IN")}
+                  </span>
+                </div>
+                {displayProduct.mrpPrice != null && displayProduct.mrpPrice > displayProduct.price && (
+                  <span className="font-body text-sm text-gray-400 line-through">
+                    ₹{displayProduct.mrpPrice.toLocaleString("en-IN")}
+                  </span>
+                )}
               </div>
             )}
 

@@ -38,6 +38,10 @@ export type Product = {
   gender: string;
   season: string[];
   price: number;
+  /** Original/MRP price — shown struck-through next to `price` when set and greater than it. */
+  mrpPrice?: number | null;
+  /** 1-100, only meaningful alongside mrpPrice. See ProductDetailView's edit form for the auto-calc. */
+  discountPercent?: number | null;
   isForRent: boolean;
   rentalPricePerDay?: number | null;
   rentalDeposit?: number | null;
