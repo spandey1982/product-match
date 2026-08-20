@@ -1,12 +1,15 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { Store, Phone, MapPin, Navigation, PhoneCall, Copy, Check } from "lucide-react";
+import { Store, Phone, MapPin, Navigation, PhoneCall, Copy, Check, ChevronDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface StoreLocationCardProps {
   storeName?: string | null;
   phone?: string | null;
   address?: string | null;
+  /** Renders the header as a toggle and starts collapsed — /shop's product detail page uses this; /rent leaves it always-expanded. */
+  collapsible?: boolean;
 }
 
 /**
@@ -19,10 +22,11 @@ interface StoreLocationCardProps {
  * meaning on its own, and copy/call feedback swaps the icon itself rather
  * than adding a label.
  */
-export function StoreLocationCard({ storeName, phone, address }: StoreLocationCardProps) {
+export function StoreLocationCard({ storeName, phone, address, collapsible }: StoreLocationCardProps) {
   const mapQuery = storeName && address ? `${storeName}, ${address}` : address || storeName || "";
   const directionsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`;
 
+  const [expanded, setExpanded] = useState(!collapsible);
   const [phoneMenuOpen, setPhoneMenuOpen] = useState(false);
   const [phoneCopied, setPhoneCopied] = useState(false);
   const [addressCopied, setAddressCopied] = useState(false);
@@ -66,9 +70,24 @@ export function StoreLocationCard({ storeName, phone, address }: StoreLocationCa
 
   return (
     <Card className="rounded-3xl overflow-hidden bg-white/90">
-      <CardHeader className="px-4 sm:px-5 pt-3.5 pb-1">
-        <CardTitle className="font-heading text-base font-medium">Store Details</CardTitle>
-      </CardHeader>
+      {collapsible ? (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="w-full flex items-center justify-between px-4 sm:px-5 pt-3.5 pb-1 text-left"
+          aria-expanded={expanded}
+        >
+          <CardTitle className="font-heading text-base font-medium">Store Details</CardTitle>
+          <ChevronDown className={cn("h-4 w-4 text-gray-400 transition-transform", expanded && "rotate-180")} />
+        </button>
+      ) : (
+        <CardHeader className="px-4 sm:px-5 pt-3.5 pb-1">
+          <CardTitle className="font-heading text-base font-medium">Store Details</CardTitle>
+        </CardHeader>
+      )}
+      {!expanded ? (
+        <div className="pb-3.5" />
+      ) : (
       <CardContent className="px-4 sm:px-5 pb-4 pt-2">
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1 space-y-3">
@@ -180,6 +199,7 @@ export function StoreLocationCard({ storeName, phone, address }: StoreLocationCa
           )}
         </div>
       </CardContent>
+      )}
     </Card>
   );
 }

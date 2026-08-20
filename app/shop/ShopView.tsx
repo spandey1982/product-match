@@ -1,13 +1,16 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
-import { Sparkles, MapPin } from "lucide-react";
+import Link from "next/link";
+import { Sparkles, MapPin, ArrowLeft, FolderPlus, Check, X, Loader2, Copy, ExternalLink } from "lucide-react";
 import { Pagination } from "@/types";
-import { formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import { PublicShopProduct } from "@/lib/shop/public-product";
 import { ShopProductCard } from "@/components/shop/ShopProductCard";
 import { CatalogFilterBar } from "@/components/catalog/CatalogFilterBar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { CATEGORIES, OCCASIONS } from "@/lib/catalog/taxonomy";
 import { CITY_NAMES } from "@/lib/geo/city-coordinates";
 
@@ -15,11 +18,16 @@ interface ShopViewProps {
   loggedIn: boolean;
   /** Product ids already on this customer's wishlist — empty for a guest. */
   wishlistedIds: string[];
+  /** True only for an admin-session browsing the full /shop catalogue — gates the collection-builder UI. Never true on a collection screen. */
+  isAdmin?: boolean;
+  /** Present when rendering an admin-curated collection screen (/shop/collections/[id]) — scopes every fetch to that collection's product set. */
+  collectionId?: string;
+  collectionName?: string;
 }
 
 type LocationSource = "city" | "geolocation" | null;
 
-export function ShopView({ loggedIn, wishlistedIds }: ShopViewProps) {
+export function ShopView({ loggedIn, wishlistedIds, isAdmin, collectionId, collectionName }: ShopViewProps) {
   const [products, setProducts] = useState<PublicShopProduct[]>([]);
   const [subcategories, setSubcategories] = useState<string[]>([]);
   const [pagination, setPagination] = useState<Pagination | null>(null);
@@ -41,6 +49,77 @@ export function ShopView({ loggedIn, wishlistedIds }: ShopViewProps) {
   const [radiusKm, setRadiusKm] = useState(0);
   const [locationError, setLocationError] = useState("");
 
+  // ── admin collection builder (only when isAdmin && !collectionId) ─────────
+  const [collectMode, setCollectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [nameDialogOpen, setNameDialogOpen] = useState(false);
+  const [collectionNameInput, setCollectionNameInput] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState("");
+  const [createdLink, setCreatedLink] = useState<{ id: string; name: string } | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
+
+  const canBuildCollections = Boolean(isAdmin) && !collectionId;
+
+  function enterCollectMode() {
+    setCollectMode(true);
+    setSelectedIds(new Set());
+  }
+
+  function exitCollectMode() {
+    setCollectMode(false);
+    setSelectedIds(new Set());
+  }
+
+  function toggleProductSelection(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function selectAllOnPage() {
+    setSelectedIds(new Set(products.map((p) => p.id)));
+  }
+
+  async function handleCreateCollection() {
+    if (!collectionNameInput.trim() || selectedIds.size === 0) return;
+    setCreating(true);
+    setCreateError("");
+    try {
+      const res = await fetch("/api/admin/shop-collections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: collectionNameInput.trim(), productIds: Array.from(selectedIds) }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setCreateError(data.error || "Couldn't create the collection.");
+        return;
+      }
+      setCreatedLink({ id: data.collection.id, name: data.collection.name });
+      setNameDialogOpen(false);
+      setCollectionNameInput("");
+      exitCollectMode();
+    } catch {
+      setCreateError("Couldn't create the collection.");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  function collectionLinkUrl(id: string) {
+    return typeof window !== "undefined" ? `${window.location.origin}/shop/collections/${id}` : `/shop/collections/${id}`;
+  }
+
+  async function copyCollectionLink(id: string) {
+    await navigator.clipboard.writeText(collectionLinkUrl(id));
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 2000);
+  }
+
   const wishlistedSet = new Set(wishlistedIds);
 
   const fetchProducts = useCallback(async () => {
@@ -57,6 +136,7 @@ export function ShopView({ loggedIn, wishlistedIds }: ShopViewProps) {
       } else if (selectedCity) {
         params.set("city", selectedCity);
       }
+      if (collectionId) params.set("collectionId", collectionId);
       params.set("page", String(page));
       params.set("limit", "24");
       const res = await fetch(`/api/public/products?${params}`);
@@ -67,20 +147,22 @@ export function ShopView({ loggedIn, wishlistedIds }: ShopViewProps) {
     } finally {
       setLoading(false);
     }
-  }, [selectedCategory, selectedOccasion, selectedSubcategory, priceMin, selectedCity, locationSource, coords, page]);
+  }, [selectedCategory, selectedOccasion, selectedSubcategory, priceMin, selectedCity, locationSource, coords, page, collectionId]);
 
   const searchProducts = useCallback(async (q: string) => {
     if (!q.trim()) { fetchProducts(); return; }
     setLoading(true);
     try {
-      const res = await fetch(`/api/public/products/search?q=${encodeURIComponent(q)}`);
+      const params = new URLSearchParams({ q });
+      if (collectionId) params.set("collectionId", collectionId);
+      const res = await fetch(`/api/public/products/search?${params}`);
       const data = await res.json();
       setProducts(data.products || []);
       setPagination(null);
     } finally {
       setLoading(false);
     }
-  }, [fetchProducts]);
+  }, [fetchProducts, collectionId]);
 
   useEffect(() => {
     setTimeout(() => { if (!searchQuery) void fetchProducts(); }, 0);
@@ -163,56 +245,178 @@ export function ShopView({ loggedIn, wishlistedIds }: ShopViewProps) {
   function renderGrid(list: PublicShopProduct[]) {
     return (
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-        {list.map((product) => (
-          <ShopProductCard
-            key={product.id}
-            product={product}
-            initialWishlisted={wishlistedSet.has(product.id)}
-            loggedIn={loggedIn}
-          />
-        ))}
+        {list.map((product) =>
+          collectMode ? (
+            <div key={product.id} className="relative cursor-pointer" onClick={() => toggleProductSelection(product.id)}>
+              <div className={cn("rounded-2xl transition-all pointer-events-none", selectedIds.has(product.id) && "ring-2 ring-indigo-500 ring-offset-2")}>
+                <ShopProductCard product={product} initialWishlisted={wishlistedSet.has(product.id)} loggedIn={loggedIn} />
+              </div>
+              <div className={cn(
+                "absolute top-2.5 left-2.5 z-30 h-6 w-6 rounded-md border-2 flex items-center justify-center transition-all",
+                selectedIds.has(product.id)
+                  ? "bg-indigo-600 border-indigo-600"
+                  : "bg-white/80 border-gray-300 backdrop-blur-sm"
+              )}>
+                {selectedIds.has(product.id) && <Check className="h-3.5 w-3.5 text-white" />}
+              </div>
+            </div>
+          ) : (
+            <ShopProductCard
+              key={product.id}
+              product={product}
+              initialWishlisted={wishlistedSet.has(product.id)}
+              loggedIn={loggedIn}
+            />
+          )
+        )}
       </div>
     );
   }
 
   return (
     <div>
-      <CatalogFilterBar
-        categories={CATEGORIES}
-        occasions={OCCASIONS}
-        searchQuery={searchQuery}
-        onSearchChange={(v) => { setSearchQuery(v); setPage(1); }}
-        selectedCategory={selectedCategory}
-        onCategoryChange={(cat) => {
-          setSelectedCategory(cat);
-          setSelectedSubcategory("");
-          setPage(1);
-          setSearchQuery("");
-        }}
-        selectedOccasion={selectedOccasion}
-        onOccasionChange={(occ) => { setSelectedOccasion(occ); setPage(1); }}
-        subcategories={subcategories}
-        selectedSubcategory={selectedSubcategory}
-        onSubcategoryChange={(sub) => { setSelectedSubcategory(sub); setPage(1); }}
-        priceMin={priceMin}
-        onPriceMinChange={(v) => { setPriceMin(v); setPage(1); }}
-        priceMax={priceMax}
-        onPriceMaxChange={(v) => { setPriceMax(v); setPage(1); }}
-        cityOptions={CITY_NAMES}
-        selectedCity={selectedCity}
-        onCityChange={handleCityChange}
-        radiusKm={radiusKm}
-        onRadiusChange={(v) => { setRadiusKm(v); setPage(1); }}
-        onUseMyLocation={handleUseMyLocation}
-        locationSource={locationSource}
-        filtersOpen={filtersOpen}
-        onToggleFilters={() => setFiltersOpen((v) => !v)}
-        hasFilters={hasFilters}
-        onReset={resetFilters}
-        belowSearchBar={
-          locationError ? <p className="text-xs text-amber-600">{locationError}</p> : undefined
-        }
-      />
+      {collectionName && (
+        <div className="mb-6">
+          <Link
+            href="/shop"
+            className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors mb-3"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Shop
+          </Link>
+          <h1 className="font-heading text-2xl sm:text-3xl font-medium text-gray-900">{collectionName}</h1>
+        </div>
+      )}
+
+      {canBuildCollections && !collectMode && (
+        <div className="flex justify-end mb-4">
+          <Button variant="outline" size="sm" onClick={enterCollectMode}>
+            <FolderPlus className="h-4 w-4" />
+            Create Collection
+          </Button>
+        </div>
+      )}
+
+      {collectMode && (
+        <div className="flex items-center gap-3 px-4 py-3 mb-4 bg-indigo-50 border border-indigo-200 rounded-2xl">
+          <FolderPlus className="h-4 w-4 text-indigo-500 shrink-0" />
+          <p className="text-sm text-indigo-800 flex-1">
+            {selectedIds.size === 0
+              ? "Tap products to add them to a collection"
+              : <><span className="font-semibold">{selectedIds.size}</span> selected</>}
+          </p>
+          <button
+            onClick={selectAllOnPage}
+            className="text-xs font-medium text-indigo-600 hover:text-indigo-800 underline underline-offset-2 shrink-0"
+          >
+            Select all on page
+          </button>
+          <button
+            onClick={() => setNameDialogOpen(true)}
+            disabled={selectedIds.size === 0}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors shrink-0"
+          >
+            Create Collection
+          </button>
+          <button onClick={exitCollectMode} className="text-indigo-400 hover:text-indigo-600 shrink-0">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      <Dialog open={nameDialogOpen} onOpenChange={(open) => { if (!creating) { setNameDialogOpen(open); if (!open) setCreateError(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Name this collection</DialogTitle>
+            <DialogDescription>{selectedIds.size} product{selectedIds.size === 1 ? "" : "s"} selected. A public link is generated automatically once created.</DialogDescription>
+          </DialogHeader>
+          <Input
+            autoFocus
+            placeholder="e.g. Diwali Edit 2026"
+            value={collectionNameInput}
+            onChange={(e) => setCollectionNameInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") handleCreateCollection(); }}
+          />
+          {createError && <p className="text-xs text-red-600 mt-2">{createError}</p>}
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setNameDialogOpen(false)} disabled={creating}>Cancel</Button>
+            <Button size="sm" onClick={handleCreateCollection} disabled={creating || !collectionNameInput.trim()}>
+              {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Create
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!createdLink} onOpenChange={(open) => { if (!open) setCreatedLink(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Collection created</DialogTitle>
+            <DialogDescription>&ldquo;{createdLink?.name}&rdquo; is live at this public link — anyone with it can view it.</DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center gap-2 mt-2 p-2.5 rounded-xl border border-gray-200 bg-gray-50">
+            <span className="text-xs text-gray-600 truncate flex-1">{createdLink ? collectionLinkUrl(createdLink.id) : ""}</span>
+            <button
+              onClick={() => createdLink && copyCollectionLink(createdLink.id)}
+              className="shrink-0 flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800"
+            >
+              <Copy className="h-3.5 w-3.5" />
+              {linkCopied ? "Copied" : "Copy"}
+            </button>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setCreatedLink(null)}>Close</Button>
+            {createdLink && (
+              <Link href={`/shop/collections/${createdLink.id}`} target="_blank">
+                <Button size="sm">
+                  <ExternalLink className="h-4 w-4" />
+                  View Collection
+                </Button>
+              </Link>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {!collectionId && (
+        <CatalogFilterBar
+          categories={CATEGORIES}
+          occasions={OCCASIONS}
+          searchQuery={searchQuery}
+          onSearchChange={(v) => { setSearchQuery(v); setPage(1); }}
+          selectedCategory={selectedCategory}
+          onCategoryChange={(cat) => {
+            setSelectedCategory(cat);
+            setSelectedSubcategory("");
+            setPage(1);
+            setSearchQuery("");
+          }}
+          selectedOccasion={selectedOccasion}
+          onOccasionChange={(occ) => { setSelectedOccasion(occ); setPage(1); }}
+          subcategories={subcategories}
+          selectedSubcategory={selectedSubcategory}
+          onSubcategoryChange={(sub) => { setSelectedSubcategory(sub); setPage(1); }}
+          hideSubcategoryTabs
+          priceMin={priceMin}
+          onPriceMinChange={(v) => { setPriceMin(v); setPage(1); }}
+          priceMax={priceMax}
+          onPriceMaxChange={(v) => { setPriceMax(v); setPage(1); }}
+          cityOptions={CITY_NAMES}
+          selectedCity={selectedCity}
+          onCityChange={handleCityChange}
+          radiusKm={radiusKm}
+          onRadiusChange={(v) => { setRadiusKm(v); setPage(1); }}
+          onUseMyLocation={handleUseMyLocation}
+          locationSource={locationSource}
+          filtersOpen={filtersOpen}
+          onToggleFilters={() => setFiltersOpen((v) => !v)}
+          hasFilters={hasFilters}
+          onReset={resetFilters}
+          belowSearchBar={
+            locationError ? <p className="text-xs text-amber-600">{locationError}</p> : undefined
+          }
+        />
+      )}
 
       {loading ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">

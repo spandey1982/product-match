@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { toPublicShopProduct } from "@/lib/shop/public-product";
 import { findCityCoordinate } from "@/lib/geo/city-coordinates";
 import { haversineKm, type Coordinate } from "@/lib/geo/distance";
+import { parseArray } from "@/lib/serialize";
 
 /** lat/lng (precise, browser geolocation) takes priority over a city name (coarse fallback) — see ShopView. */
 function resolveShopperCoordinate(searchParams: URLSearchParams): Coordinate | null {
@@ -38,6 +39,22 @@ export async function GET(req: NextRequest) {
     const priceMin = parseInt(searchParams.get("priceMin") || "0");
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "24");
+    const collectionId = searchParams.get("collectionId");
+
+    // Admin-curated collection scoping (see ShopCollection) — the collection
+    // screen at /shop/collections/{id} is filtered browsing over this fixed
+    // subset, reusing every filter/search/pagination path below unchanged.
+    let collectionProductIds: string[] | null = null;
+    if (collectionId) {
+      const collection = await db.shopCollection.findUnique({
+        where: { id: collectionId },
+        select: { productIds: true },
+      });
+      if (!collection) {
+        return NextResponse.json({ error: "Collection not found" }, { status: 404 });
+      }
+      collectionProductIds = parseArray(collection.productIds);
+    }
 
     const where: Prisma.ProductWhereInput = { isActive: true };
     if (category) where.category = category;
@@ -46,11 +63,13 @@ export async function GET(req: NextRequest) {
     if (color) where.color = color;
     if (gender) where.gender = gender;
     if (priceMin > 0) where.price = { gte: priceMin };
+    if (collectionProductIds) where.id = { in: collectionProductIds };
 
     const subcategoryWhere: Prisma.ProductWhereInput = {
       isActive: true,
       subcategory: { not: null },
       ...(category ? { category } : {}),
+      ...(collectionProductIds ? { id: { in: collectionProductIds } } : {}),
     };
 
     const shopperCoord = resolveShopperCoordinate(searchParams);

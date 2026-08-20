@@ -1,16 +1,22 @@
 import Link from "next/link";
-import { Heart, ShoppingBag } from "lucide-react";
+import { Heart, ShoppingBag, Layers } from "lucide-react";
 import { getCustomerSession } from "@/lib/customer-auth";
+import { getSession, isAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ShopAuthStatus } from "@/components/layout/ShopAuthStatus";
+import { ShopAdminBadge } from "@/components/layout/ShopAdminBadge";
 
 /**
  * Header for /shop — sibling to PublicHeader (which is /rent-specific).
  * Adds a standalone wishlist icon next to the profile icon, deliberately not
  * folded into the profile dropdown (kept minimal there, see ShopAuthStatus).
+ * Also adds an admin-only Collections icon (left of wishlist) — kept out of
+ * ShopAuthStatus's dropdown since that identity is Customer-session-scoped,
+ * entirely separate from the retailer/User session `isAdmin` checks here.
  */
 export async function ShopHeader() {
-  const session = await getCustomerSession();
+  const [session, adminSession] = await Promise.all([getCustomerSession(), getSession()]);
+  const admin = adminSession && isAdmin(adminSession) ? adminSession : null;
 
   let name: string | null = null;
   let wishlistCount = 0;
@@ -34,6 +40,20 @@ export async function ShopHeader() {
         </Link>
 
         <div className="flex items-center gap-2">
+          {admin && (
+            <>
+              <ShopAdminBadge email={admin.email} />
+              <Link
+                href="/shop/collections"
+                aria-label="Collections"
+                className="h-9 w-9 rounded-full flex items-center justify-center text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                title="Shop Collections (admin)"
+              >
+                <Layers className="h-4 w-4" strokeWidth={1.75} />
+              </Link>
+            </>
+          )}
+
           <Link
             href="/shop/wishlist"
             aria-label="Wishlist"
