@@ -27,9 +27,11 @@ import {
   CreditBalanceRing,
   CreditBalanceDropdown,
 } from "@/components/billing/CreditBalance";
+import { AdminMenu } from "@/components/layout/AdminMenu";
 
 interface NavbarProps {
   user: { name: string; email: string; storeName?: string | null; businessType?: string };
+  isAdmin?: boolean;
 }
 
 // ─── Badge chip ───────────────────────────────────────────────────────────────
@@ -45,7 +47,7 @@ function NavBadge({ count }: { count: number }) {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function Navbar({ user }: NavbarProps) {
+export function Navbar({ user, isAdmin }: NavbarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -127,6 +129,8 @@ export function Navbar({ user }: NavbarProps) {
             <Search className="h-4 w-4" />
             <span className="hidden md:block text-xs">Search catalog</span>
           </Link>
+
+          {isAdmin && <AdminMenu />}
 
           {/* User menu */}
           <div className="relative" ref={menuRef}>
