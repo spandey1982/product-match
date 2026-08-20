@@ -29,6 +29,8 @@ interface CatalogFilterBarProps {
   subcategories?: string[];
   selectedSubcategory?: string;
   onSubcategoryChange?: (value: string) => void;
+  /** Hides just the subcategory chip row (the quick-filter strip above the product grid) while keeping the filter wired — e.g. /shop, which dropped this row from its UI. */
+  hideSubcategoryTabs?: boolean;
 
   /** Only relevant when a caller supports these filters (e.g. voice search) — omit to hide their badges entirely. */
   selectedColor?: string;
@@ -86,6 +88,7 @@ export function CatalogFilterBar({
   subcategories,
   selectedSubcategory,
   onSubcategoryChange,
+  hideSubcategoryTabs,
   selectedColor,
   onClearColor,
   selectedGender,
@@ -330,7 +333,7 @@ export function CatalogFilterBar({
       )}
 
       {/* Subcategory tabs — only when the current selection has any (free text, no fixed taxonomy) */}
-      {onSubcategoryChange && subcategories && subcategories.length > 0 && (
+      {!hideSubcategoryTabs && onSubcategoryChange && subcategories && subcategories.length > 0 && (
         <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
           {subcategories.map((sub) => (
             <button

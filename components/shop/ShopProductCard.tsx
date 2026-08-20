@@ -85,7 +85,7 @@ export function ShopProductCard({ product, initialWishlisted, loggedIn, onWishli
           </div>
 
           <Button size="sm" className="w-full mt-1">
-            Buy Now
+            Try/Buy
           </Button>
         </div>
       </div>

@@ -35,6 +35,8 @@ interface RentalInfoPanelProps {
   /** Server-fetched account/address book for that same logged-in customer — never populated for a guest. */
   initialAccount?: { name: string; email?: string };
   initialAddresses?: CustomerAddress[];
+  /** Primary button text — defaults to the real /rent marketplace copy; the dashboard's rental-preview overrides this to match /shop and /catalog's unified "Try/Buy" wording. */
+  ctaLabel?: string;
 }
 
 export function RentalInfoPanel({
@@ -47,6 +49,7 @@ export function RentalInfoPanel({
   sessionPhone,
   initialAccount,
   initialAddresses,
+  ctaLabel = "Request for Home Trial",
 }: RentalInfoPanelProps) {
   const [selectedAge, setSelectedAge] = useState<AgeGroup>(DEFAULT_AGE);
   const [quote, setQuote] = useState<AgeRentalQuote>({
@@ -197,7 +200,7 @@ export function RentalInfoPanel({
           size="lg"
           onClick={enableRequestFlow ? () => setModalOpen(true) : undefined}
         >
-          Request for Home Trial
+          {ctaLabel}
         </Button>
         <p className="text-[11px] text-gray-400 text-center font-body">
           {enableRequestFlow

@@ -813,6 +813,28 @@ model PaymentOrder {
   @@map("payment_orders")
 }
 
+// ── Shop Collections (internal admin curation) ──────────────────────────────
+
+// A hand-picked, admin-curated subset of the live /shop catalogue, published
+// as its own public shareable screen at /shop/collections/{id}. productIds is
+// NOT a relation (same durable-snapshot posture as GenerationRecord) — it's
+// resolved against live Product rows at read time, so price/stock/images
+// always reflect current catalogue state; a since-deleted product just
+// silently drops out. `id` (cuid, DB-generated) doubles as the public link
+// slug — never user-supplied.
+model ShopCollection {
+  id         String @id @default(cuid())
+  name       String
+  productIds String // JSON array of Product ids (lib/serialize.ts)
+  createdBy  String // admin's User.id, for audit only — no relation
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([createdAt])
+  @@map("shop_collections")
+}
+
 model PricingConfig {
   id   String @id @default(cuid())
   name String

@@ -790,6 +790,7 @@ export function ProductDetailView({
                 productId={displayProduct.id}
                 productTitle={displayProduct.title}
                 initialRental={rentalInfo}
+                ctaLabel="Try/Buy"
               />
             ) : editing ? (
               <div className="space-y-3">
