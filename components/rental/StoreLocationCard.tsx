@@ -21,12 +21,22 @@ interface StoreLocationCardProps {
  * No per-row text labels (Contact/Address) — each row's icon carries that
  * meaning on its own, and copy/call feedback swaps the icon itself rather
  * than adding a label.
+ *
+ * When collapsible (currently /shop only), there's no separate "Store
+ * Details" heading — the store-name row itself doubles as the always-visible
+ * toggle, unchanged in size/style/icon from its expanded appearance, and
+ * only phone/address are hidden until expanded. /rent keeps the original
+ * always-expanded "Store Details" header untouched.
  */
 export function StoreLocationCard({ storeName, phone, address, collapsible }: StoreLocationCardProps) {
   const mapQuery = storeName && address ? `${storeName}, ${address}` : address || storeName || "";
   const directionsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`;
 
-  const [expanded, setExpanded] = useState(!collapsible);
+  // A collapsed header needs a label to collapse into — falls back to always
+  // expanded in the rare case a store has contact/address but no name.
+  const canCollapse = Boolean(collapsible && storeName);
+
+  const [expanded, setExpanded] = useState(!canCollapse);
   const [phoneMenuOpen, setPhoneMenuOpen] = useState(false);
   const [phoneCopied, setPhoneCopied] = useState(false);
   const [addressCopied, setAddressCopied] = useState(false);
@@ -68,37 +78,37 @@ export function StoreLocationCard({ storeName, phone, address, collapsible }: St
     }
   }
 
+  const storeNameRow = storeName ? (
+    <div className="flex items-center gap-2.5">
+      <div className="h-8 w-8 rounded-xl shrink-0 bg-gray-50 border border-gray-100 flex items-center justify-center">
+        <Store className="h-3.5 w-3.5 text-gray-400" strokeWidth={1.5} />
+      </div>
+      <p className="text-sm font-semibold text-gray-900 font-body truncate">{storeName}</p>
+    </div>
+  ) : null;
+
   return (
     <Card className="rounded-3xl overflow-hidden bg-white/90">
-      {collapsible ? (
+      {canCollapse ? (
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          className="w-full flex items-center justify-between px-4 sm:px-5 pt-3.5 pb-1 text-left"
+          className="w-full flex items-center justify-between gap-2.5 px-4 sm:px-5 py-3.5 text-left"
           aria-expanded={expanded}
         >
-          <CardTitle className="font-heading text-base font-medium">Store Details</CardTitle>
-          <ChevronDown className={cn("h-4 w-4 text-gray-400 transition-transform", expanded && "rotate-180")} />
+          {storeNameRow}
+          <ChevronDown className={cn("h-4 w-4 text-gray-400 shrink-0 transition-transform", expanded && "rotate-180")} />
         </button>
       ) : (
         <CardHeader className="px-4 sm:px-5 pt-3.5 pb-1">
           <CardTitle className="font-heading text-base font-medium">Store Details</CardTitle>
         </CardHeader>
       )}
-      {!expanded ? (
-        <div className="pb-3.5" />
-      ) : (
+      {expanded && (
       <CardContent className="px-4 sm:px-5 pb-4 pt-2">
-        <div className="flex items-start gap-3">
+        <div className="flex items-start gap-4">
           <div className="min-w-0 flex-1 space-y-3">
-            {storeName && (
-              <div className="flex items-center gap-2.5">
-                <div className="h-8 w-8 rounded-xl shrink-0 bg-gray-50 border border-gray-100 flex items-center justify-center">
-                  <Store className="h-3.5 w-3.5 text-gray-400" strokeWidth={1.5} />
-                </div>
-                <p className="text-sm font-semibold text-gray-900 font-body truncate">{storeName}</p>
-              </div>
-            )}
+            {!canCollapse && storeNameRow}
 
             {phone && (
               <div className="relative" ref={phoneMenuRef}>
@@ -158,7 +168,7 @@ export function StoreLocationCard({ storeName, phone, address, collapsible }: St
                     <MapPin className="h-3.5 w-3.5 text-gray-400" strokeWidth={1.5} />
                   )}
                 </div>
-                <p className="text-sm font-semibold text-gray-900 font-body leading-snug">{address}</p>
+                <p className="text-sm font-semibold text-gray-900 font-body leading-snug max-w-[200px] sm:max-w-[260px] md:max-w-[330px]">{address}</p>
               </button>
             )}
           </div>

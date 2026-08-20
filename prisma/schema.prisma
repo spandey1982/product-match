@@ -90,6 +90,25 @@ model Wishlist {
   @@map("wishlists")
 }
 
+// Pre-login guest try-on quota for /shop — deviceId is an opaque id from the
+// pm_guest_device cookie (see lib/shop/guest-device.ts), NOT verified
+// identity, just a repeat-visit signal easily reset by clearing cookies.
+// ipAddress feeds a coarse "new identities per IP per day" throttle on top
+// of this per-device quota — neither is a security boundary, both exist to
+// raise the bar on casual repeat-abuse of the free pool.
+model GuestTryOnUsage {
+  id        String   @id @default(cuid())
+  deviceId  String   @unique
+  usedCount Int      @default(0)
+  ipAddress String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ipAddress, createdAt])
+  @@map("guest_tryon_usage")
+}
+
 // Customer-facing virtual try-on credit ledger — append-only, same
 // "durable log, don't just mutate a counter" convention as AiUsageEvent/
 // WalletTransaction elsewhere in this schema. `source` is "purchase" (a
@@ -294,6 +313,16 @@ model Product {
   gender          String  @default("WOMEN")
   season          String  @default("[]")
   price           Float
+  // Original/MRP price — optional. Shown struck-through next to `price`
+  // wherever price displays, only when set and greater than `price`. Set via
+  // the edit flow only (not the initial add-product form).
+  mrpPrice        Float?
+  // 1-100 whole number, only meaningful alongside mrpPrice. When both are
+  // set, `price` is derived (mrpPrice * (1 - discountPercent/100), computed
+  // client-side in the edit form) rather than typed directly, to avoid
+  // mismatched math. Null when the retailer sets a struck-through MRP without
+  // an exact round-percentage discount, or no MRP at all.
+  discountPercent Int?
 
   imageUrl      String?
   // Optional back-of-product image. When present, back-profile catalogue

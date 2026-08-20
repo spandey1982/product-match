@@ -1,8 +1,7 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { Sparkles, MapPin, ArrowLeft, FolderPlus, Check, X, Loader2, Copy, ExternalLink } from "lucide-react";
-import { Pagination } from "@/types";
 import { cn, formatCurrency } from "@/lib/utils";
 import { PublicShopProduct } from "@/lib/shop/public-product";
 import { ShopProductCard } from "@/components/shop/ShopProductCard";
@@ -30,9 +29,11 @@ type LocationSource = "city" | "geolocation" | null;
 export function ShopView({ loggedIn, wishlistedIds, isAdmin, collectionId, collectionName }: ShopViewProps) {
   const [products, setProducts] = useState<PublicShopProduct[]>([]);
   const [subcategories, setSubcategories] = useState<string[]>([]);
-  const [pagination, setPagination] = useState<Pagination | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(1);
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
@@ -123,7 +124,8 @@ export function ShopView({ loggedIn, wishlistedIds, isAdmin, collectionId, colle
   const wishlistedSet = new Set(wishlistedIds);
 
   const fetchProducts = useCallback(async () => {
-    setLoading(true);
+    if (page === 1) setLoading(true);
+    else setLoadingMore(true);
     try {
       const params = new URLSearchParams();
       if (selectedCategory && selectedCategory !== "All") params.set("category", selectedCategory);
@@ -141,11 +143,13 @@ export function ShopView({ loggedIn, wishlistedIds, isAdmin, collectionId, colle
       params.set("limit", "24");
       const res = await fetch(`/api/public/products?${params}`);
       const data = await res.json();
-      setProducts(data.products || []);
+      const fetched: PublicShopProduct[] = data.products || [];
+      setProducts((prev) => (page === 1 ? fetched : [...prev, ...fetched]));
       setSubcategories(data.subcategories || []);
-      setPagination(data.pagination);
+      setHasMore(data.pagination ? data.pagination.page < data.pagination.pages : false);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   }, [selectedCategory, selectedOccasion, selectedSubcategory, priceMin, selectedCity, locationSource, coords, page, collectionId]);
 
@@ -158,7 +162,7 @@ export function ShopView({ loggedIn, wishlistedIds, isAdmin, collectionId, colle
       const res = await fetch(`/api/public/products/search?${params}`);
       const data = await res.json();
       setProducts(data.products || []);
-      setPagination(null);
+      setHasMore(false);
     } finally {
       setLoading(false);
     }
@@ -172,6 +176,18 @@ export function ShopView({ loggedIn, wishlistedIds, isAdmin, collectionId, colle
     const t = setTimeout(() => { if (searchQuery) searchProducts(searchQuery); }, 350);
     return () => clearTimeout(t);
   }, [searchQuery, searchProducts]);
+
+  // ── infinite scroll ────────────────────────────────────────────────────────
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || loading || loadingMore || !hasMore || searchQuery) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) setPage((p) => p + 1); },
+      { rootMargin: "400px" }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [loading, loadingMore, hasMore, searchQuery]);
 
   function resetFilters() {
     setSelectedCategory("All");
@@ -529,25 +545,9 @@ export function ShopView({ loggedIn, wishlistedIds, isAdmin, collectionId, colle
         })()
       )}
 
-      {pagination && pagination.pages > 1 && !searchQuery && (
-        <div className="flex items-center justify-center gap-2 mt-10">
-          <Button
-            variant="outline" size="sm"
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page === 1}
-          >
-            Previous
-          </Button>
-          <span className="text-sm text-gray-500">
-            Page {pagination.page} of {pagination.pages}
-          </span>
-          <Button
-            variant="outline" size="sm"
-            onClick={() => setPage((p) => Math.min(pagination.pages, p + 1))}
-            disabled={page === pagination.pages}
-          >
-            Next
-          </Button>
+      {hasMore && !searchQuery && (
+        <div ref={sentinelRef} className="flex justify-center py-8">
+          {loadingMore && <Loader2 className="h-6 w-6 animate-spin text-indigo-400" />}
         </div>
       )}
     </div>

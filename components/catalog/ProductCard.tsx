@@ -139,9 +139,14 @@ export function ProductCard({ product }: ProductCardProps) {
                 {product.color}
               </span>
             </div>
-            <span className="text-sm font-bold text-gray-900">
-              {formatCurrency(product.price)}
-            </span>
+            <div className="flex items-baseline gap-1.5">
+              {product.mrpPrice != null && product.mrpPrice > product.price && (
+                <span className="text-[10px] text-gray-400 line-through">{formatCurrency(product.mrpPrice)}</span>
+              )}
+              <span className="text-sm font-bold text-gray-900">
+                {formatCurrency(product.price)}
+              </span>
+            </div>
           </div>
         </div>
       </div>

@@ -55,7 +55,13 @@ export function ShopTryOnButton({ product, loggedIn, initialCredits, iconOnly = 
 
   const signInHref = `/rent/login?returnTo=${encodeURIComponent(pathname || "/shop")}`;
   const insufficientCredits = entry?.status === "failed" && entry.errorMessage === INSUFFICIENT_CREDITS_MESSAGE;
-  const needsSignIn = !loggedIn || (entry?.status === "failed" && entry.errorMessage === SIGN_IN_FOR_CREDITS_MESSAGE);
+  // A guest gets the same generation flow as a logged-in customer while
+  // their pre-login pool (credits, sourced from GuestTryOnUsage) still has
+  // room — the sign-in prompt only appears once it's spent, or if a request
+  // somehow reaches the API without one (SIGN_IN_FOR_CREDITS_MESSAGE).
+  const needsSignIn =
+    (!loggedIn && credits <= 0) ||
+    (entry?.status === "failed" && entry.errorMessage === SIGN_IN_FOR_CREDITS_MESSAGE);
 
   // ── Icon-only FAB ───────────────────────────────────────────────────────────
   if (iconOnly) {
@@ -147,7 +153,7 @@ export function ShopTryOnButton({ product, loggedIn, initialCredits, iconOnly = 
     return (
       <div className="space-y-2 p-3 rounded-2xl border border-indigo-100 bg-indigo-50/50">
         <p className="text-xs text-indigo-700 text-center">
-          Create an account to get 5 free virtual try-ons.
+          {SIGN_IN_FOR_CREDITS_MESSAGE}
         </p>
         <Link
           href={signInHref}

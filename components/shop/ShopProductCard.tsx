@@ -81,11 +81,16 @@ export function ShopProductCard({ product, initialWishlisted, loggedIn, onWishli
               />
               <span className="text-xs text-gray-500">{formatLabel(product.color)}</span>
             </div>
-            <p className="text-sm font-bold text-gray-900">{formatCurrency(product.price)}</p>
+            <div className="flex items-baseline gap-1.5">
+              {product.mrpPrice != null && product.mrpPrice > product.price && (
+                <span className="text-[10px] text-gray-400 line-through">{formatCurrency(product.mrpPrice)}</span>
+              )}
+              <p className="text-sm font-bold text-gray-900">{formatCurrency(product.price)}</p>
+            </div>
           </div>
 
           <Button size="sm" className="w-full mt-1">
-            Try/Buy
+            Try & Buy
           </Button>
         </div>
       </div>

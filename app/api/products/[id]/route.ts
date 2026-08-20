@@ -55,6 +55,28 @@ export async function PATCH(
       );
     }
 
+    if (body.discountPercent != null && body.mrpPrice == null) {
+      return NextResponse.json(
+        { error: "Discount percentage requires an MRP value." },
+        { status: 400 }
+      );
+    }
+    if (
+      body.discountPercent != null &&
+      (!Number.isInteger(body.discountPercent) || body.discountPercent < 1 || body.discountPercent > 100)
+    ) {
+      return NextResponse.json(
+        { error: "Discount percentage must be a whole number between 1 and 100." },
+        { status: 400 }
+      );
+    }
+    if (body.mrpPrice != null && (typeof body.mrpPrice !== "number" || body.mrpPrice <= 0)) {
+      return NextResponse.json(
+        { error: "MRP must be a positive number." },
+        { status: 400 }
+      );
+    }
+
     // Serialize array fields if present
     const updateData: Prisma.ProductUpdateInput = {
       ...body,

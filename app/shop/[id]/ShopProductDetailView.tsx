@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Palette, Shirt, Layers, Crown, IndianRupee } from "lucide-react";
+import { ArrowLeft, Palette, Shirt, Layers, Crown, IndianRupee, Tag, Calendar } from "lucide-react";
 import { PublicShopProduct } from "@/lib/shop/public-product";
 import { HybridImageCarousel } from "@/components/product/HybridImageCarousel";
 import { AdditionalInfoSlide } from "@/components/product/AdditionalInfoSlide";
@@ -21,7 +21,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InfoCell, FieldRow, FieldValue } from "@/components/product/InfoCell";
 import { formatLabel } from "@/lib/product-detail/format";
 import { colorSwatchHex, colorDescriptor } from "@/lib/product-detail/color-presentation";
-import { materialDescriptor, categoryDescriptor, styleValue } from "@/lib/product-detail/descriptors";
+import { materialDescriptor, occasionDescriptor, categoryDescriptor, styleValue } from "@/lib/product-detail/descriptors";
 import { CustomerAddress } from "@/lib/rental/customer-profile";
 import { cn } from "@/lib/utils";
 
@@ -30,7 +30,7 @@ import { cn } from "@/lib/utils";
  * own ProductDetailView (the one with Product Information + "Pairs
  * beautifully with" cards) minus every retailer-only control
  * (edit/delete/generate-image/download/erase-region), same posture
- * RentalProductDetailView already took for /rent. "Try/Buy" (opens
+ * RentalProductDetailView already took for /rent. "Try & Buy" (opens
  * RentalRequestModal — a home-trial request, not a real purchase) is the
  * page's sole primary action (right after the store card) — per explicit
  * direction there is no separate purchase/checkout CTA here.
@@ -216,10 +216,6 @@ export function ShopProductDetailView({
           {/* RIGHT — Product details */}
           <div className="flex flex-col gap-5">
             <div className="space-y-3">
-              {product.storeName && (
-                <p className="text-xs text-gray-400">{product.storeName}</p>
-              )}
-
               {badgeLabels.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   {badgeLabels.map((label) => (
@@ -243,11 +239,18 @@ export function ShopProductDetailView({
                 </p>
               )}
 
-              <div className="flex items-center gap-0.5 text-gray-800 pt-1">
-                <IndianRupee className="h-5 w-5" strokeWidth={1.75} />
-                <span className="font-body text-xl sm:text-2xl font-semibold">
-                  {product.price.toLocaleString("en-IN")}
-                </span>
+              <div className="flex items-baseline gap-2 pt-1">
+                <div className="flex items-center gap-0.5 text-gray-800">
+                  <IndianRupee className="h-5 w-5" strokeWidth={1.75} />
+                  <span className="font-body text-xl sm:text-2xl font-semibold">
+                    {product.price.toLocaleString("en-IN")}
+                  </span>
+                </div>
+                {product.mrpPrice != null && product.mrpPrice > product.price && (
+                  <span className="font-body text-sm text-gray-400 line-through">
+                    ₹{product.mrpPrice.toLocaleString("en-IN")}
+                  </span>
+                )}
               </div>
             </div>
 
@@ -256,7 +259,7 @@ export function ShopProductDetailView({
             )}
 
             <Button size="lg" className="w-full" onClick={() => setTrialModalOpen(true)}>
-              Try/Buy
+              Try & Buy
             </Button>
 
             <Card className="rounded-3xl overflow-hidden bg-white/90">
@@ -275,7 +278,7 @@ export function ShopProductDetailView({
                     />
                   </InfoCell>
                 </FieldRow>
-                <FieldRow last>
+                <FieldRow>
                   <InfoCell icon={Layers} label="Material">
                     <FieldValue
                       value={product.material ? formatLabel(product.material) : "—"}
@@ -284,6 +287,17 @@ export function ShopProductDetailView({
                   </InfoCell>
                   <InfoCell icon={Crown} label="Style">
                     <FieldValue value={styleInfo.value} descriptor={styleInfo.descriptor} />
+                  </InfoCell>
+                </FieldRow>
+                <FieldRow last>
+                  <InfoCell icon={Tag} label="Craft / Specialty">
+                    <FieldValue value={product.pattern ? formatLabel(product.pattern) : "—"} />
+                  </InfoCell>
+                  <InfoCell icon={Calendar} label="Occasions">
+                    <FieldValue
+                      value={product.occasion.length > 0 ? product.occasion.map(formatLabel).join(", ") : "—"}
+                      descriptor={occasionDescriptor(product.occasion)}
+                    />
                   </InfoCell>
                 </FieldRow>
               </CardContent>
