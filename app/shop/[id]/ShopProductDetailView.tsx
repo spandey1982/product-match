@@ -13,7 +13,6 @@ import { WishlistButton } from "@/components/shop/WishlistButton";
 import { ShopTryOnButton } from "@/components/shop/ShopTryOnButton";
 import { StoreLocationCard } from "@/components/rental/StoreLocationCard";
 import { HomeTrialRequestModal } from "@/components/shop/HomeTrialRequestModal";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InfoCell, FieldRow, FieldValue } from "@/components/product/InfoCell";
@@ -186,27 +185,22 @@ export function ShopProductDetailView({
                   onActiveSlotChange={setActiveSlot}
                   onImageClick={(realIndex) => setViewerIndex(realIndex)}
                 />
-                {!isInfoSlideActive && (
-                  <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/40 to-transparent p-4 z-20 pointer-events-none">
-                    <Badge variant="purple" className="bg-white/90 text-indigo-700 backdrop-blur-sm">
-                      {product.category}
-                    </Badge>
-                  </div>
-                )}
-
                 <div className="absolute top-3 right-3 z-30">
                   <WishlistButton productId={product.id} initialWishlisted={initialWishlisted} loggedIn={loggedIn} />
                 </div>
-              </div>
-            </div>
 
-            <div className="mt-4">
-              <ShopTryOnButton
-                product={product}
-                loggedIn={loggedIn}
-                initialCredits={initialTryOnCredits}
-                myTryOnsHref="/shop/my-try-ons"
-              />
+                {!isInfoSlideActive && (
+                  <div className="absolute bottom-3 left-3 z-30">
+                    <ShopTryOnButton
+                      product={product}
+                      loggedIn={loggedIn}
+                      initialCredits={initialTryOnCredits}
+                      myTryOnsHref="/shop/my-try-ons"
+                      iconOnly
+                    />
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
