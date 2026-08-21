@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
       collectionProductIds = parseArray(collection.productIds);
     }
 
-    const where: Prisma.ProductWhereInput = { isActive: true };
+    const where: Prisma.ProductWhereInput = { isActive: true, user: { showOnShop: true } };
     if (category) where.category = category;
     if (occasion) where.occasion = { contains: occasion };
     if (subcategory) where.subcategory = subcategory;
@@ -67,6 +67,7 @@ export async function GET(req: NextRequest) {
 
     const subcategoryWhere: Prisma.ProductWhereInput = {
       isActive: true,
+      user: { showOnShop: true },
       subcategory: { not: null },
       ...(category ? { category } : {}),
       ...(collectionProductIds ? { id: { in: collectionProductIds } } : {}),

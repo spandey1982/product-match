@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Sparkles, Check, Loader2, AlertCircle, Lock, Phone, MapPin, Mail, ShieldAlert } from "lucide-react";
+import { Sparkles, Check, Loader2, AlertCircle, Lock, Phone, MapPin, Mail, ShieldAlert, Store } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ interface Props {
   initialStoreAddress: string;
   initialStoreCity: string;
   initialEmail: string;
+  initialShowOnShop: boolean;
 }
 
 // Friendly, non-technical labels — the headline effect of each choice. The
@@ -48,7 +49,7 @@ interface ModeOption {
   enabled: boolean;
 }
 
-export function SettingsView({ current, providers, initialStorePhone, initialStoreAddress, initialStoreCity, initialEmail }: Props) {
+export function SettingsView({ current, providers, initialStorePhone, initialStoreAddress, initialStoreCity, initialEmail, initialShowOnShop }: Props) {
   const [selected, setSelected] = useState<Mode>(current);
   const [saving, setSaving] = useState<Mode | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -69,6 +70,34 @@ export function SettingsView({ current, providers, initialStorePhone, initialSto
   const [emailSaved, setEmailSaved] = useState(false);
 
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+
+  const [showOnShop, setShowOnShop] = useState(initialShowOnShop);
+  const [shopVisibilitySaving, setShopVisibilitySaving] = useState(false);
+  const [shopVisibilityError, setShopVisibilityError] = useState<string | null>(null);
+
+  async function toggleShopVisibility() {
+    if (shopVisibilitySaving) return;
+    const next = !showOnShop;
+    setShopVisibilitySaving(true);
+    setShopVisibilityError(null);
+    try {
+      const res = await fetch("/api/settings/shop-visibility", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ showOnShop: next }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setShopVisibilityError(data.error || "Could not update this setting. Please try again.");
+        return;
+      }
+      setShowOnShop(data.showOnShop);
+    } catch {
+      setShopVisibilityError("Network error. Please try again.");
+    } finally {
+      setShopVisibilitySaving(false);
+    }
+  }
 
   async function saveEmail() {
     if (!newEmail.trim() || !currentPassword) return;
@@ -232,6 +261,62 @@ export function SettingsView({ current, providers, initialStorePhone, initialSto
             </p>
           )}
         </div>
+      </section>
+
+      <section className="mt-8">
+        <div className="flex items-center gap-2 mb-1">
+          <Store className="h-4 w-4 text-indigo-500" />
+          <h2 className="text-sm font-semibold text-gray-900">
+            Shop Visibility
+          </h2>
+        </div>
+        <p className="text-xs text-gray-500 mb-4">
+          Controls whether your products appear in the combined /shop
+          catalogue alongside every other store. Your own dashboard is
+          unaffected either way.
+        </p>
+
+        <div className="flex items-center justify-between gap-4 rounded-2xl border border-gray-100 bg-white p-4">
+          <div>
+            <p className="text-sm font-medium text-gray-900">
+              Show my products on Shop
+            </p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {showOnShop
+                ? "Your products are visible to shoppers on /shop."
+                : "Your products are hidden from /shop. Shoppers can't find or buy them there."}
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={showOnShop}
+            aria-label="Show my products on Shop"
+            onClick={toggleShopVisibility}
+            disabled={shopVisibilitySaving}
+            className={cn(
+              "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-60",
+              showOnShop ? "bg-indigo-600" : "bg-gray-300"
+            )}
+          >
+            {shopVisibilitySaving ? (
+              <Loader2 className="absolute left-1/2 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 animate-spin text-white" />
+            ) : (
+              <span
+                className={cn(
+                  "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+                  showOnShop ? "translate-x-6" : "translate-x-1"
+                )}
+              />
+            )}
+          </button>
+        </div>
+        {shopVisibilityError && (
+          <p className="mt-3 text-xs text-red-500 flex items-center gap-1">
+            <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+            {shopVisibilityError}
+          </p>
+        )}
       </section>
 
       <section className="mt-8">

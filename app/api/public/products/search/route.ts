@@ -31,6 +31,7 @@ export async function GET(req: NextRequest) {
     const products = await db.product.findMany({
       where: {
         isActive: true,
+        user: { showOnShop: true },
         ...(collectionProductIds ? { id: { in: collectionProductIds } } : {}),
         OR: [
           { title: { contains: q } },
