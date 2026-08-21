@@ -60,12 +60,11 @@ model Customer {
   /** Virtual try-on credit balance for /shop — starts at 5 free credits. See CreditTopUp for the ledger. */
   tryOnCredits Int @default(5)
 
-  addresses         CustomerAddress[]
-  rentalOrders      RentalOrder[]
-  wishlist          Wishlist[]
-  creditTopUps      CreditTopUp[]
-  shopOrders        ShopOrder[]
-  shopTrialRequests ShopTrialRequest[]
+  addresses    CustomerAddress[]
+  rentalOrders RentalOrder[]
+  wishlist     Wishlist[]
+  creditTopUps CreditTopUp[]
+  shopOrders   ShopOrder[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -244,18 +243,31 @@ model Payment {
 // rental-marketplace-specific and don't apply to a plain purchase). Same
 // durable-snapshot rationale as RentalOrder: productId is NOT a relation, so
 // this survives the product being edited or deleted later.
+//
+// Covers both /shop order kinds under one table/URL family (/shop/orders/[id]):
+// a plain "buy" purchase, and a "trial" request from the "Try & Buy" home-trial
+// flow (no age group/deposit/occasion-driven scheduling — a home trial has no
+// "event" to schedule around, so trialDate is directly chosen by the customer,
+// not derived). There is no separate "trial" system anymore — a trial request
+// IS an order, just one that carries trialDate/trialSlot/size instead of
+// deliverySlot and can additionally land on a delivery-verified outcome
+// (order_completed/order_denied) instead of shipped/delivered.
 model ShopOrder {
   id         String   @id @default(cuid())
   customerId String
   customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
-  // "buy" | "rent" — plain string per this schema's existing stage-field convention.
+  // "buy" | "trial" — plain string per this schema's existing stage-field convention.
   orderType String
 
   productId    String
   productTitle String
   productImage String?
   storeName    String?
+  // Trial-only — optional — shown in the request modal/confirmation only when
+  // present. No retailer-facing entry UI exists yet for this field (follow-up
+  // work); it stays empty until that lands.
+  size         String?
 
   quantity    Int   @default(1)
   unitPrice   Float
@@ -269,11 +281,21 @@ model ShopOrder {
   addressPincode  String
   addressLandmark String?
 
-  deliverySlot        String?
+  // Buy orders only.
+  deliverySlot String?
+  // Trial orders only — yyyy-mm-dd, directly chosen — no derived delivery-date hop.
+  trialDate    String?
+  // Trial orders only — "morning" | "afternoon" | "evening".
+  trialSlot    String?
+
   specialInstructions String?
 
   paymentMethod String @default("Pay at Doorstep")
-  // "requested" | "confirmed" | "preparing" | "out_for_delivery" | "delivered" | "cancelled"
+  // Buy orders: "requested" | "confirmed" | "preparing" | "shipped" | "delivered" | "cancelled"
+  // Trial orders: "requested" | "confirmed" | "preparing" | "out_for_trial" | "tried_out" |
+  // "order_completed" | "order_denied" | "cancelled" — order_completed/order_denied are only
+  // ever set by the delivery-person's two-step verification action (app/deliver/[id]),
+  // never by the cosmetic display-status simulation.
   status        String @default("requested")
   // "pending" | "paid" | "failed" | "refunded" — mocked for Phase 1, no live gateway yet.
   paymentStatus String @default("pending")
@@ -284,55 +306,6 @@ model ShopOrder {
   @@index([customerId])
   @@index([productId])
   @@map("shop_orders")
-}
-
-// /shop's "Try & Buy" home-trial request — deliberately separate from both
-// RentalOrder (the real /rent marketplace: age group, deposit, occasion-driven
-// event/delivery dates) and ShopOrder (an immediate purchase, no trial phase).
-// A home trial has no "event" to schedule around, so trialDate is directly
-// chosen by the customer, not derived. Same durable-snapshot rationale as
-// ShopOrder: productId is NOT a relation.
-model ShopTrialRequest {
-  id         String   @id @default(cuid())
-  customerId String
-  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
-
-  productId    String
-  productTitle String
-  productImage String?
-  storeName    String?
-  price        Float
-  // Optional — shown in the request modal/confirmation only when present.
-  // No retailer-facing entry UI exists yet for this field (follow-up work);
-  // it stays empty until that lands.
-  size         String?
-
-  customerName  String
-  customerPhone String
-  customerEmail String?
-
-  addressLine1    String
-  addressPincode  String
-  addressLandmark String?
-
-  trialDate           String // yyyy-mm-dd, directly chosen — no derived delivery-date hop
-  trialSlot           String // "morning" | "afternoon" | "evening"
-  specialInstructions String?
-
-  paymentMethod String @default("Pay at Doorstep")
-  // "requested" | "confirmed" | "preparing" | "out_for_trial" | "tried_out" |
-  // "sold" | "cancelled" — "sold" is only ever set by a real payment-confirmation
-  // action (not yet implemented), never by the cosmetic display-status simulation.
-  status        String @default("requested")
-  // "pending" | "paid" | "failed" | "refunded"
-  paymentStatus String @default("pending")
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([customerId])
-  @@index([productId])
-  @@map("shop_trial_requests")
 }
 
 model Product {

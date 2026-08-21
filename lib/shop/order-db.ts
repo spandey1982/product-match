@@ -4,10 +4,12 @@ import { ShopOrder, DeliverySlot, ShopOrderStatus, ShopPaymentStatus } from "./o
 export interface ShopOrderRow {
   id: string;
   createdAt: Date;
+  orderType: string;
   productId: string;
   productTitle: string;
   productImage: string | null;
   storeName: string | null;
+  size: string | null;
   quantity: number;
   unitPrice: number;
   amountTotal: number;
@@ -18,6 +20,8 @@ export interface ShopOrderRow {
   addressPincode: string;
   addressLandmark: string | null;
   deliverySlot: string | null;
+  trialDate: string | null;
+  trialSlot: string | null;
   specialInstructions: string | null;
   paymentMethod: string;
   status: string;
@@ -28,11 +32,12 @@ export function toShopOrderDTO(row: ShopOrderRow): ShopOrder {
   return {
     id: row.id,
     createdAt: row.createdAt.toISOString(),
-    orderType: "buy",
+    orderType: row.orderType as ShopOrder["orderType"],
     productId: row.productId,
     productTitle: row.productTitle,
     productImage: row.productImage,
     storeName: row.storeName,
+    size: row.size,
     quantity: row.quantity,
     unitPrice: row.unitPrice,
     amountTotal: row.amountTotal,
@@ -47,6 +52,8 @@ export function toShopOrderDTO(row: ShopOrderRow): ShopOrder {
       landmark: row.addressLandmark ?? undefined,
     },
     deliverySlot: (row.deliverySlot as DeliverySlot) ?? undefined,
+    trialDate: row.trialDate ?? undefined,
+    trialSlot: (row.trialSlot as DeliverySlot) ?? undefined,
     specialInstructions: row.specialInstructions ?? undefined,
     paymentMethod: row.paymentMethod,
     status: row.status as ShopOrderStatus,

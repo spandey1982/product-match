@@ -29,17 +29,17 @@ import { cn } from "@/lib/utils";
  * beautifully with" cards) minus every retailer-only control
  * (edit/delete/generate-image/download/erase-region), same posture
  * RentalProductDetailView already took for /rent. "Try & Buy" (opens
- * HomeTrialRequestModal, creating a ShopTrialRequest — a home-trial request,
- * not a real purchase and not a rental) is the page's sole primary action
- * (right after the store card) — per explicit direction there is no
- * separate purchase/checkout CTA here. ShopCheckoutModal/ShopOrder/the
+ * HomeTrialRequestModal, creating a ShopOrder with orderType "trial" — a
+ * home-trial request, not a real purchase and not a rental) is the page's
+ * sole primary action (right after the store card) — per explicit direction
+ * there is no separate purchase/checkout CTA here. ShopCheckoutModal/the
  * /shop/orders confirmation page still exist but nothing on this page
  * triggers them anymore. Uniform for every product, not conditioned on
  * isForRent. HomeTrialRequestModal is a genuine fork of
  * components/rental/RentalRequestModal.tsx, not a shared component — see
- * ShopTrialRequest's doc comment in prisma/schema.prisma for why this
- * flow no longer reuses RentalOrder/RentalRequestModal at all (it used to;
- * that conflated a product-sale home trial with the real /rent marketplace).
+ * ShopOrder's doc comment in prisma/schema.prisma for why this flow no
+ * longer reuses RentalOrder/RentalRequestModal at all (it used to; that
+ * conflated a product-sale home trial with the real /rent marketplace).
  */
 interface ShopProductDetailViewProps {
   product: PublicShopProduct;

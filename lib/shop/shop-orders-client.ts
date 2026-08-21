@@ -1,6 +1,6 @@
 import { DeliverySlot, ShopOrder } from "./order-types";
 
-export interface CreateShopOrderInput {
+interface BaseCreateShopOrderInput {
   productId: string;
   productTitle: string;
   productImage?: string | null;
@@ -15,9 +15,22 @@ export interface CreateShopOrderInput {
   address?: string;
   pincode?: string;
   landmark?: string;
-  deliverySlot: DeliverySlot;
   specialInstructions?: string;
 }
+
+interface CreateBuyOrderInput extends BaseCreateShopOrderInput {
+  orderType?: "buy";
+  deliverySlot: DeliverySlot;
+}
+
+interface CreateTrialOrderInput extends BaseCreateShopOrderInput {
+  orderType: "trial";
+  size?: string | null;
+  trialDate: string;
+  trialSlot: DeliverySlot;
+}
+
+export type CreateShopOrderInput = CreateBuyOrderInput | CreateTrialOrderInput;
 
 export async function createShopOrder(input: CreateShopOrderInput): Promise<ShopOrder> {
   const res = await fetch("/api/shop/orders", {

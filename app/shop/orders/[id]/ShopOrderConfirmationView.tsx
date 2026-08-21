@@ -6,30 +6,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/utils";
 import { Fact, SummaryRow } from "@/components/rental/OrderDetailPrimitives";
-import { ShopOrder, ShopOrderStatus } from "@/lib/shop/order-types";
+import { ShopOrder } from "@/lib/shop/order-types";
+import { ORDER_STATUS_BADGE_VARIANT, ORDER_STATUS_LABEL } from "@/lib/shop/order-mock";
 
 const SLOT_LABEL: Record<string, string> = {
   morning: "Morning",
   afternoon: "Afternoon",
   evening: "Evening",
-};
-
-const STATUS_LABEL: Record<ShopOrderStatus, string> = {
-  requested: "Requested",
-  confirmed: "Confirmed",
-  preparing: "Preparing",
-  shipped: "Shipped",
-  delivered: "Delivered",
-  cancelled: "Cancelled",
-};
-
-const STATUS_BADGE_VARIANT: Record<ShopOrderStatus, "warning" | "info" | "purple" | "success" | "error"> = {
-  requested: "warning",
-  confirmed: "info",
-  preparing: "purple",
-  shipped: "info",
-  delivered: "success",
-  cancelled: "error",
 };
 
 interface ShopOrderConfirmationViewProps {
@@ -98,8 +81,8 @@ export function ShopOrderConfirmationView({ order }: ShopOrderConfirmationViewPr
             <p className="text-[11px] text-gray-400 tracking-wide mt-1.5">Order Number</p>
             <p className="text-sm font-semibold text-gray-900 font-mono truncate">#{orderNumber}</p>
           </div>
-          <Badge variant={STATUS_BADGE_VARIANT[order.status]} className="text-sm px-3 py-1 shrink-0">
-            {STATUS_LABEL[order.status]}
+          <Badge variant={ORDER_STATUS_BADGE_VARIANT[order.status]} className="text-sm px-3 py-1 shrink-0">
+            {ORDER_STATUS_LABEL[order.status]}
           </Badge>
         </CardContent>
       </Card>

@@ -17,16 +17,16 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/utils";
 import { Fact, SummaryRow } from "@/components/rental/OrderDetailPrimitives";
-import { ShopTrialRequestDTO, TrialStatus } from "@/lib/shop/trial-request-types";
+import { ShopOrder, ShopOrderStatus } from "@/lib/shop/order-types";
 import {
   EXPECTED_CONFIRMATION_MINUTES,
-  TRIAL_STATUS_BADGE_VARIANT,
-  TRIAL_STATUS_LABEL,
+  ORDER_STATUS_BADGE_VARIANT,
+  ORDER_STATUS_LABEL,
   trialWindowLabel,
   formatDisplayDate,
-  getDisplayTrialStatus,
+  getDisplayOrderStatus,
   getPaymentBadge,
-} from "@/lib/shop/trial-request-mock";
+} from "@/lib/shop/order-mock";
 
 const SLOT_LABEL: Record<string, string> = {
   morning: "Morning",
@@ -35,22 +35,22 @@ const SLOT_LABEL: Record<string, string> = {
 };
 
 interface ShopTrialConfirmationViewProps {
-  trialRequest: ShopTrialRequestDTO | null;
+  order: ShopOrder | null;
 }
 
 /**
- * Home-trial request receipt — sibling to RentalOrderConfirmationView, but
- * for ShopTrialRequest (/shop's "Try & Buy" flow). No invoice; purely a
- * "we've got your request" confirmation, reachable without login since a
- * guest may have just placed it. Pay Now is intentionally disabled here (see
- * memory "shop-trial-payment-confirmation-deferred") — the real payment
- * pipeline is RentalOrder-specific and building a trial-request equivalent
- * is deferred work, not a small addition.
+ * Home-trial request receipt — sibling to ShopOrderConfirmationView, for a
+ * ShopOrder with orderType "trial" (/shop's "Try & Buy" flow). No invoice;
+ * purely a "we've got your request" confirmation, reachable without login
+ * since a guest may have just placed it. Pay Now is intentionally disabled
+ * here (see memory "shop-trial-payment-confirmation-deferred") — the real
+ * payment pipeline is buy-order-specific and building a trial equivalent is
+ * deferred work, not a small addition.
  */
-export function ShopTrialConfirmationView({ trialRequest }: ShopTrialConfirmationViewProps) {
+export function ShopTrialConfirmationView({ order }: ShopTrialConfirmationViewProps) {
   const [showTracking, setShowTracking] = useState(false);
 
-  if (!trialRequest) {
+  if (!order) {
     return (
       <div className="max-w-2xl mx-auto py-16 text-center">
         <h1 className="text-xl font-semibold text-gray-900 mb-2">Request not found</h1>
@@ -64,10 +64,10 @@ export function ShopTrialConfirmationView({ trialRequest }: ShopTrialConfirmatio
     );
   }
 
-  const trialNumber = trialRequest.id.slice(0, 8).toUpperCase();
-  const firstName = trialRequest.customer.name.trim().split(/\s+/)[0] || "there";
-  const displayStatus = getDisplayTrialStatus(trialRequest);
-  const paymentBadge = getPaymentBadge(trialRequest);
+  const orderNumber = order.id.slice(0, 8).toUpperCase();
+  const firstName = order.customer.name.trim().split(/\s+/)[0] || "there";
+  const displayStatus = getDisplayOrderStatus(order);
+  const paymentBadge = getPaymentBadge(order);
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -88,30 +88,30 @@ export function ShopTrialConfirmationView({ trialRequest }: ShopTrialConfirmatio
           Home Trial Request Received
         </h1>
         <p className="text-sm text-gray-500 max-w-sm mx-auto">
-          Thank you, {firstName} — we&apos;ve got your request for {trialRequest.productTitle} and our team is
+          Thank you, {firstName} — we&apos;ve got your request for {order.productTitle} and our team is
           reviewing it now.
         </p>
       </div>
 
-      {/* Product + trial number + status */}
+      {/* Product + order number + status */}
       <Card className="rounded-3xl overflow-hidden bg-white/90 mb-4 border-amber-100">
         <CardContent className="p-5 flex items-center gap-4">
           <div className="h-16 w-14 sm:h-20 sm:w-16 rounded-xl overflow-hidden bg-gray-50 shrink-0">
-            {trialRequest.productImage ? (
+            {order.productImage ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={trialRequest.productImage} alt={trialRequest.productTitle} className="h-full w-full object-cover" />
+              <img src={order.productImage} alt={order.productTitle} className="h-full w-full object-cover" />
             ) : (
               <div className="h-full w-full flex items-center justify-center text-xl">🧵</div>
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-gray-900 truncate">{trialRequest.productTitle}</p>
-            <p className="text-[11px] text-gray-400 tracking-wide mt-1.5">Trial Number</p>
-            <p className="text-sm font-semibold text-gray-900 font-mono truncate">#{trialNumber}</p>
+            <p className="text-sm font-semibold text-gray-900 truncate">{order.productTitle}</p>
+            <p className="text-[11px] text-gray-400 tracking-wide mt-1.5">Order Number</p>
+            <p className="text-sm font-semibold text-gray-900 font-mono truncate">#{orderNumber}</p>
           </div>
           <div className="flex flex-col items-end gap-1.5 shrink-0">
-            <Badge variant={TRIAL_STATUS_BADGE_VARIANT[displayStatus]} className="text-sm px-3 py-1">
-              {TRIAL_STATUS_LABEL[displayStatus]}
+            <Badge variant={ORDER_STATUS_BADGE_VARIANT[displayStatus]} className="text-sm px-3 py-1">
+              {ORDER_STATUS_LABEL[displayStatus]}
             </Badge>
             <Badge variant={paymentBadge.variant} className="text-xs px-2.5 py-0.5">
               {paymentBadge.label}
@@ -127,11 +127,11 @@ export function ShopTrialConfirmationView({ trialRequest }: ShopTrialConfirmatio
           <Fact
             icon={Truck}
             label="Estimated Trial Window"
-            value={trialWindowLabel(trialRequest.trialDate, trialRequest.trialSlot)}
+            value={trialWindowLabel(order.trialDate ?? "", order.trialSlot ?? "")}
           />
-          <Fact icon={IndianRupee} label="Price" value={formatCurrency(trialRequest.price)} />
-          {trialRequest.size && <Fact icon={Ruler} label="Size" value={trialRequest.size} />}
-          <Fact icon={Wallet} label="Payment Method" value={trialRequest.paymentMethod} className="col-span-2" />
+          <Fact icon={IndianRupee} label="Price" value={formatCurrency(order.amountTotal)} />
+          <Fact icon={Wallet} label="Payment Method" value={order.paymentMethod} />
+          {order.size && <Fact icon={Ruler} label="Size" value={order.size} />}
         </CardContent>
       </Card>
 
@@ -140,7 +140,7 @@ export function ShopTrialConfirmationView({ trialRequest }: ShopTrialConfirmatio
         <CardContent className="p-5">
           <div className="flex items-center justify-between gap-3 mb-1">
             <p className="text-sm font-semibold text-gray-900">Prefer to pay online?</p>
-            <span className="text-sm font-bold text-gray-900">{formatCurrency(trialRequest.price)}</span>
+            <span className="text-sm font-bold text-gray-900">{formatCurrency(order.amountTotal)}</span>
           </div>
           <p className="text-xs text-gray-500 mb-3">
             Pay now, or continue with Pay at Doorstep — whichever you prefer.
@@ -171,9 +171,8 @@ export function ShopTrialConfirmationView({ trialRequest }: ShopTrialConfirmatio
             <TimelineStep label="Awaiting retailer confirmation" state={stepState(displayStatus, "confirmed")} />
             <TimelineStep label="Out for Trial" state={stepState(displayStatus, "out_for_trial")} />
             <TimelineStep label="Tried Out" state={stepState(displayStatus, "tried_out")} />
-            {trialRequest.status === "sold" && (
-              <TimelineStep label="Sold" state="done" />
-            )}
+            {order.status === "order_completed" && <TimelineStep label="Order Completed" state="done" />}
+            {order.status === "order_denied" && <TimelineStep label="Order Denied" state="denied" />}
           </div>
         )}
       </Card>
@@ -194,16 +193,18 @@ export function ShopTrialConfirmationView({ trialRequest }: ShopTrialConfirmatio
           <CardTitle className="font-heading text-base font-medium">Your request details</CardTitle>
         </CardHeader>
         <CardContent className="px-5 pb-4 pt-2 divide-y divide-gray-50">
-          <SummaryRow label="Name" value={trialRequest.customer.name} />
-          <SummaryRow label="Phone" value={trialRequest.customer.phone} />
-          {trialRequest.customer.email && <SummaryRow label="Email" value={trialRequest.customer.email} />}
-          <SummaryRow label="Address" value={trialRequest.address.line1} />
-          <SummaryRow label="Pincode" value={trialRequest.address.pincode} />
-          {trialRequest.address.landmark && <SummaryRow label="Landmark" value={trialRequest.address.landmark} />}
-          <SummaryRow label="Trial Date" value={formatDisplayDate(trialRequest.trialDate)} />
-          <SummaryRow label="Preferred Trial Slot" value={SLOT_LABEL[trialRequest.trialSlot] ?? trialRequest.trialSlot} />
-          {trialRequest.specialInstructions && (
-            <SummaryRow label="Special Instructions" value={trialRequest.specialInstructions} />
+          <SummaryRow label="Name" value={order.customer.name} />
+          <SummaryRow label="Phone" value={order.customer.phone} />
+          {order.customer.email && <SummaryRow label="Email" value={order.customer.email} />}
+          <SummaryRow label="Address" value={order.address.line1} />
+          <SummaryRow label="Pincode" value={order.address.pincode} />
+          {order.address.landmark && <SummaryRow label="Landmark" value={order.address.landmark} />}
+          {order.trialDate && <SummaryRow label="Trial Date" value={formatDisplayDate(order.trialDate)} />}
+          {order.trialSlot && (
+            <SummaryRow label="Preferred Trial Slot" value={SLOT_LABEL[order.trialSlot] ?? order.trialSlot} />
+          )}
+          {order.specialInstructions && (
+            <SummaryRow label="Special Instructions" value={order.specialInstructions} />
           )}
         </CardContent>
       </Card>
@@ -215,17 +216,17 @@ export function ShopTrialConfirmationView({ trialRequest }: ShopTrialConfirmatio
   );
 }
 
-const TIMELINE_ORDER: TrialStatus[] = ["requested", "confirmed", "preparing", "out_for_trial", "tried_out"];
+const TIMELINE_ORDER: ShopOrderStatus[] = ["requested", "confirmed", "preparing", "out_for_trial", "tried_out"];
 
 /**
  * done/active/pending for a timeline step, based on the current display
- * status's position in the lifecycle. "sold"/"cancelled" aren't in
- * TIMELINE_ORDER (both are real-only terminal branches, never part of the
- * 4-step cosmetic lifecycle) — reaching either implies every regular step
- * already completed, so they fall past the end rather than indexOf's -1
- * (which would otherwise mark every step "pending").
+ * status's position in the lifecycle. order_completed/order_denied/cancelled
+ * aren't in TIMELINE_ORDER (all real-only terminal branches, never part of
+ * the 4-step cosmetic lifecycle) — reaching any of them implies every
+ * regular step already completed, so they fall past the end rather than
+ * indexOf's -1 (which would otherwise mark every step "pending").
  */
-function stepState(displayStatus: TrialStatus, step: TrialStatus): "done" | "active" | "pending" {
+function stepState(displayStatus: ShopOrderStatus, step: ShopOrderStatus): "done" | "active" | "pending" {
   const rawIndex = TIMELINE_ORDER.indexOf(displayStatus);
   const currentIndex = rawIndex === -1 ? TIMELINE_ORDER.length : rawIndex;
   const stepIndex = TIMELINE_ORDER.indexOf(step);
@@ -234,9 +235,15 @@ function stepState(displayStatus: TrialStatus, step: TrialStatus): "done" | "act
   return "pending";
 }
 
-function TimelineStep({ label, state }: { label: string; state: "done" | "active" | "pending" }) {
+function TimelineStep({ label, state }: { label: string; state: "done" | "active" | "pending" | "denied" }) {
   const dotClass =
-    state === "done" ? "bg-emerald-500" : state === "active" ? "bg-amber-500 animate-pulse" : "bg-gray-200";
+    state === "done"
+      ? "bg-emerald-500"
+      : state === "denied"
+        ? "bg-red-500"
+        : state === "active"
+          ? "bg-amber-500 animate-pulse"
+          : "bg-gray-200";
   const textClass = state === "pending" ? "text-gray-400" : "text-gray-900";
   return (
     <div className="flex items-center gap-3 py-1.5">

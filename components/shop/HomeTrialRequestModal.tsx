@@ -5,10 +5,12 @@ import { X, ArrowRight, ArrowLeft, User, Phone, Mail, CalendarClock, Hash, Landm
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatCurrency } from "@/lib/utils";
-import { TrialSlot } from "@/lib/shop/trial-request-types";
-import { formatDisplayDate, tomorrowDateInputValue } from "@/lib/shop/trial-request-mock";
-import { createShopTrialRequest } from "@/lib/shop/trial-request-client";
+import { DeliverySlot } from "@/lib/shop/order-types";
+import { formatDisplayDate, tomorrowDateInputValue } from "@/lib/shop/order-mock";
+import { createShopOrder } from "@/lib/shop/shop-orders-client";
 import { CustomerAddress } from "@/lib/rental/customer-profile";
+
+type TrialSlot = DeliverySlot;
 
 interface HomeTrialRequestModalProps {
   productId: string;
@@ -137,12 +139,13 @@ export function HomeTrialRequestModal({
     setSubmitting(true);
     setError("");
     try {
-      const trialRequest = await createShopTrialRequest({
+      const order = await createShopOrder({
+        orderType: "trial",
         productId,
         productTitle,
         productImage,
         storeName,
-        price,
+        unitPrice: price,
         size,
         name: name.trim(),
         phone: phone.trim(),
@@ -154,7 +157,7 @@ export function HomeTrialRequestModal({
         trialSlot,
         specialInstructions: specialInstructions.trim() || undefined,
       });
-      router.push(`/shop/trial/${trialRequest.id}`);
+      router.push(`/shop/orders/${order.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not submit your request");
       setSubmitting(false);
