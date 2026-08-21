@@ -12,9 +12,7 @@ import { displayUrl, masterUrl, thumbnailUrl, zoomedUrl } from "@/lib/images/var
 import { WishlistButton } from "@/components/shop/WishlistButton";
 import { ShopTryOnButton } from "@/components/shop/ShopTryOnButton";
 import { StoreLocationCard } from "@/components/rental/StoreLocationCard";
-import { RentalRequestModal } from "@/components/rental/RentalRequestModal";
-import { getMockRentalInfo } from "@/lib/rental/mock-data";
-import { AGE_GROUPS } from "@/lib/rental/types";
+import { HomeTrialRequestModal } from "@/components/shop/HomeTrialRequestModal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,17 +29,17 @@ import { cn } from "@/lib/utils";
  * beautifully with" cards) minus every retailer-only control
  * (edit/delete/generate-image/download/erase-region), same posture
  * RentalProductDetailView already took for /rent. "Try & Buy" (opens
- * RentalRequestModal — a home-trial request, not a real purchase) is the
- * page's sole primary action (right after the store card) — per explicit
- * direction there is no separate purchase/checkout CTA here.
- * ShopCheckoutModal/ShopOrder/the /shop/orders confirmation page still
- * exist but nothing on this page triggers them anymore. Uniform for every product, not
- * conditioned on isForRent, and opens RentalRequestModal directly — reusing
- * the same request pipeline /rent uses, just without RentalInfoPanel's own
- * pricing/availability/age-selector grid, which doesn't fit inside a
- * compact store card. getMockRentalInfo already produces sensible mock
- * economics for a product the retailer never explicitly priced for rental,
- * the same fallback ProductDetailView's own rental-preview toggle relies on.
+ * HomeTrialRequestModal, creating a ShopTrialRequest — a home-trial request,
+ * not a real purchase and not a rental) is the page's sole primary action
+ * (right after the store card) — per explicit direction there is no
+ * separate purchase/checkout CTA here. ShopCheckoutModal/ShopOrder/the
+ * /shop/orders confirmation page still exist but nothing on this page
+ * triggers them anymore. Uniform for every product, not conditioned on
+ * isForRent. HomeTrialRequestModal is a genuine fork of
+ * components/rental/RentalRequestModal.tsx, not a shared component — see
+ * ShopTrialRequest's doc comment in prisma/schema.prisma for why this
+ * flow no longer reuses RentalOrder/RentalRequestModal at all (it used to;
+ * that conflated a product-sale home trial with the real /rent marketplace).
  */
 interface ShopProductDetailViewProps {
   product: PublicShopProduct;
@@ -93,7 +91,6 @@ export function ShopProductDetailView({
 
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const [trialModalOpen, setTrialModalOpen] = useState(false);
-  const rental = getMockRentalInfo(product);
 
   const badgeLabels = Array.from(
     new Set([
@@ -316,15 +313,13 @@ export function ShopProductDetailView({
       )}
 
       {trialModalOpen && (
-        <RentalRequestModal
+        <HomeTrialRequestModal
           productId={product.id}
           productTitle={product.title}
           productImage={thumbImages[0] ?? null}
           storeName={product.storeName}
-          ageGroup={AGE_GROUPS[0]}
-          rentalPricePerDay={rental.rentalPricePerDay}
-          deposit={rental.deposit}
-          rentalDurationDays={rental.rentalDurationDays}
+          price={product.price}
+          size={product.size}
           sessionPhone={sessionPhone}
           initialAccount={initialAccount}
           initialAddresses={initialAddresses}

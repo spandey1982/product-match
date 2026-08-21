@@ -60,11 +60,12 @@ model Customer {
   /** Virtual try-on credit balance for /shop — starts at 5 free credits. See CreditTopUp for the ledger. */
   tryOnCredits Int @default(5)
 
-  addresses    CustomerAddress[]
-  rentalOrders RentalOrder[]
-  wishlist     Wishlist[]
-  creditTopUps CreditTopUp[]
-  shopOrders   ShopOrder[]
+  addresses         CustomerAddress[]
+  rentalOrders      RentalOrder[]
+  wishlist          Wishlist[]
+  creditTopUps      CreditTopUp[]
+  shopOrders        ShopOrder[]
+  shopTrialRequests ShopTrialRequest[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -285,6 +286,55 @@ model ShopOrder {
   @@map("shop_orders")
 }
 
+// /shop's "Try & Buy" home-trial request — deliberately separate from both
+// RentalOrder (the real /rent marketplace: age group, deposit, occasion-driven
+// event/delivery dates) and ShopOrder (an immediate purchase, no trial phase).
+// A home trial has no "event" to schedule around, so trialDate is directly
+// chosen by the customer, not derived. Same durable-snapshot rationale as
+// ShopOrder: productId is NOT a relation.
+model ShopTrialRequest {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  productId    String
+  productTitle String
+  productImage String?
+  storeName    String?
+  price        Float
+  // Optional — shown in the request modal/confirmation only when present.
+  // No retailer-facing entry UI exists yet for this field (follow-up work);
+  // it stays empty until that lands.
+  size         String?
+
+  customerName  String
+  customerPhone String
+  customerEmail String?
+
+  addressLine1    String
+  addressPincode  String
+  addressLandmark String?
+
+  trialDate           String // yyyy-mm-dd, directly chosen — no derived delivery-date hop
+  trialSlot           String // "morning" | "afternoon" | "evening"
+  specialInstructions String?
+
+  paymentMethod String @default("Pay at Doorstep")
+  // "requested" | "confirmed" | "preparing" | "out_for_trial" | "tried_out" |
+  // "sold" | "cancelled" — "sold" is only ever set by a real payment-confirmation
+  // action (not yet implemented), never by the cosmetic display-status simulation.
+  status        String @default("requested")
+  // "pending" | "paid" | "failed" | "refunded"
+  paymentStatus String @default("pending")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([customerId])
+  @@index([productId])
+  @@map("shop_trial_requests")
+}
+
 model Product {
   id          String  @id @default(cuid())
   title       String
@@ -323,6 +373,9 @@ model Product {
   // mismatched math. Null when the retailer sets a struck-through MRP without
   // an exact round-percentage discount, or no MRP at all.
   discountPercent Int?
+  // Free-text size (e.g. "M", "UK 8") — optional, no retailer-facing entry UI
+  // yet. Shown on /shop's home-trial request modal/confirmation only when set.
+  size            String?
 
   imageUrl      String?
   // Optional back-of-product image. When present, back-profile catalogue

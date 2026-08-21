@@ -42,6 +42,8 @@ export type Product = {
   mrpPrice?: number | null;
   /** 1-100, only meaningful alongside mrpPrice. See ProductDetailView's edit form for the auto-calc. */
   discountPercent?: number | null;
+  /** Free-text size (e.g. "M", "UK 8") — optional, no retailer entry UI yet. Shown on /shop's home-trial flow only when set. */
+  size?: string | null;
   isForRent: boolean;
   rentalPricePerDay?: number | null;
   rentalDeposit?: number | null;
