@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getSession, isAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { UsageAnalyticsCard } from "./UsageAnalyticsCard";
+import { ShopVisibilityToggle } from "./ShopVisibilityToggle";
 
 export const metadata = { title: "Wallet Management — Admin" };
 
@@ -14,6 +15,7 @@ async function loadWallets() {
       name: true,
       email: true,
       storeName: true,
+      showOnShop: true,
       wallet: {
         select: {
           balanceUsd: true,
@@ -87,6 +89,7 @@ export default async function WalletsPage() {
                 <th className="text-left px-4 py-3 font-medium text-gray-600">Credits Remaining</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600">Status</th>
                 <th className="text-right px-4 py-3 font-medium text-gray-600">Actions</th>
+                <th className="text-center px-4 py-3 font-medium text-gray-600">On Shop</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -120,11 +123,16 @@ export default async function WalletsPage() {
                       Manage
                     </Link>
                   </td>
+                  <td className="px-4 py-3">
+                    <div className="flex justify-center">
+                      <ShopVisibilityToggle userId={u.id} initialShowOnShop={u.showOnShop} />
+                    </div>
+                  </td>
                 </tr>
               ))}
               {users.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-gray-400">
+                  <td colSpan={7} className="px-4 py-8 text-center text-gray-400">
                     No retailers found
                   </td>
                 </tr>

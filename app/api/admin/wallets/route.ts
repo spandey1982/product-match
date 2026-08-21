@@ -13,6 +13,7 @@ export async function GET() {
         name: true,
         email: true,
         storeName: true,
+        showOnShop: true,
         wallet: {
           select: {
             id: true,
@@ -39,6 +40,7 @@ export async function GET() {
         name: u.name,
         email: u.email,
         storeName: u.storeName,
+        showOnShop: u.showOnShop,
         wallet: w
           ? {
               id: w.id,
