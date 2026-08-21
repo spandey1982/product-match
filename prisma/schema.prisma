@@ -28,7 +28,7 @@ model User {
   aiGenSettings String?
   logoPublicId  String?
 
-  /** Store-level kill switch for the public /shop marketplace. When false, every product from this store is hidden from /shop (still visible in the retailer's own dashboard). Defaults to visible. */
+  /** Store-level kill switch for the public /shop marketplace. When false, every product from this store is hidden from /shop (still visible in the retailer's own dashboard). Defaults to visible. Admin-only for now (set from /admin/wallets) — not exposed to the retailer's own Settings; intended to later act as an override on top of a retailer-facing setting. */
   showOnShop Boolean @default(true)
 
   // Soft-delete marker for account-deletion requests. Null = active. Set to
