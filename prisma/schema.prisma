@@ -28,6 +28,9 @@ model User {
   aiGenSettings String?
   logoPublicId  String?
 
+  /** Store-level kill switch for the public /shop marketplace. When false, every product from this store is hidden from /shop (still visible in the retailer's own dashboard). Defaults to visible. */
+  showOnShop Boolean @default(true)
+
   // Soft-delete marker for account-deletion requests. Null = active. Set to
   // the request time when a retailer confirms deletion; a successful login
   // while this is set and still within the 7-day grace window cancels it
