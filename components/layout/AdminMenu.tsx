@@ -1,17 +1,17 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { Shield, Tag, ClipboardCheck, Scale, Wallet, Shirt, Activity, ShoppingBag } from "lucide-react";
+import { Shield, Tag, ClipboardCheck, ClipboardList, Scale, Wallet, Shirt, Activity } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const ADMIN_LINKS = [
+  { href: "/admin/orders", label: "Orders", icon: ClipboardList },
   { href: "/admin/usage", label: "AI Usage & Cost", icon: Activity },
   { href: "/admin/wallets", label: "Wallet Management", icon: Wallet },
   { href: "/admin/pricing", label: "Pricing Config", icon: Tag },
   { href: "/admin/billing-comparison", label: "Billing Comparison", icon: Scale },
   { href: "/admin/review", label: "Generation Review", icon: ClipboardCheck },
   { href: "/admin/garment-intelligence", label: "Garment Intelligence", icon: Shirt },
-  { href: "/admin/orders", label: "Shop Orders", icon: ShoppingBag },
 ];
 
 /**

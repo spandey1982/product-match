@@ -16,7 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/utils";
-import { Fact, SummaryRow } from "@/components/rental/OrderDetailPrimitives";
+import { Fact, SummaryRow } from "@/components/orders/OrderDetailPrimitives";
 import { ShopOrder, ShopOrderStatus } from "@/lib/shop/order-types";
 import {
   EXPECTED_CONFIRMATION_MINUTES,

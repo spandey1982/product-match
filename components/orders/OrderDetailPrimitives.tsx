@@ -1,4 +1,4 @@
-/** Small presentational rows shared by the customer receipt and the retailer admin order view. */
+/** Small presentational rows shared by the customer receipt and the admin order view (rental and shop trial orders alike). */
 
 export function Fact({
   icon: Icon,

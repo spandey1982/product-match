@@ -31,6 +31,25 @@ export const TRIAL_LIFECYCLE_STAGES: ShopOrderStatus[] = [
   "tried_out",
 ];
 
+/**
+ * Admin-manageable stages for a trial order on the merged Orders page's
+ * status-update buttons — the cosmetic lifecycle plus both real verification
+ * outcomes (normally only ever set by the delivery person at
+ * app/deliver/[id], but an admin can also set them directly here, same
+ * manual-override posture the rental order admin view already has for its
+ * own terminal "completed" stage). Excludes "cancelled" (its own button) and
+ * the buy-only shipped/delivered.
+ */
+export const TRIAL_ADMIN_STAGES: ShopOrderStatus[] = [
+  "requested",
+  "confirmed",
+  "preparing",
+  "out_for_trial",
+  "tried_out",
+  "order_completed",
+  "order_denied",
+];
+
 export const SHOP_PAYMENT_STATUSES = ["pending", "paid", "failed", "refunded"] as const;
 export type ShopPaymentStatus = (typeof SHOP_PAYMENT_STATUSES)[number];
 

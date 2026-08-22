@@ -15,7 +15,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/utils";
-import { Fact } from "@/components/rental/OrderDetailPrimitives";
+import { Fact } from "@/components/orders/OrderDetailPrimitives";
 import { ShopOrder } from "@/lib/shop/order-types";
 import { formatDisplayDate, trialWindowLabel } from "@/lib/shop/order-mock";
 
