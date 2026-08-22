@@ -13,10 +13,14 @@ model User {
   password     String
   role         String  @default("RETAILER")
   storeName    String?
-  /** Shown to shoppers on the public rental listing (contact card + map link). */
+  /**
+   * Shown to shoppers on the public rental listing (contact card + map link).
+   */
   storePhone   String?
   storeAddress String?
-  /** Fixed-list city (lib/geo/city-coordinates.ts) used for /shop's location-radius filter — city-grained, not a geocoded address. */
+  /**
+   * Fixed-list city (lib/geo/city-coordinates.ts) used for /shop's location-radius filter — city-grained, not a geocoded address.
+   */
   storeCity    String?
   // Business classification picked at signup — purely descriptive, distinct
   // from `role` (which gates ADMIN vs RETAILER access). "RETAILER" |
@@ -28,7 +32,9 @@ model User {
   aiGenSettings String?
   logoPublicId  String?
 
-  /** Store-level kill switch for the public /shop marketplace. When false, every product from this store is hidden from /shop (still visible in the retailer's own dashboard). Defaults to visible. Admin-only for now (set from /admin/wallets) — not exposed to the retailer's own Settings; intended to later act as an override on top of a retailer-facing setting. */
+  /**
+   * Store-level kill switch for the public /shop marketplace. When false, every product from this store is hidden from /shop (still visible in the retailer's own dashboard). Defaults to visible. Admin-only for now (set from /admin/wallets) — not exposed to the retailer's own Settings; intended to later act as an override on top of a retailer-facing setting.
+   */
   showOnShop Boolean @default(true)
 
   // Soft-delete marker for account-deletion requests. Null = active. Set to
@@ -44,6 +50,7 @@ model User {
   products      Product[]
   modelProfiles ModelProfile[]
   wallet        Wallet?
+  motionJobs    MotionJob[]
 
   @@index([deletedAt])
   @@map("users")
@@ -60,7 +67,9 @@ model Customer {
   name  String?
   email String?
 
-  /** Virtual try-on credit balance for /shop — starts at 5 free credits. See CreditTopUp for the ledger. */
+  /**
+   * Virtual try-on credit balance for /shop — starts at 5 free credits. See CreditTopUp for the ledger.
+   */
   tryOnCredits Int @default(5)
 
   addresses    CustomerAddress[]
@@ -100,9 +109,9 @@ model Wishlist {
 // of this per-device quota — neither is a security boundary, both exist to
 // raise the bar on casual repeat-abuse of the free pool.
 model GuestTryOnUsage {
-  id        String   @id @default(cuid())
-  deviceId  String   @unique
-  usedCount Int      @default(0)
+  id        String  @id @default(cuid())
+  deviceId  String  @unique
+  usedCount Int     @default(0)
   ipAddress String?
 
   createdAt DateTime @default(now())
@@ -230,8 +239,8 @@ model Payment {
   razorpaySignature String?
 
   amount   Int // paise
-  currency String @default("INR")
-  status   String @default("created") // created | paid | failed
+  currency String  @default("INR")
+  status   String  @default("created") // created | paid | failed
   method   String?
 
   createdAt DateTime @default(now())
@@ -393,6 +402,8 @@ model Product {
   // Structured garment intelligence (R&D) — one deep vision analysis per
   // product, reused everywhere. Nullable → existing rows unaffected.
   garmentIntelligence GarmentIntelligence?
+
+  motionJobs MotionJob[]
 
   @@index([category])
   @@index([userId])
@@ -824,8 +835,8 @@ model WalletTransaction {
   walletId String
   wallet   Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
 
-  type      String
-  amountUsd Float
+  type         String
+  amountUsd    Float
   balanceAfter Float
 
   description String
@@ -919,4 +930,121 @@ model PricingConfig {
 
   @@index([effectiveFrom, effectiveUntil])
   @@map("pricing_configs")
+}
+
+// ── AI Catalogue Motion ──────────────────────────────────────────────────────
+// See docs/CATALOGUE_MOTION_ARCHITECTURE.md. One MotionJob = one retailer
+// request to animate a product's existing catalogue images into a short
+// video. Sources are always existing ProductImage rows — no new stills are
+// generated. A job fans out into per-shot MotionClip renders, each QA-scored
+// before the composer stitches accepted clips into the final video.
+
+model MotionJob {
+  id        String @id @default(cuid())
+  productId String
+  userId    String
+
+  // queued | rendering | composing | qa | complete | failed — plain string
+  // per this schema's stage-field convention, not a Prisma enum.
+  status String @default("queued")
+
+  // minimal | elegant | dynamic
+  intensity String @default("elegant")
+
+  // Target duration in seconds: 5, 7, or 10.
+  duration Int @default(7)
+
+  // Resolved category storyboard key (lib/catalogue-motion/storyboards.ts).
+  storyboardId String
+
+  // AI provider used for this job (veo, kling, runway…).
+  provider String
+
+  outputUrl    String?
+  outputFormat String?
+
+  errorMessage String?
+  retryCount   Int     @default(0)
+
+  totalCostUsd Float?
+  durationMs   Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  product Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clips   MotionClip[]
+
+  @@index([productId])
+  @@index([userId, status])
+  @@map("motion_jobs")
+}
+
+// One clip = one shot in the storyboard, rendered independently.
+model MotionClip {
+  id    String @id @default(cuid())
+  jobId String
+
+  // Position in the storyboard sequence (0-indexed).
+  shotIndex Int
+
+  // Matches ProductImage.view (front, back, blouse, pallu…).
+  view String
+
+  // Motion preset key from lib/catalogue-motion/grammar.ts.
+  presetId String
+
+  // The existing catalogue image this clip animates.
+  sourceImageUrl String
+
+  // queued | rendering | qa | accepted | rejected | failed
+  status String @default("queued")
+
+  outputUrl  String?
+  durationMs Int?
+  costUsd    Float?
+
+  errorMessage String?
+  retryCount   Int     @default(0)
+
+  createdAt DateTime @default(now())
+
+  job MotionJob       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  qa  MotionQAResult?
+
+  @@index([jobId])
+  @@map("motion_clips")
+}
+
+// Automated QA scores for one rendered clip (Stage 2 vision review). Stage 1
+// algorithmic checks (SSIM/pHash/histogram) run inline before this and are
+// not persisted individually — only the resulting verdict matters here.
+model MotionQAResult {
+  id     String @id @default(cuid())
+  clipId String @unique
+
+  identityConsistency Float?
+  garmentPreservation Float?
+  textureConsistency  Float?
+  lightingStability   Float?
+  backgroundStability Float?
+  motionSmoothness    Float?
+  // Inverse scale: 5 = no artifacts, 1 = severe.
+  artifactScore       Float?
+  overall             Float?
+
+  // JSON array of detected issues (lib/serialize.ts).
+  issues String?
+
+  // accepted | rejected | manual_review
+  verdict String
+
+  reviewModel String
+
+  createdAt DateTime @default(now())
+
+  clip MotionClip @relation(fields: [clipId], references: [id], onDelete: Cascade)
+
+  @@map("motion_qa_results")
 }
