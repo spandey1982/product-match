@@ -8,6 +8,7 @@
  */
 import type { MotionIntensity, MotionConstraints } from "../types";
 import type { ClipInstruction } from "../prompt-builder";
+import type { AiUsageContext } from "@/lib/ai-usage/record";
 
 export type MotionProviderId = "veo" | "kling";
 
@@ -27,6 +28,8 @@ export interface ClipRenderInput {
   durationSec: number;
   /** Present when animating a close-up region — informs output framing. */
   cropRegion?: CropRegion;
+  productId?: string;
+  usage?: AiUsageContext;
 }
 
 export interface ClipRenderResult {

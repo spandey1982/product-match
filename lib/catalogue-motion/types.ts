@@ -28,6 +28,22 @@ export interface MotionPreset {
 
 // ── Storyboards ─────────────────────────────────────────────────────────────
 
+/**
+ * How a shot's motion is produced:
+ *   ai-motion → sent to a MotionProvider (Veo/Kling) as a real generation
+ *     call. Reserved for shots showing the worn garment on the model —
+ *     the only place subtle AI motion (breathing, fabric sway) adds value
+ *     over a deterministic camera move, and the only shots worth Veo's
+ *     4/6/8s-minimum, per-second billing.
+ *   pan-zoom → rendered locally via a deterministic FFmpeg crop/zoom of the
+ *     static source image (a Ken Burns–style move driven by the same preset
+ *     vocabulary). Zero AI cost, no duration floor. Used for every close-up
+ *     detail crop (no person in frame) and for every shot in object-only
+ *     categories (footwear, handbags, jewellery, dupatta, accessories) where
+ *     there is no model to animate at all.
+ */
+export type ShotRenderMode = "ai-motion" | "pan-zoom";
+
 export interface StoryboardShot {
   /** Matches ProductImage.view (front, back, blouse, pallu…). */
   view: string;
@@ -38,6 +54,7 @@ export interface StoryboardShot {
   sourceBase: "front" | "back";
   /** Optional crop region id from crop-templates.ts. */
   cropId?: string;
+  renderMode: ShotRenderMode;
   rationale: string;
 }
 

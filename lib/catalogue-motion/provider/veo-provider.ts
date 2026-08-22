@@ -11,17 +11,35 @@
  * submits via :predictLongRunning and polls :fetchPredictOperation until the
  * video is ready or the timeout is hit.
  *
- * ⚠ VERIFY the request/response shape against the live Vertex AI Veo API
- * reference before the first real call — this was built from documented
- * conventions, not a live test. Veo API access may also require separate
- * allowlisting on the GCP project beyond what Vertex Virtual Try-On needs.
+ * Two hard Veo constraints shape this adapter, confirmed against Google's
+ * current docs/pricing (2026-08):
+ *   - durationSeconds only accepts 4, 6, or 8 — never an arbitrary value.
+ *     Storyboard shots that need AI motion (see types.ts ShotRenderMode) are
+ *     rounded UP to the nearest allowed value; the composer trims the extra
+ *     seconds later rather than wasting a re-render.
+ *   - Billing is per second and non-trivial ($0.05–0.75/s depending on
+ *     tier — see the cost note on estimateCost below), which is why only
+ *     "ai-motion" shots (the worn-garment front/back views) ever reach this
+ *     provider; detail crops and object-only categories render locally via
+ *     pan-zoom instead (see lib/catalogue-motion/storyboards.ts).
+ * Default model is the Lite tier — cheapest, appropriate for a subtle
+ * catalogue-motion clip that deliberately avoids dramatic movement.
  */
 import { GoogleAuth } from "google-auth-library";
+import { estimateCostUsd } from "@/lib/ai-usage/pricing";
+import { recordAiUsage } from "@/lib/ai-usage/record";
 import type { MotionProvider, ClipRenderInput, ClipRenderResult } from "./types";
 
-const DEFAULT_VEO_MODEL = "veo-3.0-generate-preview";
+const DEFAULT_VEO_MODEL = "veo-3.1-lite-generate-001";
 const POLL_INTERVAL_MS = 5_000;
 const MAX_POLL_ATTEMPTS = 24; // ~2 minutes
+
+/** Veo only accepts 4, 6, or 8 seconds — round up to the nearest allowed value. */
+const ALLOWED_DURATIONS = [4, 6, 8] as const;
+
+function nearestVeoDuration(requestedSec: number): number {
+  return ALLOWED_DURATIONS.find((d) => d >= requestedSec) ?? ALLOWED_DURATIONS[ALLOWED_DURATIONS.length - 1];
+}
 
 function veoModel(): string {
   return process.env.CATALOGUE_MOTION_VEO_MODEL || DEFAULT_VEO_MODEL;
@@ -94,6 +112,7 @@ async function submitGeneration(
   config: VeoConfig,
   accessToken: string,
   input: ClipRenderInput,
+  durationSeconds: number,
 ): Promise<string> {
   const { data: imageBase64, mimeType: imageMime } = await fetchImageAsBase64(input.sourceImageUrl);
   const model = veoModel();
@@ -112,9 +131,17 @@ async function submitGeneration(
         },
       ],
       parameters: {
-        durationSeconds: input.durationSec,
+        durationSeconds,
         sampleCount: 1,
-        aspectRatio: "3:4",
+        // Veo's native aspect ratios are 16:9/9:16, not the 3:4 catalogue
+        // card ratio — the composer reframes to 3:4 afterward rather than
+        // asking Veo for an unsupported ratio.
+        aspectRatio: "9:16",
+        resolution: "720p",
+        // Catalogue Motion is silent by design (see architecture spec,
+        // §Audio) — disabling audio also avoids the higher audio-inclusive
+        // billing tier.
+        generateAudio: false,
       },
     }),
   });
@@ -170,11 +197,8 @@ export const veoMotionProvider: MotionProvider = {
     return process.env.ENABLE_CATALOGUE_MOTION === "true" && getVeoConfig() !== null;
   },
 
-  estimateCost(): number | null {
-    // No verified per-second/per-clip rate yet — never fabricate a price
-    // (same convention as lib/ai-usage/pricing.ts). Add an entry there once
-    // live Veo pricing is confirmed, and wire it in here.
-    return null;
+  estimateCost(durationSec: number): number | null {
+    return estimateCostUsd(veoModel(), { videoSeconds: nearestVeoDuration(durationSec) });
   },
 
   async generateClip(input: ClipRenderInput): Promise<ClipRenderResult> {
@@ -184,26 +208,69 @@ export const veoMotionProvider: MotionProvider = {
     const config = getVeoConfig();
     if (!config) throw new Error("Veo is not configured (GOOGLE_CLOUD_PROJECT)");
 
+    const model = veoModel();
+    const durationSeconds = nearestVeoDuration(input.durationSec);
     const accessToken = await getAccessToken();
     const t0 = Date.now();
+    const feature = input.usage?.feature ?? "catalogue_motion";
 
-    const operationName = await submitGeneration(config, accessToken, input);
-    const result = await pollOperation(config, accessToken, operationName);
+    try {
+      const operationName = await submitGeneration(config, accessToken, input, durationSeconds);
+      const result = await pollOperation(config, accessToken, operationName);
+      const durationMs = Date.now() - t0;
 
-    const video = result.response?.videos?.[0] ?? result.response?.predictions?.[0];
-    if (!video?.bytesBase64Encoded) {
-      throw new Error("Veo operation completed but returned no video");
+      const video = result.response?.videos?.[0] ?? result.response?.predictions?.[0];
+      if (!video?.bytesBase64Encoded) {
+        // Caught by the outer catch below, which records the error once.
+        throw new Error("Veo operation completed but returned no video");
+      }
+
+      const costUsd = estimateCostUsd(model, { videoSeconds: durationSeconds });
+      void recordAiUsage({
+        provider: "veo",
+        model,
+        feature,
+        operation: "generate_clip",
+        durationMs,
+        videoSeconds: durationSeconds,
+        storeId: input.usage?.storeId,
+        userId: input.usage?.userId,
+        productId: input.productId,
+        status: "success",
+        metadata: {
+          requestedDurationSec: input.durationSec,
+          veoDurationSeconds: durationSeconds,
+          presetId: input.instruction.params.presetId,
+          intensity: input.intensity,
+        },
+      });
+
+      return {
+        videoBase64: video.bytesBase64Encoded,
+        mimeType: video.mimeType ?? "video/mp4",
+        durationMs,
+        width: 720,
+        height: 1280,
+        costUsd,
+        provider: "veo",
+        model,
+      };
+    } catch (err) {
+      const durationMs = Date.now() - t0;
+      void recordAiUsage({
+        provider: "veo",
+        model,
+        feature,
+        operation: "generate_clip",
+        durationMs,
+        storeId: input.usage?.storeId,
+        userId: input.usage?.userId,
+        productId: input.productId,
+        status: "error",
+        errorMessage: err instanceof Error ? err.message : String(err),
+        metadata: { requestedDurationSec: input.durationSec, veoDurationSeconds: durationSeconds },
+      });
+      throw err;
     }
-
-    return {
-      videoBase64: video.bytesBase64Encoded,
-      mimeType: video.mimeType ?? "video/mp4",
-      durationMs: Date.now() - t0,
-      width: 1080,
-      height: 1440,
-      costUsd: null,
-      provider: "veo",
-      model: veoModel(),
-    };
   },
 };
