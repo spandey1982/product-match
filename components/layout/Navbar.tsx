@@ -14,7 +14,6 @@ import {
   Heart,
   Settings,
   CreditCard,
-  ClipboardList,
 } from "lucide-react";
 import { HangerPlusIcon } from "@/components/icons/HangerPlusIcon";
 import { TagPlusIcon } from "@/components/icons/TagPlusIcon";
@@ -170,16 +169,6 @@ export function Navbar({ user, isAdmin }: NavbarProps) {
                 </div>
                 <CreditBalanceDropdown balance={creditBalance} />
                 <div className="h-px bg-gray-100 mx-1 my-1" />
-                {user.businessType === "RENTAL_STORE" && (
-                  <Link
-                    href="/rental-orders"
-                    onClick={() => setUserMenuOpen(false)}
-                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-                  >
-                    <ClipboardList className="h-4 w-4 text-indigo-400" />
-                    Rental Orders
-                  </Link>
-                )}
                 <Link
                   href="/auto-catalog"
                   onClick={() => setUserMenuOpen(false)}
