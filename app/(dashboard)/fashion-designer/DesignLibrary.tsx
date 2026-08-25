@@ -135,7 +135,7 @@ export function DesignLibrary() {
                 {/* Info */}
                 <div className="p-3 flex items-center justify-between gap-2">
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-gray-900 truncate">{d.title}</p>
+                    <p className="text-sm font-semibold text-gray-900 truncate">{d.title || "Untitled Design"}</p>
                     <p className="text-xs text-gray-400 truncate">{d.garmentType || "Garment"}</p>
                   </div>
                   <button

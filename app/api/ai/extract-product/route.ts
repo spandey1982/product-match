@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth";
+import { requireAuthWithModule } from "@/lib/client-modules-server";
 import { analyzeProductImage } from "@/lib/metadata/analyze";
 import { chargeForCall } from "@/lib/billing/charge";
 
@@ -7,7 +7,7 @@ const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await requireAuth();
+    const session = await requireAuthWithModule("upload");
 
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
@@ -48,6 +48,9 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     if ((err as Error).message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if ((err as Error).message === "Forbidden") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     console.error("extract-product error:", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

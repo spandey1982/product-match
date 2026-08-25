@@ -23,6 +23,8 @@ interface Props {
   initialStoreAddress: string;
   initialStoreCity: string;
   initialEmail: string;
+  initialPhone: string | null;
+  initialPhoneVerified: boolean;
 }
 
 // Friendly, non-technical labels — the headline effect of each choice. The
@@ -48,7 +50,7 @@ interface ModeOption {
   enabled: boolean;
 }
 
-export function SettingsView({ current, providers, initialStorePhone, initialStoreAddress, initialStoreCity, initialEmail }: Props) {
+export function SettingsView({ current, providers, initialStorePhone, initialStoreAddress, initialStoreCity, initialEmail, initialPhone, initialPhoneVerified }: Props) {
   const [selected, setSelected] = useState<Mode>(current);
   const [saving, setSaving] = useState<Mode | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -68,7 +70,118 @@ export function SettingsView({ current, providers, initialStorePhone, initialSto
   const [emailError, setEmailError] = useState<string | null>(null);
   const [emailSaved, setEmailSaved] = useState(false);
 
+  const [phone, setPhone] = useState(initialPhone);
+  const [phoneVerified, setPhoneVerified] = useState(initialPhoneVerified);
+  const [phoneInput, setPhoneInput] = useState(initialPhone ?? "");
+  const [phoneOtpSent, setPhoneOtpSent] = useState(false);
+  const [phoneOtp, setPhoneOtp] = useState("");
+  const [phoneSaving, setPhoneSaving] = useState(false);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+
+  const [passwordOtpSent, setPasswordOtpSent] = useState(false);
+  const [passwordOtp, setPasswordOtp] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordSaved, setPasswordSaved] = useState(false);
+
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+
+  async function requestPhoneOtp() {
+    if (!phoneInput.trim()) return;
+    setPhoneSaving(true);
+    setPhoneError(null);
+    try {
+      const res = await fetch("/api/settings/phone/request-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: phoneInput }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setPhoneError(data.error || "Could not send OTP. Please try again.");
+        return;
+      }
+      setPhoneOtpSent(true);
+    } catch {
+      setPhoneError("Network error. Please try again.");
+    } finally {
+      setPhoneSaving(false);
+    }
+  }
+
+  async function verifyPhoneOtp() {
+    if (!phoneOtp.trim()) return;
+    setPhoneSaving(true);
+    setPhoneError(null);
+    try {
+      const res = await fetch("/api/settings/phone/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: phoneInput, otp: phoneOtp }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setPhoneError(data.error || "Incorrect or expired OTP.");
+        return;
+      }
+      setPhone(data.phone);
+      setPhoneVerified(true);
+      setPhoneOtpSent(false);
+      setPhoneOtp("");
+    } catch {
+      setPhoneError("Network error. Please try again.");
+    } finally {
+      setPhoneSaving(false);
+    }
+  }
+
+  async function requestPasswordOtp() {
+    setPasswordSaving(true);
+    setPasswordError(null);
+    setPasswordSaved(false);
+    try {
+      const res = await fetch("/api/settings/password/request-otp", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        setPasswordError(data.error || "Could not send OTP. Please try again.");
+        return;
+      }
+      setPasswordOtpSent(true);
+    } catch {
+      setPasswordError("Network error. Please try again.");
+    } finally {
+      setPasswordSaving(false);
+    }
+  }
+
+  async function resetPassword() {
+    if (!passwordOtp.trim() || !newPassword || newPassword !== confirmPassword) return;
+    setPasswordSaving(true);
+    setPasswordError(null);
+    try {
+      const res = await fetch("/api/settings/password/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ otp: passwordOtp, newPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setPasswordError(data.error || "Could not update your password.");
+        return;
+      }
+      setPasswordOtpSent(false);
+      setPasswordOtp("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setPasswordSaved(true);
+    } catch {
+      setPasswordError("Network error. Please try again.");
+    } finally {
+      setPasswordSaving(false);
+    }
+  }
 
   async function saveEmail() {
     if (!newEmail.trim() || !currentPassword) return;
@@ -372,6 +485,146 @@ export function SettingsView({ current, providers, initialStorePhone, initialSto
           {emailError && (
             <p className="text-xs text-red-500 flex items-center gap-1">
               <AlertCircle className="h-3.5 w-3.5 shrink-0" /> {emailError}
+            </p>
+          )}
+        </div>
+      </section>
+
+      <section className="mt-8">
+        <div className="flex items-center gap-2 mb-1">
+          <Phone className="h-4 w-4 text-indigo-500" />
+          <h2 className="text-sm font-semibold text-gray-900">
+            Phone Number
+          </h2>
+        </div>
+        <p className="text-xs text-gray-500 mb-4">
+          A verified phone number only you use for account security — separate
+          from the store phone shown to shoppers above. Required before you
+          can change your password via OTP.
+        </p>
+
+        <div className="space-y-3 rounded-2xl border border-gray-100 bg-white p-4">
+          {phoneVerified && phone ? (
+            <p className="text-sm text-gray-500">
+              Verified: <span className="font-medium text-gray-900">{phone}</span>
+            </p>
+          ) : (
+            <>
+              <Input
+                label="Phone number"
+                type="tel"
+                value={phoneInput}
+                onChange={(e) => setPhoneInput(e.target.value)}
+                leftIcon={<Phone className="h-4 w-4" />}
+                placeholder="+91 98765 43210"
+                disabled={phoneOtpSent}
+              />
+              {phoneOtpSent && (
+                <Input
+                  label="Enter OTP"
+                  type="text"
+                  value={phoneOtp}
+                  onChange={(e) => setPhoneOtp(e.target.value)}
+                  placeholder="6-digit code"
+                />
+              )}
+              <div className="flex items-center gap-3 pt-1">
+                {!phoneOtpSent ? (
+                  <Button size="sm" onClick={requestPhoneOtp} loading={phoneSaving} disabled={!phoneInput.trim()}>
+                    Send OTP
+                  </Button>
+                ) : (
+                  <>
+                    <Button size="sm" onClick={verifyPhoneOtp} loading={phoneSaving} disabled={!phoneOtp.trim()}>
+                      Verify
+                    </Button>
+                    <button
+                      onClick={() => { setPhoneOtpSent(false); setPhoneOtp(""); setPhoneError(null); }}
+                      className="text-xs text-gray-400 hover:text-gray-600"
+                    >
+                      Change number
+                    </button>
+                  </>
+                )}
+              </div>
+            </>
+          )}
+          {phoneError && (
+            <p className="text-xs text-red-500 flex items-center gap-1">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" /> {phoneError}
+            </p>
+          )}
+        </div>
+      </section>
+
+      <section className="mt-8">
+        <div className="flex items-center gap-2 mb-1">
+          <Lock className="h-4 w-4 text-indigo-500" />
+          <h2 className="text-sm font-semibold text-gray-900">
+            Change Password
+          </h2>
+        </div>
+        <p className="text-xs text-gray-500 mb-4">
+          Verified via an OTP sent to your phone above.
+        </p>
+
+        <div className="space-y-3 rounded-2xl border border-gray-100 bg-white p-4">
+          {!phoneVerified ? (
+            <p className="text-sm text-gray-500">Verify your phone number first to enable this.</p>
+          ) : !passwordOtpSent ? (
+            <div className="flex items-center gap-3">
+              <Button size="sm" onClick={requestPasswordOtp} loading={passwordSaving}>
+                Send OTP to {phone}
+              </Button>
+            </div>
+          ) : (
+            <>
+              <Input
+                label="Enter OTP"
+                type="text"
+                value={passwordOtp}
+                onChange={(e) => setPasswordOtp(e.target.value)}
+                placeholder="6-digit code"
+              />
+              <Input
+                label="New password"
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="At least 8 characters"
+                autoComplete="new-password"
+              />
+              <Input
+                label="Confirm new password"
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Re-enter new password"
+                autoComplete="new-password"
+              />
+              {confirmPassword && newPassword !== confirmPassword && (
+                <p className="text-xs text-red-500">Passwords don&apos;t match.</p>
+              )}
+              <div className="flex items-center gap-3 pt-1">
+                <Button
+                  size="sm"
+                  onClick={resetPassword}
+                  loading={passwordSaving}
+                  disabled={!passwordOtp.trim() || newPassword.length < 8 || newPassword !== confirmPassword}
+                >
+                  Update Password
+                </Button>
+                {passwordSaved && !passwordError && (
+                  <span className="text-xs text-green-600 flex items-center gap-1">
+                    <Check className="h-3.5 w-3.5" /> Updated
+                  </span>
+                )}
+              </div>
+            </>
+          )}
+          {passwordError && (
+            <p className="text-xs text-red-500 flex items-center gap-1">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" /> {passwordError}
             </p>
           )}
         </div>

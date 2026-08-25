@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth";
+import { requireAuthWithModule } from "@/lib/client-modules-server";
 import { serializeArray, deserializeProduct } from "@/lib/serialize";
 import { generateRecommendations } from "@/lib/matching-engine/scorer";
 
@@ -67,7 +68,9 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await requireAuth();
+    // Gated to "upload" (the Add Product flow) — not GET above, which the
+    // catalog view and every other module's product listing depend on.
+    const session = await requireAuthWithModule("upload");
     const body = await req.json();
 
     const {
@@ -156,6 +159,9 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     if ((err as Error).message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if ((err as Error).message === "Forbidden") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     console.error(err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

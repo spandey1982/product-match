@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth";
+import { requireAuthWithModule } from "@/lib/client-modules-server";
 import { db } from "@/lib/db";
 
 // PATCH /api/auto-catalog/items/[id] — manual QC edits or category assignment
@@ -8,7 +8,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await requireAuth();
+    const session = await requireAuthWithModule("auto-catalog");
     const { id } = await params;
 
     const item = await db.autoCatalogItem.findFirst({
@@ -50,6 +50,9 @@ export async function PATCH(
     if ((err as Error).message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    if ((err as Error).message === "Forbidden") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
     console.error(err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
@@ -61,7 +64,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await requireAuth();
+    const session = await requireAuthWithModule("auto-catalog");
     const { id } = await params;
 
     const item = await db.autoCatalogItem.findFirst({
@@ -99,6 +102,9 @@ export async function POST(
   } catch (err) {
     if ((err as Error).message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if ((err as Error).message === "Forbidden") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     console.error(err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

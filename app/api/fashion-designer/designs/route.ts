@@ -10,7 +10,11 @@ export async function POST(req: NextRequest) {
     const session = await requireAuth();
     const formData = await req.formData();
 
-    const title = String(formData.get("title") || "Untitled Design");
+    // Empty is allowed on purpose — an untitled design gets a descriptive
+    // title composed from the fabric/design analysis once that completes
+    // (see lib/fashion-designer/pipeline.ts), instead of a generic guess
+    // made before any analysis has run.
+    const title = String(formData.get("title") || "").trim();
     const garmentType = String(formData.get("garmentType") || "");
 
     // Structured template + customization (optional — only Shirt/Trouser/Men

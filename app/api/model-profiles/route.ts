@@ -8,7 +8,7 @@
  * flipped on yet; the flag only controls whether the engine consumes them.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth";
+import { requireAuthWithModule } from "@/lib/client-modules-server";
 import {
   listModelProfiles,
   createModelProfile,
@@ -40,12 +40,15 @@ function toWire(p: Awaited<ReturnType<typeof listModelProfiles>>[number]) {
 // GET /api/model-profiles — list this retailer's active Signature Models.
 export async function GET() {
   try {
-    const session = await requireAuth();
+    const session = await requireAuthWithModule("model-studio");
     const profiles = await listModelProfiles(session.id);
     return NextResponse.json({ profiles: profiles.map(toWire) });
   } catch (err) {
     if ((err as Error).message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if ((err as Error).message === "Forbidden") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     console.error(err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
@@ -68,7 +71,7 @@ function coerceMetadata(raw: unknown): CastingMetadata {
 // POST /api/model-profiles — create a new Signature Model.
 export async function POST(req: NextRequest) {
   try {
-    const session = await requireAuth();
+    const session = await requireAuthWithModule("model-studio");
     const body = await req.json().catch(() => ({}));
 
     const nameRaw = (body as { name?: unknown }).name;
@@ -94,6 +97,9 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     if ((err as Error).message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if ((err as Error).message === "Forbidden") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     // Validation errors from the DB layer surface as 400s rather than 500s.
     const message = (err as Error).message;

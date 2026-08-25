@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { Users, Wand2, ChevronRight, Sparkles } from "lucide-react";
+import { getSession } from "@/lib/auth";
+import type { ModuleKey } from "@/lib/client-modules";
+import { getEnabledModules } from "@/lib/client-modules-server";
 
 export const metadata: Metadata = { title: "Assets | Mentis" };
 
@@ -11,6 +15,7 @@ export const metadata: Metadata = { title: "Assets | Mentis" };
  * migrate here in a later pass.
  */
 interface AssetCard {
+  module: ModuleKey;
   href: string;
   title: string;
   description: string;
@@ -20,6 +25,7 @@ interface AssetCard {
 
 const CARDS: readonly AssetCard[] = [
   {
+    module: "model-studio",
     href: "/assets/model-studio",
     title: "Model Studio",
     description:
@@ -28,6 +34,7 @@ const CARDS: readonly AssetCard[] = [
     accent: "from-indigo-500 to-purple-600",
   },
   {
+    module: "design-studio",
     href: "/fashion-designer",
     title: "Design Studio",
     description:
@@ -37,7 +44,14 @@ const CARDS: readonly AssetCard[] = [
   },
 ];
 
-export default function AssetsPage() {
+export default async function AssetsPage() {
+  const session = await getSession();
+  if (!session) notFound();
+
+  const modules = await getEnabledModules(session.id);
+  const cards = CARDS.filter((c) => modules.includes(c.module));
+  if (cards.length === 0) notFound();
+
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 space-y-8">
       <header>
@@ -52,7 +66,7 @@ export default function AssetsPage() {
       </header>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {CARDS.map(({ href, title, description, Icon, accent }) => (
+        {cards.map(({ href, title, description, Icon, accent }) => (
           <Link
             key={href}
             href={href}
