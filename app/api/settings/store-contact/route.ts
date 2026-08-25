@@ -98,8 +98,18 @@ export async function PATCH(req: NextRequest) {
 
     // storeName (unlike phone/address/city) is carried in the session JWT
     // (shown in the Navbar) — re-issue it so the change is reflected
-    // immediately, same as the account-email change does.
-    await setSession({ ...session, storeName });
+    // immediately, same as the account-email change does. Rebuilt field by
+    // field (not spread) since `session` is the decoded JWT and already
+    // carries `exp`/`iat` claims that conflict with createToken's own
+    // `expiresIn` option.
+    await setSession({
+      id: session.id,
+      email: session.email,
+      name: session.name,
+      role: session.role,
+      storeName,
+      businessType: session.businessType,
+    });
 
     return NextResponse.json({ storeName, storePhone, storeAddress, storeCity });
   } catch (err) {
