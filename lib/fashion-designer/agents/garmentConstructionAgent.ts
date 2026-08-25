@@ -107,6 +107,9 @@ async function generateFlatImage(
   return null;
 }
 
+const BACK_MATCHES_FRONT_INSTRUCTION =
+  "The FIRST attached reference image is the exact FRONT view of this garment, already generated. Reproduce this same garment from the BACK at the IDENTICAL scale, camera framing, zoom level, mannequin form and position — as if the same photograph were taken from behind, changing only the viewing angle. Do not alter proportions or size.\n\n";
+
 export async function garmentConstructionAgent(
   plan: GenerationPlan,
   referenceUrls: string[] = [],
@@ -116,10 +119,25 @@ export async function garmentConstructionAgent(
     await Promise.all(referenceUrls.slice(0, 4).map(fetchImagePart))
   ).filter((p): p is { inline_data: { mime_type: string; data: string } } => p !== null);
 
-  const [flatFrontUrl, flatBackUrl] = await Promise.all([
-    generateFlatImage(plan.flatFrontPrompt, imageParts, usage ? { ...usage, operation: "flat_front" } : undefined),
-    generateFlatImage(plan.flatBackPrompt, imageParts, usage ? { ...usage, operation: "flat_back" } : undefined),
-  ]);
+  // Sequential, not parallel: the back is conditioned on the actual
+  // generated front image (not just the source fabric photos) so scale,
+  // angle and orientation match exactly, rather than being independently
+  // re-imagined by the model.
+  const flatFrontUrl = await generateFlatImage(
+    plan.flatFrontPrompt,
+    imageParts,
+    usage ? { ...usage, operation: "flat_front" } : undefined
+  );
+
+  const frontRefPart = flatFrontUrl ? await fetchImagePart(flatFrontUrl) : null;
+  const backImageParts = frontRefPart ? [frontRefPart, ...imageParts] : imageParts;
+  const backPrompt = frontRefPart ? BACK_MATCHES_FRONT_INSTRUCTION + plan.flatBackPrompt : plan.flatBackPrompt;
+
+  const flatBackUrl = await generateFlatImage(
+    backPrompt,
+    backImageParts,
+    usage ? { ...usage, operation: "flat_back" } : undefined
+  );
 
   return { flatFrontUrl, flatBackUrl };
 }

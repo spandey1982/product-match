@@ -18,6 +18,7 @@ const CATEGORY_MAP: Record<string, string> = {
   Shirt: "Shirt",
   Trouser: "Trouser",
   "Men Suit": "Suit",
+  Sherwani: "Sherwani",
   Dupatta: "Dupatta",
   Other: "Other",
 };
@@ -26,6 +27,7 @@ const GENDER_MAP: Record<string, string> = {
   Shirt: "MEN",
   Trouser: "MEN",
   "Men Suit": "MEN",
+  Sherwani: "MEN",
 };
 
 // POST /api/fashion-designer/designs/[id]/add-to-catalog

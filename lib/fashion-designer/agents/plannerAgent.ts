@@ -1,6 +1,7 @@
 import type { FabricAnalysis, DesignUnderstanding, AccessoryAnalysis, GenerationPlan } from "../types";
 import { callGeminiForJson } from "../gemini-client";
 import { fieldOptionLabel, type GarmentTemplate } from "../templates";
+import { resolveMannequinType, isTwoPieceCombination } from "../mannequin";
 import type { AiUsageContext } from "@/lib/ai-usage/record";
 
 function buildBlueprintSection(
@@ -76,6 +77,16 @@ ${designLabel}
     ? `DESIGN NOTES (retailer's explicit small refinements — apply these):\n${designNotes.trim()}`
     : "";
 
+  const mannequinType = resolveMannequinType(garmentType, design);
+  const presentationContext =
+    mannequinType === "half"
+      ? "PRESENTATION (authoritative): display the garment on a HALF/TORSO MANNEQUIN FORM — a headless, faceless, plain neutral-toned dress form ending at the waist/hip, the way premium e-commerce sites photograph shirts and short kurtas. Do NOT show a flat lay."
+      : "PRESENTATION (authoritative): display the garment on a FULL-LENGTH MANNEQUIN FORM — a headless, faceless, plain neutral-toned dress form showing the complete garment from shoulders to hem. Do NOT show a flat lay.";
+
+  const combinationContext = isTwoPieceCombination(garmentType)
+    ? "TWO-PIECE COORDINATION (authoritative): this is a two-piece suit (jacket + trouser). The front image must show a crisp collared shirt worn underneath the jacket — visible at the collar and cuffs, jacket open or partially buttoned — in a color that tastefully complements the suit fabric (e.g. white, cream, or a soft tone from the same palette). Present it as a complete coordinated set, not the jacket alone."
+    : "";
+
   const accessoriesContext = `
 ACCESSORIES:
 ${accessories.items.length === 0
@@ -85,7 +96,15 @@ ${accessories.items.length === 0
       ).join("\n")}
 `.trim();
 
-  const context = [blueprintSection, fabricContext, designContext, notesSection, accessoriesContext]
+  const context = [
+    presentationContext,
+    blueprintSection,
+    fabricContext,
+    designContext,
+    notesSection,
+    accessoriesContext,
+    combinationContext,
+  ]
     .filter(Boolean)
     .join("\n\n");
 
@@ -100,8 +119,8 @@ Return ONLY valid JSON — no markdown, no explanation:
 
 {
   "garmentDescription": "2-3 sentence human-readable summary of the final garment design",
-  "flatFrontPrompt": "Detailed image generation prompt for a FRONT VIEW flat lay product image of this garment on a plain white background with studio lighting. Include fabric texture, color, pattern, all design elements, accessories placement. The image must look like professional e-commerce product photography. Be very specific about every visual detail.",
-  "flatBackPrompt": "Detailed image generation prompt for a BACK VIEW flat lay product image of the same garment on white background. Describe what the back looks like based on the back style. Match the fabric, color, pattern exactly.",
+  "flatFrontPrompt": "Detailed image generation prompt for a FRONT VIEW product image of this garment displayed on the mannequin form specified in PRESENTATION above (NOT a flat lay), on a plain white studio background with professional lighting. Include fabric texture, color, pattern, all design elements, accessories placement, and restate the mannequin form explicitly. The image must look like professional e-commerce product photography. Be very specific about every visual detail.",
+  "flatBackPrompt": "Detailed image generation prompt for a BACK VIEW product image of the same garment, on the SAME mannequin form and framing as the front (NOT a flat lay). Describe what the back looks like based on the back style. Match the fabric, color, pattern exactly.",
   "panelNotes": "How the fabric panels should be cut and assembled for this garment type",
   "stitchingNotes": "Key stitching details — seam types, finishing, special techniques",
   "accessoryPlacement": "Precise placement of each accessory on the garment",

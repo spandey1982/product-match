@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Upload, Wand2, ChevronDown, ChevronUp, X, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { templatesForCategory, defaultOptionsFor } from "@/lib/fashion-designer/templates";
+import { getRecentGarmentTypes, recordGarmentTypeUsage } from "@/lib/fashion-designer/recent-garment-types";
 
 const GARMENT_TYPES = [
-  "Blouse", "Kurti", "Saree", "Lehenga", "Salwar", "Anarkali",
+  "Blouse", "Kurti", "Saree", "Lehenga", "Salwar", "Anarkali", "Sherwani",
   "Sharara", "Palazzo", "Shirt", "Trouser", "Men Suit", "Dupatta", "Other",
 ];
 
@@ -121,6 +122,12 @@ export function NewDesignView() {
   const [templateId, setTemplateId] = useState("");
   const [structuredValues, setStructuredValues] = useState<Record<string, string>>({});
   const [designNotes, setDesignNotes] = useState("");
+  const [recentTypes, setRecentTypes] = useState<string[]>([]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time hydration from localStorage (browser-only store)
+    setRecentTypes(getRecentGarmentTypes());
+  }, []);
 
   const templates = templatesForCategory(garmentType);
   const selectedTemplate = templates.find((t) => t.id === templateId) ?? templates[0] ?? null;
@@ -178,7 +185,7 @@ export function NewDesignView() {
 
     try {
       const formData = new FormData();
-      formData.set("title", title || `${garmentType} Design`);
+      formData.set("title", title.trim());
       formData.set("garmentType", garmentType);
       if (selectedTemplate) {
         formData.set("templateId", selectedTemplate.id);
@@ -197,6 +204,8 @@ export function NewDesignView() {
       });
       const data = await res.json() as { designId?: string; error?: string };
       if (!res.ok || !data.designId) throw new Error(data.error ?? "Upload failed");
+
+      recordGarmentTypeUsage(garmentType);
 
       // Navigate to design page — it will trigger pipeline processing
       router.push(`/fashion-designer/${data.designId}`);
@@ -230,31 +239,37 @@ export function NewDesignView() {
         </p>
       </div>
 
-      {/* Design metadata */}
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Design Title</label>
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="e.g. Maroon Floral Blouse"
-            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
-          />
-        </div>
+      {/* Garment Type */}
+      <div className="space-y-2">
+        <label className="block text-sm font-medium text-gray-700 mb-1">Garment Type</label>
+        <select
+          value={garmentType}
+          onChange={(e) => handleGarmentTypeChange(e.target.value)}
+          className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+        >
+          {GARMENT_TYPES.map((g) => (
+            <option key={g} value={g}>{g}</option>
+          ))}
+        </select>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Garment Type</label>
-          <select
-            value={garmentType}
-            onChange={(e) => handleGarmentTypeChange(e.target.value)}
-            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
-          >
-            {GARMENT_TYPES.map((g) => (
-              <option key={g} value={g}>{g}</option>
+        {recentTypes.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 pt-1">
+            {recentTypes.map((g) => (
+              <button
+                key={g}
+                type="button"
+                onClick={() => handleGarmentTypeChange(g)}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                  garmentType === g
+                    ? "bg-purple-600 border-purple-600 text-white"
+                    : "border-gray-200 text-gray-500 hover:border-purple-300"
+                }`}
+              >
+                {g}
+              </button>
             ))}
-          </select>
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Garment Template — structured blueprint + customization (Shirt/Trouser/Men Suit) */}
@@ -300,18 +315,6 @@ export function NewDesignView() {
               ))}
             </div>
           )}
-
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Design Notes (optional)</label>
-            <textarea
-              value={designNotes}
-              onChange={(e) => setDesignNotes(e.target.value)}
-              placeholder="Small refinements, e.g. white buttons, hidden placket, contrast stitching, premium finish"
-              maxLength={1000}
-              rows={2}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none"
-            />
-          </div>
         </div>
       )}
 
@@ -325,6 +328,31 @@ export function NewDesignView() {
           onAdd={addFiles}
           onRemove={removeFile}
           required
+        />
+      </div>
+
+      {/* Design Title — optional, auto-named from the fabric/design analysis if left blank */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Design Title (optional)</label>
+        <input
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Leave blank to auto-name it from your fabric and design once analyzed"
+          className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+        />
+      </div>
+
+      {/* Extra Instructions — free-text, works for every garment type, not just templated ones */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Extra Instructions (optional)</label>
+        <textarea
+          value={designNotes}
+          onChange={(e) => setDesignNotes(e.target.value)}
+          placeholder="Small refinements, e.g. white buttons, hidden placket, contrast stitching, premium finish"
+          maxLength={1000}
+          rows={2}
+          className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none"
         />
       </div>
 

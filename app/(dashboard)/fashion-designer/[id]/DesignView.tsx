@@ -231,7 +231,7 @@ export function DesignView() {
           <div>
             <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
               <Wand2 className="h-5 w-5 text-purple-600" />
-              {design.title}
+              {design.title || "Untitled Design"}
             </h1>
             <p className="text-sm text-gray-500">{design.garmentType}</p>
           </div>

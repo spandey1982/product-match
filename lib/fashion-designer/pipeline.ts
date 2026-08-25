@@ -5,6 +5,7 @@ import { accessoryUnderstandingAgent } from "./agents/accessoryUnderstandingAgen
 import { plannerAgent } from "./agents/plannerAgent";
 import { garmentConstructionAgent } from "./agents/garmentConstructionAgent";
 import { findTemplate, defaultOptionsFor } from "./templates";
+import { composeDesignTitle } from "./compose-title";
 import type { AiUsageContext } from "@/lib/ai-usage/record";
 import { chargeForCall } from "@/lib/billing/charge";
 
@@ -121,6 +122,18 @@ export async function runDesignPipeline(designId: string, userId?: string): Prom
         where: { id: designId },
         data: { designUnderstanding: JSON.stringify(designUnderstanding) },
       });
+
+      // Both fabricAnalysis and designUnderstanding now exist — if the
+      // retailer left the title blank at creation, compose a real one from
+      // the analysis instead of leaving it empty (no extra AI call, reuses
+      // the same fields add-to-catalog's description composer uses). A
+      // user-supplied title is never touched.
+      if (!design.title || !design.title.trim()) {
+        const composedTitle = composeDesignTitle(garmentType, fabricAnalysis, designUnderstanding);
+        if (composedTitle) {
+          await db.fashionDesign.update({ where: { id: designId }, data: { title: composedTitle } });
+        }
+      }
     } catch (err) {
       console.error(`[fashion-designer] design understanding failed for ${designId}:`, err);
       await failAtStage(designId, "analyzing_design", String(err));
