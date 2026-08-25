@@ -15,6 +15,10 @@
 export interface TemplateFieldOption {
   value: string;
   label: string;
+  /** Short visual description fed to the image-generation prompt — a style
+   * name alone (e.g. "French Cuff") isn't enough for the model to render it
+   * correctly; this spells out what it actually looks like. */
+  visualHint?: string;
 }
 
 export interface TemplateField {
@@ -46,27 +50,27 @@ const SHIRT_FIELDS: TemplateField[] = [
   {
     key: "collarStyle", label: "Collar Style", default: "spread",
     options: [
-      { value: "spread", label: "Spread Collar" },
-      { value: "button-down", label: "Button-Down Collar" },
-      { value: "mandarin", label: "Mandarin Collar" },
-      { value: "cutaway", label: "Cutaway Collar" },
-      { value: "club", label: "Club Collar" },
+      { value: "spread", label: "Spread Collar", visualHint: "collar points spread wide apart, moderate spread angle" },
+      { value: "button-down", label: "Button-Down Collar", visualHint: "collar points fastened flat to the shirt front with small buttons" },
+      { value: "mandarin", label: "Mandarin Collar", visualHint: "short standing band collar with no points, doesn't fold down" },
+      { value: "cutaway", label: "Cutaway Collar", visualHint: "collar points spread very wide, almost horizontal" },
+      { value: "club", label: "Club Collar", visualHint: "collar points rounded off, no sharp corners" },
     ],
   },
   {
     key: "pocketOption", label: "Pocket", default: "single",
     options: [
-      { value: "none", label: "No Pocket" },
-      { value: "single", label: "Single Chest Pocket" },
-      { value: "double-flap", label: "Double Flap Pocket" },
+      { value: "none", label: "No Pocket", visualHint: "no chest pocket of any kind" },
+      { value: "single", label: "Single Chest Pocket", visualHint: "one patch pocket on the left chest" },
+      { value: "double-flap", label: "Double Flap Pocket", visualHint: "two patch pockets with buttoned flaps, one on each side of the chest" },
     ],
   },
   {
     key: "cuffStyle", label: "Cuff Style", default: "barrel",
     options: [
-      { value: "barrel", label: "Barrel Cuff" },
-      { value: "french", label: "French Cuff" },
-      { value: "button-two", label: "Button-Two Cuff" },
+      { value: "barrel", label: "Barrel Cuff", visualHint: "single rectangular cuff fastened with one button, no fold" },
+      { value: "french", label: "French Cuff", visualHint: "a doubled-back (folded-over) cuff with no buttons, meant to be fastened with cufflinks — must be clearly visible at the wrist, folded back on itself" },
+      { value: "button-two", label: "Button-Two Cuff", visualHint: "rectangular cuff fastened with two buttons side by side" },
     ],
   },
 ];
@@ -199,4 +203,9 @@ export function defaultOptionsFor(template: GarmentTemplate): Record<string, str
 /** Human-readable label for a field's selected value (falls back to the raw value). */
 export function fieldOptionLabel(field: TemplateField, value: string): string {
   return field.options.find((o) => o.value === value)?.label ?? value;
+}
+
+/** Visual description for a field's selected value, when authored — undefined otherwise. */
+export function fieldOptionVisualHint(field: TemplateField, value: string): string | undefined {
+  return field.options.find((o) => o.value === value)?.visualHint;
 }

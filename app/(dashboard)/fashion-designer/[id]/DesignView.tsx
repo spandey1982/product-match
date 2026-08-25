@@ -3,10 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
-import { Wand2, RefreshCw, ArrowLeft, CheckCircle2, Circle, Loader2, XCircle, X, ZoomIn, ShoppingBag, StopCircle } from "lucide-react";
+import {
+  Wand2, RefreshCw, ArrowLeft, CheckCircle2, Circle, Loader2, XCircle, X, ZoomIn,
+  ShoppingBag, StopCircle, Download, ChevronDown, ChevronUp, Shirt as ShirtIcon,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { FabricAnalysis, DesignUnderstanding, GenerationPlan, AccessoryAnalysis } from "@/lib/fashion-designer/types";
 import { findTemplate, fieldOptionLabel } from "@/lib/fashion-designer/templates";
+import { ProductImageViewer } from "@/components/product/ProductImageViewer";
+import { downloadImage } from "@/lib/share-image";
 
 type DesignStage =
   | "uploading" | "analyzing_fabric" | "analyzing_design" | "analyzing_accessories"
@@ -39,7 +44,7 @@ const PIPELINE_STAGES: { key: DesignStage; label: string }[] = [
   { key: "analyzing_accessories",  label: "Understanding Accessories" },
   { key: "planning",               label: "Planning Garment" },
   { key: "constructing",           label: "Constructing Garment" },
-  { key: "generating_flat_images", label: "Generating Flat Images" },
+  { key: "generating_flat_images", label: "Generating Garment" },
   { key: "completed",              label: "Ready" },
 ];
 
@@ -112,12 +117,13 @@ export function DesignView() {
   const [design, setDesign] = useState<Design | null>(null);
   const [loading, setLoading] = useState(true);
   const [regenerating, setRegenerating] = useState(false);
-  const [lightbox, setLightbox] = useState<{ url: string; label: string } | null>(null);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [addingToCatalog, setAddingToCatalog] = useState(false);
   const [catalogProductId, setCatalogProductId] = useState<string | null>(null);
   const [showRegenerateModal, setShowRegenerateModal] = useState(false);
   const [regenerateFeedback, setRegenerateFeedback] = useState("");
   const [cancelling, setCancelling] = useState(false);
+  const [statusExpanded, setStatusExpanded] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const processingRef = useRef(false);
 
@@ -219,6 +225,24 @@ export function DesignView() {
   const generationPlan = design.generationPlan ? JSON.parse(design.generationPlan) as GenerationPlan : null;
 
   const isRunning = design.stage !== "completed" && design.stage !== "failed";
+  const currentStageLabel = PIPELINE_STAGES.find((s) => s.key === design.stage)?.label ?? "Processing";
+
+  const galleryItems: { url: string; label: string }[] = [
+    ...(design.flatFrontUrl ? [{ url: design.flatFrontUrl, label: "Front View" }] : []),
+    ...(design.flatBackUrl ? [{ url: design.flatBackUrl, label: "Back View" }] : []),
+  ];
+
+  const filenameSlug = (design.title || design.garmentType || "design")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "") || "design";
+
+  async function handleDownloadAll() {
+    for (const item of galleryItems) {
+      const suffix = item.label === "Front View" ? "front" : "back";
+      await downloadImage(item.url, `${filenameSlug}-${suffix}.jpg`);
+    }
+  }
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
@@ -290,18 +314,47 @@ export function DesignView() {
         {/* Left: Pipeline progress */}
         <div className="lg:col-span-1 space-y-4">
           <div className="rounded-2xl border border-gray-100 bg-white p-5">
-            <h2 className="text-sm font-semibold text-gray-900 mb-4">Pipeline</h2>
-            <PipelineProgress stage={design.stage} failedAtStage={design.failedAtStage} />
-            {design.stage === "failed" && design.failureReason && (
-              <div className="mt-4 p-3 bg-red-50 rounded-xl">
-                <p className="text-xs text-red-600 font-medium">Error</p>
-                <p className="text-xs text-red-500 mt-0.5">{design.failureReason}</p>
+            <button
+              onClick={() => setStatusExpanded((v) => !v)}
+              className="w-full flex items-center justify-between gap-2"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <h2 className="text-sm font-semibold text-gray-900 shrink-0">Generation Status</h2>
+                {!statusExpanded && (
+                  <span className="flex items-center gap-1.5 text-xs text-gray-500 truncate">
+                    {design.stage === "failed" ? (
+                      <XCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />
+                    ) : design.stage === "completed" ? (
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                    ) : (
+                      <Loader2 className="h-3.5 w-3.5 text-purple-500 animate-spin shrink-0" />
+                    )}
+                    {design.stage === "failed" ? "Failed" : currentStageLabel}
+                  </span>
+                )}
               </div>
-            )}
-            {isRunning && (
-              <p className="text-xs text-gray-400 mt-4 text-center">
-                This may take 1–3 minutes...
-              </p>
+              {statusExpanded ? (
+                <ChevronUp className="h-4 w-4 text-gray-400 shrink-0" />
+              ) : (
+                <ChevronDown className="h-4 w-4 text-gray-400 shrink-0" />
+              )}
+            </button>
+
+            {statusExpanded && (
+              <div className="mt-4">
+                <PipelineProgress stage={design.stage} failedAtStage={design.failedAtStage} />
+                {design.stage === "failed" && design.failureReason && (
+                  <div className="mt-4 p-3 bg-red-50 rounded-xl">
+                    <p className="text-xs text-red-600 font-medium">Error</p>
+                    <p className="text-xs text-red-500 mt-0.5">{design.failureReason}</p>
+                  </div>
+                )}
+                {isRunning && (
+                  <p className="text-xs text-gray-400 mt-4 text-center">
+                    This may take 1–3 minutes...
+                  </p>
+                )}
+              </div>
             )}
           </div>
 
@@ -408,24 +461,14 @@ export function DesignView() {
             </div>
           )}
 
-          {/* Lightbox */}
-          {lightbox && (
-            <div
-              className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
-              onClick={() => setLightbox(null)}
-            >
-              <button
-                className="absolute top-4 right-4 text-white/70 hover:text-white"
-                onClick={() => setLightbox(null)}
-              >
-                <X className="h-7 w-7" />
-              </button>
-              <div className="relative max-w-2xl w-full max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
-                <p className="text-white/60 text-xs uppercase tracking-wide mb-2">{lightbox.label}</p>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={lightbox.url} alt={lightbox.label} className="w-full h-auto max-h-[85vh] object-contain rounded-2xl" />
-              </div>
-            </div>
+          {/* Lightbox — front/back navigable via arrows, swipe, or keyboard */}
+          {lightboxIndex !== null && galleryItems.length > 0 && (
+            <ProductImageViewer
+              images={galleryItems.map((g) => g.url)}
+              labels={galleryItems.map((g) => g.label)}
+              initialIndex={lightboxIndex}
+              onClose={() => setLightboxIndex(null)}
+            />
           )}
 
           {design.stage === "completed" && !design.flatFrontUrl && !design.flatBackUrl ? (
@@ -439,56 +482,79 @@ export function DesignView() {
             </div>
           ) : design.stage === "completed" && (design.flatFrontUrl || design.flatBackUrl) ? (
             <>
-              <h2 className="text-lg font-semibold text-gray-900">Generated Garment</h2>
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-gray-900">Generated Garment</h2>
+                {galleryItems.length > 0 && (
+                  <button
+                    onClick={handleDownloadAll}
+                    className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-purple-600 transition-colors"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Download All
+                  </button>
+                )}
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {design.flatFrontUrl && (
-                  <div className="space-y-2">
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Front View</p>
-                    <button
-                      onClick={() => setLightbox({ url: design.flatFrontUrl!, label: "Front View" })}
-                      className="relative w-full aspect-[3/4] rounded-2xl overflow-hidden border border-gray-100 bg-gray-50 group block"
-                    >
-                      <Image
-                        src={design.flatFrontUrl}
-                        alt="Front view"
-                        fill
-                        className="object-contain"
-                        sizes="(max-width: 640px) 100vw, 50vw"
-                      />
-                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
-                        <ZoomIn className="h-8 w-8 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow" />
-                      </div>
-                    </button>
+                {galleryItems.map((item, i) => (
+                  <div key={item.label} className="space-y-2">
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">{item.label}</p>
+                    <div className="relative w-full aspect-[3/4] rounded-2xl overflow-hidden border border-gray-100 bg-gray-50 group">
+                      <button
+                        onClick={() => setLightboxIndex(i)}
+                        className="absolute inset-0 block"
+                      >
+                        <Image
+                          src={item.url}
+                          alt={item.label}
+                          fill
+                          className="object-contain"
+                          sizes="(max-width: 640px) 100vw, 50vw"
+                        />
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
+                          <ZoomIn className="h-8 w-8 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow" />
+                        </div>
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          downloadImage(item.url, `${filenameSlug}-${item.label === "Front View" ? "front" : "back"}.jpg`).catch(() => {});
+                        }}
+                        className="absolute top-2 right-2 h-8 w-8 rounded-full bg-white/90 hover:bg-white shadow flex items-center justify-center text-gray-600 hover:text-purple-600 transition-colors"
+                        aria-label={`Download ${item.label}`}
+                      >
+                        <Download className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
-                )}
-                {design.flatBackUrl && (
-                  <div className="space-y-2">
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Back View</p>
-                    <button
-                      onClick={() => setLightbox({ url: design.flatBackUrl!, label: "Back View" })}
-                      className="relative w-full aspect-[3/4] rounded-2xl overflow-hidden border border-gray-100 bg-gray-50 group block"
-                    >
-                      <Image
-                        src={design.flatBackUrl}
-                        alt="Back view"
-                        fill
-                        className="object-contain"
-                        sizes="(max-width: 640px) 100vw, 50vw"
-                      />
-                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
-                        <ZoomIn className="h-8 w-8 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow" />
-                      </div>
-                    </button>
-                  </div>
-                )}
+                ))}
               </div>
             </>
           ) : isRunning ? (
-            <div className="flex flex-col items-center justify-center py-24 rounded-2xl border-2 border-dashed border-purple-100 bg-purple-50/20">
-              <Loader2 className="h-10 w-10 text-purple-400 animate-spin mb-4" />
-              <p className="text-sm font-medium text-gray-600">AI is designing your garment...</p>
-              <p className="text-xs text-gray-400 mt-1">Results will appear here automatically</p>
-            </div>
+            <>
+              <h2 className="text-lg font-semibold text-gray-900">Generated Garment</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {[0, 1].map((i) => (
+                  <div
+                    key={i}
+                    className="relative w-full aspect-[3/4] rounded-2xl border-2 border-dashed border-purple-100 bg-purple-50/30 overflow-hidden flex flex-col items-center justify-center gap-3"
+                  >
+                    <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-purple-50 via-white to-purple-50" />
+                    <ShirtIcon className="h-9 w-9 text-purple-200 relative" />
+                    <div className="flex items-center gap-1 relative">
+                      {[0, 1, 2].map((d) => (
+                        <span
+                          key={d}
+                          className="h-1.5 w-1.5 rounded-full bg-purple-300 animate-bounce"
+                          style={{ animationDelay: `${d * 150}ms` }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="text-sm font-medium text-gray-600 text-center">{currentStageLabel}...</p>
+              <p className="text-xs text-gray-400 -mt-3 text-center">Results will appear here automatically</p>
+            </>
           ) : design.stage === "failed" ? (
             <div className="flex flex-col items-center justify-center py-24 rounded-2xl border-2 border-dashed border-red-100 bg-red-50/20">
               <XCircle className="h-10 w-10 text-red-300 mb-4" />

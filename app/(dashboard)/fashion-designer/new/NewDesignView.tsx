@@ -8,8 +8,9 @@ import { templatesForCategory, defaultOptionsFor } from "@/lib/fashion-designer/
 import { getRecentGarmentTypes, recordGarmentTypeUsage } from "@/lib/fashion-designer/recent-garment-types";
 
 const GARMENT_TYPES = [
-  "Blouse", "Kurti", "Saree", "Lehenga", "Salwar", "Anarkali", "Sherwani",
-  "Sharara", "Palazzo", "Shirt", "Trouser", "Men Suit", "Dupatta", "Other",
+  "Blouse", "Kurti", "Saree", "Lehenga", "Lehenga Skirt", "Salwar", "Kurta Salwar",
+  "Anarkali", "Sherwani", "Sharara", "Gharara", "Palazzo", "Shirt", "Blazer",
+  "Nehru Jacket", "Trouser", "Men Suit", "Dupatta", "Other",
 ];
 
 const OPTIONAL_ASSET_TYPES = [

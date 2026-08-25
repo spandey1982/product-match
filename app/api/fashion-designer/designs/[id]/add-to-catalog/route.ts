@@ -11,11 +11,16 @@ const CATEGORY_MAP: Record<string, string> = {
   Kurti: "Kurti",
   Saree: "Saree",
   Lehenga: "Lehenga",
+  "Lehenga Skirt": "Lehenga",
   Salwar: "Salwar Kameez",
+  "Kurta Salwar": "Salwar Kameez",
   Anarkali: "Anarkali",
   Sharara: "Sharara",
+  Gharara: "Gharara",
   Palazzo: "Palazzo",
   Shirt: "Shirt",
+  Blazer: "Blazer",
+  "Nehru Jacket": "Nehru Jacket",
   Trouser: "Trouser",
   "Men Suit": "Suit",
   Sherwani: "Sherwani",
@@ -28,6 +33,8 @@ const GENDER_MAP: Record<string, string> = {
   Trouser: "MEN",
   "Men Suit": "MEN",
   Sherwani: "MEN",
+  Blazer: "MEN",
+  "Nehru Jacket": "MEN",
 };
 
 // POST /api/fashion-designer/designs/[id]/add-to-catalog

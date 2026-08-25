@@ -1,21 +1,30 @@
 import type { DesignUnderstanding } from "./types";
 
-export type MannequinType = "half" | "full";
+export type BodyCoverage = "upper" | "lower" | "full";
 
-// Short, upper-body-only single pieces get the half/torso form. Everything
-// else (bottoms, full-length sets, drapes, combinations) needs a full
-// mannequin — a half torso form can't display them.
-const UPPER_SHORT_CANDIDATES = new Set(["Shirt", "Kurti", "Sherwani", "Blouse"]);
+// Short, upper-body-only single pieces — a half/torso mannequin (or a full
+// mannequin cropped at/below the knee) is fine, no need to show legs/feet.
+const UPPER_TYPES = new Set(["Shirt", "Kurti", "Sherwani", "Blouse", "Blazer", "Nehru Jacket"]);
+
+// Bottom-only pieces — the top half can be cropped out; the camera should
+// focus on the waist-to-feet region where the actual garment is.
+const LOWER_TYPES = new Set(["Trouser", "Sharara", "Gharara", "Palazzo", "Salwar", "Lehenga Skirt"]);
+
+// Everything else (Saree, Lehenga, Anarkali, Dupatta, Men Suit, Kurta
+// Salwar, Other) needs the complete mannequin visible, no cropping.
 
 /**
- * Which mannequin form the generated flat images should be presented on.
- * Length-sensitive for the short-upper-piece candidates (e.g. a long Kurti
- * still needs a full mannequin) — everything else is a fixed full mannequin.
+ * Which part of the mannequin the generated flat images need to show.
+ * Length-sensitive for the upper-body candidates (e.g. a long Kurti still
+ * needs the full mannequin visible) — lower and full are fixed by type.
  */
-export function resolveMannequinType(garmentType: string, design: DesignUnderstanding): MannequinType {
-  if (!UPPER_SHORT_CANDIDATES.has(garmentType)) return "full";
-  const length = (design.length || "").toLowerCase();
-  return /long|knee|calf|floor/.test(length) ? "full" : "half";
+export function resolveBodyCoverage(garmentType: string, design: DesignUnderstanding): BodyCoverage {
+  if (LOWER_TYPES.has(garmentType)) return "lower";
+  if (UPPER_TYPES.has(garmentType)) {
+    const length = (design.length || "").toLowerCase();
+    return /long|knee|calf|floor/.test(length) ? "full" : "upper";
+  }
+  return "full";
 }
 
 /** Two-piece combinations (jacket + trouser, etc.) that need a coordinated inner shirt. */
