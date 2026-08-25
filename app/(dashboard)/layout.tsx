@@ -40,7 +40,7 @@ export default async function DashboardLayout({
 
   return (
     <GenerationStatusProvider>
-      <TrialRoomProvider>
+      <TrialRoomProvider storageKey={`trial-room-v1-${session.id}`}>
         <ClientModulesProvider modules={enabledModules}>
           <div
             className="min-h-screen bg-[#fafafa]"
