@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useTrialRoom } from "@/components/trial-room/TrialRoomProvider";
 import { TrialRoomSetupModal } from "@/components/trial-room/TrialRoomSetupModal";
+import { TryOnStyleControl } from "@/components/trial-room/TryOnStyleControl";
 import { HangerPlusIcon } from "@/components/icons/HangerPlusIcon";
 import { TryOnViewer } from "@/components/trial-room/TryOnViewer";
 import { displayUrl } from "@/lib/images/variants";
@@ -388,14 +389,17 @@ export function TrialRoomView({
   if (!photo) {
     return (
       <div className="max-w-2xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <Sparkles className="h-6 w-6 text-indigo-500" />
-            Virtual Trial Room
-          </h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Your virtual try-ons will appear here as they generate.
-          </p>
+        <div className="mb-6 flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+              <Sparkles className="h-6 w-6 text-indigo-500" />
+              Virtual Trial Room
+            </h1>
+            <p className="text-sm text-gray-500 mt-1">
+              Your virtual try-ons will appear here as they generate.
+            </p>
+          </div>
+          <TryOnStyleControl />
         </div>
         <div className="bg-white border border-gray-100 rounded-3xl p-12 text-center shadow-sm">
           <HangerPlusIcon className="h-12 w-12 text-gray-200 mx-auto mb-3" />
@@ -466,13 +470,16 @@ export function TrialRoomView({
                   : "Add products from the catalog to start"}
               </p>
             </div>
-            <Link
-              href={browseHref}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors shrink-0"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              {tryOns.length === 0 ? "Browse Catalog" : "Add More"}
-            </Link>
+            <div className="flex items-center gap-2 shrink-0">
+              <TryOnStyleControl />
+              <Link
+                href={browseHref}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors shrink-0"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                {tryOns.length === 0 ? "Browse Catalog" : "Add More"}
+              </Link>
+            </div>
           </div>
 
           {/* No try-ons yet — prompt within the right column */}
