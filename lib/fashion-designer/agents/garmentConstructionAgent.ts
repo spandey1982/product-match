@@ -32,7 +32,15 @@ async function generateFlatImage(
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_GEN_MODEL}:generateContent?key=${apiKey}`;
   const body = JSON.stringify({
     contents: [{ parts }],
-    generationConfig: { responseModalities: ["IMAGE"] },
+    // Explicit imageConfig, matching the working pattern already proven in
+    // lib/generate-model-image.ts / lib/model-gen/erase.ts — without it,
+    // Gemini picks its own shape per call (square/landscape/portrait,
+    // observed inconsistently), which then gets badly cropped/shrunk by the
+    // fixed aspect-[3/4] card in DesignView.tsx. "3:4" matches that card.
+    generationConfig: {
+      responseModalities: ["IMAGE"],
+      imageConfig: { imageSize: "1K", aspectRatio: "3:4" },
+    },
   });
 
   for (let attempt = 1; attempt <= 3; attempt++) {
