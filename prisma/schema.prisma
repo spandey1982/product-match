@@ -15,6 +15,9 @@ model User {
   storeName    String?
   /** Shown to shoppers on the public rental listing (contact card + map link). */
   storePhone   String?
+  /** Retailer's own verified phone — distinct from storePhone (public/unverified storefront contact). Used for security actions (e.g. password change via OTP). Null until verified once via lib/retailer-otp.ts. */
+  phone           String?   @unique
+  phoneVerifiedAt DateTime?
   storeAddress String?
   /** Fixed-list city (lib/geo/city-coordinates.ts) used for /shop's location-radius filter — city-grained, not a geocoded address. */
   storeCity    String?
