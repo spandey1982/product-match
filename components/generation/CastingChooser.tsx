@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { useEnabledModules } from "@/components/layout/ClientModulesProvider";
 
 export interface SignatureModelOption {
   id: string;
@@ -12,6 +13,7 @@ interface CastingChooserProps {
   signatureModels: SignatureModelOption[];
   value: string;
   onChange: (id: string) => void;
+  /** Defaults to whether "model-studio" is enabled for this account when omitted. */
   showManageLink?: boolean;
 }
 
@@ -19,8 +21,11 @@ export function CastingChooser({
   signatureModels,
   value,
   onChange,
-  showManageLink = true,
+  showManageLink,
 }: CastingChooserProps) {
+  const enabledModules = useEnabledModules();
+  const shouldShowManageLink = showManageLink ?? enabledModules.includes("model-studio");
+
   return (
     <div>
       <p className="text-xs font-medium text-gray-500 mb-2">Cast the model</p>
@@ -53,7 +58,7 @@ export function CastingChooser({
           </button>
         ))}
       </div>
-      {showManageLink && (
+      {shouldShowManageLink && (
         <Link
           href="/assets/model-studio"
           className="inline-block text-xs text-indigo-600 hover:text-indigo-800 mt-2"

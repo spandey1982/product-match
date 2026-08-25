@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth";
+import { requireAuthWithModule } from "@/lib/client-modules-server";
 import { db } from "@/lib/db";
 import { cloudinary } from "@/lib/cloudinary";
 
 // POST /api/auto-catalog/batches — create a batch and upload images
 export async function POST(req: NextRequest) {
   try {
-    const session = await requireAuth();
+    const session = await requireAuthWithModule("auto-catalog");
 
     const formData = await req.formData();
     const files = formData.getAll("files") as File[];
@@ -68,6 +68,9 @@ export async function POST(req: NextRequest) {
     if ((err as Error).message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    if ((err as Error).message === "Forbidden") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
     console.error(err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
@@ -76,7 +79,7 @@ export async function POST(req: NextRequest) {
 // GET /api/auto-catalog/batches — list batches for the current user
 export async function GET() {
   try {
-    const session = await requireAuth();
+    const session = await requireAuthWithModule("auto-catalog");
 
     const batches = await db.autoCatalogBatch.findMany({
       where: { userId: session.id },
@@ -88,6 +91,9 @@ export async function GET() {
   } catch (err) {
     if ((err as Error).message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if ((err as Error).message === "Forbidden") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }

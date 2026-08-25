@@ -7,7 +7,7 @@
  * ModelProfile schema comment for the policy.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth";
+import { requireAuthWithModule } from "@/lib/client-modules-server";
 import {
   getModelProfile,
   updateModelProfile,
@@ -40,7 +40,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await requireAuth();
+    const session = await requireAuthWithModule("model-studio");
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
 
@@ -77,6 +77,9 @@ export async function PATCH(
     if ((err as Error).message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    if ((err as Error).message === "Forbidden") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
     const message = (err as Error).message;
     if (message.startsWith("Signature Model") || message.startsWith("Unknown face") || message.startsWith("Name must")) {
       return NextResponse.json({ error: message }, { status: 400 });
@@ -92,7 +95,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await requireAuth();
+    const session = await requireAuthWithModule("model-studio");
     const { id } = await params;
     const ok = await softDeleteModelProfile(id, session.id);
     if (!ok) {
@@ -102,6 +105,9 @@ export async function DELETE(
   } catch (err) {
     if ((err as Error).message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if ((err as Error).message === "Forbidden") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     console.error(err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
