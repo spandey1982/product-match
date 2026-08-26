@@ -27,7 +27,14 @@ const MAX_TRYON_LIMIT = 50;
 
 // ─── Storage key ─────────────────────────────────────────────────────────────
 
-/** Default: the retailer dashboard's original shared-per-browser key, kept for backward compatibility. */
+/**
+ * Fallback only for a caller that doesn't pass storageKey — every real mount
+ * must pass one scoped to the logged-in identity (see storageKey prop doc
+ * below). Previously the retailer dashboard used this shared, unscoped key
+ * for every account, which meant switching retailer accounts on the same
+ * browser/device exposed the previous account's customer photo and try-ons —
+ * app/(dashboard)/layout.tsx now passes `trial-room-v1-${session.id}`.
+ */
 const DEFAULT_STORAGE_KEY = "trial-room-v1";
 
 // ─── State + context shape ────────────────────────────────────────────────────
@@ -211,10 +218,13 @@ function persistState(
 interface TrialRoomProviderProps {
   children: React.ReactNode;
   /**
-   * Isolates persisted state per identity. Defaults to the retailer
-   * dashboard's original shared-per-browser key (unchanged behavior there).
-   * The /rent mount passes a key derived from the customer's verified
-   * session so different customers on the same browser never share results.
+   * Isolates persisted state per identity — MUST be scoped to the logged-in
+   * user (e.g. `` `trial-room-v1-${session.id}` ``), never a shared constant,
+   * or different accounts on the same browser/device will see each other's
+   * customer photo and try-ons. The /rent and /shop mounts key this off the
+   * customer's verified session; app/(dashboard)/layout.tsx keys it off the
+   * retailer's session. The default below is only a same-tab fallback for a
+   * caller that forgets to pass one — not a safe multi-account default.
    */
   storageKey?: string;
   /**

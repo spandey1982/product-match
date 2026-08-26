@@ -17,6 +17,9 @@ model User {
    * Shown to shoppers on the public rental listing (contact card + map link).
    */
   storePhone   String?
+  /** Retailer's own verified phone — distinct from storePhone (public/unverified storefront contact). Used for security actions (e.g. password change via OTP). Null until verified once via lib/retailer-otp.ts. */
+  phone           String?   @unique
+  phoneVerifiedAt DateTime?
   storeAddress String?
   /**
    * Fixed-list city (lib/geo/city-coordinates.ts) used for /shop's location-radius filter — city-grained, not a geocoded address.
@@ -51,9 +54,42 @@ model User {
   modelProfiles ModelProfile[]
   wallet        Wallet?
   motionJobs    MotionJob[]
+  clientProfile ClientProfile?
 
   @@index([deletedAt])
   @@map("users")
+}
+
+/**
+ * Per-account scoping for a white-labeled client delivery: which modules are
+ * visible/reachable, which one is promoted to the primary nav slot, and a
+ * curated brand "feel". No row for a given User = today's full-access,
+ * default-Mentis-look experience — this is what keeps the change additive
+ * and risk-free for every existing account. See lib/client-modules.ts for
+ * the module-key taxonomy and gating helpers, lib/branding/presets.ts for
+ * the closed set of theme presets.
+ */
+model ClientProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /** JSON array of module keys (lib/client-modules.ts ModuleKey), via serializeArray. */
+  enabledModules String
+  /** Module key promoted to the primary/hero nav slot, e.g. "design-studio". */
+  primaryModule  String
+
+  /** Overrides the "Mentis" wordmark in the shell when set. */
+  brandName   String?
+  /** Mentis-curated, closed set — see lib/branding/presets.ts. Never freeform CSS. */
+  themePreset String  @default("default")
+  /** Optional single hex; only overrides the preset's primary-hue slot, never its structure. */
+  accentColor String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("client_profiles")
 }
 
 /**

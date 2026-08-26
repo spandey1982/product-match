@@ -1,8 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { listTryOnProviders, DEFAULT_TRYON_PROVIDER_ID } from "@/lib/providers";
-import { isTryOnMode, type TryOnMode } from "@/lib/providers/active";
 import { SettingsView } from "./SettingsView";
 
 export const metadata = { title: "Settings — Mentis" };
@@ -13,27 +11,21 @@ export default async function SettingsPage() {
 
   const user = await db.user.findUnique({
     where: { id: session.id },
-    select: { tryOnProvider: true, storePhone: true, storeAddress: true, storeCity: true },
+    select: {
+      storeName: true, storePhone: true, storeAddress: true, storeCity: true,
+      phone: true, phoneVerifiedAt: true,
+    },
   });
-
-  const current: TryOnMode = isTryOnMode(user?.tryOnProvider)
-    ? user.tryOnProvider
-    : DEFAULT_TRYON_PROVIDER_ID;
-
-  const providers = listTryOnProviders().map((p) => ({
-    id: p.id,
-    label: p.label,
-    enabled: p.isEnabled(),
-  }));
 
   return (
     <SettingsView
-      current={current}
-      providers={providers}
+      initialStoreName={user?.storeName ?? ""}
       initialStorePhone={user?.storePhone ?? ""}
       initialStoreAddress={user?.storeAddress ?? ""}
       initialStoreCity={user?.storeCity ?? ""}
       initialEmail={session.email}
+      initialPhone={user?.phone ?? null}
+      initialPhoneVerified={!!user?.phoneVerifiedAt}
     />
   );
 }
