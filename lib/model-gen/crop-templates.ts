@@ -44,20 +44,49 @@ const SAREE: CloseUp[] = [
   { id: "pleats", label: "Pleats Close-Up", from: "front", region: { x: 0.24, y: 0.50, w: 0.52, h: 0.46 } },
 ];
 
-// Lehenga → Front Full, Back Full, Blouse, Lehenga Detail (4 total)
+// Lehenga → Front Full, Back Full, Blouse, Lehenga Detail, Dupatta (5 total)
 const LEHENGA: CloseUp[] = [
   { id: "blouse",         label: "Blouse Close-Up",         from: "front", region: { x: 0.20, y: 0.05, w: 0.60, h: 0.32 } },
   { id: "lehenga-detail", label: "Lehenga Detail Close-Up", from: "front", region: { x: 0.08, y: 0.50, w: 0.84, h: 0.48 } },
+  // Dupatta drapes diagonally across the shoulder/torso, same general
+  // placement as a saree pallu — approximated the same way (upper-left
+  // diagonal drape area) until a real reference crop is available.
+  { id: "dupatta", label: "Dupatta Close-Up", from: "front", region: { x: 0.0, y: 0.10, w: 0.55, h: 0.55 } },
 ];
 
-// Kurti / T-Shirt / Shirt / Trouser / Leggings / similar → Front, Back, Design (3 total)
+// Fallback for any category without a dedicated array above → Front, Back, Design (3 total)
 const DETAIL: CloseUp[] = [
   { id: "design", label: "Design Close-Up", from: "front", region: { x: 0.22, y: 0.16, w: 0.56, h: 0.40 } },
 ];
 
-// Kurti / Kurta → the salwar/pyjama shows on the lower body of the FRONT base.
+// Kurti / Kurta → neckline (upper), fabric/pattern (mid-body), salwar (lower).
 const KURTI: CloseUp[] = [
-  { id: "salwar", label: "Salwar Close-Up", from: "front", region: { x: 0.30, y: 0.62, w: 0.40, h: 0.36 } },
+  { id: "neckline", label: "Neckline Close-Up", from: "front", region: { x: 0.25, y: 0.05, w: 0.50, h: 0.28 } },
+  { id: "fabric",   label: "Fabric Close-Up",   from: "front", region: { x: 0.20, y: 0.30, w: 0.60, h: 0.30 } },
+  { id: "salwar",   label: "Salwar Close-Up",   from: "front", region: { x: 0.30, y: 0.62, w: 0.40, h: 0.36 } },
+];
+
+// Shirt → collar (top), placket/fabric (torso, button line).
+const SHIRT: CloseUp[] = [
+  { id: "collar",  label: "Collar Close-Up",  from: "front", region: { x: 0.30, y: 0.02, w: 0.40, h: 0.16 } },
+  { id: "placket", label: "Placket Close-Up", from: "front", region: { x: 0.30, y: 0.18, w: 0.40, h: 0.45 } },
+];
+
+// Jacket / Blazer / Suit / Waistcoat → lapel (shoulder), texture (mid-body fabric).
+const JACKET: CloseUp[] = [
+  { id: "lapel",   label: "Lapel Close-Up",   from: "front", region: { x: 0.28, y: 0.05, w: 0.44, h: 0.30 } },
+  { id: "texture", label: "Texture Close-Up", from: "front", region: { x: 0.20, y: 0.35, w: 0.60, h: 0.35 } },
+];
+
+// Dress / Anarkali → bodice/neckline (upper), detail (mid-body embellishment).
+const DRESS: CloseUp[] = [
+  { id: "bodice", label: "Bodice Close-Up", from: "front", region: { x: 0.25, y: 0.04, w: 0.50, h: 0.30 } },
+  { id: "detail", label: "Detail Close-Up", from: "front", region: { x: 0.20, y: 0.35, w: 0.60, h: 0.35 } },
+];
+
+// Trouser / Jeans → fabric/wash detail (mid-thigh).
+const TROUSER: CloseUp[] = [
+  { id: "fabric", label: "Fabric Close-Up", from: "front", region: { x: 0.25, y: 0.30, w: 0.50, h: 0.40 } },
 ];
 
 const CATEGORY_CLOSEUPS: Record<string, CloseUp[]> = {
@@ -67,7 +96,16 @@ const CATEGORY_CLOSEUPS: Record<string, CloseUp[]> = {
   sharara: LEHENGA,
   kurta: KURTI,
   kurti: KURTI,
-  // shirt/trouser/leggings/t-shirt/etc. → DETAIL (default)
+  shirt: SHIRT,
+  tshirt: SHIRT,
+  jacket: JACKET,
+  suit: JACKET,
+  waistcoat: JACKET,
+  dress: DRESS,
+  anarkali: DRESS,
+  trouser: TROUSER,
+  jeans: TROUSER,
+  // Anything else not listed → DETAIL (default).
 };
 
 /** The default close-up set for categories without a specific template. */

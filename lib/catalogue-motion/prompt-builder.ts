@@ -79,6 +79,13 @@ export function buildClipInstruction(
   intensity: MotionIntensity,
   constraints: MotionConstraints,
   durationSec: number,
+  /**
+   * Per-shot override for the rare case where garment motion is the actual
+   * subject (e.g. the pallu shot) — appended AFTER the universal
+   * constraints so it reads as a deliberate, bounded exception to "hold
+   * still" rather than a contradiction earlier in the instruction.
+   */
+  motionEmphasis?: string,
 ): ClipInstruction {
   const template = CAMERA_TEMPLATES[preset.id];
   if (!template) {
@@ -87,7 +94,8 @@ export function buildClipInstruction(
 
   const magnitude = INTENSITY_DESCRIPTOR[intensity];
   const cameraLine = template(magnitude);
-  const text = `${cameraLine} ${UNIVERSAL_CONSTRAINTS} Duration: ${durationSec} seconds.`;
+  const emphasisLine = motionEmphasis ? ` For this shot specifically: ${motionEmphasis}` : "";
+  const text = `${cameraLine} ${UNIVERSAL_CONSTRAINTS}${emphasisLine} Duration: ${durationSec} seconds.`;
 
   return {
     text,

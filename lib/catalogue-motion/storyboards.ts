@@ -14,23 +14,46 @@ import type { Storyboard, StoryboardShot } from "./types";
 
 // ── Shot builders (reduce repetition without abstracting too far) ────────
 //
-// modelShot → the full front/back base image (the worn garment on the
-// model). Routed to a real AI provider (ai-motion) — the only place subtle
-// motion of a person adds value and the only shots worth Veo's per-second,
-// 4/6/8s-minimum billing.
-// detailShot → a cropped close-up (no person in frame) or, for object-only
-// categories, the full product shot. Always pan-zoom: rendered locally via
-// deterministic FFmpeg crop/zoom, zero AI cost, no duration floor.
+// Every garment-on-model category (saree, lehenga, kurti, shirt, dress,
+// jacket, trouser) is now built entirely from ai-motion shots, each at
+// Veo's 4s duration floor — so a category's total video length is always
+// shot-count x 4s. There is no free pan-zoom tier for these categories
+// anymore: a tight crop on one garment region (pallu, collar, lapel…) gets
+// real camera movement AND the model held static except for one shot's
+// intentional garment motion, not a deterministic zoom on a static image.
+//
+// heroShot → the full front/back base image, uncropped. Establishes/closes
+//   the sequence (Push In to open, Pull Out to close).
+// focusShot → a tight crop on one region (crop-templates.ts), still
+//   ai-motion. `motionEmphasis` is set only for the shot where garment
+//   motion (not camera motion) is the actual subject, e.g. the pallu.
+//
+// detailShot (still pan-zoom, zero AI cost) is kept for the object-only
+// categories below (footwear, handbags, jewellery, dupatta, accessories) —
+// there's no model in those, so AI motion has nothing to add.
 
-function modelShot(
+const AI_SHOT_SEC = 4; // Veo's duration floor — every ai-motion shot targets this exactly, no waste.
+
+function heroShot(
   view: string,
   label: string,
   presetId: string,
-  durationSec: number,
   sourceBase: "front" | "back",
   rationale: string,
 ): StoryboardShot {
-  return { view, label, presetId, durationSec, sourceBase, renderMode: "ai-motion", rationale };
+  return { view, label, presetId, durationSec: AI_SHOT_SEC, sourceBase, renderMode: "ai-motion", rationale };
+}
+
+function focusShot(
+  view: string,
+  label: string,
+  presetId: string,
+  sourceBase: "front" | "back",
+  cropId: string,
+  rationale: string,
+  motionEmphasis?: string,
+): StoryboardShot {
+  return { view, label, presetId, durationSec: AI_SHOT_SEC, sourceBase, cropId, renderMode: "ai-motion", rationale, motionEmphasis };
 }
 
 function detailShot(
@@ -45,91 +68,95 @@ function detailShot(
   return { view, label, presetId, durationSec, sourceBase, renderMode: "pan-zoom", rationale, cropId };
 }
 
+const GENTLE_SWAY =
+  "this shot's focus is the fabric's own gentle movement — let the edge visibly settle and sway, " +
+  "as if a light indoor breeze is moving it. Noticeably more motion than other shots, but still slow " +
+  "and soft — never a flare, swing, or dramatic flutter.";
+
 // ── Category storyboards ────────────────────────────────────────────────
 
 const SAREE: Storyboard = {
   categoryKey: "saree",
   label: "Saree",
-  totalDurationSec: 8.5,
+  totalDurationSec: 5 * AI_SHOT_SEC,
   shots: [
-    modelShot("front", "Front Full", "slow-push-in", 2.5, "front", "Establish overall drape and silhouette"),
-    detailShot("blouse", "Blouse", "tilt-up", 1.5, "front", "Blouse design, neckline, sleeve detail", "blouse"),
-    detailShot("pallu", "Pallu", "diagonal-slide", 1.5, "back", "Pallu motif and cascade line", "pallu"),
-    detailShot("pleats", "Pleats", "macro-push", 1, "front", "Pleat structure and fabric behavior", "pleats"),
-    modelShot("back", "Back Full", "slow-pull-out", 2, "back", "Back drape, pallu continuation"),
+    heroShot("front", "Front Drape", "slow-push-in", "front", "Establish overall drape, color, and pattern before going tight"),
+    focusShot("blouse", "Blouse & Neckline", "macro-push", "front", "blouse", "Embroidery and neckline detail needs proximity, not travel"),
+    focusShot("pallu", "Pallu", "diagonal-slide", "back", "pallu", "Follows the pallu's natural diagonal fall line", GENTLE_SWAY),
+    focusShot("pleats", "Pleats", "tilt-down", "front", "pleats", "Reveals pleat structure top-to-bottom"),
+    heroShot("back", "Back Drape", "slow-pull-out", "back", "Closes the sequence, mirrors the opening shot"),
   ],
 };
 
 const LEHENGA: Storyboard = {
   categoryKey: "lehenga",
   label: "Lehenga",
-  totalDurationSec: 8.5,
+  totalDurationSec: 5 * AI_SHOT_SEC,
   shots: [
-    modelShot("front", "Front Full", "slow-push-in", 2, "front", "Overall silhouette and embroidery impact"),
-    detailShot("lehenga-detail", "Embroidery", "macro-push", 1.5, "front", "Close-up of embellishment craftsmanship", "lehenga-detail"),
-    detailShot("dupatta", "Dupatta", "horizontal-slide", 1.5, "front", "Dupatta drape and matching detail"),
-    detailShot("skirt", "Skirt", "tilt-down", 1.5, "front", "Skirt volume, border, hem detail"),
-    modelShot("back", "Back Full", "slow-pull-out", 2, "back", "Back design and silhouette closure"),
+    heroShot("front", "Front Silhouette", "slow-push-in", "front", "Establish silhouette and embroidery impact"),
+    focusShot("blouse", "Blouse & Embroidery", "macro-push", "front", "blouse", "Close-up of embellishment craftsmanship"),
+    focusShot("dupatta", "Dupatta", "diagonal-slide", "front", "dupatta", "Follows the dupatta's diagonal drape across the shoulder", GENTLE_SWAY),
+    focusShot("skirt", "Skirt", "tilt-down", "front", "lehenga-detail", "Skirt volume, border, and hem detail"),
+    heroShot("back", "Back Silhouette", "slow-pull-out", "back", "Closes the sequence, back design and silhouette"),
   ],
 };
 
 const KURTI: Storyboard = {
   categoryKey: "kurti",
   label: "Kurti / Kurta",
-  totalDurationSec: 6,
+  totalDurationSec: 4 * AI_SHOT_SEC,
   shots: [
-    modelShot("front", "Front Full", "slow-push-in", 2, "front", "Overall length, fit, pattern"),
-    detailShot("design", "Neckline", "tilt-up", 1.5, "front", "Neckline design and sleeve detail", "design"),
-    detailShot("fabric", "Fabric", "macro-push", 1, "front", "Fabric texture, weave, print fidelity"),
-    modelShot("back", "Back Full", "detail-reveal", 1.5, "back", "Back design"),
+    heroShot("front", "Front", "slow-push-in", "front", "Overall length, fit, and pattern"),
+    focusShot("neckline", "Neckline", "tilt-up", "front", "neckline", "Neckline design and sleeve detail"),
+    focusShot("fabric", "Fabric", "macro-push", "front", "fabric", "Fabric texture, weave, and print fidelity"),
+    heroShot("back", "Back", "slow-pull-out", "back", "Closes the sequence, back design"),
   ],
 };
 
 const SHIRT: Storyboard = {
   categoryKey: "shirt",
   label: "Shirt",
-  totalDurationSec: 6,
+  totalDurationSec: 4 * AI_SHOT_SEC,
   shots: [
-    modelShot("front", "Front Full", "slow-push-in", 1.5, "front", "Overall fit and styling"),
-    detailShot("collar", "Collar", "macro-push", 1, "front", "Collar shape and stitching"),
-    detailShot("design", "Button Line", "tilt-down", 1, "front", "Placket, button spacing, fabric drape", "design"),
-    detailShot("fabric", "Fabric", "perspective-shift", 1, "front", "Fabric texture and weave at angle"),
-    modelShot("back", "Back Full", "slow-pull-out", 1.5, "back", "Back fit, yoke, vent detail"),
+    heroShot("front", "Front", "slow-push-in", "front", "Overall fit and styling"),
+    focusShot("collar", "Collar", "macro-push", "front", "collar", "Collar shape and stitching"),
+    focusShot("placket", "Placket", "tilt-down", "front", "placket", "Button spacing and fabric drape along the placket"),
+    heroShot("back", "Back", "slow-pull-out", "back", "Closes the sequence, back fit and yoke"),
   ],
 };
 
 const DRESS: Storyboard = {
   categoryKey: "dress",
   label: "Dress",
-  totalDurationSec: 6.5,
+  totalDurationSec: 4 * AI_SHOT_SEC,
   shots: [
-    modelShot("front", "Front Full", "slow-push-in", 2, "front", "Silhouette, length, pattern"),
-    detailShot("design", "Bodice", "tilt-up", 1.5, "front", "Neckline, sleeve, upper construction", "design"),
-    detailShot("fabric", "Detail", "macro-push", 1, "front", "Fabric or embellishment close-up"),
-    modelShot("back", "Back Full", "slow-pull-out", 2, "back", "Back design, closure, silhouette"),
+    heroShot("front", "Front", "slow-push-in", "front", "Silhouette, length, and pattern"),
+    focusShot("bodice", "Bodice", "tilt-up", "front", "bodice", "Neckline, sleeve, and upper construction"),
+    focusShot("detail", "Detail", "macro-push", "front", "detail", "Fabric or embellishment close-up"),
+    heroShot("back", "Back", "slow-pull-out", "back", "Closes the sequence, back design and closure"),
   ],
 };
 
 const JACKET: Storyboard = {
   categoryKey: "jacket",
   label: "Jacket / Blazer",
-  totalDurationSec: 7,
+  totalDurationSec: 4 * AI_SHOT_SEC,
   shots: [
-    modelShot("front", "Front Full", "slight-orbit", 2.5, "front", "Shoulder structure, lapels, fit"),
-    detailShot("lapel", "Lapel", "macro-push", 1, "front", "Lapel shape, fabric, buttonhole"),
-    detailShot("fabric", "Texture", "perspective-shift", 1.5, "front", "Fabric weave and surface under light"),
-    modelShot("back", "Back Full", "slow-pull-out", 2, "back", "Back panel, vent, shoulder line"),
+    heroShot("front", "Front", "slow-push-in", "front", "Shoulder structure, lapels, and fit"),
+    focusShot("lapel", "Lapel", "macro-push", "front", "lapel", "Lapel shape, fabric, and buttonhole"),
+    focusShot("texture", "Texture", "perspective-shift", "front", "texture", "Fabric weave and surface under light"),
+    heroShot("back", "Back", "slow-pull-out", "back", "Closes the sequence, back panel and shoulder line"),
   ],
 };
 
 const TROUSER: Storyboard = {
   categoryKey: "trouser",
   label: "Jeans / Trousers",
-  totalDurationSec: 5,
+  totalDurationSec: 3 * AI_SHOT_SEC,
   shots: [
-    modelShot("front", "Front Full", "tilt-down", 2, "front", "Waist, leg line, break at ankle"),
-    detailShot("fabric", "Fabric", "macro-push", 1, "front", "Denim wash, weave, distressing"),
-    modelShot("back", "Back Full", "slow-pull-out", 2, "back", "Back pocket, yoke, seat fit"),
+    heroShot("front", "Front", "tilt-down", "front", "Waist, leg line, and break at ankle"),
+    focusShot("fabric", "Fabric", "macro-push", "front", "fabric", "Denim wash, weave, and distressing"),
+    heroShot("back", "Back", "slow-pull-out", "back", "Closes the sequence, back pocket and seat fit"),
   ],
 };
 
@@ -196,15 +223,19 @@ const ACCESSORY: Storyboard = {
 };
 
 // ── Default (front + back) ──────────────────────────────────────────────
+// Fallback for any category not explicitly mapped below. Most likely a
+// worn garment (the object-only categories are all explicitly named), so
+// this follows the same all-ai-motion pattern as the garment categories
+// above, at the lightest tier (3 shots, matching Trouser).
 
 const DEFAULT: Storyboard = {
   categoryKey: "default",
   label: "Default",
-  totalDurationSec: 5,
+  totalDurationSec: 3 * AI_SHOT_SEC,
   shots: [
-    modelShot("front", "Front Full", "slow-push-in", 2, "front", "Overall garment presentation"),
-    detailShot("design", "Design Detail", "macro-push", 1, "front", "Close-up detail", "design"),
-    modelShot("back", "Back Full", "slow-pull-out", 2, "back", "Back view"),
+    heroShot("front", "Front", "slow-push-in", "front", "Overall garment presentation"),
+    focusShot("design", "Design Detail", "macro-push", "front", "design", "Close-up detail"),
+    heroShot("back", "Back", "slow-pull-out", "back", "Closes the sequence, back view"),
   ],
 };
 

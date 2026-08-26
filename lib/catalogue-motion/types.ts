@@ -31,16 +31,19 @@ export interface MotionPreset {
 /**
  * How a shot's motion is produced:
  *   ai-motion → sent to a MotionProvider (Veo/Kling) as a real generation
- *     call. Reserved for shots showing the worn garment on the model —
- *     the only place subtle AI motion (breathing, fabric sway) adds value
- *     over a deterministic camera move, and the only shots worth Veo's
- *     4/6/8s-minimum, per-second billing.
+ *     call, at Veo's 4s duration floor (see constraints.ts). Used for every
+ *     shot in garment-on-model categories (saree, lehenga, kurti, shirt,
+ *     dress, jacket, trouser) — a full base shot OR a tight crop on one
+ *     region (blouse, pallu, pleats, collar…), always with the model's face/
+ *     hands/pose held static per the universal prompt constraints, but real
+ *     camera movement and (for the one shot per category where it's the
+ *     actual subject) a little garment motion.
  *   pan-zoom → rendered locally via a deterministic FFmpeg crop/zoom of the
  *     static source image (a Ken Burns–style move driven by the same preset
- *     vocabulary). Zero AI cost, no duration floor. Used for every close-up
- *     detail crop (no person in frame) and for every shot in object-only
- *     categories (footwear, handbags, jewellery, dupatta, accessories) where
- *     there is no model to animate at all.
+ *     vocabulary). Zero AI cost, no duration floor. Used for every shot in
+ *     object-only categories (footwear, handbags, jewellery, dupatta,
+ *     accessories) — there's no model to animate, so AI motion adds nothing
+ *     a deterministic camera move doesn't already give for free.
  */
 export type ShotRenderMode = "ai-motion" | "pan-zoom";
 
@@ -55,6 +58,15 @@ export interface StoryboardShot {
   /** Optional crop region id from crop-templates.ts. */
   cropId?: string;
   renderMode: ShotRenderMode;
+  /**
+   * Extra instruction appended to this shot's prompt on top of the preset's
+   * camera-movement line and the universal constraints — for the rare shot
+   * where garment motion (not just camera motion) is the actual subject,
+   * e.g. "let the pallu settle/sway gently". Omitted for every other shot,
+   * which relies on the universal ambient-motion line alone. Ignored by
+   * pan-zoom shots (no AI call, nothing to instruct).
+   */
+  motionEmphasis?: string;
   rationale: string;
 }
 
@@ -86,7 +98,13 @@ export interface MotionConstraints {
 
 // ── Output ──────────────────────────────────────────────────────────────────
 
-export type OutputDuration = 5 | 7 | 10;
+/**
+ * Total video duration. Superseded from the original spec's arbitrary 5/7/10s
+ * once Veo's real constraint (every ai-motion shot bills a 4/6/8s floor) was
+ * confirmed live — a storyboard's total is now always shot-count x 4s, so the
+ * only durations that don't waste billed seconds are multiples of 4.
+ */
+export type OutputDuration = 12 | 16 | 20;
 
 export interface OutputFormat {
   id: string;
