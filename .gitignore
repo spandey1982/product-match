@@ -34,6 +34,10 @@ gen-lang-client-*.json
 # research logs (generated at runtime, never committed)
 /logs/
 
+# research documentation — professional-quality write-ups kept locally for
+# reference, deliberately not pushed. See /research/README.md.
+/research/
+
 # local API test artifacts (contain session cookies)
 cookies.txt
 login.json
