@@ -16,6 +16,7 @@
 import type {
   ResolvedCastingMetadata,
   PoseMode,
+  Expression,
 } from "./casting-types";
 
 /**
@@ -39,14 +40,30 @@ function personaText(persona: ResolvedCastingMetadata["persona"]): string {
 }
 
 /**
+ * Expression as a genuine facial description, not a bare adjective — a
+ * "soft-smile" rendered as literally "soft smile expression" was the
+ * confirmed source of the generic, eyes-uninvolved posed-smile look (see
+ * research/why-it-looks-ai.html). Every entry engages the eyes, matching
+ * the Duchenne-smile finding: a genuine expression involves the eyes as
+ * much as the mouth, not the mouth alone.
+ */
+const EXPRESSION_TEXT: Record<Expression, string> = {
+  neutral: "a calm, natural expression with relaxed, engaged eyes",
+  warm: "a warm, genuine smile that reaches the eyes, with a soft catchlight visible in both eyes",
+  confident: "a confident, natural expression with direct but relaxed, engaged eyes",
+  "soft-smile": "a gentle, natural smile that reaches the eyes with a soft catchlight — not a flat, posed smile",
+  serious: "a composed, natural expression with alert, engaged eyes",
+};
+
+/**
  * A one-sentence appearance clause. Reads naturally in an existing image-gen
  * prompt (Gemini/Imagen respond well to plain descriptive English rather than
  * key:value lists).
  */
 function appearanceClause(m: ResolvedCastingMetadata): string {
   return (
-    `Model appearance: ${m.skinTone} complexion, ${m.hairStyle} ${m.hairColor} hair, ` +
-    `${m.expression.replace("-", " ")} expression, ${m.bodyType} build.`
+    `Model appearance: ${m.skinTone} complexion with natural skin texture and subtle tonal variation, ` +
+    `${m.hairStyle} ${m.hairColor} hair, ${EXPRESSION_TEXT[m.expression]}, ${m.bodyType} build.`
   );
 }
 

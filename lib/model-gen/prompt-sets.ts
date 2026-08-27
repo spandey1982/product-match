@@ -104,6 +104,52 @@ export function resolvePromptSet(category: string | null | undefined): PromptVie
   return CATEGORY_PROMPT_SET[key] ?? GENERIC;
 }
 
+/**
+ * Photorealism clause — appended near the end of every view prompt (after
+ * orientation, before the swatch guard), same recency-wins position validated
+ * live against production (research/why-it-looks-ai.html; scripts/
+ * test-realism-revision.ts). Deliberately hedged ("without breaking any
+ * camera-orientation requirement stated elsewhere") so it reads as a
+ * refinement of the orientation clause above it, never a contradiction —
+ * the orientation clause itself is untouched.
+ *
+ * Addresses (see research doc): zero skin-texture vocabulary anywhere in the
+ * prompt pipeline, generic posed-smile expression, no camera/lens language,
+ * no shadow-physics language, and the "authentic catalogue photography, not
+ * CGI" instruction that previously existed only on the Scenic Collection
+ * path (negative-prompts.ts) — now universal.
+ */
+const REALISM_CORE =
+  "Photographic realism: natural skin with visible pore-level texture and subtle tonal variation, not airbrushed or overly smooth. Fabric drapes and falls following natural cloth physics and gravity, never rigid, stiff or held artificially away from the body. A relaxed, natural expression with the eyes engaged and a soft catchlight visible in both eyes — not a flat, posed smile. Weight settled naturally onto one leg for a candid, unposed feel, without breaking any camera-orientation requirement stated elsewhere in this prompt. Shot as if on an 85mm portrait lens at a wide aperture, natural photographic depth of field separating the model from the backdrop. This must read as an authentic photograph from a real studio session, not an illustration, render, or CGI.";
+
+/**
+ * Category+view realism addenda, from India-specific photography research
+ * (research/why-it-looks-ai.html): posture is mechanically load-bearing for
+ * draped garments — an upright spine keeps pleats/pallu from visibly
+ * sagging — and a hand resting near a pallu/dupatta as if just-adjusted
+ * reads as candid rather than static (the "held-and-displayed" convention),
+ * without touching SAREE_DRAPE's own never-bunched/duplicated constraint.
+ */
+function realismAddendum(category: string, viewId: string): string {
+  const cat = category.trim().toLowerCase();
+  if (cat === "saree" || cat === "dupatta") {
+    const posture = "Spine upright, pleats hanging straight and symmetrical, unwrinkled.";
+    if (viewId === "back") {
+      return `${posture} The pallu falls exactly as already described — floor-length, undisturbed — but rendered as if a moment ago the model's hand adjusted it: one hand resting lightly near the pallu's edge at shoulder height, not gripping or lifting it, with a very gentle, soft natural sway at the pallu's lower edge from indoor air — never a dramatic flare or swing.`;
+    }
+    return posture;
+  }
+  if ((cat === "lehenga" || cat === "sharara") && viewId === "front") {
+    return "One hand resting lightly near the dupatta's edge at the shoulder, as if just adjusted a moment ago.";
+  }
+  return "";
+}
+
+function realismClause(category: string, viewId: string): string {
+  const addendum = realismAddendum(category, viewId);
+  return addendum ? `${REALISM_CORE} ${addendum}` : REALISM_CORE;
+}
+
 function subjectFor(gender: string): string {
   switch (gender) {
     case "MEN":   return "a well-groomed Indian man, 30 years old, confident posture";
@@ -325,6 +371,7 @@ export function buildViewPrompt(input: ViewPromptInput): string {
   const anchor = anchorClause(studioAnchor);
   const styling = STYLING_CONSISTENCY_CLAUSE;
   const orientation = orientationClause(view.id);
+  const realism = realismClause(category, view.id);
   const extraCount = extraReferences?.length ?? 0;
   // When reference close-ups are supplied, the model is prone to compositing
   // them into the frame as floating swatches/detail panels (an e-commerce
@@ -358,6 +405,7 @@ export function buildViewPrompt(input: ViewPromptInput): string {
       backdrop,
       anchor,
       orientation,
+      realism,
       swatchGuard,
     ].filter(Boolean).join(" ");
   }
@@ -373,6 +421,7 @@ export function buildViewPrompt(input: ViewPromptInput): string {
     backdrop,
     anchor,
     orientation,
+    realism,
     swatchGuard,
   ].filter(Boolean).join(" ");
 }

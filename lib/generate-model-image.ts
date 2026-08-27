@@ -12,17 +12,25 @@ import { DEFAULT_IMAGE_GEN_MODEL, type ImageGenModel } from "@/lib/model-gen/ima
 
 const GEMINI_MODEL: ImageGenModel = DEFAULT_IMAGE_GEN_MODEL;
 
+// Same photorealism language as the objective-based engine's prompt-sets.ts
+// (see research/why-it-looks-ai.html) — this legacy path is the crudest
+// prompt in the pipeline (keyword-stacked, bare "photorealistic"/"high
+// resolution" buzzwords Google's own Gemini guidance names as
+// counterproductive) and was otherwise going to stay that way indefinitely.
+const REALISM_CLAUSE =
+  "Photographic realism: natural skin with visible pore-level texture and subtle tonal variation, not airbrushed or overly smooth. Fabric drapes and falls following natural cloth physics and gravity, never rigid, stiff or held artificially away from the body. A relaxed, natural expression with the eyes engaged and a soft catchlight visible in both eyes — not a flat, posed smile. This must read as an authentic photograph from a real studio session, not an illustration, render, or CGI.";
+
 /** Build a prompt tailored to the product category and gender */
 function buildPrompt(category: string, color: string, gender: string, detailNotes?: string | null): string {
   const cat = category.toLowerCase();
   const isWomen = gender !== "MEN";
 
   const subject = isWomen
-    ? "a beautiful Indian woman, 25 years old, elegant posture"
-    : "a well-dressed Indian man, 30 years old, confident stance";
+    ? "a beautiful Indian woman, 25 years old"
+    : "a well-dressed Indian man, 30 years old";
 
   const setting =
-    "professional fashion photography studio, soft diffused lighting, clean white background, high resolution, photorealistic";
+    `professional fashion photography studio, one coherent soft key light casting a natural contact shadow beneath the feet, warm natural colour temperature flattering to a range of skin tones, clean backdrop. ${REALISM_CLAUSE}`;
 
   const detail = detailNotes?.trim()
     ? ` Faithfully preserve these product specifics: ${detailNotes.trim()}.`
