@@ -182,14 +182,6 @@ export interface ViewPromptInput {
    */
   studioAnchor?: string | null;
   /**
-   * AI Casting — whether one of `extraReferences` is the identity face ref
-   * (label = "__identity_face__"). When true and `hasReference` is also true
-   * (drape ref present), the "preserve face from Image 1" clause is rewritten
-   * to defer face identity to the identity reference, avoiding a face-source
-   * conflict. No-op when false — legacy prompts are byte-identical.
-   */
-  hasIdentityReference?: boolean;
-  /**
    * Region reference close-ups accompanying this generation (pallu, border, …),
    * in the SAME order runGeminiImageGen appends their image parts. Each is
    * enumerated in the prompt so the model reproduces that region from the real
@@ -363,7 +355,6 @@ function extraImageClause(
 
 export function buildViewPrompt(input: ViewPromptInput): string {
   const { category, color, gender, view, hasReference, detailNotes, backdrop, studioAnchor, extraReferences } = input;
-  const hasIdentityRef = input.hasIdentityReference ?? false;
   const detail = detailClause(detailNotes);
   const backGuard = backGuardClause(view.id, detailNotes);
   const blouse = blouseClause(category, color);
@@ -383,18 +374,24 @@ export function buildViewPrompt(input: ViewPromptInput): string {
       : "";
 
   if (hasReference) {
-    const total = 2 + extraCount; // model + product + extras
-    // AI Casting — when a face identity reference accompanies this generation,
-    // face identity defers to it and the drape reference contributes body,
-    // hair and pose only. Without a face identity ref this collapses to the
-    // legacy clause exactly.
-    const preserveClause = hasIdentityRef
-      ? "Preserve the model's body proportions, hair and pose from Image 1, and the garment's exact colour, print and texture from Image 2. Face identity comes from the identity reference image below — do not use the face in Image 1."
-      : "Preserve the model's face, body and skin tone from Image 1, and the garment's exact colour, print and texture from Image 2.";
+    const total = 2 + extraCount; // drape ref + product + extras
+    // Image 1 is a construction/fit reference ONLY — never an identity
+    // source. Identity (face/skin/hair/build) comes from the AI Casting
+    // identity reference or the cross-view reference when either is present
+    // (see extraImageClause below), or is otherwise left to the generator,
+    // steered by subjectFor() and the realism clause — never copied from
+    // this drape asset. A single unambiguous identity source per generation,
+    // instead of Image 1 and a Casting/cross-view reference competing for
+    // the same claim (the confirmed cause of front/back face mismatches, and
+    // of Casting's skinTone/bodyType overrides losing to the reference).
+    const structureClause =
+      "Image 1 is a construction reference showing how this category of garment drapes, sits and fits on a body — use it ONLY to understand the garment's structural silhouette and fabric flow around the body. Do not copy this image's pose, lighting, background, or the pictured person's face, skin tone, texture, hair or body proportions.";
+    const garmentClause = "Reproduce the garment's exact colour, print and texture from Image 2.";
     return [
-      `You are given ${total} images. Image 1 is the reference fashion model. Image 2 is the product garment.`,
-      `Generate a photorealistic photograph of the model in Image 1 wearing this ${color} ${category} from Image 2.`,
-      preserveClause,
+      `You are given ${total} images. Image 1 is a structural drape/fit reference. Image 2 is the product garment.`,
+      `Generate a photorealistic photograph of ${subjectFor(gender)} wearing this ${color} ${category} from Image 2.`,
+      structureClause,
+      garmentClause,
       extraImageClause(extraReferences, 3),
       view.modifier,
       detail,

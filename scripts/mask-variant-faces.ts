@@ -5,9 +5,11 @@
  * that AI Casting's face identity reference is the SOLE face source. Without
  * masking, the fused variant ref (e.g. woman-saree-front.png) carries its
  * own face; sending that alongside a face identity ref creates a two-face-
- * source conflict in the prompt (see lib/model-gen/prompt-sets.ts's
- * `hasIdentityReference` clause which mitigates the prompt half; this script
- * mitigates the pixel half).
+ * source conflict. lib/model-gen/prompt-sets.ts's buildViewPrompt now tells
+ * Gemini outright to ignore the drape reference's face/skin/pose/lighting
+ * (the prompt half of the mitigation); this script mitigates the pixel half,
+ * since a text instruction alone doesn't fully suppress what a raw reference
+ * image conditions on.
  *
  * Deterministic — no AI calls, no cost. Sharp gaussian-blurs a soft-edged
  * face region on each front view and writes `-masked.webp` alongside the
