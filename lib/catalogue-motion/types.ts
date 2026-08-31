@@ -96,15 +96,39 @@ export interface MotionConstraints {
   ambientMotion: number;
 }
 
-// ── Output ──────────────────────────────────────────────────────────────────
+// ── Director plan ───────────────────────────────────────────────────────────
 
 /**
- * Total video duration. Superseded from the original spec's arbitrary 5/7/10s
- * once Veo's real constraint (every ai-motion shot bills a 4/6/8s floor) was
- * confirmed live — a storyboard's total is now always shot-count x 4s, so the
- * only durations that don't waste billed seconds are multiples of 4.
+ * One shot's edit decision, as chosen by the creative-director agent
+ * (lib/catalogue-motion/agents/directorAgent.ts) from a storyboard's
+ * available shot menu. `holdDurationSec` is the actual final on-screen
+ * duration — a free float, NOT one of Veo's allowed generation durations.
+ * Veo still only ever generates at its 4/6/8s floor (nearest allowed value
+ * >= holdDurationSec); the compose worker trims the generated clip down to
+ * holdDurationSec. Always clamp to [0.5, 8] in code after parsing the
+ * director's JSON response — never trust the raw number, same reason no
+ * agent in this codebase trusts free-text-instructed LLM JSON to self-enforce
+ * a hard limit. 8 is Veo's real ceiling: trimming can only shrink a
+ * generated clip, never lengthen it.
  */
-export type OutputDuration = 12 | 16 | 20;
+export interface DirectorShotPlan {
+  /** Matches a StoryboardShot.view from the resolved storyboard. */
+  view: string;
+  /** May override the storyboard shot's default preset. */
+  presetId: string;
+  /** May override/add to the storyboard shot's default motionEmphasis. */
+  motionEmphasis?: string;
+  holdDurationSec: number;
+  /** Marks the opening beat — per research, this should be motion/reveal-led, not a static establish. */
+  isHook: boolean;
+  rationale: string;
+}
+
+export interface DirectorPlan {
+  shots: DirectorShotPlan[];
+}
+
+// ── Output ──────────────────────────────────────────────────────────────────
 
 export interface OutputFormat {
   id: string;

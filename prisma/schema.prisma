@@ -604,6 +604,10 @@ model AiUsageEvent {
   imagesGenerated Int @default(0)
   imageInputs     Int @default(0)
 
+  // Video driver (Veo, Catalogue Motion) — seconds of generated video output.
+  // Persisted so a row can be re-priced later, same rationale as imagesGenerated.
+  videoSeconds Int?
+
   // Payload sizes (bytes) — supersede the old JSONL research log.
   requestBytes  Int?
   responseBytes Int?
@@ -980,21 +984,34 @@ model MotionJob {
   productId String
   userId    String
 
-  // queued | rendering | composing | qa | complete | failed — plain string
-  // per this schema's stage-field convention, not a Prisma enum.
+  // queued | rendering | qa | composing | complete | failed — plain string
+  // per this schema's stage-field convention, not a Prisma enum. QA runs
+  // per-clip and gates composing (MotionQAResult.clipId is 1:1 with a clip,
+  // not with the job) — composing only starts once every clip has resolved.
   status String @default("queued")
 
   // minimal | elegant | dynamic
   intensity String @default("elegant")
-
-  // Target duration in seconds: 5, 7, or 10.
-  duration Int @default(7)
 
   // Resolved category storyboard key (lib/catalogue-motion/storyboards.ts).
   storyboardId String
 
   // AI provider used for this job (veo, kling, runway…).
   provider String
+
+  // The creative director's edit plan for this job (JSON — shot selection,
+  // order, per-shot holdDurationSec, which shot is the hook), stringified
+  // the same way FashionDesign.generationPlan is. Populated once, before any
+  // rendering, and immutable afterward — a resumed job checks
+  // `if (!directorPlan)` before re-running the planning call, the same
+  // per-stage checkpoint pattern lib/fashion-designer/pipeline.ts uses.
+  directorPlan String?
+
+  // Actual final composed video length in seconds, populated by the compose
+  // worker once the job completes. Not a fixed input — every shot's on-screen
+  // hold is a director-decided float (see MotionClip.plannedHoldSec), so the
+  // total isn't known until composing finishes.
+  duration Int?
 
   outputUrl    String?
   outputFormat String?
@@ -1033,6 +1050,13 @@ model MotionClip {
 
   // The existing catalogue image this clip animates.
   sourceImageUrl String
+
+  // The director's decided final on-screen duration for this shot (seconds,
+  // clamped to [0.5, 8] in code — never trusted from the LLM as-is; 8 is
+  // Veo's real ceiling, since the compose worker can only trim a generated
+  // clip shorter, never lengthen it). Set when the clip row is created from
+  // MotionJob.directorPlan.
+  plannedHoldSec Float?
 
   // queued | rendering | qa | accepted | rejected | failed
   status String @default("queued")
