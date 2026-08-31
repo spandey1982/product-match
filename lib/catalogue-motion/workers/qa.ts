@@ -20,7 +20,7 @@
 import { db } from "@/lib/db";
 import type { MotionQAPayload } from "@/lib/queue/types";
 import { probeVideo, extractSampleFrames } from "../ffmpeg";
-import { enqueueRenderForClip } from "../orchestrator";
+import { enqueueRenderForClip, maybeAdvanceToCompose } from "../orchestrator";
 import { recordAiUsage } from "@/lib/ai-usage/record";
 
 const REVIEW_MODEL = "gemini-2.5-flash";
@@ -108,11 +108,15 @@ async function recordVerdict(
 
   if (data.verdict === "accepted") {
     await db.motionClip.update({ where: { id: clipId }, data: { status: "accepted" } });
+    await maybeAdvanceToCompose(jobId);
     return;
   }
   if (data.verdict === "manual_review") {
     // Clip stays in "qa" status (already set by the render worker) — the
     // admin action resolves it explicitly rather than it stalling silently.
+    // Deliberately does NOT call maybeAdvanceToCompose: a clip pending
+    // human review is not a terminal state, so the check would just no-op
+    // anyway, but skipping the call here says so explicitly.
     return;
   }
   // rejected — bounded regeneration, same plan, not a re-plan (see header).
@@ -123,10 +127,10 @@ async function recordVerdict(
   });
   if (clip.retryCount > MAX_QA_RETRIES) {
     await db.motionClip.update({ where: { id: clipId }, data: { status: "failed", errorMessage: "Rejected by QA after max retries" } });
+    await maybeAdvanceToCompose(jobId);
     return;
   }
   await enqueueRenderForClip(clipId);
-  void jobId; // kept in the payload/signature for symmetry with the render worker; no per-job action needed here yet (M5 wires job-level completion)
 }
 
 export async function handleMotionQA(payload: MotionQAPayload): Promise<void> {

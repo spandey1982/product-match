@@ -74,3 +74,12 @@ export async function extractSampleFrames(url: string, durationSec: number): Pro
   const times = [0.1, Math.max(0.1, durationSec / 2), Math.max(0.2, durationSec - 0.2)];
   return Promise.all(times.map((t) => extractFrame(url, t)));
 }
+
+/**
+ * Runs ffmpeg with arbitrary args and waits for it to exit — for the
+ * compose worker, whose output is a file path passed as the last arg, not
+ * stdout. Throws with the tail of stderr on a non-zero exit.
+ */
+export async function runFfmpeg(args: string[]): Promise<void> {
+  await run(FFMPEG_BIN, args);
+}

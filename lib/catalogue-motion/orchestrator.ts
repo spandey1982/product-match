@@ -188,3 +188,36 @@ export async function enqueueRenderForClip(clipId: string): Promise<void> {
   const boss = await getBoss();
   await boss.send(QUEUES.MOTION_RENDER, payload);
 }
+
+/**
+ * Checks whether every clip in a job has reached a terminal state
+ * (accepted/rejected/failed — never queued/rendering/qa) and, if so,
+ * either enqueues motion.compose (at least one accepted clip) or fails the
+ * job outright (none did). Called from the QA worker after every verdict
+ * and from the manual-review admin action — cheap to call speculatively
+ * since it no-ops unless the job is actually fully resolved.
+ */
+export async function maybeAdvanceToCompose(jobId: string): Promise<void> {
+  const job = await db.motionJob.findUnique({ where: { id: jobId }, include: { clips: true } });
+  if (!job || job.status === "composing" || job.status === "complete") return;
+
+  const unresolved = job.clips.some((c) => !["accepted", "rejected", "failed"].includes(c.status));
+  if (unresolved) return;
+
+  const acceptedCount = job.clips.filter((c) => c.status === "accepted").length;
+  if (acceptedCount === 0) {
+    await db.motionJob.update({
+      where: { id: jobId },
+      data: { status: "failed", errorMessage: "No clips were accepted by QA" },
+    });
+    return;
+  }
+
+  const boss = await getBoss();
+  await boss.send(QUEUES.MOTION_COMPOSE, {
+    jobId,
+    clipIds: job.clips.filter((c) => c.status === "accepted").map((c) => c.id),
+    outputFormat: "website",
+    duration: 0,
+  });
+}

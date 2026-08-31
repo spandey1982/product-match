@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { enqueueRenderForClip } from "@/lib/catalogue-motion/orchestrator";
+import { enqueueRenderForClip, maybeAdvanceToCompose } from "@/lib/catalogue-motion/orchestrator";
 
 // POST /api/admin/motion-review/[clipId] — resolve a manual_review clip.
 // Body: { action: "accept" | "reject" }
@@ -25,6 +25,7 @@ export async function POST(
         db.motionClip.update({ where: { id: clipId }, data: { status: "accepted" } }),
         db.motionQAResult.update({ where: { clipId }, data: { verdict: "accepted" } }),
       ]);
+      await maybeAdvanceToCompose(clip.jobId);
       return NextResponse.json({ ok: true, status: "accepted" });
     }
 
@@ -40,6 +41,7 @@ export async function POST(
       });
       if (updated.retryCount > 2) {
         await db.motionClip.update({ where: { id: clipId }, data: { status: "failed", errorMessage: "Rejected by manual review after max retries" } });
+        await maybeAdvanceToCompose(clip.jobId);
       } else {
         await enqueueRenderForClip(clipId);
       }
