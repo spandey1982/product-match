@@ -190,6 +190,23 @@ export async function enqueueRenderForClip(clipId: string): Promise<void> {
 }
 
 /**
+ * Bumps MotionJob.status from "rendering" to "qa" once every clip has left
+ * queued/rendering (each has at least reached "qa" or a terminal state) —
+ * called from the render worker after each clip finishes. Purely a status-
+ * accuracy fix: nothing else in the pipeline reads job.status to decide
+ * readiness (maybeAdvanceToCompose below checks CLIP statuses directly),
+ * but a retailer-facing progress view will eventually want this to be
+ * accurate, and it costs nothing to keep right now.
+ */
+export async function maybeAdvanceToQA(jobId: string): Promise<void> {
+  const job = await db.motionJob.findUnique({ where: { id: jobId }, include: { clips: true } });
+  if (!job || job.status !== "rendering") return;
+  const stillRendering = job.clips.some((c) => c.status === "queued" || c.status === "rendering");
+  if (stillRendering) return;
+  await db.motionJob.update({ where: { id: jobId }, data: { status: "qa" } });
+}
+
+/**
  * Checks whether every clip in a job has reached a terminal state
  * (accepted/rejected/failed — never queued/rendering/qa) and, if so,
  * either enqueues motion.compose (at least one accepted clip) or fails the

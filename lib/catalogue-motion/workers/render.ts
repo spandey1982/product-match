@@ -16,6 +16,7 @@ import { getMotionProvider } from "../provider";
 import { nearestVeoDuration } from "../provider/veo-provider";
 import { uploadWithRetry } from "@/lib/cloudinary";
 import { chargeForCall, refundCharge } from "@/lib/billing/charge";
+import { maybeAdvanceToQA } from "../orchestrator";
 
 const MAX_RENDER_RETRIES = 2; // matches QUEUE_OPTIONS[MOTION_RENDER].retryLimit
 
@@ -85,6 +86,7 @@ export async function handleMotionRender(payload: MotionRenderPayload): Promise<
       sourceImageUrl: payload.sourceImageUrl,
     };
     await boss.send(QUEUES.MOTION_QA, qaPayload);
+    await maybeAdvanceToQA(payload.jobId);
   } catch (err) {
     // Every failed attempt refunds its own charge — a retried job re-runs
     // chargeForCall from the top on redelivery, so each attempt is charged
