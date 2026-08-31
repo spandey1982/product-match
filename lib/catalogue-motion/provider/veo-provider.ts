@@ -48,10 +48,17 @@ import type { MotionProvider, ClipRenderInput, ClipRenderResult } from "./types"
 const POLL_INTERVAL_MS = 5_000;
 const MAX_POLL_ATTEMPTS = 24; // ~2 minutes
 
-/** Veo only accepts 4, 6, or 8 seconds — round up to the nearest allowed value. */
-const ALLOWED_DURATIONS = [4, 6, 8] as const;
+/**
+ * Veo only accepts 4, 6, or 8 seconds — round up to the nearest allowed
+ * value. Exported so a caller building the clip instruction text (e.g. the
+ * render worker) can pass the SAME rounded value into buildClipInstruction's
+ * "Duration: Ns seconds" line that Veo actually receives as the real
+ * durationSeconds parameter — mismatching the two would have the prompt
+ * describe a different length than what's actually generated.
+ */
+export const ALLOWED_DURATIONS = [4, 6, 8] as const;
 
-function nearestVeoDuration(requestedSec: number): number {
+export function nearestVeoDuration(requestedSec: number): number {
   return ALLOWED_DURATIONS.find((d) => d >= requestedSec) ?? ALLOWED_DURATIONS[ALLOWED_DURATIONS.length - 1];
 }
 

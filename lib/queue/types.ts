@@ -36,7 +36,10 @@ export interface MotionRenderPayload {
   jobId: string;
   sourceImageUrl: string;
   presetId: string;
+  /** Extra garment-motion instruction from the director's plan, if any (see DirectorShotPlan.motionEmphasis). */
+  motionEmphasis?: string;
   intensity: string;
+  /** The director's planned on-screen hold — Veo rounds this up to its nearest allowed generation length. */
   durationSec: number;
   cropRegion?: { x: number; y: number; w: number; h: number };
 }
