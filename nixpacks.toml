@@ -5,6 +5,14 @@
 [variables]
 INSTALL_CMD = "npm install --no-audit --no-fund"
 
+# ffmpeg — Catalogue Motion's compose worker (worker/index.ts) and QA Stage 1
+# (lib/catalogue-motion/workers/qa.ts) both shell out to ffmpeg/ffprobe. Added
+# as a Nix package rather than an npm dependency (fluent-ffmpeg etc. still
+# need the actual binary present) — same "no new infra, reuse what's already
+# provisionable" reasoning as pg-boss over Redis in Phase 1.
+[phases.setup]
+nixPkgs = ["ffmpeg"]
+
 [phases.build]
 cmds = ["npm run build"]
 

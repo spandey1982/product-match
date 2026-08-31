@@ -11,9 +11,9 @@
  * not a route inside the web app.
  *
  * Registers `.work()` handlers for whichever queues have a real handler
- * built so far — motion.qa and motion.compose are intentionally not
- * registered yet (later milestones); jobs sent to those queues will simply
- * wait, which is the correct behavior mid-rollout.
+ * built so far — motion.compose is intentionally not registered yet (a
+ * later milestone); jobs sent to that queue will simply wait, which is the
+ * correct behavior mid-rollout.
  *
  * pg-boss v12's `.work(name, handler)` delivers an ARRAY of jobs per call
  * even though QUEUE_OPTIONS never sets a batchSize (default 1, per pg-boss's
@@ -26,18 +26,25 @@
  */
 import "dotenv/config";
 import { getBoss } from "@/lib/queue/boss";
-import { QUEUES, type MotionRenderPayload } from "@/lib/queue/types";
+import { QUEUES, type MotionRenderPayload, type MotionQAPayload } from "@/lib/queue/types";
 import { handleMotionRender } from "@/lib/catalogue-motion/workers/render";
+import { handleMotionQA } from "@/lib/catalogue-motion/workers/qa";
+
+/** Adapts a single-job handler to pg-boss v12's batch-array `.work()` shape — see the file header comment. */
+function batched<T>(handler: (data: T) => Promise<void>, label: string) {
+  return async (jobs: Array<{ data: T }>) => {
+    const results = await Promise.allSettled(jobs.map((job) => handler(job.data)));
+    const failures = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+    for (const f of failures) console.error(`[worker] ${label} job failed:`, f.reason);
+    if (failures.length > 0) throw failures[0].reason;
+  };
+}
 
 async function main() {
   const boss = await getBoss();
 
-  await boss.work<MotionRenderPayload>(QUEUES.MOTION_RENDER, async (jobs) => {
-    const results = await Promise.allSettled(jobs.map((job) => handleMotionRender(job.data)));
-    const failures = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
-    for (const f of failures) console.error("[worker] motion.render job failed:", f.reason);
-    if (failures.length > 0) throw failures[0].reason;
-  });
+  await boss.work<MotionRenderPayload>(QUEUES.MOTION_RENDER, batched(handleMotionRender, "motion.render"));
+  await boss.work<MotionQAPayload>(QUEUES.MOTION_QA, batched(handleMotionQA, "motion.qa"));
 
   console.log("[worker] catalogue-motion worker started — listening on:", Object.values(QUEUES).join(", "));
 }

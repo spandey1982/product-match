@@ -159,3 +159,32 @@ export async function startMotionJob(jobId: string): Promise<void> {
     await boss.send(QUEUES.MOTION_RENDER, payload);
   }
 }
+
+/**
+ * Re-enqueues motion.render for one existing clip — used by the QA worker
+ * when a clip is rejected (see workers/qa.ts). Regenerates at the SAME
+ * plan (same preset, hold duration, motionEmphasis pulled back out of the
+ * job's persisted directorPlan) — a QA-driven regeneration attempt-retries
+ * the director's decision, it never re-plans (see directorAgent.ts's header
+ * comment on why creative direction and generation retry stay decoupled).
+ */
+export async function enqueueRenderForClip(clipId: string): Promise<void> {
+  const clip = await db.motionClip.findUniqueOrThrow({ where: { id: clipId } });
+  const job = await db.motionJob.findUniqueOrThrow({ where: { id: clip.jobId } });
+  const plan = job.directorPlan ? (JSON.parse(job.directorPlan) as DirectorPlan) : null;
+  const planShot = plan?.shots.find((s) => s.view === clip.view);
+
+  const payload: MotionRenderPayload = {
+    clipId: clip.id,
+    jobId: clip.jobId,
+    sourceImageUrl: clip.sourceImageUrl,
+    presetId: clip.presetId,
+    motionEmphasis: planShot?.motionEmphasis,
+    intensity: job.intensity,
+    durationSec: clip.plannedHoldSec ?? 4,
+  };
+
+  await db.motionClip.update({ where: { id: clipId }, data: { status: "queued" } });
+  const boss = await getBoss();
+  await boss.send(QUEUES.MOTION_RENDER, payload);
+}
