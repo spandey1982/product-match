@@ -75,8 +75,10 @@ function buildPrompt(type: ModelType, variant: Variant): string {
     "wearing plain, form-fitting light-grey clothing with no patterns or logos,",
     `${POSE[variant]}.`,
     "The entire body is visible from head to toe, centered and facing the camera.",
-    "Clean seamless light-grey studio background, soft even lighting, photorealistic,",
-    "high resolution, sharp focus, no text, no watermark, no props, no accessories.",
+    "Clean seamless light-grey studio background, lit by a single soft key light with a gentle, soft-edged contact shadow directly beneath the feet where they meet the floor.",
+    "Natural skin with visible pore-level texture and subtle tonal variation, not airbrushed or overly smooth. Fabric drapes and falls following natural cloth physics and gravity, never rigid or stiff.",
+    "Shot as if on an 85mm portrait lens at a moderate aperture for natural photographic depth of field. This must read as an authentic photograph from a real studio session, not an illustration, render, or CGI.",
+    "No text, no watermark, no props, no accessories.",
   ].join(" ");
 }
 

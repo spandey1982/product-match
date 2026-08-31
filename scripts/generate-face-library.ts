@@ -126,10 +126,10 @@ function buildPrompt(target: FaceTarget): string {
   return [
     anchor,
     identityLine,
-    "Head-and-shoulders framing, subject centred, looking directly at the camera. Natural warm expression, closed lips with a subtle smile.",
+    "Head-and-shoulders framing, subject centred, looking directly at the camera. A relaxed, natural expression with the eyes engaged and a soft catchlight visible in both eyes, a gentle closed-lip smile with natural, slightly asymmetric warmth — not a flat, posed smile.",
     "Wearing a plain neutral crew-neck top in soft grey or beige — no patterns, no jewelry, no logos.",
     "Plain light-beige seamless studio background, soft even studio lighting with no harsh directional shadow.",
-    "Natural warm skin tone typical of the heritage described, natural skin texture, sharp focus, photorealistic — avoid pale features, cool skin tones, or Westernised model archetypes.",
+    "Natural warm skin tone typical of the heritage described, with visible pore-level texture and subtle tonal variation — not airbrushed, retouched, or overly smooth. Shot as if on an 85mm portrait lens at a wide aperture, natural shallow depth of field. This must read as an authentic photograph from a real portrait session, not an illustration, render, CGI, or airbrushed beauty retouch — avoid pale features, cool skin tones, or Westernised model archetypes.",
     "Head-and-shoulders only — no props, no accessories, no text, no watermark.",
   ].join(" ");
 }
