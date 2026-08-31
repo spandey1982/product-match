@@ -279,6 +279,14 @@ export function renderBackdropPrompt(preset: BackdropPreset): string {
     `lit with ${softness} ${direction} lighting at ${exposure}`,
     `${grad} sweeping into a soft wall-to-floor transition with ${reflection}`,
     "Keep the backdrop colour, brightness, lighting, gradient, floor transition, reflections, shadows, vignette and overall studio ambience uniform and consistent",
+    // Reinforces the SAME key light described above (never a second,
+    // conflicting angle — research/why-it-looks-ai.html flags mixed lighting
+    // concepts in one prompt as actively counterproductive) with the shadow
+    // physics and skin-tone warmth that were previously entirely absent:
+    // a real contact shadow, and a warm-biased colour temperature because
+    // lighting tuned for lighter skin (a neutral/cool default) reads deeper,
+    // warmer skin tones as too cool and grey.
+    "That same key light casts a soft-edged contact shadow directly beneath the model's feet where they meet the floor, and its colour temperature is warm and natural — flattering to a range of skin tones, never cool or grey-cast",
     "High resolution, photorealistic, no text or watermark, no secondary insets or fabric swatches — exactly one continuous photograph.",
   ].join(". ");
 }

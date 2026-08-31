@@ -34,8 +34,8 @@ gen-lang-client-*.json
 # research logs (generated at runtime, never committed)
 /logs/
 
-# research documentation — professional-quality write-ups kept locally for
-# reference, deliberately not pushed. See /research/README.md.
+# research write-ups — local working scratch space, published as Claude
+# Artifacts separately (see research/README.md); not shipped documentation
 /research/
 
 # local API test artifacts (contain session cookies)

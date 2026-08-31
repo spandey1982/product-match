@@ -129,6 +129,14 @@ export async function runCatalogueStrategy(opts: {
     ? await fetchProductImageBuffer(product.backImageUrl)
     : null;
 
+  // Male drape references teach nothing the Gemini path needs: tailored
+  // menswear/boyswear has no complex drape to learn (unlike saree/lehenga/
+  // dupatta), and Gemini's general training already covers how a shirt or
+  // trouser sits on a body. Dropped on the Gemini path only — Vertex VTO
+  // still needs a person image regardless of category, so it keeps loading
+  // and using the reference exactly as before.
+  const isMaleModel = modelType === "man" || modelType === "boy";
+
   const variant = resolveReferenceVariant(product.category);
   // Load front + back reference profiles once; each gracefully falls back to the
   // legacy single image, then to the basic model, then to null.
@@ -222,8 +230,9 @@ export async function runCatalogueStrategy(opts: {
     }
     // Gemini (Natural Drape): prompt-based with the reference in context.
     // Editorial pose mode drops the drape reference on this path so pose can
-    // vary; the face identity reference (when present) still anchors identity.
-    const geminiDrapeRef = editorial ? null : reference;
+    // vary; male model types drop it too (see isMaleModel above); the face
+    // identity reference (when present) still anchors identity either way.
+    const geminiDrapeRef = editorial || isMaleModel ? null : reference;
     const result = await runGeminiImageGen({
       productId: product.id,
       productTitle: product.title,
@@ -353,7 +362,7 @@ export async function runCatalogueStrategy(opts: {
     // the AI can vary pose per persona/occasion — the prompt must reflect
     // that. Vertex still receives the drape reference (VTO needs a person)
     // and does not consume this prompt text.
-    const geminiHasReference = Boolean(reference) && !editorial;
+    const geminiHasReference = Boolean(reference) && !editorial && !isMaleModel;
 
     const basePrompt = buildViewPrompt({
       category: product.category,
@@ -368,9 +377,6 @@ export async function runCatalogueStrategy(opts: {
       // Pin the back to the front's realized backdrop colour (front defines it).
       studioAnchor: isBack ? studioAnchor : null,
       extraReferences: promptRefs,
-      // Tell the prompt when face identity comes from the identity ref rather
-      // than the drape ref — resolves the "preserve face" ambiguity.
-      hasIdentityReference: Boolean(faceRef),
     });
     // Append the casting appearance/persona/pose-freedom suffix. Empty string
     // when Casting is off, so the legacy prompt is byte-identical.
