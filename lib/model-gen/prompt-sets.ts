@@ -120,7 +120,23 @@ export function resolvePromptSet(category: string | null | undefined): PromptVie
  * path (negative-prompts.ts) — now universal.
  */
 const REALISM_CORE =
-  "Photographic realism: natural skin with visible pore-level texture and subtle tonal variation, not airbrushed or overly smooth. Fabric drapes and falls following natural cloth physics and gravity, never rigid, stiff or held artificially away from the body. A relaxed, natural expression with the eyes engaged and a soft catchlight visible in both eyes — not a flat, posed smile. Weight settled naturally onto one leg for a candid, unposed feel, without breaking any camera-orientation requirement stated elsewhere in this prompt. Shot as if on an 85mm portrait lens at a wide aperture, natural photographic depth of field separating the model from the backdrop. This must read as an authentic photograph from a real studio session, not an illustration, render, or CGI.";
+  "Photographic realism: natural skin with visible pore-level texture and subtle tonal variation, not airbrushed or overly smooth. Fabric drapes and falls following natural cloth physics and gravity, never rigid, stiff or held artificially away from the body. A warm, genuine smile that reaches the eyes — bright, alert, engaged eyes with a soft catchlight in both, expressing real warmth and personality; never a neutral, flat, dull, bored, or disinterested expression, and never a stiff, obviously-posed grin either. Weight settled naturally onto one leg for a candid, unposed feel, without breaking any camera-orientation requirement stated elsewhere in this prompt. Shot as if on an 85mm portrait lens at a wide aperture, natural photographic depth of field separating the model from the backdrop. This must read as an authentic photograph from a real studio session, not an illustration, render, or CGI.";
+
+/**
+ * Universal lighting clause — applies to every generation regardless of
+ * which backdrop system (Studio or Scenic Collection) supplies the
+ * environment description. Added after competitor benchmarking
+ * (karchobi.in, 2026-09) identified lighting as the single highest-leverage
+ * gap: every reference photo used one clearly directional light source with
+ * a visible rim-light on hair, physically consistent shadow falloff, and a
+ * warm overall grade — none of which existed anywhere in this pipeline
+ * before this clause (backdrops.ts described only flat top-down light with
+ * a contact shadow; REALISM_CORE above had zero lighting language at all).
+ * Deliberately kept independent of REALISM_CORE (skin/pose/lens) so it can
+ * be isolated and re-tuned on its own.
+ */
+const LIGHTING_CORE =
+  "Lighting: the scene is lit by one dominant, clearly directional light source — never flat, shadowless, or evenly lit from every side. That direction is visible as a soft highlight along the hair and the side of the face/body nearest the light, with a gentle falloff into shadow on the opposite side, and a shadow that falls consistently in one direction wherever the model meets the ground or backdrop. A subtle rim-light traces the edge of the hair and shoulders, separating the model crisply from the background the way a real key light does. Skin shows soft specular catch-light on its high points (cheekbones, nose bridge, collarbone), consistent with that same light direction, not uniformly matte. The overall colour grade leans warm and natural, like real daylight or a warm key light — never cold, grey, or clinically flat.";
 
 /**
  * Category+view realism addenda, from India-specific photography research
@@ -157,6 +173,22 @@ function subjectFor(gender: string): string {
     case "GIRLS": return "a young Indian girl with a cheerful, natural posture";
     default:      return "a graceful Indian woman, 25 years old, elegant posture";
   }
+}
+
+/**
+ * Loose-hair instruction — live-tested (2026-09) against the tied-back/bun
+ * default the generator otherwise chose on its own: loose hair reads as
+ * visibly livelier (catches light along its edge, moves naturally with a
+ * candid head-turn) than a severe bun, which is part of what made earlier
+ * generations feel dull/static. Scoped to WOMEN/GIRLS only — loose-vs-tied
+ * isn't a meaningful styling axis for the short-hair descriptions men/boys
+ * get in subjectFor().
+ */
+function hairClause(gender: string): string {
+  if (gender !== "MEN" && gender !== "BOYS") {
+    return "Hair worn naturally loose and flowing, falling past the shoulders and framing the face — not tied back, pulled up, or in a bun.";
+  }
+  return "";
 }
 
 export interface ViewPromptInput {
@@ -363,6 +395,7 @@ export function buildViewPrompt(input: ViewPromptInput): string {
   const styling = STYLING_CONSISTENCY_CLAUSE;
   const orientation = orientationClause(view.id);
   const realism = realismClause(category, view.id);
+  const hair = hairClause(gender);
   const extraCount = extraReferences?.length ?? 0;
   // When reference close-ups are supplied, the model is prone to compositing
   // them into the frame as floating swatches/detail panels (an e-commerce
@@ -403,6 +436,8 @@ export function buildViewPrompt(input: ViewPromptInput): string {
       anchor,
       orientation,
       realism,
+      hair,
+      LIGHTING_CORE,
       swatchGuard,
     ].filter(Boolean).join(" ");
   }
@@ -419,6 +454,8 @@ export function buildViewPrompt(input: ViewPromptInput): string {
     anchor,
     orientation,
     realism,
+    hair,
+    LIGHTING_CORE,
     swatchGuard,
   ].filter(Boolean).join(" ");
 }

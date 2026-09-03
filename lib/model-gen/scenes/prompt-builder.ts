@@ -11,14 +11,22 @@
 import type { CameraStyle, Scene, SceneDensity, SceneIntensity, SceneVariation } from "./types";
 import { buildNegativeClause } from "./negative-prompts";
 
+// Rewritten after competitor benchmarking (karchobi.in, 2026-09) — every
+// reference photo across morning/midday/evening settings shared the same
+// three ingredients the previous one-line descriptions lacked: a visible
+// rim-light on the hair, a shadow that falls consistently in one direction,
+// and (for evening/night) out-of-focus light sources in the background. See
+// LIGHTING_CORE in ../prompt-sets.ts for the universal version of this that
+// applies regardless of scene; these add the time-of-day-specific character
+// on top of it.
 const CAMERA_CLAUSE: Record<CameraStyle, string> = {
-  morning: "soft early-morning natural light",
-  "golden-hour": "warm golden-hour sunlight with long soft shadows",
-  "soft-daylight": "even, soft natural daylight",
-  evening: "warm evening ambient light with gentle golden tones",
-  night: "cinematic night lighting with warm practical light sources",
-  "indoor-studio": "controlled indoor studio-quality lighting",
-  outdoor: "natural outdoor daylight",
+  morning: "soft, low-angle early-morning sunlight casting a gentle rim-light along the hair and long, soft-edged shadows falling consistently in one direction",
+  "golden-hour": "warm, low golden-hour sunlight from behind or to the side of the model, creating a bright glowing rim-light through the hair and along the shoulders, long soft shadows, and a warm golden colour cast over the entire scene",
+  "soft-daylight": "even, softly diffused daylight (open shade or a bright overcast sky) that still has a gentle directional quality — a soft catchlight in the eyes and a subtle rim along the hair, never flat or shadowless",
+  evening: "warm evening ambient light with gentle golden tones, soft directional shadows, and out-of-focus warm light sources visible in the background",
+  night: "cinematic night lighting from warm practical sources such as street lamps, shopfronts or string lights, with soft glowing bokeh circles visible in the background, a warm key light on the face, and cooler ambient light in the shadows",
+  "indoor-studio": "soft window light entering from one side or from behind, glowing through sheer fabric or glass, with a gentle rim-light on the hair and a soft falloff into shadow on the far side of the face",
+  outdoor: "natural outdoor daylight with clear directional character — a visible highlight side and shadow side, a soft rim along the hair, and shadows that fall consistently in one direction",
 };
 
 const INTENSITY_CLAUSE: Record<SceneIntensity, string> = {
