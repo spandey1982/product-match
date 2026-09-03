@@ -120,7 +120,7 @@ export function resolvePromptSet(category: string | null | undefined): PromptVie
  * path (negative-prompts.ts) — now universal.
  */
 const REALISM_CORE =
-  "Photographic realism: natural skin with visible pore-level texture and subtle tonal variation, not airbrushed or overly smooth. Fabric drapes and falls following natural cloth physics and gravity, never rigid, stiff or held artificially away from the body. A warm, genuine smile that reaches the eyes — bright, alert, engaged eyes with a soft catchlight in both, expressing real warmth and personality; never a neutral, flat, dull, bored, or disinterested expression, and never a stiff, obviously-posed grin either. Weight settled naturally onto one leg for a candid, unposed feel, without breaking any camera-orientation requirement stated elsewhere in this prompt. Shot as if on an 85mm portrait lens at a wide aperture, natural photographic depth of field separating the model from the backdrop. This must read as an authentic photograph from a real studio session, not an illustration, render, or CGI.";
+  "Photographic realism: natural skin with visible pore-level texture and subtle tonal variation, not airbrushed or overly smooth. Fabric drapes and falls following natural cloth physics and gravity, never rigid, stiff or held artificially away from the body. A warm, genuine smile that reaches the eyes — bright, alert, engaged eyes with a soft catchlight in both, gently crinkled corners at the eyes and naturally lifted cheeks that show the smile is real and not just the mouth (a genuine Duchenne smile), with a slight, natural asymmetry rather than a perfectly mirrored expression; never a neutral, flat, dull, bored, or disinterested expression, and never a stiff, obviously-posed grin either. Weight settled naturally onto one leg for a candid, unposed feel, without breaking any camera-orientation requirement stated elsewhere in this prompt. Shot as if on an 85mm portrait lens at a wide aperture, natural photographic depth of field separating the model from the backdrop. This must read as an authentic photograph from a real studio session, not an illustration, render, or CGI.";
 
 /**
  * Universal lighting clause — applies to every generation regardless of
@@ -155,6 +155,19 @@ const COLOR_GRADE =
   "Colour grade: apply a refined editorial colour treatment across the whole photograph — a subtle warm cast in the highlights and a slightly cooler, deeper cast in the shadows (split-toning), never one flat colour temperature applied uniformly everywhere. The environment, backdrop and any props stay in a controlled, gently muted palette — real colour, never grey or lifeless, but never as saturated or vivid as the garment itself. The garment's own colour and pattern remain the single most saturated, vivid element in the frame exactly as photographed, so the eye is drawn to the product first. Tonal range is rich, not flat or washed out — real shadow depth and highlight detail, never a uniformly bright, contrast-less exposure.";
 
 /**
+ * Fallback hand-task instruction — from India-specific photography research
+ * (research/why-it-looks-ai.html, point 03, "How they carry the products"):
+ * "no hand-task language exists anywhere in the prompt system... one hand is
+ * almost always in service of the garment... never idle" in real fashion
+ * photography. Previously only the saree-back and lehenga/sharara-front
+ * cases below had any hand guidance at all — every other category, and even
+ * the saree FRONT view itself, left hands completely undirected. Applied
+ * wherever no more specific category+view hand instruction exists.
+ */
+const DEFAULT_HAND_TASK =
+  "One hand rests naturally at the side or gently touches the garment's fabric, hem, or edge, as if caught in a relaxed, natural moment — never idle, rigid, clenched, or hanging awkwardly. Fingers are relaxed and naturally curved, never stiff or unnaturally splayed.";
+
+/**
  * Category+view realism addenda, from India-specific photography research
  * (research/why-it-looks-ai.html): posture is mechanically load-bearing for
  * draped garments — an upright spine keeps pleats/pallu from visibly
@@ -169,12 +182,15 @@ function realismAddendum(category: string, viewId: string): string {
     if (viewId === "back") {
       return `${posture} The pallu falls exactly as already described — floor-length, undisturbed — but rendered as if a moment ago the model's hand adjusted it: one hand resting lightly near the pallu's edge at shoulder height, not gripping or lifting it, with a very gentle, soft natural sway at the pallu's lower edge from indoor air — never a dramatic flare or swing.`;
     }
-    return posture;
+    return `${posture} One hand rests lightly near the pallu's edge at the waist, as if just settled a moment ago — not gripping or lifting it.`;
   }
-  if ((cat === "lehenga" || cat === "sharara") && viewId === "front") {
-    return "One hand resting lightly near the dupatta's edge at the shoulder, as if just adjusted a moment ago.";
+  if (cat === "lehenga" || cat === "sharara") {
+    if (viewId === "front") {
+      return "One hand resting lightly near the dupatta's edge at the shoulder, as if just adjusted a moment ago.";
+    }
+    return DEFAULT_HAND_TASK;
   }
-  return "";
+  return DEFAULT_HAND_TASK;
 }
 
 function realismClause(category: string, viewId: string): string {
