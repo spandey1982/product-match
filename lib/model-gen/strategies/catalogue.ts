@@ -43,6 +43,8 @@ export interface StrategyProduct {
   detailNotes?: string | null;
   /** Back-image detail hints — used only for the back-view prompt. */
   backDetailNotes?: string | null;
+  /** Fabric type (closed list, lib/metadata/analyze.ts) — selects static/sculptural vs. motion-implying posing. */
+  material?: string | null;
   /**
    * Structured Garment Intelligence, when GI is enabled — the same object
    * `detailNotes` was rendered from. Used by the GI region-references (Phase
@@ -372,6 +374,7 @@ export async function runCatalogueStrategy(opts: {
       hasReference: geminiHasReference,
       // Back view uses back-image notes; all other views use front notes.
       detailNotes: isBack ? product.backDetailNotes : product.detailNotes,
+      material: product.material,
       // Same studio for front + back; the crop-derived close-ups inherit it.
       backdrop,
       // Pin the back to the front's realized backdrop colour (front defines it).

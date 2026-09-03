@@ -139,6 +139,7 @@ export async function runQuickListingStrategy(opts: {
     view: frontView,
     hasReference: Boolean(geminiDrapeRef),
     detailNotes: product.detailNotes,
+    material: product.material,
     backdrop,
     extraReferences: promptRefs,
   });

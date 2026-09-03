@@ -35,7 +35,7 @@ const RUBRIC = `You are a strict fashion e-commerce QA reviewer. Image 1 is an A
 - authenticity: looks like a real photograph, not obviously AI-generated
 - realism: natural body, pose and lighting; no artifacts or extra/missing limbs
 - garmentPreservation: the garment matches the product in shape, cut and colour
-- drapeQuality: the fabric falls and drapes naturally and correctly
+- drapeQuality: the fabric falls and drapes naturally and correctly; for draped garments (saree pallu, dupatta), pleats and drape lines are symmetrical and evenly spaced, not crooked, uneven, or bunched to one side — score this down even if the fabric physics otherwise look convincing
 - patternPreservation: the print/pattern/motif is preserved faithfully
 - textureQuality: fabric texture/weave is visible and convincing
 - productVisibility: the product is clearly shown, unobstructed and well-framed

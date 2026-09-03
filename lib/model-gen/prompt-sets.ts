@@ -223,6 +223,32 @@ function hairClause(gender: string): string {
   return "";
 }
 
+/**
+ * Fabric weight should select the pose, not just describe texture (research/
+ * why-it-looks-ai.html, point 02, "The appearance with the clothing on"):
+ * heavy silk holds structured pleats and calls for static, sculptural
+ * posing; light georgette/chiffon "shows its most beautiful movement when
+ * you walk" and calls for motion-implying poses instead. Previously nothing
+ * in the pipeline connected fabric weight to posing at all — Garment
+ * Intelligence's fabric-physics language is scoped strictly to the garment
+ * itself, never to how it behaves ON the body. Product.material is already
+ * a real, structured field (lib/metadata/analyze.ts's closed fabric list),
+ * populated at upload — this reuses it rather than adding new data.
+ */
+const HEAVY_STRUCTURED_MATERIALS = new Set(["Silk", "Velvet", "Brocade", "Wool", "Satin", "Khadi"]);
+const LIGHT_FLOWING_MATERIALS = new Set(["Chiffon", "Georgette", "Net", "Organza", "Muslin", "Crepe", "Viscose"]);
+
+function fabricPoseClause(material: string | null | undefined): string {
+  const m = material?.trim() ?? "";
+  if (HEAVY_STRUCTURED_MATERIALS.has(m)) {
+    return "This fabric is heavy and structured: the pose stays static and sculptural, holding the fabric's own natural structured pleats and fall — no implied movement, which would fight against how this weight of fabric actually behaves.";
+  }
+  if (LIGHT_FLOWING_MATERIALS.has(m)) {
+    return "This fabric is light and flowing: the pose gently implies motion, as if caught mid-step or stirred by a soft breeze — this fabric shows its most beautiful movement in motion, never standing perfectly rigid and still.";
+  }
+  return "";
+}
+
 export interface ViewPromptInput {
   category: string;
   color: string;
@@ -232,6 +258,8 @@ export interface ViewPromptInput {
   hasReference: boolean;
   /** Optional concise detail hints (prompt enrichment) to preserve fine detail. */
   detailNotes?: string | null;
+  /** Optional fabric type (Product.material) — selects static/sculptural vs. motion-implying posing. */
+  material?: string | null;
   /**
    * The studio backdrop fragment (from renderBackdropPrompt). Identical across
    * every view of a generation, which is what makes the set look like one
@@ -418,7 +446,7 @@ function extraImageClause(
 }
 
 export function buildViewPrompt(input: ViewPromptInput): string {
-  const { category, color, gender, view, hasReference, detailNotes, backdrop, studioAnchor, extraReferences } = input;
+  const { category, color, gender, view, hasReference, detailNotes, material, backdrop, studioAnchor, extraReferences } = input;
   const detail = detailClause(detailNotes);
   const backGuard = backGuardClause(view.id, detailNotes);
   const blouse = blouseClause(category, color);
@@ -428,6 +456,7 @@ export function buildViewPrompt(input: ViewPromptInput): string {
   const orientation = orientationClause(view.id);
   const realism = realismClause(category, view.id);
   const hair = hairClause(gender);
+  const fabricPose = fabricPoseClause(material);
   const extraCount = extraReferences?.length ?? 0;
   // When reference close-ups are supplied, the model is prone to compositing
   // them into the frame as floating swatches/detail panels (an e-commerce
@@ -469,6 +498,7 @@ export function buildViewPrompt(input: ViewPromptInput): string {
       orientation,
       realism,
       hair,
+      fabricPose,
       LIGHTING_CORE,
       COLOR_GRADE,
       swatchGuard,
@@ -488,6 +518,7 @@ export function buildViewPrompt(input: ViewPromptInput): string {
     orientation,
     realism,
     hair,
+    fabricPose,
     LIGHTING_CORE,
     COLOR_GRADE,
     swatchGuard,

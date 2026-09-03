@@ -242,6 +242,7 @@ export async function generateModelImages(
     backImageUrl,
     detailNotes,
     backDetailNotes,
+    material: product.material,
     garmentIntelligence,
   };
 
