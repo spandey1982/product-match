@@ -277,8 +277,8 @@ export function renderBackdropPrompt(preset: BackdropPreset): string {
   return [
     `Set in a professional fashion e-commerce photography studio with a seamless ${color.family} backdrop`,
     `lit with ${softness} ${direction} key light at ${exposure}, positioned to one side rather than directly overhead so the light has real direction and dimension, not a flat shadowless wash`,
-    `${grad} sweeping into a soft wall-to-floor transition with ${reflection}`,
-    "Keep the backdrop colour, brightness, lighting, gradient, floor transition, reflections, shadows, vignette and overall studio ambience uniform and consistent",
+    `${grad} sweeping into the floor as one continuous, seamless infinity-cove surface — a large-radius curve engineered so there is no visible seam, crease, fold, hem or border where wall becomes floor; the only change between them is the gentle gradient of light and tone described above, never a distinct curved line, edge or tucked-in seam, with ${reflection}`,
+    "Keep the backdrop colour, brightness, lighting, gradient, infinity-cove transition, reflections, shadows, vignette and overall studio ambience uniform and consistent",
     // Reinforces the SAME key light described above (never a second,
     // conflicting angle — research/why-it-looks-ai.html flags mixed lighting
     // concepts in one prompt as actively counterproductive) with the shadow

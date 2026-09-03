@@ -57,9 +57,23 @@ function decorClause(variation: SceneVariation, density: SceneDensity): string {
  * contrast, placed its foreground plant off to one side, appropriately
  * blurred, adding atmosphere without stealing focus — the same standard
  * every foreground element must meet from here on.
+ *
+ * Tightened after a second review (2026-09) of a cafe-patio render: a
+ * planter off to one side, out of the camera-model sightline, still ended
+ * up covering roughly a quarter of the frame and pulling attention away
+ * from the model. Root cause — defocus optically *enlarges* an element's
+ * footprint, so "off to the side and blurred" alone isn't sufficient; a
+ * small object close to the camera can still spread into a dominant shape.
+ * The user drew a clear line using the same image's other props (a chair
+ * and a stone planter) as the acceptable reference: those sit ahead of the
+ * model on her own depth line rather than near the camera, are only
+ * partially inside the frame, and read as modest, comparable in scale to
+ * each other — never a single element ballooning to hog the frame. Added
+ * an explicit frame-share cap to make that distinction concrete rather
+ * than relying on "modest" alone.
  */
 const FOREGROUND_RULE =
-  "Foreground element placement (mandatory): any foreground element sits to one side of the frame, never directly between the camera and the model, and never overlapping the model's face, body or the garment. The closer it is meant to read as being to the camera, the more strongly it must be out of focus — softly blurred and indistinct, never sharp enough to draw the eye away from the model. An element positioned near the model but off to the side, out of the direct camera-model sightline, and modest in size is fine and adds atmosphere.";
+  "Foreground element placement (mandatory): any element positioned directly between the camera and the model — anywhere in the camera-to-model sightline — is not allowed, no matter how blurred it is, and no element may overlap the model's face, body or the garment. An element that sits ahead of the model on her own depth line rather than close to the camera is fine even when only partially inside the frame, as long as it stays modest and comparable in scale to the scene's other environmental elements (like a chair or planter she is standing near) and never pulls the eye away from her. Anything genuinely close to the camera must be kept small to begin with, not just softly out of focus — defocus optically enlarges an element's footprint, so a small close object can still spread into a large, attention-grabbing shape; proximity to the camera is never an excuse for a prop to dominate a corner of the frame. As a hard guide, no single foreground or midground element should cover more than roughly 10% of the frame's area.";
 
 export function renderScenePrompt(
   scene: Scene,
