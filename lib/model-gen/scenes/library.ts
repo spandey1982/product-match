@@ -1,12 +1,36 @@
 /**
  * Scene Library — the Scenic Collection's content, not code.
  *
- * Launch set: 8 scenes across 5 Brand Packs, chosen to prove BOTH scene
+ * Current set: 7 scenes across 6 Brand Packs, chosen to prove BOTH scene
  * categories described in the brief:
- *  - "varies" scenes (Wedding, Diwali, Eid, Summer, Winter) — a recognizable
- *    identity that never repeats the exact same environment.
+ *  - "varies" scenes (Royal Heritage, Festive, Nature, Street Style) — a
+ *    recognizable identity that never repeats the exact same environment.
  *  - "consistent" scenes (Boutique, Editorial, Corporate) — a single curated
  *    layout, chosen when repeatability itself is the brand promise.
+ *
+ * ── Refactor (2026-09, direct user decision) ─────────────────────────────
+ * The original launch set had five festival/season scenes (Wedding, Diwali,
+ * Eid, Summer, Winter) — narrower and more calendar-specific than how real
+ * retailers actually catalogue year-round. Consolidated per direct user
+ * brief:
+ *  - Wedding → "Royal Heritage": same grandeur/heritage identity, trimmed to
+ *    its 3 strongest variations (Palace Courtyard, Heritage Haveli Entrance,
+ *    Rooftop Sunset) — dropped Mandap Hall and Banquet Hall as more
+ *    generic/replaceable event-hall settings.
+ *  - Diwali + Eid → one generic "Festive" scene, holiday-agnostic (no diya/
+ *    rangoli/crescent-moon iconography tied to one specific festival), whose
+ *    decor RICHNESS is decided by the garment's own fabric weight rather
+ *    than a manual slider — see Scene.autoDensityFromMaterial. Heavy/
+ *    structured fabric reads richer, with more ornate/antique/shining props
+ *    and warmer lighting; light/flowing fabric reads minimal and subtle,
+ *    muted colours, never bright or contrasting.
+ *  - Summer + Winter → one generic "Nature" scene, winter dropped entirely
+ *    (frost/snow/fireplace settings don't fit this platform's dominant
+ *    category — Indian ethnic wear isn't typically shot in winter cold).
+ *    Kept strictly to bright, sunlit outdoor park/viewpoint settings —
+ *    mostly summer-evening light, with autumn/spring-appropriate variations
+ *    (an orchard, an elevated viewpoint) folded in rather than surfaced as
+ *    their own season chip.
  *
  * ── Adding a new scene later ─────────────────────────────────────────────
  * This is the ENTIRE point of the Scene Library pattern: a new scene is pure
@@ -35,38 +59,35 @@
  * see docs/IMAGE_AI_ROADMAP.md §12 for the full table with proposed packs:
  *   Luxury Store · Resort · Café · Street Fashion · Office · Runway ·
  *   Heritage Architecture · Beach · Temple · Garden · Studio Interior
+ *
+ * ── Camera style guidance (2026-09, direct user decision) ────────────────
+ * Avoid outdoor night settings ("night", or "evening" read as after-dark)
+ * for everyday/ethnic-wear-oriented packs — live-tested and found to cause
+ * real rendering defects (foot placement, silhouette grounding) from the
+ * model/fabric interacting with scattered artificial light sources, and
+ * this platform's dominant category (Indian ethnic wear) isn't typically
+ * shot at night in real practice anyway. Party/western-wear packs are the
+ * legitimate exception. Where a night mood is genuinely wanted, keep it
+ * INDOOR (a well-lit hall or room) rather than outdoor — see Diwali/Eid's
+ * indoor evening variations (luxury-living-room, majlis-lounge) for the
+ * pattern: rich, controlled ambient light, not open/scattered night light.
  */
 import type { Scene } from "./types";
 
 export const SCENES: Scene[] = [
   // ── Festive pack ────────────────────────────────────────────────────────
   {
-    id: "wedding",
-    label: "Wedding",
+    id: "royal-heritage",
+    label: "Royal Heritage",
     brandPack: "festive",
     variationPolicy: "varies",
-    cameraStyles: ["golden-hour", "evening", "indoor-studio"],
+    cameraStyles: ["golden-hour", "evening"],
     palette: {
       base: ["warm ivory", "soft gold", "champagne"],
       accent: ["emerald", "sapphire blue", "blush pink", "antique gold"],
       avoid: ["red", "maroon"],
     },
     variations: [
-      {
-        id: "mandap-hall",
-        label: "Traditional Mandap Hall",
-        environment: "an ornately decorated traditional mandap hall with carved wooden pillars and drifting sheer drapes",
-        depth: {
-          foreground: "a soft, blurred edge of floral mandap drapery",
-          midground: "carved pillars framing the model with warm ambient glow",
-          background: "a softly lit hall interior with a hint of floral canopy, out of focus",
-        },
-        decor: {
-          minimal: ["a single strand of soft fairy lights"],
-          classic: ["carved pillar detail", "soft floral garlands", "warm brass lanterns"],
-          rich: ["carved pillar detail", "layered floral garlands", "brass lanterns", "sheer canopy drapery", "scattered rose petals underfoot"],
-        },
-      },
       {
         id: "palace-courtyard",
         label: "Palace Courtyard",
@@ -80,21 +101,6 @@ export const SCENES: Scene[] = [
           minimal: ["a single glowing lantern"],
           classic: ["sandstone jali screen", "a row of glowing lanterns", "potted jasmine"],
           rich: ["sandstone jali screen", "rows of glowing lanterns", "potted jasmine", "draped marigold strands", "a distant fountain"],
-        },
-      },
-      {
-        id: "banquet-hall",
-        label: "Grand Banquet Hall",
-        environment: "an elegant banquet hall with soft chandeliers and draped fabric ceilings",
-        depth: {
-          foreground: "a blurred edge of a floral centrepiece",
-          midground: "soft chandelier glow framing the model",
-          background: "draped fabric ceiling and warm hall lighting, out of focus",
-        },
-        decor: {
-          minimal: ["a single chandelier glow"],
-          classic: ["chandelier glow", "draped ceiling fabric", "a low floral centrepiece"],
-          rich: ["chandelier glow", "draped ceiling fabric", "floral centrepieces", "gold accent chairs", "soft uplighting on the walls"],
         },
       },
       {
@@ -130,15 +136,20 @@ export const SCENES: Scene[] = [
     ],
     brandingHint: { preferredLogo: "light", brightness: 0.55 },
     theme: { icon: "Gem", color: "#B8860B" },
-    negativeExtras: ["no wedding guests or officiant in frame", "no bridal party other than the single model"],
-    recommendFor: { occasion: ["Wedding", "Bridal", "Anniversary"], styleTags: ["Bridal", "Royal", "Traditional"] },
+    negativeExtras: ["no crowd of onlookers, guests or event staff in frame — the model is the only person shown"],
+    recommendFor: { occasion: ["Wedding", "Bridal", "Anniversary", "Reception"], styleTags: ["Bridal", "Royal", "Traditional"] },
   },
+  // Merged from the former Diwali + Eid scenes — holiday-agnostic on
+  // purpose (see the file header's 2026-09 refactor note): no diya/rangoli/
+  // crescent-moon iconography tied to one specific festival. Decor richness
+  // is automatic (autoDensityFromMaterial), not a manual slider.
   {
-    id: "diwali",
-    label: "Diwali",
+    id: "festive",
+    label: "Festive",
     brandPack: "festive",
     variationPolicy: "varies",
-    cameraStyles: ["evening", "night", "indoor-studio"],
+    autoDensityFromMaterial: true,
+    cameraStyles: ["evening", "indoor-studio"],
     palette: {
       base: ["warm amber", "deep terracotta", "burnished gold"],
       accent: ["emerald", "royal blue", "magenta", "gold"],
@@ -146,190 +157,96 @@ export const SCENES: Scene[] = [
     },
     variations: [
       {
-        id: "traditional-courtyard",
-        label: "Traditional Courtyard",
-        environment: "a traditional Indian home courtyard glowing with rows of diyas at dusk",
+        id: "lantern-lit-courtyard",
+        label: "Lantern-Lit Courtyard",
+        cameraStyle: "evening",
+        environment: "a traditional Indian home courtyard warmly lit at dusk",
         depth: {
-          foreground: "a softly blurred row of terracotta diyas",
-          midground: "a rangoli pattern on the courtyard floor beside the model",
-          background: "warm-lit archways and a dusky sky, softly defocused",
+          foreground: "a softly blurred row of small lamps",
+          midground: "warm-lit archways framing the model",
+          background: "a dusky courtyard sky, softly defocused",
         },
         decor: {
-          minimal: ["a single row of diyas"],
-          classic: ["diyas along the floor", "a rangoli pattern", "a marigold garland on the doorway"],
-          rich: ["diyas along the floor and steps", "an elaborate rangoli", "marigold garlands", "brass lanterns", "string lights along the archway"],
+          minimal: ["a single small lamp, softly muted"],
+          classic: ["a row of small lamps", "a floral garland on the doorway"],
+          rich: ["lamps along the floor and steps", "layered floral garlands", "antique brass lanterns", "warm string lights along the archway", "a shimmering metallic-thread runner underfoot"],
         },
       },
       {
-        id: "luxury-living-room",
-        label: "Luxury Living Room",
-        environment: "an elegant, softly lit living room decorated for Diwali with warm ambient lighting",
+        id: "festive-living-room",
+        label: "Festive Living Room",
+        cameraStyle: "indoor-studio",
+        environment: "an elegant, softly lit living room decorated for a festive occasion with warm ambient lighting",
         depth: {
-          foreground: "a blurred edge of a brass diya tray on a side table",
+          foreground: "a blurred edge of a side table",
           midground: "warm festive lighting framing the model near a decorated console",
           background: "a softly furnished living room with festive accents, out of focus",
         },
         decor: {
-          minimal: ["a single brass diya tray"],
-          classic: ["a brass diya tray", "a small marigold arrangement", "warm string lights along a shelf"],
-          rich: ["a brass diya tray", "marigold arrangements", "warm string lights", "festive floor cushions", "a lit rangoli motif rug"],
+          minimal: ["a single small floral arrangement, subdued in colour"],
+          classic: ["a brass tray", "a small floral arrangement", "warm string lights along a shelf"],
+          rich: ["an antique brass tray", "shining floral arrangements", "warm string lights", "festive floor cushions with metallic embroidery", "a softly gleaming decorative rug"],
         },
       },
       {
-        id: "outdoor-patio",
-        label: "Outdoor Patio",
-        environment: "an open outdoor patio strung with warm lights for a Diwali evening gathering",
+        id: "festive-garden-terrace",
+        label: "Garden Terrace Evening",
+        cameraStyle: "evening",
+        environment: "a quiet garden terrace at dusk strung with soft warm lights",
         depth: {
-          foreground: "a softly blurred potted marigold plant",
-          midground: "warm string lights framing the model against the patio railing",
-          background: "a dusky garden beyond the patio, softly defocused",
+          foreground: "a softly blurred potted plant",
+          midground: "warm lights framing the model against the terrace railing",
+          background: "a dusky garden beyond, softly defocused",
         },
         decor: {
-          minimal: ["a single strand of warm lights"],
-          classic: ["warm string lights", "potted marigolds", "a few floating diyas on a water bowl"],
-          rich: ["warm string lights", "potted marigolds", "floating diyas", "lanterns hung along the railing", "a low rangoli near the steps"],
+          minimal: ["a single potted plant, muted tones"],
+          classic: ["a strand of warm lights", "potted plants"],
+          rich: ["warm string lights", "potted plants with brass planters", "hanging lanterns", "a shimmering cushion vignette", "a low table set with a gleaming brass tray"],
         },
       },
       {
-        id: "modern-apartment",
-        label: "Modern Apartment",
-        environment: "a contemporary apartment balcony softly decorated for Diwali against a city dusk",
+        id: "heritage-hall",
+        label: "Heritage Hall",
+        cameraStyle: "indoor-studio",
+        environment: "an ornate heritage hall with warm architectural lighting",
         depth: {
-          foreground: "a softly blurred string of fairy lights along the railing",
-          midground: "clean modern railing lines framing the model",
-          background: "a soft city skyline at dusk, out of focus",
+          foreground: "a softly blurred edge of an archway",
+          midground: "an archway framing the model",
+          background: "a grand hall interior with soft warm light, out of focus",
         },
         decor: {
-          minimal: ["a single small diya on the railing"],
-          classic: ["a few diyas on the railing", "fairy lights", "a small potted plant"],
-          rich: ["diyas along the railing", "fairy lights", "potted plants", "a festive lantern", "a folded rangoli-print cushion"],
-        },
-      },
-      {
-        id: "heritage-entrance",
-        label: "Heritage Entrance",
-        environment: "the lit entrance of a heritage haveli decorated for Diwali with lanterns and rangoli",
-        depth: {
-          foreground: "a softly blurred hand-painted rangoli at the threshold",
-          midground: "carved doorway and hanging lanterns framing the model",
-          background: "a warmly lit inner courtyard glimpsed beyond, softly defocused",
-        },
-        decor: {
-          minimal: ["a single lantern by the door"],
-          classic: ["hanging lanterns", "a rangoli at the threshold", "a marigold garland on the door"],
-          rich: ["hanging lanterns", "an elaborate rangoli", "marigold garlands", "diyas along the steps", "brass urli with floating flowers"],
+          minimal: ["a single lantern near the archway, softly muted"],
+          classic: ["a tiled or carved archway", "a hanging lantern"],
+          rich: ["an ornately tiled archway", "antique hanging lanterns", "a gleaming brass urli with floating flowers", "patterned floor rugs", "sheer drapery catching the light"],
         },
       },
     ],
     brandingHint: { preferredLogo: "light", brightness: 0.4 },
     theme: { icon: "Flame", color: "#D97706" },
-    negativeExtras: ["no visible flames beyond small diya lamps", "no fireworks or smoke"],
-    recommendFor: { occasion: ["Festive", "Traditional", "Religious"], styleTags: ["Traditional", "Festive", "Ethnic"] },
-  },
-  {
-    id: "eid",
-    label: "Eid",
-    brandPack: "festive",
-    variationPolicy: "varies",
-    cameraStyles: ["evening", "night"],
-    palette: {
-      base: ["soft moonlit silver", "warm ivory", "deep teal"],
-      accent: ["emerald", "gold", "sapphire"],
-      avoid: ["green"],
-    },
-    variations: [
-      {
-        id: "moonlit-courtyard",
-        label: "Moonlit Courtyard",
-        environment: "a serene courtyard under soft moonlight with geometric lattice screens",
-        depth: {
-          foreground: "a softly blurred lattice (jali) screen edge",
-          midground: "a carved jali screen casting soft patterned light near the model",
-          background: "a moonlit courtyard fading into soft darkness, out of focus",
-        },
-        decor: {
-          minimal: ["a single hanging lantern"],
-          classic: ["a carved jali screen", "hanging lanterns", "a crescent-motif light fixture"],
-          rich: ["a carved jali screen", "hanging lanterns", "a crescent-motif fixture", "floor cushions", "a low brass tray of dates"],
-        },
-      },
-      {
-        id: "majlis-lounge",
-        label: "Majlis Lounge",
-        environment: "an elegant majlis-style lounge with low seating and warm lantern light",
-        depth: {
-          foreground: "a softly blurred low brass tray",
-          midground: "low floor cushions and warm lantern glow framing the model",
-          background: "richly patterned lounge cushions and drapery, softly defocused",
-        },
-        decor: {
-          minimal: ["a single lantern"],
-          classic: ["floor cushions", "a brass lantern", "a patterned floor rug"],
-          rich: ["floor cushions", "brass lanterns", "a patterned rug", "a low brass tray with dates", "sheer drapery panels"],
-        },
-      },
-      {
-        id: "garden-terrace",
-        label: "Garden Terrace",
-        environment: "a quiet garden terrace at dusk strung with soft lantern lights",
-        depth: {
-          foreground: "a softly blurred potted palm",
-          midground: "hanging lanterns framing the model against the terrace railing",
-          background: "a dusky garden beyond, softly defocused",
-        },
-        decor: {
-          minimal: ["a single hanging lantern"],
-          classic: ["hanging lanterns", "potted palms", "a folded prayer rug motif cushion"],
-          rich: ["hanging lanterns", "potted palms", "a cushion vignette", "string lights along the railing", "a small water feature"],
-        },
-      },
-      {
-        id: "ornate-palace-hall",
-        label: "Ornate Palace Hall",
-        environment: "an ornate palace hall with geometric tilework and soft warm lighting",
-        depth: {
-          foreground: "a softly blurred edge of geometric tile detail",
-          midground: "an archway with tilework framing the model",
-          background: "a grand hall interior with soft warm light, out of focus",
-        },
-        decor: {
-          minimal: ["a single lantern near the archway"],
-          classic: ["a tiled archway", "hanging lanterns", "a low brass urli"],
-          rich: ["a tiled archway", "hanging lanterns", "a brass urli with petals", "patterned floor rugs", "sheer drapery"],
-        },
-      },
-      {
-        id: "rooftop-evening",
-        label: "Rooftop Evening Gathering",
-        environment: "an open rooftop set for an Eid evening gathering under a soft dusk sky",
-        depth: {
-          foreground: "a softly blurred string of warm lights along the railing",
-          midground: "warm lantern glow framing the model against the skyline",
-          background: "a soft city skyline at dusk, out of focus",
-        },
-        decor: {
-          minimal: ["a single strand of warm lights"],
-          classic: ["warm string lights", "a low seating vignette", "potted plants"],
-          rich: ["warm string lights", "a seating vignette", "potted plants", "lanterns", "a low table with dates and sweets"],
-        },
-      },
+    negativeExtras: [
+      "no visible flames beyond small lamp-style lighting",
+      "no fireworks or smoke",
+      "no religious text, calligraphy, or religious iconography rendered as a literal graphic",
     ],
-    brandingHint: { preferredLogo: "light", brightness: 0.45 },
-    theme: { icon: "Moon", color: "#2DBE9C" },
-    negativeExtras: ["no religious text or calligraphy rendered as legible writing", "no crescent-moon iconography used as a literal graphic overlay"],
-    recommendFor: { occasion: ["Religious", "Festive", "Traditional"], styleTags: ["Traditional", "Ethnic", "Festive"] },
+    recommendFor: { occasion: ["Festive", "Traditional", "Religious"], styleTags: ["Traditional", "Festive", "Ethnic"] },
   },
 
   // ── Nature pack ──────────────────────────────────────────────────────────
+  // Merged from the former Summer + Winter scenes — winter dropped entirely
+  // (frost/snow/fireplace settings don't fit this platform's dominant
+  // category; see the file header's 2026-09 refactor note). Strictly bright,
+  // sunlit outdoor park/viewpoint settings — mostly summer-evening light,
+  // with autumn/spring folded in via warm-afternoon variations rather than
+  // surfaced as their own season chip.
   {
-    id: "summer",
-    label: "Summer",
+    id: "nature",
+    label: "Nature",
     brandPack: "nature",
     variationPolicy: "varies",
-    cameraStyles: ["morning", "soft-daylight", "golden-hour"],
+    cameraStyles: ["soft-daylight", "morning", "golden-hour"],
     palette: {
       base: ["soft ivory", "sandy beige", "sky blue"],
-      accent: ["coral", "citrus yellow", "seafoam green"],
+      accent: ["coral", "warm amber", "sage green"],
       avoid: ["yellow", "orange"],
     },
     variations: [
@@ -349,48 +266,34 @@ export const SCENES: Scene[] = [
         },
       },
       {
-        id: "poolside-terrace",
-        label: "Poolside Terrace",
-        environment: "a bright poolside terrace with clean white loungers and soft water reflections",
+        id: "open-parkland",
+        label: "Open Parkland",
+        environment: "a sunlit open parkland with scattered trees and soft green lawns, away from any street or path",
         depth: {
-          foreground: "a softly blurred edge of a woven sun lounger",
-          midground: "soft water reflections framing the model",
-          background: "a calm pool and clear sky, out of focus",
+          foreground: "a softly blurred patch of tall grass",
+          midground: "scattered trees framing the model across the open lawn",
+          background: "rolling green lawns fading into soft distance, out of focus",
         },
         decor: {
-          minimal: ["a single woven lounger edge"],
-          classic: ["a woven lounger", "a potted palm", "soft water reflections"],
-          rich: ["woven loungers", "potted palms", "water reflections", "a striped sun umbrella", "citrus fruit in a bowl on a side table"],
+          minimal: ["a single scattered tree at the edge of frame"],
+          classic: ["scattered trees", "open green lawn", "soft wildflowers underfoot"],
+          rich: ["scattered trees", "open green lawn", "wildflowers", "a distant tree line", "dappled cloud shadow across the grass"],
         },
       },
       {
-        id: "botanical-greenhouse",
-        label: "Botanical Greenhouse",
-        environment: "a bright botanical greenhouse with lush leafy plants and soft filtered light",
+        id: "scenic-viewpoint",
+        label: "Scenic Viewpoint",
+        cameraStyle: "golden-hour",
+        environment: "an elevated scenic viewpoint overlooking rolling hills or a valley under clear bright daylight",
         depth: {
-          foreground: "a softly blurred large leaf",
-          midground: "lush greenery framing the model with soft filtered light",
-          background: "a glass greenhouse structure with plants beyond, out of focus",
+          foreground: "a softly blurred low stone ledge or railing",
+          midground: "open sky and distant hills framing the model",
+          background: "rolling hills or a valley fading into soft haze, out of focus",
         },
         decor: {
-          minimal: ["a few leafy plants"],
-          classic: ["leafy plants", "hanging ferns", "a wicker planter"],
-          rich: ["leafy plants", "hanging ferns", "wicker planters", "a small water feature", "scattered light through glass panes"],
-        },
-      },
-      {
-        id: "coastal-veranda",
-        label: "Coastal Veranda",
-        environment: "an airy coastal veranda with sheer white curtains drifting in a sea breeze",
-        depth: {
-          foreground: "a softly blurred drifting sheer curtain",
-          midground: "sheer white curtains framing the model",
-          background: "a soft coastal view beyond the veranda, out of focus",
-        },
-        decor: {
-          minimal: ["a single drifting sheer curtain"],
-          classic: ["sheer curtains", "a rattan chair", "a potted seagrass plant"],
-          rich: ["sheer curtains", "a rattan chair", "seagrass planters", "a woven rug", "a driftwood accent table"],
+          minimal: ["a single stone ledge edge"],
+          classic: ["a stone ledge or railing", "soft grass at the model's feet", "distant hills"],
+          rich: ["a stone ledge or railing", "soft grass", "wildflowers at the edge", "distant hills", "warm golden haze over the valley"],
         },
       },
       {
@@ -411,99 +314,7 @@ export const SCENES: Scene[] = [
     ],
     brandingHint: { preferredLogo: "dark", brightness: 0.85 },
     theme: { icon: "Sun", color: "#F2B705" },
-    recommendFor: { season: ["Summer", "Spring", "All Season"], occasion: ["Casual", "Party"], styleTags: ["Casual", "Boho"] },
-  },
-  {
-    id: "winter",
-    label: "Winter",
-    brandPack: "nature",
-    variationPolicy: "varies",
-    cameraStyles: ["soft-daylight", "morning", "indoor-studio"],
-    palette: {
-      base: ["cool frost white", "soft slate grey", "warm cocoa"],
-      accent: ["deep forest green", "burgundy", "warm amber"],
-      avoid: ["white", "grey"],
-    },
-    variations: [
-      {
-        id: "frosted-garden",
-        label: "Frosted Garden",
-        environment: "a quiet garden lightly dusted with frost under soft winter daylight",
-        depth: {
-          foreground: "a softly blurred frost-dusted branch",
-          midground: "bare, frost-touched shrubs framing the model",
-          background: "a soft, misty winter garden, out of focus",
-        },
-        decor: {
-          minimal: ["a single frost-dusted branch"],
-          classic: ["frost-dusted branches", "a stone garden bench", "soft morning mist"],
-          rich: ["frost-dusted branches", "a stone bench", "morning mist", "a scattering of fallen leaves", "a small frozen pond edge"],
-        },
-      },
-      {
-        id: "alpine-lodge",
-        label: "Alpine Lodge Interior",
-        environment: "a cosy alpine lodge interior with warm wood panelling and soft firelight",
-        depth: {
-          foreground: "a softly blurred wool throw draped over a chair",
-          midground: "warm wood panelling and soft firelight framing the model",
-          background: "a lodge interior with a glowing fireplace, out of focus",
-        },
-        decor: {
-          minimal: ["a single wool throw"],
-          classic: ["a wool throw", "a glowing fireplace", "a wooden side table"],
-          rich: ["a wool throw", "a glowing fireplace", "a wooden side table", "a stack of firewood", "warm hanging string lights"],
-        },
-      },
-      {
-        id: "snow-dusted-courtyard",
-        label: "Snow-Dusted Courtyard",
-        environment: "a heritage courtyard lightly dusted with snow under soft overcast light",
-        depth: {
-          foreground: "a softly blurred snow-dusted stone ledge",
-          midground: "snow-dusted archways framing the model",
-          background: "a soft, muted courtyard beyond, out of focus",
-        },
-        decor: {
-          minimal: ["a single snow-dusted ledge"],
-          classic: ["a snow-dusted ledge", "bare branches", "a stone lantern"],
-          rich: ["a snow-dusted ledge", "bare branches", "a stone lantern", "soft snowfall in the air", "a wrought-iron bench"],
-        },
-      },
-      {
-        id: "fireplace-lounge",
-        label: "Fireplace Lounge",
-        environment: "an elegant lounge with a crackling fireplace and warm ambient light",
-        depth: {
-          foreground: "a softly blurred edge of a velvet armchair",
-          midground: "warm fireplace glow framing the model",
-          background: "a softly lit lounge interior, out of focus",
-        },
-        decor: {
-          minimal: ["a single fireplace glow"],
-          classic: ["a fireplace", "a velvet armchair", "a wool throw"],
-          rich: ["a fireplace", "a velvet armchair", "a wool throw", "a stack of books on a side table", "soft candlelight accents"],
-        },
-      },
-      {
-        id: "pine-forest-edge",
-        label: "Pine Forest Edge",
-        environment: "the edge of a quiet pine forest with soft winter light filtering through the trees",
-        depth: {
-          foreground: "a softly blurred pine branch",
-          midground: "tall pine trunks framing the model",
-          background: "a soft, misty pine forest, out of focus",
-        },
-        decor: {
-          minimal: ["a single pine branch"],
-          classic: ["pine branches", "a fallen log", "soft ground mist"],
-          rich: ["pine branches", "a fallen log", "ground mist", "a scattering of pinecones", "soft filtered light shafts"],
-        },
-      },
-    ],
-    brandingHint: { preferredLogo: "dark", brightness: 0.78 },
-    theme: { icon: "Snowflake", color: "#5B8DBE" },
-    recommendFor: { season: ["Winter", "Autumn"], styleTags: ["Formal", "Contemporary"] },
+    recommendFor: { season: ["Summer", "Spring", "Autumn", "All Season"], occasion: ["Casual", "Party"], styleTags: ["Casual", "Boho"] },
   },
 
   // ── Boutique pack (consistent) ──────────────────────────────────────────
@@ -576,6 +387,128 @@ export const SCENES: Scene[] = [
     recommendFor: { styleTags: ["Contemporary", "Fusion", "Boho"], occasion: ["Party"] },
   },
 
+  // ── Street pack (varies) ─────────────────────────────────────────────────
+  // Authored from direct competitor benchmarking (karchobi.in, 2026-09) —
+  // fills the "Café" / "Street Fashion" slots this file's own future-roster
+  // comment has named since launch but never authored. Every karchobi photo
+  // inspected used one of these five settings; bundled under one scene
+  // identity the same way Wedding bundles mandap/palace/banquet/haveli/
+  // rooftop under itself, rather than splitting into two separate scenes.
+  //
+  // Deliberately all-daytime (2026-09, direct user guidance): an outdoor
+  // night variation ("Evening City Street") was authored and live-tested
+  // here first, but outdoor night lighting proved genuinely hard to render
+  // reliably — model/fabric interaction with far, scattered artificial
+  // light sources produced real defects (foot placement, silhouette
+  // grounding) that daytime renders didn't have. This platform's dominant
+  // category is Indian ethnic wear, which isn't typically shot at night in
+  // real practice anyway — party/western wear is the exception, not the
+  // rule, and belongs in its own future pack rather than bent into Street
+  // Style's everyday-casual identity. GUIDANCE FOR FUTURE SCENES: avoid
+  // outdoor night generally; where a night mood is genuinely called for
+  // (e.g. a future party/evening-glam pack), keep it INDOOR — a well-lit
+  // hall or room gives the rich, controlled ambient light that fabric and
+  // model rendering actually need, without outdoor night's uncontrolled,
+  // scattered light sources.
+  {
+    id: "street-style",
+    label: "Street Style",
+    brandPack: "street",
+    variationPolicy: "varies",
+    cameraStyles: ["soft-daylight", "golden-hour", "outdoor"],
+    palette: {
+      base: ["warm stone grey", "sandy taupe", "weathered concrete"],
+      accent: ["terracotta", "warm brass", "deep olive green"],
+      avoid: ["grey", "beige"],
+    },
+    variations: [
+      {
+        id: "cafe-patio",
+        label: "Café Patio",
+        environment: "an outdoor café patio with woven rattan furniture and lush potted plants, softly shaded from direct sun",
+        depth: {
+          foreground: "a softly blurred cluster of potted plant leaves at the frame edge",
+          midground: "rattan café chairs and low tables framing the model",
+          background: "more potted greenery and the café's stone facade, softly defocused",
+        },
+        decor: {
+          minimal: ["a single potted plant"],
+          classic: ["potted plants", "a rattan chair", "a stone planter"],
+          rich: ["potted plants", "rattan furniture", "stone planters", "a folded café umbrella", "scattered fallen leaves on the pavement"],
+        },
+      },
+      {
+        id: "high-street-walkway",
+        label: "High Street Walkway",
+        cameraStyle: "golden-hour",
+        environment: "an upscale open-air high-street shopping promenade with polished stone paving and storefront awnings",
+        depth: {
+          foreground: "a softly blurred café table at the frame edge",
+          midground: "storefront glass and warm awnings framing the model",
+          background: "a row of boutique facades receding down the promenade, softly defocused",
+        },
+        decor: {
+          minimal: ["a single storefront awning edge"],
+          classic: ["storefront awnings", "potted topiary", "polished stone paving"],
+          rich: ["storefront awnings", "potted topiary", "stone paving", "string café lights overhead", "a parked bicycle at the edge of frame"],
+        },
+      },
+      {
+        id: "tree-lined-avenue",
+        label: "Tree-Lined Avenue",
+        environment: "a leafy tree-lined city avenue with dappled sunlight filtering through the canopy",
+        depth: {
+          foreground: "a softly blurred low sidewalk café table",
+          midground: "tree trunks and hanging branches framing the model",
+          background: "a soft green canopy tunnel of trees receding down the avenue, out of focus",
+        },
+        decor: {
+          minimal: ["a single tree trunk at the frame edge"],
+          classic: ["tree trunks", "a sidewalk café table", "fallen leaves underfoot"],
+          rich: ["tree trunks", "a sidewalk café table", "fallen leaves", "a parked vintage bicycle", "distant storefronts glimpsed through the trees"],
+        },
+      },
+      {
+        id: "city-park-pathway",
+        label: "City Park Pathway",
+        environment: "a sunlit city park pathway lined with trees and open green lawns",
+        depth: {
+          foreground: "a softly blurred park bench edge",
+          midground: "a tree-lined gravel path framing the model",
+          background: "open green lawns and distant trees, softly defocused",
+        },
+        decor: {
+          minimal: ["a single park bench"],
+          classic: ["a park bench", "scattered trees", "a gravel path"],
+          rich: ["a park bench", "scattered trees", "a gravel path", "a distant fountain", "a few fallen leaves on the path"],
+        },
+      },
+      {
+        id: "boutique-lined-lane",
+        label: "Boutique-Lined Lane",
+        environment: "a quiet cobblestone pedestrian lane lined with small independent boutiques and hanging planters",
+        depth: {
+          foreground: "a softly blurred hanging planter box",
+          midground: "cobblestone paving and boutique doorways framing the model",
+          background: "the lane curving away with more storefronts, softly defocused",
+        },
+        decor: {
+          minimal: ["a single hanging planter"],
+          classic: ["hanging planters", "cobblestone texture", "a painted boutique door"],
+          rich: ["hanging planters", "cobblestones", "painted doors", "a bicycle leaning against a wall", "a chalkboard café sign"],
+        },
+      },
+    ],
+    brandingHint: { preferredLogo: "dark", brightness: 0.8 },
+    theme: { icon: "Footprints", color: "#8A8378" },
+    negativeExtras: [
+      "no other pedestrians or crowds in frame — the model is the only person shown",
+      "no legible shop signage, brand names, or logos anywhere in the scene",
+      "no vehicles, bicycles or license plates rendered in sharp, legible focus",
+    ],
+    recommendFor: { occasion: ["Casual", "Everyday"], styleTags: ["Casual", "Contemporary"], season: ["All Season"] },
+  },
+
   // ── Corporate pack (consistent) ─────────────────────────────────────────
   {
     id: "corporate",
@@ -631,6 +564,7 @@ export interface BrandPackMeta {
 export const BRAND_PACKS: BrandPackMeta[] = [
   { id: "festive", label: "Festive Collection" },
   { id: "nature", label: "Nature Collection" },
+  { id: "street", label: "Street Style Collection" },
   { id: "boutique", label: "Boutique Collection" },
   { id: "editorial", label: "Editorial Collection" },
   { id: "corporate", label: "Corporate Collection" },

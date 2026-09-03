@@ -115,7 +115,7 @@ export const BACKDROP_PRESETS: BackdropPreset[] = [
     neutral: true,
     swatch: { wall: "#f1ebe1", wallDeep: "#e7dfce", floor: "#d6ccb6", vignette: "rgba(120,100,60,0.10)" },
     color: { family: "warm beige off-white", saturation: 0.18, brightness: 0.9 },
-    lighting: { softness: 0.85, direction: "top", intensity: 0.78 },
+    lighting: { softness: 0.85, direction: "top-left", intensity: 0.78 },
     gradient: { falloff: 0.35 },
     floor: { transition: 0.72, reflection: 0.18 },
     branding: { preferredLogo: "dark" },
@@ -128,7 +128,7 @@ export const BACKDROP_PRESETS: BackdropPreset[] = [
     neutral: true,
     swatch: { wall: "#fcfcfb", wallDeep: "#f2f1ef", floor: "#e3e2dd", vignette: "rgba(80,80,80,0.07)" },
     color: { family: "neutral soft white", saturation: 0.04, brightness: 0.97 },
-    lighting: { softness: 0.9, direction: "top", intensity: 0.85 },
+    lighting: { softness: 0.9, direction: "top-left", intensity: 0.85 },
     gradient: { falloff: 0.28 },
     floor: { transition: 0.72, reflection: 0.2 },
     branding: { preferredLogo: "dark" },
@@ -141,7 +141,7 @@ export const BACKDROP_PRESETS: BackdropPreset[] = [
     neutral: true,
     swatch: { wall: "#ecedef", wallDeep: "#dcdee1", floor: "#c6c8cd", vignette: "rgba(60,65,75,0.10)" },
     color: { family: "cool stone grey", saturation: 0.06, brightness: 0.84 },
-    lighting: { softness: 0.82, direction: "top", intensity: 0.72 },
+    lighting: { softness: 0.82, direction: "top-left", intensity: 0.72 },
     gradient: { falloff: 0.4 },
     floor: { transition: 0.72, reflection: 0.16 },
     branding: { preferredLogo: "dark" },
@@ -154,7 +154,7 @@ export const BACKDROP_PRESETS: BackdropPreset[] = [
     neutral: false,
     swatch: { wall: "#ebf0f4", wallDeep: "#d9e2ec", floor: "#c1cedd", vignette: "rgba(40,70,110,0.10)" },
     color: { family: "cool mist blue", saturation: 0.22, brightness: 0.88 },
-    lighting: { softness: 0.84, direction: "top", intensity: 0.74 },
+    lighting: { softness: 0.84, direction: "top-left", intensity: 0.74 },
     gradient: { falloff: 0.38 },
     floor: { transition: 0.72, reflection: 0.18 },
     branding: { preferredLogo: "dark" },
@@ -167,7 +167,7 @@ export const BACKDROP_PRESETS: BackdropPreset[] = [
     neutral: false,
     swatch: { wall: "#f9eef1", wallDeep: "#f1dde3", floor: "#e3c5cf", vignette: "rgba(120,50,75,0.09)" },
     color: { family: "warm blush pink", saturation: 0.24, brightness: 0.9 },
-    lighting: { softness: 0.86, direction: "top", intensity: 0.76 },
+    lighting: { softness: 0.86, direction: "top-left", intensity: 0.76 },
     gradient: { falloff: 0.34 },
     floor: { transition: 0.72, reflection: 0.18 },
     branding: { preferredLogo: "dark" },
@@ -180,7 +180,7 @@ export const BACKDROP_PRESETS: BackdropPreset[] = [
     neutral: true,
     swatch: { wall: "#f8f1e3", wallDeep: "#efe4cd", floor: "#e0cfae", vignette: "rgba(120,95,40,0.10)" },
     color: { family: "warm cream", saturation: 0.2, brightness: 0.92 },
-    lighting: { softness: 0.86, direction: "top", intensity: 0.78 },
+    lighting: { softness: 0.86, direction: "top-left", intensity: 0.78 },
     gradient: { falloff: 0.32 },
     floor: { transition: 0.72, reflection: 0.18 },
     branding: { preferredLogo: "dark" },
@@ -276,9 +276,19 @@ export function renderBackdropPrompt(preset: BackdropPreset): string {
 
   return [
     `Set in a professional fashion e-commerce photography studio with a seamless ${color.family} backdrop`,
-    `lit with ${softness} ${direction} lighting at ${exposure}`,
-    `${grad} sweeping into a soft wall-to-floor transition with ${reflection}`,
-    "Keep the backdrop colour, brightness, lighting, gradient, floor transition, reflections, shadows, vignette and overall studio ambience uniform and consistent",
+    `lit with ${softness} ${direction} key light at ${exposure}, positioned to one side rather than directly overhead so the light has real direction and dimension, not a flat shadowless wash`,
+    `${grad} sweeping into the floor as one continuous, seamless infinity-cove surface — a large-radius curve engineered so there is no visible seam, crease, fold, hem or border where wall becomes floor; the only change between them is the gentle gradient of light and tone described above, never a distinct curved line, edge or tucked-in seam, with ${reflection}`,
+    "Keep the backdrop colour, brightness, lighting, gradient, infinity-cove transition, reflections, shadows, vignette and overall studio ambience uniform and consistent",
+    // Reinforces the SAME key light described above (never a second,
+    // conflicting angle — research/why-it-looks-ai.html flags mixed lighting
+    // concepts in one prompt as actively counterproductive) with the shadow
+    // physics, rim-light and skin-tone warmth that were previously entirely
+    // absent: a real contact shadow, a falloff shadow on the far side of the
+    // body, a rim-light separating the model from the backdrop, and a
+    // warm-biased colour temperature because lighting tuned for lighter skin
+    // (a neutral/cool default) reads deeper, warmer skin tones as too cool
+    // and grey.
+    "That same key light casts a soft-edged contact shadow directly beneath the model's feet where they meet the floor, a gentle falloff into shadow on the side of the body away from the light, and a subtle rim-light along the hair and shoulder edge on the light-facing side that separates the model crisply from the backdrop. Its colour temperature is warm and natural — flattering to a range of skin tones, never cool or grey-cast",
     "High resolution, photorealistic, no text or watermark, no secondary insets or fabric swatches — exactly one continuous photograph.",
   ].join(". ");
 }

@@ -32,6 +32,8 @@ export interface ModelPrice {
   outputPerMTok?: number;
   /** USD per generated image, for providers that bill per image (Vertex). */
   perImageUsd?: number;
+  /** USD per second of generated video, for video models (Veo). */
+  perSecondUsd?: number;
 }
 
 /**
@@ -73,12 +75,36 @@ const PRICES: Record<string, ModelPrice> = {
 
   // Vertex Virtual Try-On (per generated image, no tokens reported)
   "virtual-try-on-001": { perImageUsd: 0.04 },
+
+  // Veo video generation (Catalogue Motion) — billed per second of OUTPUT
+  // video. These rates are NOT from Google's own pricing page (WebFetch on
+  // docs.cloud.google.com only returned nav shells, not rendered content —
+  // see the catalogue-motion Phase 2 research); they are triangulated from
+  // third-party pricing writeups and forum posts found via search
+  // (2026-08-22 / 2026-08-24) and are meaningfully less certain than the
+  // entries above. Reconcile against the actual GCP/AI-Studio bill after the
+  // first real Veo run, same as gemini-3.1-flash-image was reconciled above.
+  //
+  // Two separate model-id namespaces because Veo is reachable through two
+  // auth backends (see provider/veo-provider.ts) that don't expose the same
+  // tiers: Vertex has a Lite tier the Gemini API surface doesn't (yet).
+  // Vertex AI surface — GoogleAuth/ADC, CATALOGUE_MOTION_VEO_AUTH=vertex (default):
+  "veo-3.1-lite-generate-001": { perSecondUsd: 0.05 },
+  // Gemini Developer API surface — GEMINI_API_KEY, CATALOGUE_MOTION_VEO_AUTH=gemini-api:
+  "veo-3.1-fast-generate-preview": { perSecondUsd: 0.10 },
+  "veo-3.1-generate-preview": { perSecondUsd: 0.40 },
+  // Veo 3.0 (all variants) was DEPRECATED and shut down by Google on
+  // 2026-06-30 — deliberately no price entry, and never set as a default,
+  // so a stale env var pointing at it fails fast with "unknown model"
+  // instead of silently costing money against a dead endpoint.
 };
 
 export interface CostDrivers {
   inputTokens?: number | null;
   outputTokens?: number | null;
   imagesGenerated?: number | null;
+  /** Seconds of generated video output (Veo). */
+  videoSeconds?: number | null;
 }
 
 /**
@@ -99,6 +125,9 @@ export function estimateCostUsd(model: string, drivers: CostDrivers): number | n
   }
   if (price.perImageUsd && drivers.imagesGenerated) {
     cost += drivers.imagesGenerated * price.perImageUsd;
+  }
+  if (price.perSecondUsd && drivers.videoSeconds) {
+    cost += drivers.videoSeconds * price.perSecondUsd;
   }
   return cost;
 }

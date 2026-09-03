@@ -19,15 +19,10 @@
  * never a crop of an already-branded base. Pure: returns URLs only.
  */
 import { catalogueCardsFor, type PartImage } from "@/lib/product/part-slots";
-import { cropRegionFor, expandToAspectRatio } from "./crop-templates";
+import { cropRegionFor, expandToAspectRatio, BASE_SHOT_ASPECT } from "./crop-templates";
 import { enhanceUploadUrl } from "@/lib/images/enhance";
 import type { CropRegion } from "./crop-templates";
 
-// Gemini's imageConfig requests aspectRatio "3:4" (lib/model-gen/quality.ts), but
-// its actual 1K/2K output snaps to 896x1200 (ratio ~0.7467), not exactly 0.75.
-// Using the measured ratio here (rather than the idealized 3/4) keeps expanded
-// crops pixel-exact 3:4, matching the CARD_ASPECT delivered to the catalogue grid.
-const BASE_SHOT_ASPECT = 896 / 1200;
 const CARD_ASPECT = 3 / 4;
 
 // Temporarily disabled pending retailer feedback: catalogue cards always use

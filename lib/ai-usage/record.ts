@@ -44,6 +44,8 @@ export interface AiUsageInput {
 
   imagesGenerated?: number | null;
   imageInputs?: number | null;
+  /** Seconds of generated video output (Veo). */
+  videoSeconds?: number | null;
 
   requestBytes?: number | null;
   responseBytes?: number | null;
@@ -86,6 +88,7 @@ export async function recordAiUsage(input: AiUsageInput): Promise<void> {
       inputTokens: input.inputTokens,
       outputTokens: input.outputTokens,
       imagesGenerated: input.imagesGenerated,
+      videoSeconds: input.videoSeconds,
     });
 
     await db.aiUsageEvent.create({

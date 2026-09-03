@@ -61,6 +61,10 @@ export async function runQuickListingStrategy(opts: {
   const { product, modelType, userId, backdrop, quality, model, provider = "vertex", casting = null } = opts;
   const usage = { feature: "quick_listing", storeId: userId ?? null, userId: userId ?? null };
 
+  // Male drape references teach nothing the Gemini path needs — see the same
+  // rationale in strategies/catalogue.ts.
+  const isMaleModel = modelType === "man" || modelType === "boy";
+
   const variant = resolveReferenceVariant(product.category);
   // Quick Listing is a single front-facing shot → use the front reference.
   // Prefer the face-masked drape variant when AI Casting has a face ref
@@ -117,8 +121,9 @@ export async function runQuickListingStrategy(opts: {
   if (!source) return { images: [], usedFallback: true };
 
   const frontView = resolvePromptSet(product.category)[0];
-  // Editorial drops the drape reference on the Gemini path so pose can vary.
-  const geminiDrapeRef = editorial ? null : reference;
+  // Editorial drops the drape reference on the Gemini path so pose can vary;
+  // male model types drop it too (see isMaleModel above).
+  const geminiDrapeRef = editorial || isMaleModel ? null : reference;
 
   const promptRefs: Array<{ label: string; placement: string }> = [];
   const imageRefs: Array<{ buffer: Buffer; mime: string; label: string }> = [];
@@ -134,9 +139,9 @@ export async function runQuickListingStrategy(opts: {
     view: frontView,
     hasReference: Boolean(geminiDrapeRef),
     detailNotes: product.detailNotes,
+    material: product.material,
     backdrop,
     extraReferences: promptRefs,
-    hasIdentityReference: Boolean(faceRef),
   });
   const prompt = castingSuffix ? `${basePrompt} ${castingSuffix}` : basePrompt;
 

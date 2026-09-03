@@ -7,6 +7,7 @@
  * sets can later be admin-configurable or RAG-driven (docs/IMAGE_AI_ROADMAP.md
  * §8) without changing callers.
  */
+import { classifyFabricWeight } from "./fabric-weight";
 
 export interface PromptView {
   /** Stored on ProductImage.view. Also used in Cloudinary tags / research log. */
@@ -46,7 +47,7 @@ export const GI_REGION_LABEL = "__gi_region__";
 // visible, floor-length, never bunched/tucked/shortened, identical between
 // views) while describing physically real drape.
 const SAREE_DRAPE =
-  "The pallu is a single continuous piece of fabric draped over one shoulder and falling to floor length, its full design and border visible along its length — never bunched, folded, tucked or shortened, and never rendered as a second or duplicate panel of fabric elsewhere on the body. It follows natural cloth physics: soft, gravity-led folds and drape, exactly one pallu per figure, never held flat, rigid or stiffly away from the body. The saree is draped in a neat, elegant, presentable style that maximises the visible embroidered surface without sacrificing realistic fabric behavior.";
+  "The pallu is a single continuous piece of fabric draped over one shoulder and falling to floor length, its full design and border visible along its length — never bunched, folded, tucked or shortened, and never rendered as a second or duplicate panel of fabric elsewhere on the body. It follows natural cloth physics: soft, gravity-led folds and drape, exactly one pallu per figure, never held flat, rigid or stiffly away from the body. The saree is draped in a neat, elegant, presentable style that maximises the visible embroidered surface without sacrificing realistic fabric behavior. The saree's hemline and pleats fall all the way to the floor, pooling gently at the feet and mostly covering them — the saree is never cropped or lifted to show bare ankles or shins.";
 
 const SAREE: PromptView[] = [
   { id: "front",  label: "Front View",       modifier: `Full-length front view of the draped saree. ${SAREE_DRAPE}` },
@@ -104,6 +105,100 @@ export function resolvePromptSet(category: string | null | undefined): PromptVie
   return CATEGORY_PROMPT_SET[key] ?? GENERIC;
 }
 
+/**
+ * Photorealism clause — appended near the end of every view prompt (after
+ * orientation, before the swatch guard), same recency-wins position validated
+ * live against production (research/why-it-looks-ai.html; scripts/
+ * test-realism-revision.ts). Deliberately hedged ("without breaking any
+ * camera-orientation requirement stated elsewhere") so it reads as a
+ * refinement of the orientation clause above it, never a contradiction —
+ * the orientation clause itself is untouched.
+ *
+ * Addresses (see research doc): zero skin-texture vocabulary anywhere in the
+ * prompt pipeline, generic posed-smile expression, no camera/lens language,
+ * no shadow-physics language, and the "authentic catalogue photography, not
+ * CGI" instruction that previously existed only on the Scenic Collection
+ * path (negative-prompts.ts) — now universal.
+ */
+const REALISM_CORE =
+  "Photographic realism: natural skin with visible pore-level texture and subtle tonal variation, not airbrushed or overly smooth. Fabric drapes and falls following natural cloth physics and gravity, never rigid, stiff or held artificially away from the body. A warm, genuine smile that reaches the eyes — bright, alert, engaged eyes with a soft catchlight in both, gently crinkled corners at the eyes and naturally lifted cheeks that show the smile is real and not just the mouth (a genuine Duchenne smile), with a slight, natural asymmetry rather than a perfectly mirrored expression; never a neutral, flat, dull, bored, or disinterested expression, and never a stiff, obviously-posed grin either. Weight settled naturally onto one leg for a candid, unposed feel, without breaking any camera-orientation requirement stated elsewhere in this prompt. Shot as if on an 85mm portrait lens at a wide aperture, natural photographic depth of field separating the model from the backdrop. This must read as an authentic photograph from a real studio session, not an illustration, render, or CGI.";
+
+/**
+ * Universal lighting clause — applies to every generation regardless of
+ * which backdrop system (Studio or Scenic Collection) supplies the
+ * environment description. Added after competitor benchmarking
+ * (karchobi.in, 2026-09) identified lighting as the single highest-leverage
+ * gap: every reference photo used one clearly directional light source with
+ * a visible rim-light on hair, physically consistent shadow falloff, and a
+ * warm overall grade — none of which existed anywhere in this pipeline
+ * before this clause (backdrops.ts described only flat top-down light with
+ * a contact shadow; REALISM_CORE above had zero lighting language at all).
+ * Deliberately kept independent of REALISM_CORE (skin/pose/lens) so it can
+ * be isolated and re-tuned on its own.
+ */
+const LIGHTING_CORE =
+  "Lighting: the scene is lit by one dominant, clearly directional light source — never flat, shadowless, or evenly lit from every side. That direction is visible as a soft highlight along the hair and the side of the face/body nearest the light, with a gentle falloff into shadow on the opposite side, and a shadow that falls consistently in one direction wherever the model meets the ground or backdrop. A subtle rim-light traces the edge of the hair and shoulders, separating the model crisply from the background the way a real key light does. Skin shows soft specular catch-light on its high points (cheekbones, nose bridge, collarbone), consistent with that same light direction, not uniformly matte. The overall colour grade leans warm and natural, like real daylight or a warm key light — never cold, grey, or clinically flat.";
+
+/**
+ * Universal colour-grade clause — the tonal treatment of the FINISHED
+ * photograph, distinct from LIGHTING_CORE above (which describes the light
+ * source itself). Grounded in a specific, previously undocumented finding
+ * (research/why-it-looks-ai.html, point 10, "Photoshoot styles per setting
+ * and color"): this pipeline's colour-harmony logic already picks a good
+ * complementary accent colour for a scene, but nothing anywhere ever
+ * instructed the actual tonal treatment of the final image. Real editorial
+ * photography favours split-toning (cool-biased shadows, warm-biased
+ * highlights) and a deliberately controlled, lower-saturation environment
+ * palette that leaves the garment itself as the single most vivid element
+ * in frame — both entirely absent from the prompt pipeline before this.
+ */
+const COLOR_GRADE =
+  "Colour grade: apply a refined editorial colour treatment across the whole photograph — a subtle warm cast in the highlights and a slightly cooler, deeper cast in the shadows (split-toning), never one flat colour temperature applied uniformly everywhere. The environment, backdrop and any props stay in a controlled, gently muted palette — real colour, never grey or lifeless, but never as saturated or vivid as the garment itself. The garment's own colour and pattern remain the single most saturated, vivid element in the frame exactly as photographed, so the eye is drawn to the product first. Tonal range is rich, not flat or washed out — real shadow depth and highlight detail, never a uniformly bright, contrast-less exposure.";
+
+/**
+ * Fallback hand-task instruction — from India-specific photography research
+ * (research/why-it-looks-ai.html, point 03, "How they carry the products"):
+ * "no hand-task language exists anywhere in the prompt system... one hand is
+ * almost always in service of the garment... never idle" in real fashion
+ * photography. Previously only the saree-back and lehenga/sharara-front
+ * cases below had any hand guidance at all — every other category, and even
+ * the saree FRONT view itself, left hands completely undirected. Applied
+ * wherever no more specific category+view hand instruction exists.
+ */
+const DEFAULT_HAND_TASK =
+  "One hand rests naturally at the side or gently touches the garment's fabric, hem, or edge, as if caught in a relaxed, natural moment — never idle, rigid, clenched, or hanging awkwardly. Fingers are relaxed and naturally curved, never stiff or unnaturally splayed.";
+
+/**
+ * Category+view realism addenda, from India-specific photography research
+ * (research/why-it-looks-ai.html): posture is mechanically load-bearing for
+ * draped garments — an upright spine keeps pleats/pallu from visibly
+ * sagging — and a hand resting near a pallu/dupatta as if just-adjusted
+ * reads as candid rather than static (the "held-and-displayed" convention),
+ * without touching SAREE_DRAPE's own never-bunched/duplicated constraint.
+ */
+function realismAddendum(category: string, viewId: string): string {
+  const cat = category.trim().toLowerCase();
+  if (cat === "saree" || cat === "dupatta") {
+    const posture = "Spine upright, pleats hanging straight and symmetrical, unwrinkled.";
+    if (viewId === "back") {
+      return `${posture} The pallu falls exactly as already described — floor-length, undisturbed — but rendered as if a moment ago the model's hand adjusted it: one hand resting lightly near the pallu's edge at shoulder height, not gripping or lifting it, with a very gentle, soft natural sway at the pallu's lower edge from indoor air — never a dramatic flare or swing.`;
+    }
+    return `${posture} One hand rests lightly near the pallu's edge at the waist, as if just settled a moment ago — not gripping or lifting it.`;
+  }
+  if (cat === "lehenga" || cat === "sharara") {
+    if (viewId === "front") {
+      return "One hand resting lightly near the dupatta's edge at the shoulder, as if just adjusted a moment ago.";
+    }
+    return DEFAULT_HAND_TASK;
+  }
+  return DEFAULT_HAND_TASK;
+}
+
+function realismClause(category: string, viewId: string): string {
+  const addendum = realismAddendum(category, viewId);
+  return addendum ? `${REALISM_CORE} ${addendum}` : REALISM_CORE;
+}
+
 function subjectFor(gender: string): string {
   switch (gender) {
     case "MEN":   return "a well-groomed Indian man, 30 years old, confident posture";
@@ -111,6 +206,48 @@ function subjectFor(gender: string): string {
     case "GIRLS": return "a young Indian girl with a cheerful, natural posture";
     default:      return "a graceful Indian woman, 25 years old, elegant posture";
   }
+}
+
+/**
+ * Loose-hair instruction — live-tested (2026-09) against the tied-back/bun
+ * default the generator otherwise chose on its own: loose hair reads as
+ * visibly livelier (catches light along its edge, moves naturally with a
+ * candid head-turn) than a severe bun, which is part of what made earlier
+ * generations feel dull/static. Scoped to WOMEN/GIRLS only — loose-vs-tied
+ * isn't a meaningful styling axis for the short-hair descriptions men/boys
+ * get in subjectFor().
+ */
+function hairClause(gender: string): string {
+  if (gender !== "MEN" && gender !== "BOYS") {
+    return "Hair worn naturally loose and flowing, falling past the shoulders and framing the face — not tied back, pulled up, or in a bun.";
+  }
+  return "";
+}
+
+/**
+ * Fabric weight should select the pose, not just describe texture (research/
+ * why-it-looks-ai.html, point 02, "The appearance with the clothing on"):
+ * heavy silk holds structured pleats and calls for static, sculptural
+ * posing; light georgette/chiffon "shows its most beautiful movement when
+ * you walk" and calls for motion-implying poses instead. Previously nothing
+ * in the pipeline connected fabric weight to posing at all — Garment
+ * Intelligence's fabric-physics language is scoped strictly to the garment
+ * itself, never to how it behaves ON the body. Product.material is already
+ * a real, structured field (lib/metadata/analyze.ts's closed fabric list),
+ * populated at upload — this reuses it rather than adding new data.
+ *
+ * Classification lives in fabric-weight.ts (shared with the Festive scene's
+ * automatic decor density — scenes/rule-engine.ts's densityFromMaterial).
+ */
+function fabricPoseClause(material: string | null | undefined): string {
+  const weight = classifyFabricWeight(material);
+  if (weight === "heavy") {
+    return "This fabric is heavy and structured: the pose stays static and sculptural, holding the fabric's own natural structured pleats and fall — no implied movement, which would fight against how this weight of fabric actually behaves.";
+  }
+  if (weight === "light") {
+    return "This fabric is light and flowing: the pose gently implies motion, as if caught mid-step or stirred by a soft breeze — this fabric shows its most beautiful movement in motion, never standing perfectly rigid and still.";
+  }
+  return "";
 }
 
 export interface ViewPromptInput {
@@ -122,6 +259,8 @@ export interface ViewPromptInput {
   hasReference: boolean;
   /** Optional concise detail hints (prompt enrichment) to preserve fine detail. */
   detailNotes?: string | null;
+  /** Optional fabric type (Product.material) — selects static/sculptural vs. motion-implying posing. */
+  material?: string | null;
   /**
    * The studio backdrop fragment (from renderBackdropPrompt). Identical across
    * every view of a generation, which is what makes the set look like one
@@ -135,14 +274,6 @@ export interface ViewPromptInput {
    * the whole image.
    */
   studioAnchor?: string | null;
-  /**
-   * AI Casting — whether one of `extraReferences` is the identity face ref
-   * (label = "__identity_face__"). When true and `hasReference` is also true
-   * (drape ref present), the "preserve face from Image 1" clause is rewritten
-   * to defer face identity to the identity reference, avoiding a face-source
-   * conflict. No-op when false — legacy prompts are byte-identical.
-   */
-  hasIdentityReference?: boolean;
   /**
    * Region reference close-ups accompanying this generation (pallu, border, …),
    * in the SAME order runGeminiImageGen appends their image parts. Each is
@@ -316,8 +447,7 @@ function extraImageClause(
 }
 
 export function buildViewPrompt(input: ViewPromptInput): string {
-  const { category, color, gender, view, hasReference, detailNotes, backdrop, studioAnchor, extraReferences } = input;
-  const hasIdentityRef = input.hasIdentityReference ?? false;
+  const { category, color, gender, view, hasReference, detailNotes, material, backdrop, studioAnchor, extraReferences } = input;
   const detail = detailClause(detailNotes);
   const backGuard = backGuardClause(view.id, detailNotes);
   const blouse = blouseClause(category, color);
@@ -325,6 +455,9 @@ export function buildViewPrompt(input: ViewPromptInput): string {
   const anchor = anchorClause(studioAnchor);
   const styling = STYLING_CONSISTENCY_CLAUSE;
   const orientation = orientationClause(view.id);
+  const realism = realismClause(category, view.id);
+  const hair = hairClause(gender);
+  const fabricPose = fabricPoseClause(material);
   const extraCount = extraReferences?.length ?? 0;
   // When reference close-ups are supplied, the model is prone to compositing
   // them into the frame as floating swatches/detail panels (an e-commerce
@@ -336,18 +469,24 @@ export function buildViewPrompt(input: ViewPromptInput): string {
       : "";
 
   if (hasReference) {
-    const total = 2 + extraCount; // model + product + extras
-    // AI Casting — when a face identity reference accompanies this generation,
-    // face identity defers to it and the drape reference contributes body,
-    // hair and pose only. Without a face identity ref this collapses to the
-    // legacy clause exactly.
-    const preserveClause = hasIdentityRef
-      ? "Preserve the model's body proportions, hair and pose from Image 1, and the garment's exact colour, print and texture from Image 2. Face identity comes from the identity reference image below — do not use the face in Image 1."
-      : "Preserve the model's face, body and skin tone from Image 1, and the garment's exact colour, print and texture from Image 2.";
+    const total = 2 + extraCount; // drape ref + product + extras
+    // Image 1 is a construction/fit reference ONLY — never an identity
+    // source. Identity (face/skin/hair/build) comes from the AI Casting
+    // identity reference or the cross-view reference when either is present
+    // (see extraImageClause below), or is otherwise left to the generator,
+    // steered by subjectFor() and the realism clause — never copied from
+    // this drape asset. A single unambiguous identity source per generation,
+    // instead of Image 1 and a Casting/cross-view reference competing for
+    // the same claim (the confirmed cause of front/back face mismatches, and
+    // of Casting's skinTone/bodyType overrides losing to the reference).
+    const structureClause =
+      "Image 1 is a construction reference showing how this category of garment drapes, sits and fits on a body — use it ONLY to understand the garment's structural silhouette and fabric flow around the body. Do not copy this image's pose, lighting, background, or the pictured person's face, skin tone, texture, hair or body proportions.";
+    const garmentClause = "Reproduce the garment's exact colour, print and texture from Image 2.";
     return [
-      `You are given ${total} images. Image 1 is the reference fashion model. Image 2 is the product garment.`,
-      `Generate a photorealistic photograph of the model in Image 1 wearing this ${color} ${category} from Image 2.`,
-      preserveClause,
+      `You are given ${total} images. Image 1 is a structural drape/fit reference. Image 2 is the product garment.`,
+      `Generate a photorealistic photograph of ${subjectFor(gender)} wearing this ${color} ${category} from Image 2.`,
+      structureClause,
+      garmentClause,
       extraImageClause(extraReferences, 3),
       view.modifier,
       detail,
@@ -358,6 +497,11 @@ export function buildViewPrompt(input: ViewPromptInput): string {
       backdrop,
       anchor,
       orientation,
+      realism,
+      hair,
+      fabricPose,
+      LIGHTING_CORE,
+      COLOR_GRADE,
       swatchGuard,
     ].filter(Boolean).join(" ");
   }
@@ -373,6 +517,11 @@ export function buildViewPrompt(input: ViewPromptInput): string {
     backdrop,
     anchor,
     orientation,
+    realism,
+    hair,
+    fabricPose,
+    LIGHTING_CORE,
+    COLOR_GRADE,
     swatchGuard,
   ].filter(Boolean).join(" ");
 }

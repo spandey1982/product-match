@@ -7,7 +7,8 @@
  *     `lib/providers/auto-routing.ts`'s table-driven category routing.
  */
 import { SCENES } from "./library";
-import type { Scene, SceneVariation } from "./types";
+import type { Scene, SceneDensity, SceneVariation } from "./types";
+import { classifyFabricWeight } from "../fabric-weight";
 
 export interface SceneSignals {
   category?: string | null;
@@ -39,6 +40,20 @@ export function selectSceneVariation(scene: Scene, signals: SceneSignals): Scene
   const seed = [signals.category, signals.color, signals.pattern].filter(Boolean).join("|");
   const index = stableIndex(seed || scene.id, scene.variations.length);
   return scene.variations[index];
+}
+
+/**
+ * Decor density for a Scene.autoDensityFromMaterial === true (currently the
+ * Festive scene) — heavy/structured fabric reads richer (more ornate/antique
+ * props, per the direct user brief), light/flowing fabric reads minimal and
+ * subtle, medium-weight fabric (Cotton, Linen, Polyester, …) lands on the
+ * classic middle tier.
+ */
+export function densityFromMaterial(material: string | null | undefined): SceneDensity {
+  const weight = classifyFabricWeight(material);
+  if (weight === "heavy") return "rich";
+  if (weight === "light") return "minimal";
+  return "classic";
 }
 
 export interface SceneRecommendation {

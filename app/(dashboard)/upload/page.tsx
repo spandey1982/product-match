@@ -12,7 +12,7 @@ import { categorySlotsFor, partSlotsFor } from "@/lib/product/part-slots";
 import { type BackdropOption, type BackdropValue } from "@/components/product/BackdropSelect";
 import SceneModeSelect, { type BackdropSection } from "@/components/product/SceneModeSelect";
 import type { ScenicValue } from "@/components/product/ScenicCollectionSelect";
-import type { SceneOptionView } from "@/lib/model-gen/scenes/library";
+import { DEFAULT_SCENE_ID, type SceneOptionView } from "@/lib/model-gen/scenes/library";
 import { DEFAULT_GENERATION_QUALITY, type GenerationQuality } from "@/lib/model-gen/quality";
 import { DEFAULT_IMAGE_GEN_MODEL, type ImageGenModel } from "@/lib/model-gen/image-gen-models";
 import { useGenerationStatus } from "@/components/generation/GenerationStatusProvider";
@@ -345,7 +345,7 @@ export default function UploadPage() {
   const [scenes, setScenes] = useState<SceneOptionView[]>([]);
   const [brandPacks, setBrandPacks] = useState<{ id: string; label: string }[]>([]);
   const [scenicEnabled, setScenicEnabled] = useState(false);
-  const [scenic, setScenic] = useState<ScenicValue>({ sceneId: "wedding", intensity: "balanced", density: "classic" });
+  const [scenic, setScenic] = useState<ScenicValue>({ sceneId: DEFAULT_SCENE_ID, intensity: "balanced", density: "classic" });
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [logoBusy, setLogoBusy] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);

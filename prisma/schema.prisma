@@ -13,13 +13,17 @@ model User {
   password     String
   role         String  @default("RETAILER")
   storeName    String?
-  /** Shown to shoppers on the public rental listing (contact card + map link). */
+  /**
+   * Shown to shoppers on the public rental listing (contact card + map link).
+   */
   storePhone   String?
   /** Retailer's own verified phone — distinct from storePhone (public/unverified storefront contact). Used for security actions (e.g. password change via OTP). Null until verified once via lib/retailer-otp.ts. */
   phone           String?   @unique
   phoneVerifiedAt DateTime?
   storeAddress String?
-  /** Fixed-list city (lib/geo/city-coordinates.ts) used for /shop's location-radius filter — city-grained, not a geocoded address. */
+  /**
+   * Fixed-list city (lib/geo/city-coordinates.ts) used for /shop's location-radius filter — city-grained, not a geocoded address.
+   */
   storeCity    String?
   // Business classification picked at signup — purely descriptive, distinct
   // from `role` (which gates ADMIN vs RETAILER access). "RETAILER" |
@@ -31,7 +35,9 @@ model User {
   aiGenSettings String?
   logoPublicId  String?
 
-  /** Store-level kill switch for the public /shop marketplace. When false, every product from this store is hidden from /shop (still visible in the retailer's own dashboard). Defaults to visible. Admin-only for now (set from /admin/wallets) — not exposed to the retailer's own Settings; intended to later act as an override on top of a retailer-facing setting. */
+  /**
+   * Store-level kill switch for the public /shop marketplace. When false, every product from this store is hidden from /shop (still visible in the retailer's own dashboard). Defaults to visible. Admin-only for now (set from /admin/wallets) — not exposed to the retailer's own Settings; intended to later act as an override on top of a retailer-facing setting.
+   */
   showOnShop Boolean @default(true)
 
   // Soft-delete marker for account-deletion requests. Null = active. Set to
@@ -47,6 +53,7 @@ model User {
   products      Product[]
   modelProfiles ModelProfile[]
   wallet        Wallet?
+  motionJobs    MotionJob[]
   clientProfile ClientProfile?
 
   @@index([deletedAt])
@@ -96,7 +103,9 @@ model Customer {
   name  String?
   email String?
 
-  /** Virtual try-on credit balance for /shop — starts at 5 free credits. See CreditTopUp for the ledger. */
+  /**
+   * Virtual try-on credit balance for /shop — starts at 5 free credits. See CreditTopUp for the ledger.
+   */
   tryOnCredits Int @default(5)
 
   addresses    CustomerAddress[]
@@ -136,9 +145,9 @@ model Wishlist {
 // of this per-device quota — neither is a security boundary, both exist to
 // raise the bar on casual repeat-abuse of the free pool.
 model GuestTryOnUsage {
-  id        String   @id @default(cuid())
-  deviceId  String   @unique
-  usedCount Int      @default(0)
+  id        String  @id @default(cuid())
+  deviceId  String  @unique
+  usedCount Int     @default(0)
   ipAddress String?
 
   createdAt DateTime @default(now())
@@ -266,8 +275,8 @@ model Payment {
   razorpaySignature String?
 
   amount   Int // paise
-  currency String @default("INR")
-  status   String @default("created") // created | paid | failed
+  currency String  @default("INR")
+  status   String  @default("created") // created | paid | failed
   method   String?
 
   createdAt DateTime @default(now())
@@ -429,6 +438,8 @@ model Product {
   // Structured garment intelligence (R&D) — one deep vision analysis per
   // product, reused everywhere. Nullable → existing rows unaffected.
   garmentIntelligence GarmentIntelligence?
+
+  motionJobs MotionJob[]
 
   @@index([category])
   @@index([userId])
@@ -592,6 +603,10 @@ model AiUsageEvent {
   // Gemini input tokens (input images are tokenized).
   imagesGenerated Int @default(0)
   imageInputs     Int @default(0)
+
+  // Video driver (Veo, Catalogue Motion) — seconds of generated video output.
+  // Persisted so a row can be re-priced later, same rationale as imagesGenerated.
+  videoSeconds Int?
 
   // Payload sizes (bytes) — supersede the old JSONL research log.
   requestBytes  Int?
@@ -860,8 +875,8 @@ model WalletTransaction {
   walletId String
   wallet   Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
 
-  type      String
-  amountUsd Float
+  type         String
+  amountUsd    Float
   balanceAfter Float
 
   description String
@@ -955,4 +970,148 @@ model PricingConfig {
 
   @@index([effectiveFrom, effectiveUntil])
   @@map("pricing_configs")
+}
+
+// ── AI Catalogue Motion ──────────────────────────────────────────────────────
+// See docs/CATALOGUE_MOTION_ARCHITECTURE.md. One MotionJob = one retailer
+// request to animate a product's existing catalogue images into a short
+// video. Sources are always existing ProductImage rows — no new stills are
+// generated. A job fans out into per-shot MotionClip renders, each QA-scored
+// before the composer stitches accepted clips into the final video.
+
+model MotionJob {
+  id        String @id @default(cuid())
+  productId String
+  userId    String
+
+  // queued | rendering | qa | composing | complete | failed — plain string
+  // per this schema's stage-field convention, not a Prisma enum. QA runs
+  // per-clip and gates composing (MotionQAResult.clipId is 1:1 with a clip,
+  // not with the job) — composing only starts once every clip has resolved.
+  status String @default("queued")
+
+  // minimal | elegant | dynamic
+  intensity String @default("elegant")
+
+  // Resolved category storyboard key (lib/catalogue-motion/storyboards.ts).
+  storyboardId String
+
+  // AI provider used for this job (veo, kling, runway…).
+  provider String
+
+  // The creative director's edit plan for this job (JSON — shot selection,
+  // order, per-shot holdDurationSec, which shot is the hook), stringified
+  // the same way FashionDesign.generationPlan is. Populated once, before any
+  // rendering, and immutable afterward — a resumed job checks
+  // `if (!directorPlan)` before re-running the planning call, the same
+  // per-stage checkpoint pattern lib/fashion-designer/pipeline.ts uses.
+  directorPlan String?
+
+  // Actual final composed video length in seconds, populated by the compose
+  // worker once the job completes. Not a fixed input — every shot's on-screen
+  // hold is a director-decided float (see MotionClip.plannedHoldSec), so the
+  // total isn't known until composing finishes.
+  duration Int?
+
+  outputUrl    String?
+  outputFormat String?
+
+  errorMessage String?
+  retryCount   Int     @default(0)
+
+  totalCostUsd Float?
+  durationMs   Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  product Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clips   MotionClip[]
+
+  @@index([productId])
+  @@index([userId, status])
+  @@map("motion_jobs")
+}
+
+// One clip = one shot in the storyboard, rendered independently.
+model MotionClip {
+  id    String @id @default(cuid())
+  jobId String
+
+  // Position in the storyboard sequence (0-indexed).
+  shotIndex Int
+
+  // Matches ProductImage.view (front, back, blouse, pallu…).
+  view String
+
+  // Motion preset key from lib/catalogue-motion/grammar.ts.
+  presetId String
+
+  // The existing catalogue image this clip animates.
+  sourceImageUrl String
+
+  // ai-motion (Veo) | pan-zoom (deterministic local FFmpeg Ken Burns, zero
+  // AI cost, zero hallucination risk). Copied from StoryboardShot.renderMode
+  // at clip creation — persisted so QA-reject/admin-reject regeneration
+  // (enqueueRenderForClip) can read it straight off the row instead of
+  // re-deriving it from the storyboard.
+  renderMode String @default("ai-motion")
+
+  // The director's decided final on-screen duration for this shot (seconds,
+  // clamped to [0.5, 8] in code — never trusted from the LLM as-is; 8 is
+  // Veo's real ceiling, since the compose worker can only trim a generated
+  // clip shorter, never lengthen it). Set when the clip row is created from
+  // MotionJob.directorPlan.
+  plannedHoldSec Float?
+
+  // queued | rendering | qa | accepted | rejected | failed
+  status String @default("queued")
+
+  outputUrl  String?
+  durationMs Int?
+  costUsd    Float?
+
+  errorMessage String?
+  retryCount   Int     @default(0)
+
+  createdAt DateTime @default(now())
+
+  job MotionJob       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  qa  MotionQAResult?
+
+  @@index([jobId])
+  @@map("motion_clips")
+}
+
+// Automated QA scores for one rendered clip (Stage 2 vision review). Stage 1
+// algorithmic checks (SSIM/pHash/histogram) run inline before this and are
+// not persisted individually — only the resulting verdict matters here.
+model MotionQAResult {
+  id     String @id @default(cuid())
+  clipId String @unique
+
+  identityConsistency Float?
+  garmentPreservation Float?
+  textureConsistency  Float?
+  lightingStability   Float?
+  backgroundStability Float?
+  motionSmoothness    Float?
+  // Inverse scale: 5 = no artifacts, 1 = severe.
+  artifactScore       Float?
+  overall             Float?
+
+  // JSON array of detected issues (lib/serialize.ts).
+  issues String?
+
+  // accepted | rejected | manual_review
+  verdict String
+
+  reviewModel String
+
+  createdAt DateTime @default(now())
+
+  clip MotionClip @relation(fields: [clipId], references: [id], onDelete: Cascade)
+
+  @@map("motion_qa_results")
 }

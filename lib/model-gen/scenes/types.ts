@@ -22,7 +22,16 @@ export type SceneIntensity = "minimal" | "balanced" | "editorial";
 /** How many environmental elements populate the scene. */
 export type SceneDensity = "minimal" | "classic" | "rich";
 
-/** Time of day / lighting character — a first-class part of the scene, not an afterthought. */
+/**
+ * Time of day / lighting character — a first-class part of the scene, not
+ * an afterthought. "night" outdoors is genuinely hard to render reliably
+ * (model/fabric interaction with scattered artificial light) and isn't how
+ * this platform's dominant category (ethnic wear) is typically shot in
+ * real practice — see library.ts's "Camera style guidance" section before
+ * using it for anything but a party/western-wear pack, and prefer an
+ * indoor evening setting ("indoor-studio" + a warmly-lit environment
+ * description) over outdoor night wherever a night mood is wanted.
+ */
 export type CameraStyle =
   | "morning"
   | "golden-hour"
@@ -69,6 +78,15 @@ export interface SceneVariation {
   /** Decor elements, one list per density level. Every element must justify
    *  its presence in a realistic photograph — never random space-filling. */
   decor: Record<SceneDensity, string[]>;
+  /**
+   * Overrides the scene's default camera style (Scene.cameraStyles[0]) for
+   * this one variation. Every scene until Street Style stayed within one
+   * time-of-day across all its variations, so a single scene-level default
+   * was enough; Street Style's variations genuinely span daylight through
+   * night (a café patio vs. an evening city street), which the scene-level
+   * default alone can't express — must be one of Scene.cameraStyles.
+   */
+  cameraStyle?: CameraStyle;
 }
 
 export interface Scene {
@@ -93,6 +111,18 @@ export interface Scene {
   theme: { icon: string; color: string };
   /** Scene-specific additions to the core negative-prompt library. */
   negativeExtras?: string[];
+  /**
+   * When true, decor density is computed automatically from the product's
+   * own fabric weight (fabric-weight.ts) instead of the retailer's manually
+   * saved SceneDensity — heavy/structured fabrics render richer, more
+   * ornate/antique props and lighting; light/flowing fabrics render minimal,
+   * subtle, understated props. Direct user decision (2026-09) for the
+   * generic Festive scene: "backdrop decided based on the clothing" rather
+   * than a manual density slider. The chooser UI hides the density control
+   * for a scene with this flag set, since it would otherwise show a choice
+   * that's silently overridden.
+   */
+  autoDensityFromMaterial?: boolean;
   /** Deterministic recommendation signal — matched against Product metadata
    *  (occasion/styleTags/season enums from lib/metadata/analyze.ts). */
   recommendFor: {

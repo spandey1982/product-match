@@ -11,7 +11,9 @@ export type BillingOperation =
   | "ai_review"
   | "auto_catalog_classify"
   | "auto_catalog_verify"
-  | "erase";
+  | "erase"
+  | "motion_clip"
+  | "motion_compose";
 
 export type TransactionType =
   | "CREDIT"
@@ -60,6 +62,8 @@ export const BILLING_OPERATIONS: readonly BillingOperation[] = [
   "auto_catalog_classify",
   "auto_catalog_verify",
   "erase",
+  "motion_clip",
+  "motion_compose",
 ] as const;
 
 export function isBillingOperation(v: unknown): v is BillingOperation {
