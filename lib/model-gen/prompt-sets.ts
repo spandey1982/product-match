@@ -139,6 +139,22 @@ const LIGHTING_CORE =
   "Lighting: the scene is lit by one dominant, clearly directional light source — never flat, shadowless, or evenly lit from every side. That direction is visible as a soft highlight along the hair and the side of the face/body nearest the light, with a gentle falloff into shadow on the opposite side, and a shadow that falls consistently in one direction wherever the model meets the ground or backdrop. A subtle rim-light traces the edge of the hair and shoulders, separating the model crisply from the background the way a real key light does. Skin shows soft specular catch-light on its high points (cheekbones, nose bridge, collarbone), consistent with that same light direction, not uniformly matte. The overall colour grade leans warm and natural, like real daylight or a warm key light — never cold, grey, or clinically flat.";
 
 /**
+ * Universal colour-grade clause — the tonal treatment of the FINISHED
+ * photograph, distinct from LIGHTING_CORE above (which describes the light
+ * source itself). Grounded in a specific, previously undocumented finding
+ * (research/why-it-looks-ai.html, point 10, "Photoshoot styles per setting
+ * and color"): this pipeline's colour-harmony logic already picks a good
+ * complementary accent colour for a scene, but nothing anywhere ever
+ * instructed the actual tonal treatment of the final image. Real editorial
+ * photography favours split-toning (cool-biased shadows, warm-biased
+ * highlights) and a deliberately controlled, lower-saturation environment
+ * palette that leaves the garment itself as the single most vivid element
+ * in frame — both entirely absent from the prompt pipeline before this.
+ */
+const COLOR_GRADE =
+  "Colour grade: apply a refined editorial colour treatment across the whole photograph — a subtle warm cast in the highlights and a slightly cooler, deeper cast in the shadows (split-toning), never one flat colour temperature applied uniformly everywhere. The environment, backdrop and any props stay in a controlled, gently muted palette — real colour, never grey or lifeless, but never as saturated or vivid as the garment itself. The garment's own colour and pattern remain the single most saturated, vivid element in the frame exactly as photographed, so the eye is drawn to the product first. Tonal range is rich, not flat or washed out — real shadow depth and highlight detail, never a uniformly bright, contrast-less exposure.";
+
+/**
  * Category+view realism addenda, from India-specific photography research
  * (research/why-it-looks-ai.html): posture is mechanically load-bearing for
  * draped garments — an upright spine keeps pleats/pallu from visibly
@@ -438,6 +454,7 @@ export function buildViewPrompt(input: ViewPromptInput): string {
       realism,
       hair,
       LIGHTING_CORE,
+      COLOR_GRADE,
       swatchGuard,
     ].filter(Boolean).join(" ");
   }
@@ -456,6 +473,7 @@ export function buildViewPrompt(input: ViewPromptInput): string {
     realism,
     hair,
     LIGHTING_CORE,
+    COLOR_GRADE,
     swatchGuard,
   ].filter(Boolean).join(" ");
 }
