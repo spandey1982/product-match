@@ -58,7 +58,11 @@ const UNIVERSAL_CONSTRAINTS =
   "indoor air). The garment must not distort, morph, stretch, or change " +
   "color or pattern. The background and studio lighting remain completely " +
   "fixed and unchanged — no new elements, no color drift, no shadow " +
-  "movement. No camera shake, no jitter, no handheld feel.";
+  "movement. No camera shake, no jitter, no handheld feel. The output must " +
+  "be the real photographed scene edge-to-edge, filling the entire frame: " +
+  "no letterboxing, no pillarboxing, no added borders, no film-strip or " +
+  "decorative frame elements, no watermarks, no text, no graphic overlays " +
+  "of any kind that are not part of the original photograph.";
 
 export interface ClipInstruction {
   /** The full text instruction sent to the provider alongside the source image. */

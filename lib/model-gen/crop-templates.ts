@@ -21,6 +21,15 @@ export interface CropRegion {
   h: number;
 }
 
+// Gemini's imageConfig requests aspectRatio "3:4" (lib/model-gen/quality.ts), but
+// its actual 1K/2K output snaps to 896x1200 (ratio ~0.7467), not exactly 0.75.
+// Using the measured ratio here (rather than the idealized 3/4) keeps expanded
+// crops pixel-exact, matching what's actually delivered. Shared by
+// catalogue-cards.ts (expand a close-up crop to card aspect) and
+// catalogue-motion's source-resolver.ts (cover-crop a full base shot to the
+// aspect a motion provider requests).
+export const BASE_SHOT_ASPECT = 896 / 1200;
+
 export interface CloseUp {
   /** Stored on ProductImage.view (e.g. "front-top"). */
   id: string;
@@ -183,4 +192,38 @@ export function expandToAspectRatio(
   if (y + h > 1) y = 1 - h;
 
   return { x, y, w, h };
+}
+
+/**
+ * The inverse of expandToAspectRatio: shrink the LONGER dimension of a
+ * region to hit a target aspect ratio (a standard centered "cover crop"),
+ * rather than growing the shorter one. Needed for the whole-image case
+ * (region = {x:0,y:0,w:1,h:1}), which is already at its maximum size on
+ * every axis — expandToAspectRatio can't grow it further, it can only crop
+ * it down. Used to fit a full base shot to a motion provider's requested
+ * aspect (e.g. Veo's 9:16) before sending it, so the provider never receives
+ * a mismatched aspect and has no letterboxed gap to fill with invented
+ * content.
+ *
+ * Shrinking an in-bounds region can never push the result out of [0,1]
+ * bounds, so (unlike expandToAspectRatio) no boundary-shift step is needed.
+ */
+export function coverCropToAspect(
+  region: CropRegion,
+  imageAspect: number,
+  targetAspect: number
+): CropRegion {
+  const desiredRatio = targetAspect / imageAspect;
+  const currentRatio = region.w / region.h;
+  const cx = region.x + region.w / 2;
+  const cy = region.y + region.h / 2;
+
+  let { w, h } = region;
+  if (currentRatio > desiredRatio) {
+    w = h * desiredRatio;
+  } else if (currentRatio < desiredRatio) {
+    h = w / desiredRatio;
+  }
+
+  return { x: cx - w / 2, y: cy - h / 2, w, h };
 }

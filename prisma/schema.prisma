@@ -1051,6 +1051,13 @@ model MotionClip {
   // The existing catalogue image this clip animates.
   sourceImageUrl String
 
+  // ai-motion (Veo) | pan-zoom (deterministic local FFmpeg Ken Burns, zero
+  // AI cost, zero hallucination risk). Copied from StoryboardShot.renderMode
+  // at clip creation — persisted so QA-reject/admin-reject regeneration
+  // (enqueueRenderForClip) can read it straight off the row instead of
+  // re-deriving it from the storyboard.
+  renderMode String @default("ai-motion")
+
   // The director's decided final on-screen duration for this shot (seconds,
   // clamped to [0.5, 8] in code — never trusted from the LLM as-is; 8 is
   // Veo's real ceiling, since the compose worker can only trim a generated

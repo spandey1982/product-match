@@ -38,7 +38,13 @@ interface OrderedClip {
 function buildFilterGraph(clips: OrderedClip[], storeName: string | null, totalDuration: number): { filter: string; outLabel: string } {
   const parts: string[] = [];
   clips.forEach((c, i) => {
-    parts.push(`[${i}:v]trim=duration=${c.plannedHoldSec},setpts=PTS-STARTPTS[v${i}]`);
+    // setsar=1 defensively normalizes sample aspect ratio across every
+    // input regardless of which renderer produced it — concat requires an
+    // EXACT SAR match between clips, and different render paths (or even
+    // different runs of the same one) can produce very-slightly-non-1:1 SAR
+    // as a scale-filter rounding artifact, which fails concat outright with
+    // no useful error otherwise (confirmed live against the pan-zoom path).
+    parts.push(`[${i}:v]trim=duration=${c.plannedHoldSec},setpts=PTS-STARTPTS,setsar=1[v${i}]`);
   });
   const concatInputs = clips.map((_, i) => `[v${i}]`).join("");
   parts.push(`${concatInputs}concat=n=${clips.length}:v=1:a=0[concatv]`);

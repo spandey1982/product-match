@@ -5,8 +5,11 @@
  * generated catalogue images (front/back base shots + crop regions) instead
  * of generating anything new. No AI calls happen here — pure URL resolution.
  */
-import { cropRegionFor, buildCropUrl, type CropRegion } from "@/lib/model-gen/crop-templates";
+import { cropRegionFor, buildCropUrl, coverCropToAspect, BASE_SHOT_ASPECT, type CropRegion } from "@/lib/model-gen/crop-templates";
 import type { StoryboardShot } from "./types";
+
+// Matches veo-provider.ts's requested `aspectRatio: "9:16"` parameter.
+const VEO_TARGET_ASPECT = 9 / 16;
 
 export interface MotionSourceImages {
   front?: string;
@@ -46,6 +49,17 @@ export function resolveShotSources(
         imageUrl: buildCropUrl(baseUrl, region.region),
         cropRegion: region.region,
       });
+      continue;
+    }
+
+    if (shot.renderMode === "ai-motion") {
+      // No pre-existing crop, but Veo requests 9:16 — without fitting to
+      // that aspect first, Veo pillar-boxes the mismatch and (observed
+      // live) invents its own decorative filler around the letterboxed
+      // edges. Pan-zoom shots don't need this: the renderer normalizes
+      // whatever source aspect it's given internally (pan-zoom-renderer.ts).
+      const fitted = coverCropToAspect({ x: 0, y: 0, w: 1, h: 1 }, BASE_SHOT_ASPECT, VEO_TARGET_ASPECT);
+      resolved.push({ shot, imageUrl: buildCropUrl(baseUrl, fitted) });
       continue;
     }
 

@@ -14,23 +14,34 @@ import type { Storyboard, StoryboardShot } from "./types";
 
 // ── Shot builders (reduce repetition without abstracting too far) ────────
 //
-// Every garment-on-model category (saree, lehenga, kurti, shirt, dress,
-// jacket, trouser) is now built entirely from ai-motion shots, each at
-// Veo's 4s duration floor — so a category's total video length is always
-// shot-count x 4s. There is no free pan-zoom tier for these categories
-// anymore: a tight crop on one garment region (pallu, collar, lapel…) gets
-// real camera movement AND the model held static except for one shot's
-// intentional garment motion, not a deterministic zoom on a static image.
+// Garment-on-model categories (saree, lehenga, kurti, shirt, dress, jacket,
+// trouser) now mix render modes per shot, not one mode for the whole
+// category: real AI motion is reserved for the two things it's actually
+// needed for — the full front/back hero shots, and the rare shot per
+// category where garment motion (not camera motion) IS the subject (pallu,
+// dupatta swaying). Every purely textural/detail crop (blouse, neckline,
+// fabric, collar, lapel…) renders via the same deterministic pan-zoom used
+// by the object-only categories below — Veo's AI-hallucinated motion was
+// found to distort fine embroidery/print patterns on exactly these shots
+// (confirmed live), and a static pan/zoom over the real photo can't distort
+// anything by construction. This reverses part of an earlier all-ai-motion
+// redesign for these categories, keeping the parts that were right (real
+// motion on hero shots and true-motion shots) and undoing the part that
+// wasn't (spending Veo on shots where pixel fidelity, not movement, is what
+// matters).
 //
-// heroShot → the full front/back base image, uncropped. Establishes/closes
-//   the sequence (Push In to open, Pull Out to close).
-// focusShot → a tight crop on one region (crop-templates.ts), still
-//   ai-motion. `motionEmphasis` is set only for the shot where garment
-//   motion (not camera motion) is the actual subject, e.g. the pallu.
-//
-// detailShot (still pan-zoom, zero AI cost) is kept for the object-only
-// categories below (footwear, handbags, jewellery, dupatta, accessories) —
-// there's no model in those, so AI motion has nothing to add.
+// heroShot → the full front/back base image, uncropped, ai-motion.
+//   Establishes/closes the sequence (Push In to open, Pull Out to close).
+// focusShot → a tight crop on one region (crop-templates.ts), ai-motion.
+//   Used ONLY where motionEmphasis is set — the shot exists specifically to
+//   show real garment motion, which pan-zoom structurally cannot produce.
+// detailShot → a tight crop, pan-zoom (zero AI cost, zero distortion risk).
+//   Used for every other crop — the point of these shots is proximity/
+//   fidelity to a real detail, not motion, so AI generation adds nothing a
+//   deterministic camera move over the real pixels doesn't already give for
+//   free. Also the sole builder for the object-only categories below
+//   (footwear, handbags, jewellery, dupatta, accessories) — no model in
+//   frame there, so AI motion never had anything to add.
 
 const AI_SHOT_SEC = 4; // Veo's duration floor — every ai-motion shot targets this exactly, no waste.
 
@@ -81,9 +92,9 @@ const SAREE: Storyboard = {
   totalDurationSec: 5 * AI_SHOT_SEC,
   shots: [
     heroShot("front", "Front Drape", "slow-push-in", "front", "Establish overall drape, color, and pattern before going tight"),
-    focusShot("blouse", "Blouse & Neckline", "macro-push", "front", "blouse", "Embroidery and neckline detail needs proximity, not travel"),
+    detailShot("blouse", "Blouse & Neckline", "macro-push", AI_SHOT_SEC, "front", "Embroidery and neckline detail needs proximity and pixel fidelity, not AI-hallucinated travel", "blouse"),
     focusShot("pallu", "Pallu", "diagonal-slide", "back", "pallu", "Follows the pallu's natural diagonal fall line", GENTLE_SWAY),
-    focusShot("pleats", "Pleats", "tilt-down", "front", "pleats", "Reveals pleat structure top-to-bottom"),
+    detailShot("pleats", "Pleats", "tilt-down", AI_SHOT_SEC, "front", "Reveals pleat structure top-to-bottom", "pleats"),
     heroShot("back", "Back Drape", "slow-pull-out", "back", "Closes the sequence, mirrors the opening shot"),
   ],
 };
@@ -94,9 +105,9 @@ const LEHENGA: Storyboard = {
   totalDurationSec: 5 * AI_SHOT_SEC,
   shots: [
     heroShot("front", "Front Silhouette", "slow-push-in", "front", "Establish silhouette and embroidery impact"),
-    focusShot("blouse", "Blouse & Embroidery", "macro-push", "front", "blouse", "Close-up of embellishment craftsmanship"),
+    detailShot("blouse", "Blouse & Embroidery", "macro-push", AI_SHOT_SEC, "front", "Close-up of embellishment craftsmanship, real pixel fidelity", "blouse"),
     focusShot("dupatta", "Dupatta", "diagonal-slide", "front", "dupatta", "Follows the dupatta's diagonal drape across the shoulder", GENTLE_SWAY),
-    focusShot("skirt", "Skirt", "tilt-down", "front", "lehenga-detail", "Skirt volume, border, and hem detail"),
+    detailShot("skirt", "Skirt", "tilt-down", AI_SHOT_SEC, "front", "Skirt volume, border, and hem detail", "lehenga-detail"),
     heroShot("back", "Back Silhouette", "slow-pull-out", "back", "Closes the sequence, back design and silhouette"),
   ],
 };
@@ -107,8 +118,8 @@ const KURTI: Storyboard = {
   totalDurationSec: 4 * AI_SHOT_SEC,
   shots: [
     heroShot("front", "Front", "slow-push-in", "front", "Overall length, fit, and pattern"),
-    focusShot("neckline", "Neckline", "tilt-up", "front", "neckline", "Neckline design and sleeve detail"),
-    focusShot("fabric", "Fabric", "macro-push", "front", "fabric", "Fabric texture, weave, and print fidelity"),
+    detailShot("neckline", "Neckline", "tilt-up", AI_SHOT_SEC, "front", "Neckline design and sleeve detail", "neckline"),
+    detailShot("fabric", "Fabric", "macro-push", AI_SHOT_SEC, "front", "Fabric texture, weave, and print fidelity", "fabric"),
     heroShot("back", "Back", "slow-pull-out", "back", "Closes the sequence, back design"),
   ],
 };
@@ -119,8 +130,8 @@ const SHIRT: Storyboard = {
   totalDurationSec: 4 * AI_SHOT_SEC,
   shots: [
     heroShot("front", "Front", "slow-push-in", "front", "Overall fit and styling"),
-    focusShot("collar", "Collar", "macro-push", "front", "collar", "Collar shape and stitching"),
-    focusShot("placket", "Placket", "tilt-down", "front", "placket", "Button spacing and fabric drape along the placket"),
+    detailShot("collar", "Collar", "macro-push", AI_SHOT_SEC, "front", "Collar shape and stitching", "collar"),
+    detailShot("placket", "Placket", "tilt-down", AI_SHOT_SEC, "front", "Button spacing and fabric drape along the placket", "placket"),
     heroShot("back", "Back", "slow-pull-out", "back", "Closes the sequence, back fit and yoke"),
   ],
 };
@@ -131,8 +142,8 @@ const DRESS: Storyboard = {
   totalDurationSec: 4 * AI_SHOT_SEC,
   shots: [
     heroShot("front", "Front", "slow-push-in", "front", "Silhouette, length, and pattern"),
-    focusShot("bodice", "Bodice", "tilt-up", "front", "bodice", "Neckline, sleeve, and upper construction"),
-    focusShot("detail", "Detail", "macro-push", "front", "detail", "Fabric or embellishment close-up"),
+    detailShot("bodice", "Bodice", "tilt-up", AI_SHOT_SEC, "front", "Neckline, sleeve, and upper construction", "bodice"),
+    detailShot("detail", "Detail", "macro-push", AI_SHOT_SEC, "front", "Fabric or embellishment close-up", "detail"),
     heroShot("back", "Back", "slow-pull-out", "back", "Closes the sequence, back design and closure"),
   ],
 };
@@ -143,8 +154,8 @@ const JACKET: Storyboard = {
   totalDurationSec: 4 * AI_SHOT_SEC,
   shots: [
     heroShot("front", "Front", "slow-push-in", "front", "Shoulder structure, lapels, and fit"),
-    focusShot("lapel", "Lapel", "macro-push", "front", "lapel", "Lapel shape, fabric, and buttonhole"),
-    focusShot("texture", "Texture", "perspective-shift", "front", "texture", "Fabric weave and surface under light"),
+    detailShot("lapel", "Lapel", "macro-push", AI_SHOT_SEC, "front", "Lapel shape, fabric, and buttonhole", "lapel"),
+    detailShot("texture", "Texture", "perspective-shift", AI_SHOT_SEC, "front", "Fabric weave and surface under light", "texture"),
     heroShot("back", "Back", "slow-pull-out", "back", "Closes the sequence, back panel and shoulder line"),
   ],
 };
@@ -155,7 +166,7 @@ const TROUSER: Storyboard = {
   totalDurationSec: 3 * AI_SHOT_SEC,
   shots: [
     heroShot("front", "Front", "tilt-down", "front", "Waist, leg line, and break at ankle"),
-    focusShot("fabric", "Fabric", "macro-push", "front", "fabric", "Denim wash, weave, and distressing"),
+    detailShot("fabric", "Fabric", "macro-push", AI_SHOT_SEC, "front", "Denim wash, weave, and distressing", "fabric"),
     heroShot("back", "Back", "slow-pull-out", "back", "Closes the sequence, back pocket and seat fit"),
   ],
 };
@@ -234,7 +245,7 @@ const DEFAULT: Storyboard = {
   totalDurationSec: 3 * AI_SHOT_SEC,
   shots: [
     heroShot("front", "Front", "slow-push-in", "front", "Overall garment presentation"),
-    focusShot("design", "Design Detail", "macro-push", "front", "design", "Close-up detail"),
+    detailShot("design", "Design Detail", "macro-push", AI_SHOT_SEC, "front", "Close-up detail", "design"),
     heroShot("back", "Back", "slow-pull-out", "back", "Closes the sequence, back view"),
   ],
 };

@@ -113,6 +113,7 @@ export async function startMotionJob(jobId: string): Promise<void> {
         status: "queued" as const,
         cropRegion: source.cropRegion,
         motionEmphasis: planShot.motionEmphasis,
+        renderMode: source.shot.renderMode,
       };
     })
     .filter((c): c is NonNullable<typeof c> => c !== null);
@@ -136,6 +137,7 @@ export async function startMotionJob(jobId: string): Promise<void> {
           sourceImageUrl: c.sourceImageUrl,
           plannedHoldSec: c.plannedHoldSec,
           status: c.status,
+          renderMode: c.renderMode,
         },
       })
     )
@@ -151,6 +153,7 @@ export async function startMotionJob(jobId: string): Promise<void> {
       jobId,
       sourceImageUrl: clip.sourceImageUrl,
       presetId: clip.presetId,
+      renderMode: clip.renderMode as "ai-motion" | "pan-zoom",
       motionEmphasis: source.motionEmphasis,
       intensity: job.intensity,
       durationSec: clip.plannedHoldSec ?? 4,
@@ -179,6 +182,7 @@ export async function enqueueRenderForClip(clipId: string): Promise<void> {
     jobId: clip.jobId,
     sourceImageUrl: clip.sourceImageUrl,
     presetId: clip.presetId,
+    renderMode: clip.renderMode as "ai-motion" | "pan-zoom",
     motionEmphasis: planShot?.motionEmphasis,
     intensity: job.intensity,
     durationSec: clip.plannedHoldSec ?? 4,

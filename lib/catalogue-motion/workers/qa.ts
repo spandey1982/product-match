@@ -39,7 +39,9 @@ const RUBRIC = `You are a strict fashion e-commerce video QA reviewer. You are s
 - motionSmoothness: the implied motion between frames reads as smooth camera/garment movement, not a jarring jump or a frozen/static result
 - artifactScore: INVERSE scale — 5 = no visible AI artifacts (warping, extra/missing limbs, melted detail), 1 = severe artifacts
 - overall: holistic quality 1-5 — would this clip be usable in a real marketing video as-is
-- issues: short array of any problems seen (empty array if none)`;
+- issues: short array of any problems seen (empty array if none)
+
+STRICT RULE — pattern fidelity: this is the single most common failure mode for this content, so check it explicitly and separately from general "does this look plausible" impressions. Compare the print, weave, or embroidery pattern in each generated frame directly against the same region of the ORIGINAL photo — the specific motif, its layout, and its density. If the pattern's shape, spacing, or arrangement has changed AT ALL from the original (even if the frame looks superficially clean or "fabric-like" in isolation), that is a hard fail: score both garmentPreservation and textureConsistency at 2 or below regardless of how good anything else looks, and say so explicitly in issues.`;
 
 interface RawScores {
   identityConsistency?: unknown;
@@ -151,6 +153,20 @@ export async function handleMotionQA(payload: MotionQAPayload): Promise<void> {
       verdict: "rejected",
       reviewModel: "stage1-algorithmic",
       issues: ["invalid or corrupt video (no video stream, zero duration, or zero dimensions)"],
+    });
+    return;
+  }
+
+  if (payload.renderMode === "pan-zoom") {
+    // Pixel fidelity is guaranteed by construction for this render mode —
+    // it only ever crops/scales the real source photo, nothing is
+    // regenerated. Spending a vision call to "verify" that adds cost and
+    // false-reject risk for zero benefit; Stage 1's validity check above is
+    // the only gate this render mode needs.
+    await recordVerdict(payload.clipId, payload.jobId, {
+      verdict: "accepted",
+      reviewModel: "pan-zoom-guaranteed",
+      issues: [],
     });
     return;
   }

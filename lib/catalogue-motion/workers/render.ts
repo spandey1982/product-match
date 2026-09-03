@@ -14,6 +14,7 @@ import { constraintsFor, isMotionIntensity, DEFAULT_INTENSITY } from "../constra
 import { buildClipInstruction } from "../prompt-builder";
 import { getMotionProvider } from "../provider";
 import { nearestVeoDuration } from "../provider/veo-provider";
+import { renderPanZoomClip } from "../pan-zoom-renderer";
 import { uploadWithRetry } from "@/lib/cloudinary";
 import { chargeForCall, refundCharge } from "@/lib/billing/charge";
 import { maybeAdvanceToQA } from "../orchestrator";
@@ -47,22 +48,48 @@ export async function handleMotionRender(payload: MotionRenderPayload): Promise<
   await db.motionClip.update({ where: { id: payload.clipId }, data: { status: "rendering" } });
 
   try {
-    const genDurationSec = nearestVeoDuration(payload.durationSec);
     const constraints = constraintsFor(intensity);
-    const instruction = buildClipInstruction(preset, intensity, constraints, genDurationSec, payload.motionEmphasis);
 
-    const provider = getMotionProvider();
-    const result = await provider.generateClip({
-      sourceImageUrl: payload.sourceImageUrl,
-      instruction,
-      intensity,
-      constraints,
-      durationSec: genDurationSec,
-      cropRegion: payload.cropRegion,
-      usage: { feature: "catalogue_motion", userId: job.userId, storeId: job.userId },
-    });
+    let videoBase64: string;
+    let mimeType: string;
+    let durationMs: number;
+    let costUsd: number | null;
 
-    const dataUri = `data:${result.mimeType};base64,${result.videoBase64}`;
+    if (payload.renderMode === "pan-zoom") {
+      // Local deterministic FFmpeg Ken Burns — zero AI cost, zero
+      // hallucination risk, renders at the exact planned duration (no Veo
+      // floor-then-trim dance needed).
+      const result = await renderPanZoomClip({
+        sourceImageUrl: payload.sourceImageUrl,
+        preset,
+        constraints,
+        durationSec: payload.durationSec,
+      });
+      videoBase64 = result.videoBuffer.toString("base64");
+      mimeType = "video/mp4";
+      durationMs = result.durationMs;
+      costUsd = 0;
+    } else {
+      const genDurationSec = nearestVeoDuration(payload.durationSec);
+      const instruction = buildClipInstruction(preset, intensity, constraints, genDurationSec, payload.motionEmphasis);
+
+      const provider = getMotionProvider();
+      const result = await provider.generateClip({
+        sourceImageUrl: payload.sourceImageUrl,
+        instruction,
+        intensity,
+        constraints,
+        durationSec: genDurationSec,
+        cropRegion: payload.cropRegion,
+        usage: { feature: "catalogue_motion", userId: job.userId, storeId: job.userId },
+      });
+      videoBase64 = result.videoBase64;
+      mimeType = result.mimeType;
+      durationMs = result.durationMs;
+      costUsd = result.costUsd;
+    }
+
+    const dataUri = `data:${mimeType};base64,${videoBase64}`;
     const upload = await uploadWithRetry(dataUri, {
       folder: "product-match/catalogue-motion",
       resource_type: "video",
@@ -73,8 +100,8 @@ export async function handleMotionRender(payload: MotionRenderPayload): Promise<
       data: {
         status: "qa",
         outputUrl: upload.secure_url,
-        durationMs: result.durationMs,
-        costUsd: result.costUsd,
+        durationMs,
+        costUsd,
       },
     });
 
@@ -84,6 +111,7 @@ export async function handleMotionRender(payload: MotionRenderPayload): Promise<
       jobId: payload.jobId,
       clipUrl: upload.secure_url,
       sourceImageUrl: payload.sourceImageUrl,
+      renderMode: payload.renderMode,
     };
     await boss.send(QUEUES.MOTION_QA, qaPayload);
     await maybeAdvanceToQA(payload.jobId);

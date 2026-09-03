@@ -36,10 +36,12 @@ export interface MotionRenderPayload {
   jobId: string;
   sourceImageUrl: string;
   presetId: string;
-  /** Extra garment-motion instruction from the director's plan, if any (see DirectorShotPlan.motionEmphasis). */
+  /** ai-motion (Veo) | pan-zoom (local deterministic FFmpeg, zero cost, zero hallucination risk). From StoryboardShot.renderMode. */
+  renderMode: "ai-motion" | "pan-zoom";
+  /** Extra garment-motion instruction from the director's plan, if any (see DirectorShotPlan.motionEmphasis). Ignored for pan-zoom shots — nothing to instruct. */
   motionEmphasis?: string;
   intensity: string;
-  /** The director's planned on-screen hold — Veo rounds this up to its nearest allowed generation length. */
+  /** The director's planned on-screen hold. ai-motion rounds this up to Veo's nearest allowed generation length; pan-zoom renders at this exact duration. */
   durationSec: number;
   cropRegion?: { x: number; y: number; w: number; h: number };
 }
@@ -49,6 +51,8 @@ export interface MotionQAPayload {
   jobId: string;
   clipUrl: string;
   sourceImageUrl: string;
+  /** Pan-zoom clips skip Stage 2 vision review entirely — pixel fidelity is guaranteed by construction, not by inspection. */
+  renderMode: "ai-motion" | "pan-zoom";
 }
 
 export interface MotionComposePayload {
