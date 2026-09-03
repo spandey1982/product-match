@@ -25,7 +25,7 @@ import { getBrandingConfig, applyBranding, resolveBrandingPlacement } from "./br
 import { resolveBackdropPreset, renderBackdropPrompt, getBackdropPreset } from "./backdrops";
 import { pickSmartBackdrop } from "./backdrop-match";
 import { getScene, SCENES } from "./scenes/library";
-import { selectSceneVariation } from "./scenes/rule-engine";
+import { selectSceneVariation, densityFromMaterial } from "./scenes/rule-engine";
 import { resolvePaletteAccent } from "./scenes/color-harmony";
 import { renderScenePrompt } from "./scenes/prompt-builder";
 import { isSceneIntensity, isSceneDensity, type BackdropSection } from "./scenes/selection";
@@ -388,8 +388,14 @@ export async function generateModelImages(
     // then the retailer's saved default, only when the caller didn't specify.
     const sceneId = input.sceneId ?? resumePrevSceneId ?? settings.scenic.sceneId;
     const sceneIntensity = isSceneIntensity(resumePrevSceneIntensity) ? resumePrevSceneIntensity : settings.scenic.intensity;
-    const sceneDensity = isSceneDensity(resumePrevSceneDensity) ? resumePrevSceneDensity : settings.scenic.density;
+    const savedDensity = isSceneDensity(resumePrevSceneDensity) ? resumePrevSceneDensity : settings.scenic.density;
     const scene = getScene(sceneId) ?? SCENES[0];
+    // Scene.autoDensityFromMaterial (currently the Festive scene) overrides
+    // any manual/saved density with one computed from the product's own
+    // fabric weight — direct user decision (2026-09), see scenes/library.ts.
+    const sceneDensity = scene.autoDensityFromMaterial
+      ? densityFromMaterial(product.material)
+      : savedDensity;
     const variation = selectSceneVariation(scene, {
       color: product.color,
       category: product.category,

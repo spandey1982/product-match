@@ -16,7 +16,7 @@
 
 import { useState } from "react";
 import {
-  Gem, Flame, Moon, Sun, Snowflake, ShoppingBag, Aperture, Briefcase, Sparkles, Footprints,
+  Gem, Flame, Sun, ShoppingBag, Aperture, Briefcase, Sparkles, Footprints,
   type LucideIcon,
 } from "lucide-react";
 import type { SceneOptionView } from "@/lib/model-gen/scenes/library";
@@ -45,7 +45,7 @@ interface Props {
 }
 
 const SCENE_ICONS: Record<string, LucideIcon> = {
-  Gem, Flame, Moon, Sun, Snowflake, ShoppingBag, Aperture, Briefcase, Footprints,
+  Gem, Flame, Sun, ShoppingBag, Aperture, Briefcase, Footprints,
 };
 
 /** Laymen-friendly copy for the technical SceneIntensity/SceneDensity values. */
@@ -180,7 +180,7 @@ export default function ScenicCollectionSelect({ scenes, brandPacks, value, onCh
             ))}
           </div>
 
-          {selectedScene.variationPolicy === "varies" && (
+          {selectedScene.variationPolicy === "varies" && !selectedScene.autoDensityFromMaterial && (
             <>
               <p className="text-xs font-medium text-gray-500 mt-3 mb-2">How much is going on in the scene</p>
               <div className="flex flex-wrap gap-2">
@@ -197,6 +197,9 @@ export default function ScenicCollectionSelect({ scenes, brandPacks, value, onCh
                 ))}
               </div>
             </>
+          )}
+          {selectedScene.autoDensityFromMaterial && (
+            <p className="mt-3 text-xs text-gray-400">Prop richness is set automatically from the product&rsquo;s fabric.</p>
           )}
         </div>
       )}

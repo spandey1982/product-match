@@ -7,6 +7,7 @@
  * sets can later be admin-configurable or RAG-driven (docs/IMAGE_AI_ROADMAP.md
  * §8) without changing callers.
  */
+import { classifyFabricWeight } from "./fabric-weight";
 
 export interface PromptView {
   /** Stored on ProductImage.view. Also used in Cloudinary tags / research log. */
@@ -234,16 +235,16 @@ function hairClause(gender: string): string {
  * itself, never to how it behaves ON the body. Product.material is already
  * a real, structured field (lib/metadata/analyze.ts's closed fabric list),
  * populated at upload — this reuses it rather than adding new data.
+ *
+ * Classification lives in fabric-weight.ts (shared with the Festive scene's
+ * automatic decor density — scenes/rule-engine.ts's densityFromMaterial).
  */
-const HEAVY_STRUCTURED_MATERIALS = new Set(["Silk", "Velvet", "Brocade", "Wool", "Satin", "Khadi"]);
-const LIGHT_FLOWING_MATERIALS = new Set(["Chiffon", "Georgette", "Net", "Organza", "Muslin", "Crepe", "Viscose"]);
-
 function fabricPoseClause(material: string | null | undefined): string {
-  const m = material?.trim() ?? "";
-  if (HEAVY_STRUCTURED_MATERIALS.has(m)) {
+  const weight = classifyFabricWeight(material);
+  if (weight === "heavy") {
     return "This fabric is heavy and structured: the pose stays static and sculptural, holding the fabric's own natural structured pleats and fall — no implied movement, which would fight against how this weight of fabric actually behaves.";
   }
-  if (LIGHT_FLOWING_MATERIALS.has(m)) {
+  if (weight === "light") {
     return "This fabric is light and flowing: the pose gently implies motion, as if caught mid-step or stirred by a soft breeze — this fabric shows its most beautiful movement in motion, never standing perfectly rigid and still.";
   }
   return "";

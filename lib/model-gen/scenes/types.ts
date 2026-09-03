@@ -111,6 +111,18 @@ export interface Scene {
   theme: { icon: string; color: string };
   /** Scene-specific additions to the core negative-prompt library. */
   negativeExtras?: string[];
+  /**
+   * When true, decor density is computed automatically from the product's
+   * own fabric weight (fabric-weight.ts) instead of the retailer's manually
+   * saved SceneDensity — heavy/structured fabrics render richer, more
+   * ornate/antique props and lighting; light/flowing fabrics render minimal,
+   * subtle, understated props. Direct user decision (2026-09) for the
+   * generic Festive scene: "backdrop decided based on the clothing" rather
+   * than a manual density slider. The chooser UI hides the density control
+   * for a scene with this flag set, since it would otherwise show a choice
+   * that's silently overridden.
+   */
+  autoDensityFromMaterial?: boolean;
   /** Deterministic recommendation signal — matched against Product metadata
    *  (occasion/styleTags/season enums from lib/metadata/analyze.ts). */
   recommendFor: {
