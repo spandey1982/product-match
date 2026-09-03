@@ -35,6 +35,18 @@
  * see docs/IMAGE_AI_ROADMAP.md §12 for the full table with proposed packs:
  *   Luxury Store · Resort · Café · Street Fashion · Office · Runway ·
  *   Heritage Architecture · Beach · Temple · Garden · Studio Interior
+ *
+ * ── Camera style guidance (2026-09, direct user decision) ────────────────
+ * Avoid outdoor night settings ("night", or "evening" read as after-dark)
+ * for everyday/ethnic-wear-oriented packs — live-tested and found to cause
+ * real rendering defects (foot placement, silhouette grounding) from the
+ * model/fabric interacting with scattered artificial light sources, and
+ * this platform's dominant category (Indian ethnic wear) isn't typically
+ * shot at night in real practice anyway. Party/western-wear packs are the
+ * legitimate exception. Where a night mood is genuinely wanted, keep it
+ * INDOOR (a well-lit hall or room) rather than outdoor — see Diwali/Eid's
+ * indoor evening variations (luxury-living-room, majlis-lounge) for the
+ * pattern: rich, controlled ambient light, not open/scattered night light.
  */
 import type { Scene } from "./types";
 
@@ -583,12 +595,28 @@ export const SCENES: Scene[] = [
   // inspected used one of these five settings; bundled under one scene
   // identity the same way Wedding bundles mandap/palace/banquet/haveli/
   // rooftop under itself, rather than splitting into two separate scenes.
+  //
+  // Deliberately all-daytime (2026-09, direct user guidance): an outdoor
+  // night variation ("Evening City Street") was authored and live-tested
+  // here first, but outdoor night lighting proved genuinely hard to render
+  // reliably — model/fabric interaction with far, scattered artificial
+  // light sources produced real defects (foot placement, silhouette
+  // grounding) that daytime renders didn't have. This platform's dominant
+  // category is Indian ethnic wear, which isn't typically shot at night in
+  // real practice anyway — party/western wear is the exception, not the
+  // rule, and belongs in its own future pack rather than bent into Street
+  // Style's everyday-casual identity. GUIDANCE FOR FUTURE SCENES: avoid
+  // outdoor night generally; where a night mood is genuinely called for
+  // (e.g. a future party/evening-glam pack), keep it INDOOR — a well-lit
+  // hall or room gives the rich, controlled ambient light that fabric and
+  // model rendering actually need, without outdoor night's uncontrolled,
+  // scattered light sources.
   {
     id: "street-style",
     label: "Street Style",
     brandPack: "street",
     variationPolicy: "varies",
-    cameraStyles: ["soft-daylight", "golden-hour", "outdoor", "evening"],
+    cameraStyles: ["soft-daylight", "golden-hour", "outdoor"],
     palette: {
       base: ["warm stone grey", "sandy taupe", "weathered concrete"],
       accent: ["terracotta", "warm brass", "deep olive green"],
@@ -642,19 +670,18 @@ export const SCENES: Scene[] = [
         },
       },
       {
-        id: "evening-city-street",
-        label: "Evening City Street",
-        cameraStyle: "night",
-        environment: "a lively evening city street glowing with warm shopfront lights and soft bokeh from passing traffic",
+        id: "city-park-pathway",
+        label: "City Park Pathway",
+        environment: "a sunlit city park pathway lined with trees and open green lawns",
         depth: {
-          foreground: "a softly blurred street lamp post",
-          midground: "warm shopfront glow framing the model",
-          background: "a soft bokeh field of distant city lights, out of focus",
+          foreground: "a softly blurred park bench edge",
+          midground: "a tree-lined gravel path framing the model",
+          background: "open green lawns and distant trees, softly defocused",
         },
         decor: {
-          minimal: ["a single glowing street lamp"],
-          classic: ["a street lamp", "warm shopfront windows", "soft light bokeh"],
-          rich: ["street lamps", "shopfront windows", "light bokeh", "a café's outdoor seating glimpsed nearby", "wet pavement reflections"],
+          minimal: ["a single park bench"],
+          classic: ["a park bench", "scattered trees", "a gravel path"],
+          rich: ["a park bench", "scattered trees", "a gravel path", "a distant fountain", "a few fallen leaves on the path"],
         },
       },
       {

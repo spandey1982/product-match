@@ -46,7 +46,7 @@ export const GI_REGION_LABEL = "__gi_region__";
 // visible, floor-length, never bunched/tucked/shortened, identical between
 // views) while describing physically real drape.
 const SAREE_DRAPE =
-  "The pallu is a single continuous piece of fabric draped over one shoulder and falling to floor length, its full design and border visible along its length — never bunched, folded, tucked or shortened, and never rendered as a second or duplicate panel of fabric elsewhere on the body. It follows natural cloth physics: soft, gravity-led folds and drape, exactly one pallu per figure, never held flat, rigid or stiffly away from the body. The saree is draped in a neat, elegant, presentable style that maximises the visible embroidered surface without sacrificing realistic fabric behavior.";
+  "The pallu is a single continuous piece of fabric draped over one shoulder and falling to floor length, its full design and border visible along its length — never bunched, folded, tucked or shortened, and never rendered as a second or duplicate panel of fabric elsewhere on the body. It follows natural cloth physics: soft, gravity-led folds and drape, exactly one pallu per figure, never held flat, rigid or stiffly away from the body. The saree is draped in a neat, elegant, presentable style that maximises the visible embroidered surface without sacrificing realistic fabric behavior. The saree's hemline and pleats fall all the way to the floor, pooling gently at the feet and mostly covering them — the saree is never cropped or lifted to show bare ankles or shins.";
 
 const SAREE: PromptView[] = [
   { id: "front",  label: "Front View",       modifier: `Full-length front view of the draped saree. ${SAREE_DRAPE}` },

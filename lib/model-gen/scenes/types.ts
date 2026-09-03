@@ -22,7 +22,16 @@ export type SceneIntensity = "minimal" | "balanced" | "editorial";
 /** How many environmental elements populate the scene. */
 export type SceneDensity = "minimal" | "classic" | "rich";
 
-/** Time of day / lighting character — a first-class part of the scene, not an afterthought. */
+/**
+ * Time of day / lighting character — a first-class part of the scene, not
+ * an afterthought. "night" outdoors is genuinely hard to render reliably
+ * (model/fabric interaction with scattered artificial light) and isn't how
+ * this platform's dominant category (ethnic wear) is typically shot in
+ * real practice — see library.ts's "Camera style guidance" section before
+ * using it for anything but a party/western-wear pack, and prefer an
+ * indoor evening setting ("indoor-studio" + a warmly-lit environment
+ * description) over outdoor night wherever a night mood is wanted.
+ */
 export type CameraStyle =
   | "morning"
   | "golden-hour"

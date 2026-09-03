@@ -46,6 +46,21 @@ function decorClause(variation: SceneVariation, density: SceneDensity): string {
   return `The scene includes ${items.join(", ")}, placed naturally with realistic scale and perspective relative to the model`;
 }
 
+/**
+ * Foreground-prop compositing rule — added after direct user review of a
+ * live Street Style render (2026-09): the evening-city-street variation's
+ * foreground street lamp sat close to the camera, roughly in the direct
+ * camera-to-model sightline, and competed with the model for attention —
+ * worse still, it wasn't blurred enough for how close it read as being,
+ * breaking the optical logic of shallow depth of field (closer to the
+ * camera should mean MORE defocus, not less). The café-patio render, by
+ * contrast, placed its foreground plant off to one side, appropriately
+ * blurred, adding atmosphere without stealing focus — the same standard
+ * every foreground element must meet from here on.
+ */
+const FOREGROUND_RULE =
+  "Foreground element placement (mandatory): any foreground element sits to one side of the frame, never directly between the camera and the model, and never overlapping the model's face, body or the garment. The closer it is meant to read as being to the camera, the more strongly it must be out of focus — softly blurred and indistinct, never sharp enough to draw the eye away from the model. An element positioned near the model but off to the side, out of the direct camera-model sightline, and modest in size is fine and adds atmosphere.";
+
 export function renderScenePrompt(
   scene: Scene,
   variation: SceneVariation,
@@ -58,6 +73,7 @@ export function renderScenePrompt(
   return [
     `Set in ${variation.environment}`,
     `Foreground: ${variation.depth.foreground}. Midground: ${variation.depth.midground}. Background: ${variation.depth.background}`,
+    FOREGROUND_RULE,
     `Photographed with ${CAMERA_CLAUSE[camera]}`,
     INTENSITY_CLAUSE[intensity],
     decorClause(variation, density),
