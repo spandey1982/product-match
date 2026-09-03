@@ -16,7 +16,7 @@
 
 import { useState } from "react";
 import {
-  Gem, Flame, Moon, Sun, Snowflake, ShoppingBag, Aperture, Briefcase, Sparkles,
+  Gem, Flame, Moon, Sun, Snowflake, ShoppingBag, Aperture, Briefcase, Sparkles, Footprints,
   type LucideIcon,
 } from "lucide-react";
 import type { SceneOptionView } from "@/lib/model-gen/scenes/library";
@@ -45,7 +45,7 @@ interface Props {
 }
 
 const SCENE_ICONS: Record<string, LucideIcon> = {
-  Gem, Flame, Moon, Sun, Snowflake, ShoppingBag, Aperture, Briefcase,
+  Gem, Flame, Moon, Sun, Snowflake, ShoppingBag, Aperture, Briefcase, Footprints,
 };
 
 /** Laymen-friendly copy for the technical SceneIntensity/SceneDensity values. */

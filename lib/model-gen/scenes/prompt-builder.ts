@@ -53,7 +53,7 @@ export function renderScenePrompt(
   density: SceneDensity,
   accentColor: string
 ): string {
-  const camera = defaultCameraStyle(scene);
+  const camera = variation.cameraStyle ?? defaultCameraStyle(scene);
 
   return [
     `Set in ${variation.environment}`,

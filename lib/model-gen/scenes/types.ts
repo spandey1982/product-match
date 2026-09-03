@@ -69,6 +69,15 @@ export interface SceneVariation {
   /** Decor elements, one list per density level. Every element must justify
    *  its presence in a realistic photograph — never random space-filling. */
   decor: Record<SceneDensity, string[]>;
+  /**
+   * Overrides the scene's default camera style (Scene.cameraStyles[0]) for
+   * this one variation. Every scene until Street Style stayed within one
+   * time-of-day across all its variations, so a single scene-level default
+   * was enough; Street Style's variations genuinely span daylight through
+   * night (a café patio vs. an evening city street), which the scene-level
+   * default alone can't express — must be one of Scene.cameraStyles.
+   */
+  cameraStyle?: CameraStyle;
 }
 
 export interface Scene {

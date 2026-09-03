@@ -576,6 +576,113 @@ export const SCENES: Scene[] = [
     recommendFor: { styleTags: ["Contemporary", "Fusion", "Boho"], occasion: ["Party"] },
   },
 
+  // ── Street pack (varies) ─────────────────────────────────────────────────
+  // Authored from direct competitor benchmarking (karchobi.in, 2026-09) —
+  // fills the "Café" / "Street Fashion" slots this file's own future-roster
+  // comment has named since launch but never authored. Every karchobi photo
+  // inspected used one of these five settings; bundled under one scene
+  // identity the same way Wedding bundles mandap/palace/banquet/haveli/
+  // rooftop under itself, rather than splitting into two separate scenes.
+  {
+    id: "street-style",
+    label: "Street Style",
+    brandPack: "street",
+    variationPolicy: "varies",
+    cameraStyles: ["soft-daylight", "golden-hour", "outdoor", "evening"],
+    palette: {
+      base: ["warm stone grey", "sandy taupe", "weathered concrete"],
+      accent: ["terracotta", "warm brass", "deep olive green"],
+      avoid: ["grey", "beige"],
+    },
+    variations: [
+      {
+        id: "cafe-patio",
+        label: "Café Patio",
+        environment: "an outdoor café patio with woven rattan furniture and lush potted plants, softly shaded from direct sun",
+        depth: {
+          foreground: "a softly blurred cluster of potted plant leaves at the frame edge",
+          midground: "rattan café chairs and low tables framing the model",
+          background: "more potted greenery and the café's stone facade, softly defocused",
+        },
+        decor: {
+          minimal: ["a single potted plant"],
+          classic: ["potted plants", "a rattan chair", "a stone planter"],
+          rich: ["potted plants", "rattan furniture", "stone planters", "a folded café umbrella", "scattered fallen leaves on the pavement"],
+        },
+      },
+      {
+        id: "high-street-walkway",
+        label: "High Street Walkway",
+        cameraStyle: "golden-hour",
+        environment: "an upscale open-air high-street shopping promenade with polished stone paving and storefront awnings",
+        depth: {
+          foreground: "a softly blurred café table at the frame edge",
+          midground: "storefront glass and warm awnings framing the model",
+          background: "a row of boutique facades receding down the promenade, softly defocused",
+        },
+        decor: {
+          minimal: ["a single storefront awning edge"],
+          classic: ["storefront awnings", "potted topiary", "polished stone paving"],
+          rich: ["storefront awnings", "potted topiary", "stone paving", "string café lights overhead", "a parked bicycle at the edge of frame"],
+        },
+      },
+      {
+        id: "tree-lined-avenue",
+        label: "Tree-Lined Avenue",
+        environment: "a leafy tree-lined city avenue with dappled sunlight filtering through the canopy",
+        depth: {
+          foreground: "a softly blurred low sidewalk café table",
+          midground: "tree trunks and hanging branches framing the model",
+          background: "a soft green canopy tunnel of trees receding down the avenue, out of focus",
+        },
+        decor: {
+          minimal: ["a single tree trunk at the frame edge"],
+          classic: ["tree trunks", "a sidewalk café table", "fallen leaves underfoot"],
+          rich: ["tree trunks", "a sidewalk café table", "fallen leaves", "a parked vintage bicycle", "distant storefronts glimpsed through the trees"],
+        },
+      },
+      {
+        id: "evening-city-street",
+        label: "Evening City Street",
+        cameraStyle: "night",
+        environment: "a lively evening city street glowing with warm shopfront lights and soft bokeh from passing traffic",
+        depth: {
+          foreground: "a softly blurred street lamp post",
+          midground: "warm shopfront glow framing the model",
+          background: "a soft bokeh field of distant city lights, out of focus",
+        },
+        decor: {
+          minimal: ["a single glowing street lamp"],
+          classic: ["a street lamp", "warm shopfront windows", "soft light bokeh"],
+          rich: ["street lamps", "shopfront windows", "light bokeh", "a café's outdoor seating glimpsed nearby", "wet pavement reflections"],
+        },
+      },
+      {
+        id: "boutique-lined-lane",
+        label: "Boutique-Lined Lane",
+        environment: "a quiet cobblestone pedestrian lane lined with small independent boutiques and hanging planters",
+        depth: {
+          foreground: "a softly blurred hanging planter box",
+          midground: "cobblestone paving and boutique doorways framing the model",
+          background: "the lane curving away with more storefronts, softly defocused",
+        },
+        decor: {
+          minimal: ["a single hanging planter"],
+          classic: ["hanging planters", "cobblestone texture", "a painted boutique door"],
+          rich: ["hanging planters", "cobblestones", "painted doors", "a bicycle leaning against a wall", "a chalkboard café sign"],
+        },
+      },
+    ],
+    brandingHint: { preferredLogo: "dark", brightness: 0.8 },
+    theme: { icon: "Footprints", color: "#8A8378" },
+    negativeExtras: [
+      "no other pedestrians or crowds in frame — the model is the only person shown",
+      "no legible shop signage, brand names, or logos anywhere in the scene",
+      "no vehicles, bicycles or license plates rendered in sharp, legible focus",
+    ],
+    recommendFor: { occasion: ["Casual", "Everyday"], styleTags: ["Casual", "Contemporary"], season: ["All Season"] },
+  },
+
   // ── Corporate pack (consistent) ─────────────────────────────────────────
   {
     id: "corporate",
@@ -631,6 +738,7 @@ export interface BrandPackMeta {
 export const BRAND_PACKS: BrandPackMeta[] = [
   { id: "festive", label: "Festive Collection" },
   { id: "nature", label: "Nature Collection" },
+  { id: "street", label: "Street Style Collection" },
   { id: "boutique", label: "Boutique Collection" },
   { id: "editorial", label: "Editorial Collection" },
   { id: "corporate", label: "Corporate Collection" },
