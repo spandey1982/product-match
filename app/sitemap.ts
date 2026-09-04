@@ -1,6 +1,13 @@
 import type { MetadataRoute } from "next";
 import { db } from "@/lib/db";
 
+// Forces this to be computed per-request at runtime instead of prerendered
+// at build time. Without this, `next build` tries to statically generate
+// the sitemap once during the build step — which fails on Railway (the
+// builder can't reach postgres.railway.internal, only the deployed runtime
+// can) and would go stale between deploys anyway.
+export const dynamic = "force-dynamic";
+
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://mentishq.com";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
