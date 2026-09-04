@@ -10,7 +10,10 @@ interface Props {
 export async function generateMetadata({ params }: Props) {
   const { id } = await params;
   const order = await db.rentalOrder.findUnique({ where: { id }, select: { productTitle: true } });
-  return { title: order ? `${order.productTitle} — Rent — Mentis` : "Rent — Mentis" };
+  return {
+    title: order ? `${order.productTitle} — Rent — Mentis` : "Rent — Mentis",
+    robots: { index: false, follow: false },
+  };
 }
 
 /**

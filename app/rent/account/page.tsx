@@ -5,6 +5,7 @@ import { AccountView } from "./AccountView";
 
 export const metadata = {
   title: "My Account — Rent — Mentis",
+  robots: { index: false, follow: false },
 };
 
 export default async function AccountPage() {

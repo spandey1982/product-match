@@ -113,11 +113,36 @@ model Customer {
   wishlist     Wishlist[]
   creditTopUps CreditTopUp[]
   shopOrders   ShopOrder[]
+  reviews      Review[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@map("customers")
+}
+
+// A customer's rating/review of a /shop product. productId is deliberately
+// NOT a relation to Product (same durable-snapshot posture as Wishlist) —
+// a review should survive the product being edited or deleted later.
+// Eligibility (any ShopOrder for this product/customer, not gated to a
+// terminal "completed" status) and moderation (auto-published, no queue) are
+// both intentional MVP defaults — see prisma/schema.prisma's ShopOrder doc
+// comment for why "buy" orders have no confirmed delivered/completed status
+// yet to gate against more strictly.
+model Review {
+  id         String   @id @default(cuid())
+  productId  String
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  rating Int // 1-5
+  body   String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([productId, customerId])
+  @@index([productId])
+  @@map("reviews")
 }
 
 // Server-persisted wishlist for the /shop marketplace — the only prior
@@ -638,6 +663,60 @@ model AiUsageEvent {
   @@index([storeId, createdAt])
   @@index([createdAt])
   @@map("ai_usage_events")
+}
+
+// A point-in-time snapshot of lib/seo/health-score.ts's computed GEO/AEO/SEO
+// content-completeness score. Written periodically by
+// app/api/internal/seo-health-audit/route.ts (meant to be hit by an external
+// Railway Cron Job, same posture as purge-deleted-accounts — this repo has
+// no in-process scheduler). Snapshots exist because "improvement over
+// days/weeks/months" requires comparing past computed states; unlike
+// AiUsageEvent (a live-aggregated raw event ledger), there's no raw event
+// stream to re-aggregate here — the score is a fact about current DB state,
+// so it has to be captured at the time it's computed to be comparable later.
+// breakdown is the full score object (coverage %s, guardrail warnings,
+// freshness stats) serialized as JSON, same convention as
+// lib/serialize.ts-style array fields elsewhere in this schema.
+model SeoHealthSnapshot {
+  id        String   @id @default(cuid())
+  score     Float
+  breakdown String
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("seo_health_snapshots")
+}
+
+// A curated backlog item surfaced on /admin/tasks — sourced from a real
+// codebase/docs audit (deferred-work doc comments, PROJECT_KNOWLEDGE.md,
+// docs/IMAGE_AI_ROADMAP.md), never fabricated. category is one of:
+// "ai_future" (a future coding session can build this), "user_only"
+// (needs credentials/business decisions/real data only a human has),
+// "needs_verification" (needs real-world testing/evaluation before more
+// code), "blocked_external" (waiting on a third-party vendor capability).
+// dependencies/sourceRef are free text on purpose — this is a curated list,
+// not a derived one, so there's no fixed schema to normalize against.
+//
+// Convention (as of 2026-09-04): whenever a piece of work is deliberately
+// deferred — scoped out, left for a future session, or blocked on something
+// only the account owner can do — add a row here instead of only leaving a
+// doc comment behind. See scripts/seed-task-backlog.ts for the seeding
+// pattern; one-off additions can also be inserted directly (Prisma Studio
+// or a small script) without re-running the whole seed.
+model TaskItem {
+  id           String   @id @default(cuid())
+  title        String
+  description  String
+  category     String
+  dependencies String?
+  sourceRef    String?
+  status       String   @default("open") // "open" | "done" | "dismissed"
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category, status])
+  @@map("task_items")
 }
 
 // ── AI Casting — Signature Models ────────────────────────────────────────────

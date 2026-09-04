@@ -1,0 +1,22 @@
+# Mentis
+
+> AI Commerce Infrastructure for Fashion Retail. Mentis turns any fashion product catalog into a fully automated commerce engine for retailers — AI-generated product content, virtual try-on, smart outfit matching, and in-store kiosk experiences. Built for Indian ethnic fashion retail (sarees, lehengas, kurtis, sherwanis) but usable by any fashion retailer.
+
+## Product
+
+- [Homepage](https://mentishq.com/) — overview of all five engines: AI Cataloging, AI Fashion Studio, Virtual Try-On, Smart Matching, In-Store Kiosk.
+- [Shop](https://mentishq.com/shop) — the live customer-facing storefront: AI-catalogued products from Mentis retailers, virtual try-on, and outfit recommendations.
+- [Rent](https://mentishq.com/rent) — the rental storefront for try-before-you-buy fashion rentals.
+- [Sign up](https://mentishq.com/signup) — retailer self-serve onboarding.
+
+## What Mentis does
+
+- **AI Cataloging** — turns product photos into structured titles, descriptions, attributes, and search tags automatically.
+- **AI Fashion Studio** — places retailer products on AI-generated models to produce campaign and social content without a photoshoot.
+- **Virtual Try-On** — lets shoppers see themselves wearing a product from a selfie, on the web or via an in-store kiosk.
+- **Smart Matching** — a deterministic, explainable scoring engine (category compatibility, color harmony, occasion, style) that recommends coordinated outfit pairings — tuned for Indian ethnic fashion nuances.
+- **In-Store Kiosk** — a selfie kiosk that generates shareable AI-styled images of shoppers wearing in-store products.
+
+## Company
+
+Mentis is built in India, for fashion retailers — boutiques, D2C brands, and multi-location apparel chains.

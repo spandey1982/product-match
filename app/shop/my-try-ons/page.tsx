@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getCustomerSession } from "@/lib/customer-auth";
 import { ShopMyTryOnsView } from "./ShopMyTryOnsView";
 
-export const metadata = { title: "My Try-Ons — Shop — Mentis" };
+export const metadata = { title: "My Try-Ons — Shop — Mentis", robots: { index: false, follow: false } };
 
 export default async function ShopMyTryOnsPage() {
   const session = await getCustomerSession();

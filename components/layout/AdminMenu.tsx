@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { Shield, Tag, ClipboardCheck, ClipboardList, Scale, Wallet, Shirt, Activity, Palette } from "lucide-react";
+import { Shield, Tag, ClipboardCheck, ClipboardList, Scale, Wallet, Shirt, Activity, Palette, Search, ListTodo } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const ADMIN_LINKS = [
@@ -13,6 +13,8 @@ const ADMIN_LINKS = [
   { href: "/admin/billing-comparison", label: "Billing Comparison", icon: Scale },
   { href: "/admin/review", label: "Generation Review", icon: ClipboardCheck },
   { href: "/admin/garment-intelligence", label: "Garment Intelligence", icon: Shirt },
+  { href: "/admin/seo-health", label: "SEO/GEO Health", icon: Search },
+  { href: "/admin/tasks", label: "Task Backlog", icon: ListTodo },
 ];
 
 /**

@@ -6,6 +6,7 @@ import { OrdersView } from "./OrdersView";
 
 export const metadata = {
   title: "My Orders — Rent — Mentis",
+  robots: { index: false, follow: false },
 };
 
 export default async function RentalOrdersPage() {

@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { parseArray } from "@/lib/serialize";
 import { ShopCollectionsListView } from "./ShopCollectionsListView";
 
-export const metadata = { title: "Shop Collections — Internal" };
+export const metadata = { title: "Shop Collections — Internal", robots: { index: false, follow: false } };
 
 /**
  * Internal-only management screen for admin-curated /shop collections.
