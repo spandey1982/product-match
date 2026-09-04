@@ -49,10 +49,13 @@ export default async function ShopCollectionPage({ params }: Props) {
 
   return (
     <>
-      <p className="text-sm text-gray-500 mb-4">
-        {collection.name} — a curated collection of {productCount} product{productCount === 1 ? "" : "s"} on
-        Mentis, each with AI virtual try-on and smart outfit-matching recommendations.
-      </p>
+      <div className="mb-6 rounded-2xl bg-indigo-50/60 border border-indigo-100 px-4 py-3">
+        <p className="text-sm text-indigo-900 leading-relaxed">
+          <span className="font-semibold">{collection.name}</span> — a curated collection of{" "}
+          {productCount} product{productCount === 1 ? "" : "s"} on Mentis, each with AI virtual
+          try-on and smart outfit-matching recommendations.
+        </p>
+      </div>
       <ShopView
         loggedIn={!!session}
         wishlistedIds={wishlistedIds}

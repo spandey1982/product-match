@@ -687,6 +687,38 @@ model SeoHealthSnapshot {
   @@map("seo_health_snapshots")
 }
 
+// A curated backlog item surfaced on /admin/tasks — sourced from a real
+// codebase/docs audit (deferred-work doc comments, PROJECT_KNOWLEDGE.md,
+// docs/IMAGE_AI_ROADMAP.md), never fabricated. category is one of:
+// "ai_future" (a future coding session can build this), "user_only"
+// (needs credentials/business decisions/real data only a human has),
+// "needs_verification" (needs real-world testing/evaluation before more
+// code), "blocked_external" (waiting on a third-party vendor capability).
+// dependencies/sourceRef are free text on purpose — this is a curated list,
+// not a derived one, so there's no fixed schema to normalize against.
+//
+// Convention (as of 2026-09-04): whenever a piece of work is deliberately
+// deferred — scoped out, left for a future session, or blocked on something
+// only the account owner can do — add a row here instead of only leaving a
+// doc comment behind. See scripts/seed-task-backlog.ts for the seeding
+// pattern; one-off additions can also be inserted directly (Prisma Studio
+// or a small script) without re-running the whole seed.
+model TaskItem {
+  id           String   @id @default(cuid())
+  title        String
+  description  String
+  category     String
+  dependencies String?
+  sourceRef    String?
+  status       String   @default("open") // "open" | "done" | "dismissed"
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category, status])
+  @@map("task_items")
+}
+
 // ── AI Casting — Signature Models ────────────────────────────────────────────
 
 // A retailer's Signature Model — a saved *casting brief*, not a stored image.

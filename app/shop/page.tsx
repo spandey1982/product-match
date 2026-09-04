@@ -1,7 +1,9 @@
+import { Sparkles } from "lucide-react";
 import { getCustomerSession } from "@/lib/customer-auth";
 import { getSession, isAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { CATEGORY_CONTENT } from "@/lib/shop/category-content";
+import { categoryIcon } from "@/lib/shop/category-icon";
 import { getBestSellers } from "@/lib/shop/best-sellers";
 import { ProductRail } from "@/components/shop/ProductRail";
 import { ShopView } from "./ShopView";
@@ -82,20 +84,45 @@ export default async function ShopPage() {
       />
 
       {totalActive > 0 && (
-        <section className="mt-12 pt-8 border-t border-gray-100 space-y-4">
-          <p className="text-sm text-gray-500 leading-relaxed">
-            Browse {totalActive} products across {byCategory.length} categories on Mentis —
-            every listing includes AI virtual try-on and smart outfit-matching recommendations,
-            sourced from Indian ethnic fashion retailers.
-          </p>
-          {topCategories.map(({ category, _count }) => (
-            CATEGORY_CONTENT[category] ? (
-              <p key={category} className="text-xs text-gray-400 leading-relaxed">
-                <span className="font-medium text-gray-500">{category} ({_count._all}):</span>{" "}
-                {CATEGORY_CONTENT[category]}
-              </p>
-            ) : null
-          ))}
+        <section className="mt-16 pt-10 border-t border-gray-100">
+          <div className="max-w-2xl">
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 tracking-wide uppercase">
+              <Sparkles size={13} /> About Mentis Shop
+            </span>
+            <p className="mt-3 text-sm text-gray-600 leading-relaxed">
+              Browse <span className="font-semibold text-gray-900">{totalActive} products</span> across{" "}
+              <span className="font-semibold text-gray-900">{byCategory.length} categories</span> on Mentis —
+              every listing includes AI virtual try-on and smart outfit-matching recommendations,
+              sourced directly from Indian ethnic fashion retailers.
+            </p>
+          </div>
+
+          {topCategories.some(({ category }) => CATEGORY_CONTENT[category]) && (
+            <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {topCategories.map(({ category, _count }) => {
+                const blurb = CATEGORY_CONTENT[category];
+                if (!blurb) return null;
+                const Icon = categoryIcon(category);
+                return (
+                  <div
+                    key={category}
+                    className="rounded-2xl bg-white border border-gray-100 shadow-sm p-4 flex gap-3"
+                  >
+                    <div className="shrink-0 h-9 w-9 rounded-xl bg-indigo-50 flex items-center justify-center">
+                      <Icon size={16} className="text-indigo-600" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-baseline gap-1.5">
+                        <h3 className="text-sm font-semibold text-gray-900">{category}</h3>
+                        <span className="text-xs text-gray-400">({_count._all})</span>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1 leading-relaxed">{blurb}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </section>
       )}
     </>
