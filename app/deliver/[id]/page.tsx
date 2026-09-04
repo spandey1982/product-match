@@ -9,7 +9,10 @@ interface Props {
 export async function generateMetadata({ params }: Props) {
   const { id } = await params;
   const order = await db.shopOrder.findUnique({ where: { id }, select: { productTitle: true } });
-  return { title: order ? `Deliver — ${order.productTitle}` : "Deliver — Mentis" };
+  return {
+    title: order ? `Deliver — ${order.productTitle}` : "Deliver — Mentis",
+    robots: { index: false, follow: false },
+  };
 }
 
 /**

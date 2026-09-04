@@ -5,6 +5,7 @@ import { AddressesView } from "./AddressesView";
 
 export const metadata = {
   title: "My Address — Rent — Mentis",
+  robots: { index: false, follow: false },
 };
 
 export default async function AddressesPage() {

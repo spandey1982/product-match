@@ -4,7 +4,7 @@ import { getCustomerSession } from "@/lib/customer-auth";
 import { toPublicShopProduct } from "@/lib/shop/public-product";
 import { WishlistView } from "./WishlistView";
 
-export const metadata = { title: "My Wishlist — Shop — Mentis" };
+export const metadata = { title: "My Wishlist — Shop — Mentis", robots: { index: false, follow: false } };
 
 export default async function WishlistPage() {
   const session = await getCustomerSession();
