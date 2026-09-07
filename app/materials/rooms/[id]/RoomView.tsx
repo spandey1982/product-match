@@ -16,6 +16,21 @@ type Room = {
   surfaces: Surface[];
 };
 
+type Swatch = {
+  id: string;
+  name: string;
+  colorName: string | null;
+  colorHex: string | null;
+  finish: string | null;
+};
+
+type Visualization = {
+  id: string;
+  status: string;
+  outputImageUrl: string | null;
+  errorMessage: string | null;
+};
+
 type Rect = { x: number; y: number; width: number; height: number };
 
 function parseGeometry(geometryData: string | null): Rect | null {
@@ -48,6 +63,12 @@ export function RoomView({ roomId }: { roomId: string }) {
   const [label, setLabel] = useState("");
   const [saving, setSaving] = useState(false);
 
+  const [swatches, setSwatches] = useState<Swatch[]>([]);
+  const [selectedSwatch, setSelectedSwatch] = useState<Record<string, string>>({});
+  const [generating, setGenerating] = useState<Record<string, boolean>>({});
+  const [visualizations, setVisualizations] = useState<Record<string, Visualization>>({});
+  const [previewError, setPreviewError] = useState<Record<string, string>>({});
+
   useEffect(() => {
     fetch(`/api/home-material/rooms/${roomId}`)
       .then(async (res) => {
@@ -61,7 +82,40 @@ export function RoomView({ roomId }: { roomId: string }) {
       .then((data) => data && setRoom(data.room))
       .catch(() => setError("Could not load this room."))
       .finally(() => setLoading(false));
+
+    fetch(`/api/home-material/products`)
+      .then((res) => (res.ok ? res.json() : { products: [] }))
+      .then((data) => setSwatches(data.products ?? []))
+      .catch(() => setSwatches([]));
   }, [roomId, router]);
+
+  async function handleGeneratePreview(surfaceId: string) {
+    const productId = selectedSwatch[surfaceId];
+    if (!productId) {
+      setPreviewError((p) => ({ ...p, [surfaceId]: "Pick a swatch first." }));
+      return;
+    }
+    setPreviewError((p) => ({ ...p, [surfaceId]: "" }));
+    setGenerating((g) => ({ ...g, [surfaceId]: true }));
+    try {
+      const res = await fetch(`/api/home-material/visualizations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ surfaceId, productId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setPreviewError((p) => ({ ...p, [surfaceId]: data.error || "Preview failed" }));
+        if (data.visualization) setVisualizations((v) => ({ ...v, [surfaceId]: data.visualization }));
+        return;
+      }
+      setVisualizations((v) => ({ ...v, [surfaceId]: data.visualization }));
+    } catch {
+      setPreviewError((p) => ({ ...p, [surfaceId]: "Something went wrong. Please try again." }));
+    } finally {
+      setGenerating((g) => ({ ...g, [surfaceId]: false }));
+    }
+  }
 
   function fractionalPoint(e: React.PointerEvent): { x: number; y: number } {
     const rect = imageRef.current!.getBoundingClientRect();
@@ -194,9 +248,42 @@ export function RoomView({ roomId }: { roomId: string }) {
       {error && <p className="text-sm text-red-500">{error}</p>}
 
       {room.surfaces.length > 0 && (
-        <p className="text-xs text-gray-500">
-          {room.surfaces.length} wall{room.surfaces.length === 1 ? "" : "s"} saved. Material preview comes next.
-        </p>
+        <div className="space-y-4 pt-2">
+          <h2 className="text-sm font-semibold text-gray-900">Preview a material</h2>
+          {room.surfaces.map((s) => {
+            const vis = visualizations[s.id];
+            return (
+              <div key={s.id} className="rounded-2xl border border-gray-200 p-4 space-y-3">
+                <p className="text-sm font-medium text-gray-700">{s.label || "Wall"}</p>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={selectedSwatch[s.id] || ""}
+                    onChange={(e) => setSelectedSwatch((sel) => ({ ...sel, [s.id]: e.target.value }))}
+                    className="flex-1 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="">Choose a swatch…</option>
+                    {swatches.map((sw) => (
+                      <option key={sw.id} value={sw.id}>
+                        {sw.name}{sw.colorName ? ` — ${sw.colorName}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <Button onClick={() => handleGeneratePreview(s.id)} loading={generating[s.id]}>
+                    Preview
+                  </Button>
+                </div>
+                {previewError[s.id] && <p className="text-sm text-red-500">{previewError[s.id]}</p>}
+                {vis?.status === "completed" && vis.outputImageUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={vis.outputImageUrl} alt="Preview" className="w-full rounded-xl border border-gray-200" />
+                )}
+                {vis?.status === "failed" && (
+                  <p className="text-xs text-red-500">{vis.errorMessage || "Preview generation failed."}</p>
+                )}
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );
