@@ -1,7 +1,8 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Upload, ArrowRight } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeft, Upload, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const ROOM_TYPES = [
@@ -59,6 +60,9 @@ export function UploadView() {
 
   return (
     <div className="max-w-lg mx-auto py-16 px-6">
+      <Link href="/materials" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-4">
+        <ArrowLeft className="h-4 w-4" /> Back
+      </Link>
       <div className="bg-white rounded-3xl border border-gray-100 shadow-xl shadow-indigo-100/30 p-8 space-y-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Upload a room photo</h1>
