@@ -3,6 +3,13 @@ import { db } from "@/lib/db";
 import { getHmUserSession } from "@/lib/home-material/auth";
 import { detectWallRegion } from "@/lib/home-material/wall-detection";
 
+/**
+ * Preview only — does NOT persist an HmSurface. The client shows the
+ * returned polygon as an editable draft (draggable vertices) and the user
+ * confirms via POST .../surfaces once they're happy with it, same as a
+ * fully manual selection would. This keeps "AI-detected" and "manually
+ * drawn" on one save path instead of two.
+ */
 export async function POST(
   _req: Request,
   { params }: { params: Promise<{ roomId: string }> }
@@ -23,7 +30,7 @@ export async function POST(
   if ("error" in result) {
     return NextResponse.json({ error: result.error }, { status: 502 });
   }
-  if (!result.wallVisible || !result.rect) {
+  if (!result.wallVisible || !result.polygon) {
     return NextResponse.json(
       {
         error:
@@ -35,15 +42,5 @@ export async function POST(
     );
   }
 
-  const surface = await db.hmSurface.create({
-    data: {
-      roomId,
-      label: "Wall (AI-detected)",
-      geometryData: JSON.stringify(result.rect),
-      measurementSource: "ai_estimated",
-      measurementConfidence: result.confidence,
-    },
-  });
-
-  return NextResponse.json({ surface, confidence: result.confidence, notes: result.notes });
+  return NextResponse.json({ polygon: result.polygon, confidence: result.confidence, notes: result.notes });
 }

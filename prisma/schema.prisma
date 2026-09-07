@@ -1216,9 +1216,10 @@ model HmUser {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  projects  HmProject[]
-  shortlist HmShortlistItem[]
-  leads     HmLead[]
+  projects       HmProject[]
+  shortlist      HmShortlistItem[]
+  leads          HmLead[]
+  customSwatches HmProduct[]
 
   @@map("hm_users")
 }
@@ -1370,8 +1371,19 @@ model HmProduct {
 
   imageUrls       String  @default("[]") // JSON array (lib/serialize.ts)
   // Reference texture asset for product-accurate visualization (pattern/
-  // colour source, not a room photo).
+  // colour source, not a room photo). For a custom upload (see
+  // uploadedByHmUserId below) this IS the uploaded photo — the
+  // visualization pipeline sends it to the model as a reference image
+  // instead of relying on colorName/finish text, since an arbitrary
+  // upload can't be reliably characterized in structured fields.
   textureAssetUrl String?
+
+  // Set only for a user-uploaded custom swatch (added 2026-09-07, "upload
+  // your own wallpaper/paint" feature) — null for curated/admin swatches.
+  // Scopes visibility: a custom upload is private to the uploading HmUser,
+  // never shown in another user's swatch list.
+  uploadedByHmUserId String?
+  uploadedByHmUser   HmUser? @relation(fields: [uploadedByHmUserId], references: [id], onDelete: Cascade)
 
   lastUpdatedAt DateTime @default(now())
   createdAt     DateTime @default(now())
@@ -1385,6 +1397,7 @@ model HmProduct {
   leads            HmLead[]
 
   @@index([materialId])
+  @@index([uploadedByHmUserId])
   @@map("hm_products")
 }
 

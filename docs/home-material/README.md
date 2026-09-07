@@ -110,6 +110,63 @@ real retailer SKU with provenance), Retailer/Lead capture, self-serve
 retailer onboarding. Resume these once the fast-lane demo path is
 validated with real photos and real feedback.
 
+### Pivot update — polygon outline + editable vertices + custom upload (2026-09-07, same day)
+
+User feedback after the first real-photo-adjacent test: selection was "very
+rigid and rectangular," needed to follow the wall's actual outline, be
+user-adjustable, and support the user's own material photos, not just the
+curated demo list. All three built and live-tested successfully the same
+day.
+
+**✅ V1/plan items now addressed:**
+- `HmSurface.geometryData` is now an arbitrary polygon
+  (`{points: [{x,y}, ...]}`, 3–12 vertices), not a rectangle — closer to
+  brief §9's "preserve the room" and §33's `Surface.geometry` concept than
+  the earlier bounding-box shortcut was.
+- The draft-then-confirm UX (AI polygon or manual clicks → drag vertices to
+  adjust → confirm) is a real, if narrow, instance of brief §11's
+  "AI estimation + user confirmation" measurement policy — not just schema
+  support for it, an actual working interaction now.
+- Custom material upload uses **reference-image conditioning** (the
+  uploaded photo is sent to Gemini directly, not described in text) — this
+  is architecturally a meaningful step toward brief §9's **Product-Accurate
+  Preview** (Principle 1, "reality over imagination": the real uploaded
+  material, not an AI-imagined approximation). Not a full claim of
+  product-accurate mode (still tagged `mode: "quick_preview"` in the DB,
+  no SKU/retailer/provenance behind it) — see flagged items.
+
+**🆕 New addition, worth keeping long-term (update to the plan):**
+"Upload your own wallpaper/paint photo" as a first-class input path,
+alongside picking from a catalogue — genuinely useful for brief §8 Mode A
+("I found this wallpaper — show me how it looks") when the user has a
+photo of it but it isn't in any retailer catalogue yet. Fits the existing
+provenance model cleanly (`HmProductEvidence.sourceType` already has
+`"user"` as an option) even though field-level evidence rows aren't wired
+up for it yet (see flagged).
+
+**⚠️ Flagged — shortcuts/gaps to revisit:**
+- A small visual artifact: when the AI polygon routes around a small
+  cutout (e.g. a window) using a thin "bridge" back-and-forth segment
+  (the standard single-path polygon-with-hole technique), the mask's
+  feather blur can leave a faint soft halo right at that cutout's edge —
+  cosmetic, not a correctness bug (confirmed: the cutout itself stayed
+  untouched in testing), but worth tightening later (candidate fix: render
+  true multi-subpath SVG holes instead of trusting the model's single
+  self-intersecting point list as-is).
+- **No re-editing of an already-confirmed wall yet** — the drag-to-adjust
+  step only exists for a draft, before it's saved. Adjusting a saved
+  surface currently means adding a new one, not correcting the existing
+  one. A `PATCH .../surfaces/[id]` is the natural next step.
+- Custom uploads are scoped to the uploading `HmUser` (`uploadedByHmUserId`)
+  but don't yet get `HmProductEvidence` rows recording that provenance
+  field-by-field — ownership is enforced, richer provenance isn't populated
+  yet.
+- AI polygon vertex count is capped at 12 — a wall with several
+  windows/doors/obstructions may exceed what's traceable in that budget;
+  the model is instructed to fall back to a simpler outer boundary + a
+  text note rather than force it, but that fallback hasn't been tested
+  against a genuinely complex wall yet.
+
 ## Locked decisions (2026-09-07)
 
 | Decision | Choice | Why |

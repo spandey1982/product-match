@@ -27,8 +27,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Swatch not found" }, { status: 404 });
   }
 
-  const rect = surface.geometryData ? JSON.parse(surface.geometryData) : null;
-  if (!rect) {
+  const geometry = surface.geometryData ? JSON.parse(surface.geometryData) : null;
+  const points = geometry?.points;
+  if (!Array.isArray(points) || points.length < 3) {
     return NextResponse.json({ error: "This wall has no selected region yet" }, { status: 400 });
   }
 
@@ -45,7 +46,7 @@ export async function POST(req: NextRequest) {
 
   const result = await runQuickPreviewVisualization({
     roomImageUrl: surface.room.imageUrl,
-    rect,
+    points,
     swatch: {
       id: product.id,
       name: product.name,
@@ -54,6 +55,9 @@ export async function POST(req: NextRequest) {
       finish: product.finish,
       patternName: product.patternName,
     },
+    // Custom-uploaded swatches carry their real photo here (curated demo
+    // swatches don't have one) — real pixels beat a text description.
+    referenceImageUrl: product.textureAssetUrl,
     hmUserId: session.id,
     visualizationId: visualization.id,
   });

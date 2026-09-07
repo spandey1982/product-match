@@ -1,6 +1,7 @@
 /**
- * Quick AI Preview — apply a swatch's colour/finish to a user-selected wall
- * region while leaving the rest of the room untouched.
+ * Quick AI Preview — apply a swatch's colour/finish (or a user-uploaded
+ * reference photo) to a user-selected wall region while leaving the rest
+ * of the room untouched.
  *
  * Independently implemented for this domain (not a call into
  * lib/model-gen/erase.ts, which is fashion/garment-image tuned — aspect
@@ -13,6 +14,10 @@
  * ORIGINAL room photo through a feathered mask via sharp. That composite is
  * what actually guarantees everything outside the selected wall comes back
  * pixel-identical, regardless of model behavior (Constitution Principle 2).
+ *
+ * The mask is an arbitrary POLYGON (not a rectangle, as of 2026-09-07) so
+ * the selection can hug the wall's real outline — rendered as an SVG and
+ * rasterized via sharp.
  */
 import sharp from "sharp";
 import { uploadWithRetry } from "@/lib/cloudinary";
@@ -20,6 +25,11 @@ import { recordAiUsage } from "@/lib/ai-usage/record";
 
 const MODEL_ID = "gemini-3.1-flash-image";
 const MAX_MODEL_EDGE = 1536;
+
+export interface Point {
+  x: number;
+  y: number;
+}
 
 export interface QuickPreviewSwatch {
   id: string;
@@ -32,9 +42,17 @@ export interface QuickPreviewSwatch {
 
 export interface QuickPreviewInput {
   roomImageUrl: string;
-  /** Fractional rect [0,1] — same shape stored on HmSurface.geometryData. */
-  rect: { x: number; y: number; width: number; height: number };
+  /** Fractional polygon points [0,1] — same shape stored on HmSurface.geometryData. */
+  points: Point[];
   swatch: QuickPreviewSwatch;
+  /**
+   * A user-uploaded photo of the actual material (custom swatch), if any.
+   * When present, this is sent as a reference image and the prompt asks
+   * Gemini to match it directly — real pixels beat a text description for
+   * an arbitrary upload we can't characterize in structured fields (see
+   * PROJECT_KNOWLEDGE.md, "why real images beat text notes").
+   */
+  referenceImageUrl?: string | null;
   hmUserId: string;
   visualizationId: string;
 }
@@ -48,20 +66,27 @@ export interface QuickPreviewResult {
 }
 
 /**
- * Deterministic prompt built ONLY from structured swatch fields — never raw
- * user text — per the AI-boundaries rule that the product database defines
- * the product, the LLM doesn't (Constitution Principle 7, CLAUDE.md §18
- * "never trust user input").
+ * Deterministic prompt built ONLY from structured swatch fields (or a
+ * reference-image instruction) — never raw user text — per the
+ * AI-boundaries rule that the product database defines the product, the
+ * LLM doesn't (Constitution Principle 7, CLAUDE.md §18 "never trust user
+ * input").
  */
-export function buildQuickPreviewPrompt(swatch: QuickPreviewSwatch): string {
+export function buildQuickPreviewPrompt(swatch: QuickPreviewSwatch, hasReferenceImage: boolean): string {
   const parts: string[] = [];
   parts.push(
     `You are editing a photo of a room. Change the appearance of ONLY the highlighted wall region to show this wall material:`
   );
-  parts.push(`- Material: ${swatch.name}`);
-  if (swatch.colorName) parts.push(`- Colour: ${swatch.colorName}${swatch.colorHex ? ` (${swatch.colorHex})` : ""}`);
-  if (swatch.finish) parts.push(`- Finish: ${swatch.finish}`);
-  if (swatch.patternName) parts.push(`- Pattern: ${swatch.patternName}`);
+  if (hasReferenceImage) {
+    parts.push(
+      `- Material: ${swatch.name} — an exact reference photo of this material is included as an additional image. Match its colour, pattern, and texture as closely as possible.`
+    );
+  } else {
+    parts.push(`- Material: ${swatch.name}`);
+    if (swatch.colorName) parts.push(`- Colour: ${swatch.colorName}${swatch.colorHex ? ` (${swatch.colorHex})` : ""}`);
+    if (swatch.finish) parts.push(`- Finish: ${swatch.finish}`);
+    if (swatch.patternName) parts.push(`- Pattern: ${swatch.patternName}`);
+  }
   parts.push(
     "Keep every other part of the photo — furniture, floor, ceiling, windows, doors, lighting, and every other wall — exactly as it is in the original. Match the room's existing lighting and shadows realistically on the new wall surface. Do not add, remove, or move any object."
   );
@@ -96,8 +121,15 @@ function featherPxFor(width: number, height: number): number {
 
 async function fetchImageBuffer(url: string): Promise<Buffer> {
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`Failed to fetch room image: HTTP ${res.status}`);
+  if (!res.ok) throw new Error(`Failed to fetch image: HTTP ${res.status}`);
   return Buffer.from(await res.arrayBuffer());
+}
+
+/** Renders an arbitrary polygon as a white-on-black mask at the given pixel size — the SVG is rasterized by sharp, so this supports any shape, not just an axis-aligned rect. */
+async function renderPolygonMask(points: Point[], width: number, height: number): Promise<Buffer> {
+  const pointsAttr = points.map((p) => `${(p.x * width).toFixed(1)},${(p.y * height).toFixed(1)}`).join(" ");
+  const svg = `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg"><rect width="100%" height="100%" fill="black"/><polygon points="${pointsAttr}" fill="white"/></svg>`;
+  return sharp(Buffer.from(svg)).png().toBuffer();
 }
 
 export async function runQuickPreviewVisualization(
@@ -107,6 +139,9 @@ export async function runQuickPreviewVisualization(
   if (!apiKey || apiKey === "your-gemini-api-key-here") {
     return { error: "AI generation is not configured." };
   }
+  if (input.points.length < 3) {
+    return { error: "Invalid wall selection." };
+  }
 
   const original = await fetchImageBuffer(input.roomImageUrl);
   const meta = await sharp(original).rotate().metadata();
@@ -115,29 +150,7 @@ export async function runQuickPreviewVisualization(
   if (origWidth <= 0 || origHeight <= 0) return { error: "Could not read the room photo." };
 
   // Mask at native resolution: white = selected wall, black = keep untouched.
-  const { x, y, width, height } = input.rect;
-  const rectPx = {
-    left: Math.round(x * origWidth),
-    top: Math.round(y * origHeight),
-    width: Math.max(1, Math.round(width * origWidth)),
-    height: Math.max(1, Math.round(height * origHeight)),
-  };
-  const maskNative = await sharp({
-    create: { width: origWidth, height: origHeight, channels: 3, background: { r: 0, g: 0, b: 0 } },
-  })
-    .composite([
-      {
-        input: await sharp({
-          create: { width: rectPx.width, height: rectPx.height, channels: 3, background: { r: 255, g: 255, b: 255 } },
-        })
-          .png()
-          .toBuffer(),
-        left: rectPx.left,
-        top: rectPx.top,
-      },
-    ])
-    .png()
-    .toBuffer();
+  const maskNative = await renderPolygonMask(input.points, origWidth, origHeight);
 
   // Same downscale applied to the base image AND the mask, together — a
   // real, previously-fixed bug in this codebase's other AI pipeline was
@@ -148,15 +161,34 @@ export async function runQuickPreviewVisualization(
   const modelBase = await sharp(original).rotate().resize(modelWidth, modelHeight).jpeg({ quality: 90 }).toBuffer();
   const modelMask = await sharp(maskNative).resize(modelWidth, modelHeight).png().toBuffer();
 
-  const prompt = buildQuickPreviewPrompt(input.swatch);
+  let referenceImage: Buffer | null = null;
+  if (input.referenceImageUrl) {
+    try {
+      const refOriginal = await fetchImageBuffer(input.referenceImageUrl);
+      referenceImage = await sharp(refOriginal)
+        .rotate()
+        .resize({ width: MAX_MODEL_EDGE, height: MAX_MODEL_EDGE, fit: "inside", withoutEnlargement: true })
+        .jpeg({ quality: 90 })
+        .toBuffer();
+    } catch (err) {
+      console.error("[home-material/visualization] failed to fetch reference image, continuing without it:", err);
+    }
+  }
+
+  const prompt = buildQuickPreviewPrompt(input.swatch, Boolean(referenceImage));
   const aspectRatio = nearestAspectRatio(modelWidth, modelHeight);
 
   const parts: Array<Record<string, unknown>> = [
     { inline_data: { mime_type: "image/jpeg", data: modelBase.toString("base64") } },
     { inline_data: { mime_type: "image/png", data: modelMask.toString("base64") } },
-    { text: prompt },
   ];
-  const requestBytes = modelBase.length + modelMask.length;
+  if (referenceImage) {
+    parts.push({ inline_data: { mime_type: "image/jpeg", data: referenceImage.toString("base64") } });
+  }
+  parts.push({ text: prompt });
+
+  const imageInputs = 2 + (referenceImage ? 1 : 0);
+  const requestBytes = modelBase.length + modelMask.length + (referenceImage?.length ?? 0);
 
   const t0 = Date.now();
   let res: Response;
@@ -182,7 +214,7 @@ export async function runQuickPreviewVisualization(
       feature: "hm_visualization",
       operation: "quick_preview",
       requestBytes,
-      imageInputs: 2,
+      imageInputs,
       userId: input.hmUserId,
       status: "error",
       errorMessage: `fetch failed: ${String(err)}`,
@@ -201,7 +233,7 @@ export async function runQuickPreviewVisualization(
       operation: "quick_preview",
       durationMs: generationMs,
       requestBytes,
-      imageInputs: 2,
+      imageInputs,
       userId: input.hmUserId,
       status: "error",
       errorMessage: `HTTP ${res.status}: ${errText.slice(0, 300)}`,
@@ -233,7 +265,7 @@ export async function runQuickPreviewVisualization(
       totalTokens: usageMeta?.totalTokenCount ?? null,
       durationMs: generationMs,
       requestBytes,
-      imageInputs: 2,
+      imageInputs,
       userId: input.hmUserId,
       status: "error",
       errorMessage: `No image returned. Finish reason: ${finishReason ?? "unknown"}`,
@@ -277,7 +309,7 @@ export async function runQuickPreviewVisualization(
       outputTokens: usageMeta?.candidatesTokenCount ?? null,
       totalTokens: usageMeta?.totalTokenCount ?? null,
       imagesGenerated: 1,
-      imageInputs: 2,
+      imageInputs,
       requestBytes,
       responseBytes: editedRaw.length,
       durationMs: generationMs,
@@ -298,7 +330,7 @@ export async function runQuickPreviewVisualization(
     outputTokens: usageMeta?.candidatesTokenCount ?? null,
     totalTokens: usageMeta?.totalTokenCount ?? null,
     imagesGenerated: 1,
-    imageInputs: 2,
+    imageInputs,
     requestBytes,
     responseBytes: editedRaw.length,
     durationMs: generationMs,
