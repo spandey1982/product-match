@@ -20,6 +20,7 @@ export interface MotionReviewClip {
     backgroundStability: number | null;
     motionSmoothness: number | null;
     artifactScore: number | null;
+    garmentInteractionPlausibility: number | null;
     overall: number | null;
   } | null;
   issues: string | null;
@@ -90,6 +91,7 @@ function Card({ clip, onResolved }: { clip: MotionReviewClip; onResolved: (id: s
             <div className="flex justify-between"><span>Garment / Texture</span><span>{fmt(clip.scores.garmentPreservation)} / {fmt(clip.scores.textureConsistency)}</span></div>
             <div className="flex justify-between"><span>Motion / Artifacts</span><span>{fmt(clip.scores.motionSmoothness)} / {fmt(clip.scores.artifactScore)}</span></div>
             <div className="flex justify-between"><span>Identity / Lighting</span><span>{fmt(clip.scores.identityConsistency)} / {fmt(clip.scores.lightingStability)}</span></div>
+            <div className="flex justify-between"><span>Interaction plausibility</span><span>{fmt(clip.scores.garmentInteractionPlausibility)}</span></div>
           </div>
         )}
 

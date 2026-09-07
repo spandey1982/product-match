@@ -25,12 +25,17 @@ import { recordAiUsage } from "@/lib/ai-usage/record";
 
 const REVIEW_MODEL = "gemini-2.5-flash";
 const MAX_QA_RETRIES = 2;
+// Reel ai-motion shots get a lower ceiling — see render.ts's
+// MAX_RENDER_RETRIES_REEL comment: a QA rejection on this deliverable is
+// often a systematic fidelity ceiling, not transient bad luck, so retrying
+// at full Veo price 2-3x just re-confirms the same failure.
+const MAX_QA_RETRIES_REEL = 1;
 
 const ACCEPT_THRESHOLD = 4.5;
 const REJECT_THRESHOLD = 2;
 
 const RUBRIC = `You are a strict fashion e-commerce video QA reviewer. You are shown three frames (start, middle, end) sampled from a short AI-generated product-motion clip, followed by the ORIGINAL static product photo it was generated from. Rate the clip from 1 (poor) to 5 (excellent). Return raw JSON only, no markdown:
-{"identityConsistency":0,"garmentPreservation":0,"textureConsistency":0,"lightingStability":0,"backgroundStability":0,"motionSmoothness":0,"artifactScore":0,"overall":0,"issues":[]}
+{"identityConsistency":0,"garmentPreservation":0,"textureConsistency":0,"lightingStability":0,"backgroundStability":0,"motionSmoothness":0,"artifactScore":0,"garmentInteractionPlausibility":0,"overall":0,"issues":[]}
 - identityConsistency: the model/subject looks like the same person/entity across all three frames, no identity drift
 - garmentPreservation: the garment matches the original product photo in shape, cut and colour throughout
 - textureConsistency: fabric texture/pattern stays consistent and doesn't warp or smear across frames
@@ -38,10 +43,13 @@ const RUBRIC = `You are a strict fashion e-commerce video QA reviewer. You are s
 - backgroundStability: the backdrop doesn't warp, jitter, or introduce new elements
 - motionSmoothness: the implied motion between frames reads as smooth camera/garment movement, not a jarring jump or a frozen/static result
 - artifactScore: INVERSE scale — 5 = no visible AI artifacts (warping, extra/missing limbs, melted detail), 1 = severe artifacts
+- garmentInteractionPlausibility: ONLY relevant if a hand or fingers make contact with the garment somewhere in these frames — if there is no hand-garment contact in this shot, score this 5 by default. When contact IS present: does the fabric's drape actually deform where touched — a small bend, compression, or redistributed fold, with the surrounding drape shifting slightly to compensate, the way real cloth responds to a hand resting on or lifting it? Or does the garment's overall fold pattern look essentially frozen while the hand merely appears to move near or across it?
 - overall: holistic quality 1-5 — would this clip be usable in a real marketing video as-is
 - issues: short array of any problems seen (empty array if none)
 
-STRICT RULE — pattern fidelity: this is the single most common failure mode for this content, so check it explicitly and separately from general "does this look plausible" impressions. Compare the print, weave, or embroidery pattern in each generated frame directly against the same region of the ORIGINAL photo — the specific motif, its layout, and its density. If the pattern's shape, spacing, or arrangement has changed AT ALL from the original (even if the frame looks superficially clean or "fabric-like" in isolation), that is a hard fail: score both garmentPreservation and textureConsistency at 2 or below regardless of how good anything else looks, and say so explicitly in issues.`;
+STRICT RULE — pattern fidelity: this is the single most common failure mode for this content, so check it explicitly and separately from general "does this look plausible" impressions. Compare the print, weave, or embroidery pattern in each generated frame directly against the same region of the ORIGINAL photo — the specific motif, its layout, and its density. If the pattern's shape, spacing, or arrangement has changed AT ALL from the original (even if the frame looks superficially clean or "fabric-like" in isolation), that is a hard fail: score both garmentPreservation and textureConsistency at 2 or below regardless of how good anything else looks, and say so explicitly in issues.
+
+STRICT RULE — garment interaction plausibility: when a hand or fingers touch the garment in this shot, compare the fold/drape pattern of the fabric immediately surrounding the contact point across the three frames. If that surrounding drape shape is essentially unchanged from frame to frame despite the hand moving into, across, or away from the region — the fabric reads as a static texture the hand moves over, with at most a sharp localized bend right at the fingertips and no compensating slack or fold anywhere else — that is a hard fail: score garmentInteractionPlausibility at 2 or below and say so explicitly in issues, regardless of how clean the hand itself looks.`;
 
 interface RawScores {
   identityConsistency?: unknown;
@@ -51,6 +59,7 @@ interface RawScores {
   backgroundStability?: unknown;
   motionSmoothness?: unknown;
   artifactScore?: unknown;
+  garmentInteractionPlausibility?: unknown;
   overall?: unknown;
   issues?: unknown;
 }
@@ -73,10 +82,11 @@ async function fetchImageBase64(url: string): Promise<{ data: string; mime: stri
 }
 
 async function recordVerdict(
-  clipId: string,
-  jobId: string,
+  payload: MotionQAPayload,
   data: { verdict: string; reviewModel: string; issues: string[]; scores?: Partial<Record<keyof RawScores, number | null>> }
 ): Promise<void> {
+  const clipId = payload.clipId;
+  const jobId = payload.jobId;
   await db.motionQAResult.upsert({
     where: { clipId },
     create: {
@@ -91,6 +101,7 @@ async function recordVerdict(
       backgroundStability: data.scores?.backgroundStability ?? null,
       motionSmoothness: data.scores?.motionSmoothness ?? null,
       artifactScore: data.scores?.artifactScore ?? null,
+      garmentInteractionPlausibility: data.scores?.garmentInteractionPlausibility ?? null,
       overall: data.scores?.overall ?? null,
     },
     update: {
@@ -104,6 +115,7 @@ async function recordVerdict(
       backgroundStability: data.scores?.backgroundStability ?? null,
       motionSmoothness: data.scores?.motionSmoothness ?? null,
       artifactScore: data.scores?.artifactScore ?? null,
+      garmentInteractionPlausibility: data.scores?.garmentInteractionPlausibility ?? null,
       overall: data.scores?.overall ?? null,
     },
   });
@@ -127,7 +139,8 @@ async function recordVerdict(
     data: { retryCount: { increment: 1 } },
     select: { retryCount: true },
   });
-  if (clip.retryCount > MAX_QA_RETRIES) {
+  const ceiling = payload.deliverable === "reel" ? MAX_QA_RETRIES_REEL : MAX_QA_RETRIES;
+  if (clip.retryCount > ceiling) {
     await db.motionClip.update({ where: { id: clipId }, data: { status: "failed", errorMessage: "Rejected by QA after max retries" } });
     await maybeAdvanceToCompose(jobId);
     return;
@@ -141,7 +154,7 @@ export async function handleMotionQA(payload: MotionQAPayload): Promise<void> {
   try {
     probe = await probeVideo(payload.clipUrl);
   } catch (err) {
-    await recordVerdict(payload.clipId, payload.jobId, {
+    await recordVerdict(payload, {
       verdict: "rejected",
       reviewModel: "stage1-algorithmic",
       issues: [`probe failed: ${err instanceof Error ? err.message : String(err)}`],
@@ -149,7 +162,7 @@ export async function handleMotionQA(payload: MotionQAPayload): Promise<void> {
     return;
   }
   if (!probe.hasVideoStream || probe.durationSec < 0.5 || probe.width === 0 || probe.height === 0) {
-    await recordVerdict(payload.clipId, payload.jobId, {
+    await recordVerdict(payload, {
       verdict: "rejected",
       reviewModel: "stage1-algorithmic",
       issues: ["invalid or corrupt video (no video stream, zero duration, or zero dimensions)"],
@@ -163,7 +176,7 @@ export async function handleMotionQA(payload: MotionQAPayload): Promise<void> {
     // regenerated. Spending a vision call to "verify" that adds cost and
     // false-reject risk for zero benefit; Stage 1's validity check above is
     // the only gate this render mode needs.
-    await recordVerdict(payload.clipId, payload.jobId, {
+    await recordVerdict(payload, {
       verdict: "accepted",
       reviewModel: "pan-zoom-guaranteed",
       issues: [],
@@ -175,7 +188,7 @@ export async function handleMotionQA(payload: MotionQAPayload): Promise<void> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || apiKey === "your-gemini-api-key-here") {
     // No reviewer available — fail safe to manual_review rather than silently accepting.
-    await recordVerdict(payload.clipId, payload.jobId, {
+    await recordVerdict(payload, {
       verdict: "manual_review",
       reviewModel: "unavailable",
       issues: ["GEMINI_API_KEY not configured — Stage 2 skipped"],
@@ -211,7 +224,7 @@ export async function handleMotionQA(payload: MotionQAPayload): Promise<void> {
       durationMs: Date.now() - t0, imageInputs, status: "error", errorMessage: `HTTP ${res.status}`,
       metadata: { clipId: payload.clipId },
     });
-    await recordVerdict(payload.clipId, payload.jobId, {
+    await recordVerdict(payload, {
       verdict: "manual_review",
       reviewModel: REVIEW_MODEL,
       issues: [`Stage 2 API error: HTTP ${res.status}`],
@@ -236,7 +249,7 @@ export async function handleMotionQA(payload: MotionQAPayload): Promise<void> {
   try {
     s = JSON.parse(json) as RawScores;
   } catch {
-    await recordVerdict(payload.clipId, payload.jobId, {
+    await recordVerdict(payload, {
       verdict: "manual_review",
       reviewModel: REVIEW_MODEL,
       issues: ["Stage 2 returned unparsable output"],
@@ -247,7 +260,7 @@ export async function handleMotionQA(payload: MotionQAPayload): Promise<void> {
   const overall = score(s.overall) ?? 0;
   const verdict = overall >= ACCEPT_THRESHOLD ? "accepted" : overall <= REJECT_THRESHOLD ? "rejected" : "manual_review";
 
-  await recordVerdict(payload.clipId, payload.jobId, {
+  await recordVerdict(payload, {
     verdict,
     reviewModel: REVIEW_MODEL,
     issues: Array.isArray(s.issues) ? s.issues.map(String) : [],
@@ -259,6 +272,7 @@ export async function handleMotionQA(payload: MotionQAPayload): Promise<void> {
       backgroundStability: score(s.backgroundStability),
       motionSmoothness: score(s.motionSmoothness),
       artifactScore: score(s.artifactScore),
+      garmentInteractionPlausibility: score(s.garmentInteractionPlausibility),
       overall: score(s.overall),
     },
   });

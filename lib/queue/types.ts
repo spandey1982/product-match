@@ -44,6 +44,16 @@ export interface MotionRenderPayload {
   /** The director's planned on-screen hold. ai-motion rounds this up to Veo's nearest allowed generation length; pan-zoom renders at this exact duration. */
   durationSec: number;
   cropRegion?: { x: number; y: number; w: number; h: number };
+  /** "reel" routes ai-motion shots through reel-prompt-builder.ts instead of prompt-builder.ts. Undefined/"catalogue" = today's behavior, unchanged. */
+  deliverable?: "catalogue" | "reel";
+  /** Reel-only: which engagement-permissive constraint variant to use. Required when deliverable is "reel" and renderMode is "ai-motion". */
+  presentation?: "model" | "mannequin";
+  /** Reel-only: the one action this shot should show (ReelStoryboardShot.engagementCue). Required alongside presentation. */
+  engagementCue?: string;
+  /** Reel-only: per-material lighting instruction (lib/catalogue-motion/reel/lighting.ts), computed once per job. */
+  lightingDescriptor?: string;
+  /** Reel-only: ReelStoryboardShot.isDetailTruth — selects the fabric-only constraint block (no person/hand implied) and skips depth-of-field, since these crops are confirmed pure fabric with no separate background. */
+  isDetailTruth?: boolean;
 }
 
 export interface MotionQAPayload {
@@ -53,6 +63,8 @@ export interface MotionQAPayload {
   sourceImageUrl: string;
   /** Pan-zoom clips skip Stage 2 vision review entirely — pixel fidelity is guaranteed by construction, not by inspection. */
   renderMode: "ai-motion" | "pan-zoom";
+  /** "reel" applies a lower QA-retry ceiling — see qa.ts's MAX_QA_RETRIES_REEL comment. */
+  deliverable?: "catalogue" | "reel";
 }
 
 export interface MotionComposePayload {

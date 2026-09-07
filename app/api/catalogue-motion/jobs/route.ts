@@ -3,13 +3,16 @@ import { requireAuth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { createMotionJob } from "@/lib/catalogue-motion/orchestrator";
 import { isMotionIntensity } from "@/lib/catalogue-motion/constraints";
+import { isMotionDeliverable, isReelPresentation, isReelArchetype } from "@/lib/catalogue-motion/reel/reel-types";
 
-// POST /api/catalogue-motion/jobs — create a motion job (does not start it)
+// POST /api/catalogue-motion/jobs — create a motion job (does not start it).
+// deliverable/presentation/archetype are optional and reel-only; omitting
+// them keeps today's catalogue-video behavior exactly as-is.
 export async function POST(req: NextRequest) {
   try {
     const session = await requireAuth();
     const body = (await req.json().catch(() => null)) as
-      | { productId?: string; intensity?: string; provider?: string }
+      | { productId?: string; intensity?: string; provider?: string; deliverable?: string; presentation?: string; archetype?: string }
       | null;
 
     const productId = body?.productId;
@@ -22,12 +25,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Product not found" }, { status: 404 });
     }
 
+    const deliverable = isMotionDeliverable(body?.deliverable) ? body.deliverable : undefined;
+    if (deliverable === "reel" && !isReelPresentation(body?.presentation)) {
+      return NextResponse.json({ error: "presentation (\"model\" or \"mannequin\") is required for a reel" }, { status: 400 });
+    }
+
     const intensity = body?.intensity && isMotionIntensity(body.intensity) ? body.intensity : undefined;
     const job = await createMotionJob({
       productId,
       userId: session.id,
       intensity,
       provider: body?.provider === "kling" ? "kling" : undefined,
+      deliverable,
+      presentation: isReelPresentation(body?.presentation) ? body.presentation : undefined,
+      archetype: isReelArchetype(body?.archetype) ? body.archetype : undefined,
     });
 
     return NextResponse.json({ job }, { status: 201 });

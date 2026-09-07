@@ -1069,6 +1069,25 @@ model MotionJob {
   // not with the job) — composing only starts once every clip has resolved.
   status String @default("queued")
 
+  // catalogue | reel — which deliverable this job produces. "catalogue" is
+  // the original systematic front/back/detail walkthrough (unchanged
+  // default, every existing row is implicitly this). "reel" is the shorter
+  // ad/marketing-style deliverable (lib/catalogue-motion/reel/): different
+  // storyboard, playbook, and prompt constraints, same job/clip lifecycle.
+  deliverable String @default("catalogue")
+
+  // Reel-only creative preset (e.g. "showcase-engaging"). Null/unused for
+  // catalogue jobs. Deliberately a free string, not a fixed set enforced
+  // here, so a new preset never needs a migration — validity is enforced in
+  // code (lib/catalogue-motion/reel/reel-playbook.ts) the same way `status`
+  // and `intensity` already are.
+  archetype String?
+
+  // Reel-only: "model" | "mannequin" — the retailer's choice of how the
+  // product is shown. Null/unused for catalogue jobs, which always show the
+  // product on-model per the existing catalogue photos.
+  presentation String?
+
   // minimal | elegant | dynamic
   intensity String @default("elegant")
 
@@ -1097,6 +1116,37 @@ model MotionJob {
 
   errorMessage String?
   retryCount   Int     @default(0)
+
+  // Advisory only, set by the compose worker's algorithmic (no-LLM-cost)
+  // cross-shot check (lib/catalogue-motion/color-consistency.ts) — null when
+  // no flag was raised. Never blocks or fails a compose; a human can review
+  // it. Front/back source photos come from independent generations with no
+  // shared color anchor, so this has been a real, unverified risk since day
+  // one (research/reel-engine-components.html, Component 7).
+  colorConsistencyNote String?
+
+  // Advisory + a real behavior change, set at reel-job start when Garment
+  // Intelligence (when analyzed for this product) reports dense/heavy or
+  // all-over-coverage embellishment (lib/catalogue-motion/reel/pattern-risk.ts)
+  // — a real, vision-extracted signal, unlike Product.pattern's coarse text
+  // (both a simple booti motif and dense mirror-work get tagged
+  // "Embroidered" there, confirmed unable to distinguish this risk live,
+  // 2026-09-06). When set, ai-motion shot intensity for this reel is reduced
+  // to "minimal" regardless of what was requested — reduces but does not
+  // eliminate the risk, since a live test found the fully-static hook shot
+  // fail on pattern grounds too (research/reel-engine-components.html,
+  // Component 9). Null when no GI data exists yet, or density is not high.
+  patternRiskNote String?
+
+  // Advisory, set at reel-job start when one or more ai-motion shots were
+  // skipped because no generated on-model photo exists for the required
+  // view (lib/catalogue-motion/reel/reference-resolver.ts). Model
+  // presentation no longer falls back to the raw upload for these shots —
+  // two live-tested failures (invented-garment-pattern from a full Veo
+  // casting, and a disembodied-hands hallucination from a model-less
+  // source) confirmed that fallback was a net fidelity risk, not a
+  // convenience. Null when nothing was skipped.
+  sourceGapNote String?
 
   totalCostUsd Float?
   durationMs   Int?
@@ -1178,6 +1228,12 @@ model MotionQAResult {
   motionSmoothness    Float?
   // Inverse scale: 5 = no artifacts, 1 = severe.
   artifactScore       Float?
+  // Only meaningful when a hand/fingers touch the garment in the shot (5 by
+  // default otherwise): does the fabric's drape actually deform and
+  // redistribute around the contact point, or does the fold pattern stay
+  // frozen while the hand appears to move over it (texture-mapped, not
+  // simulated — see research/reel-engine-components.html, Component 9).
+  garmentInteractionPlausibility Float?
   overall             Float?
 
   // JSON array of detected issues (lib/serialize.ts).

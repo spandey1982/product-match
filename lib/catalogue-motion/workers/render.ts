@@ -12,6 +12,8 @@ import { QUEUES, type MotionRenderPayload, type MotionQAPayload } from "@/lib/qu
 import { resolvePreset } from "../grammar";
 import { constraintsFor, isMotionIntensity, DEFAULT_INTENSITY } from "../constraints";
 import { buildClipInstruction } from "../prompt-builder";
+import { buildReelClipInstruction } from "../reel/reel-prompt-builder";
+import { isReelPresentation } from "../reel/reel-types";
 import { getMotionProvider } from "../provider";
 import { nearestVeoDuration } from "../provider/veo-provider";
 import { renderPanZoomClip } from "../pan-zoom-renderer";
@@ -20,6 +22,12 @@ import { chargeForCall, refundCharge } from "@/lib/billing/charge";
 import { maybeAdvanceToQA } from "../orchestrator";
 
 const MAX_RENDER_RETRIES = 2; // matches QUEUE_OPTIONS[MOTION_RENDER].retryLimit
+// Reel ai-motion shots get a lower ceiling: the first live test found QA
+// rejections on this deliverable are often a systematic, category-level
+// fidelity ceiling (dense embroidery + camera movement), not transient bad
+// luck — retrying identical params 2-3x at full Veo price just re-confirms
+// the same failure. See research/reel-engine-components.html's economics section.
+const MAX_RENDER_RETRIES_REEL = 1;
 
 export async function handleMotionRender(payload: MotionRenderPayload): Promise<void> {
   const preset = resolvePreset(payload.presetId);
@@ -71,7 +79,23 @@ export async function handleMotionRender(payload: MotionRenderPayload): Promise<
       costUsd = 0;
     } else {
       const genDurationSec = nearestVeoDuration(payload.durationSec);
-      const instruction = buildClipInstruction(preset, intensity, constraints, genDurationSec, payload.motionEmphasis);
+      const isReel = payload.deliverable === "reel";
+      if (isReel && !isReelPresentation(payload.presentation)) {
+        await failClip(payload.clipId, `Reel clip missing a valid presentation ("model"/"mannequin")`);
+        return;
+      }
+      const instruction = isReel
+        ? buildReelClipInstruction(
+            preset,
+            intensity,
+            constraints,
+            genDurationSec,
+            payload.presentation!,
+            payload.engagementCue ?? "",
+            payload.lightingDescriptor || "soft, even studio lighting flattering to both fabric and skin tone",
+            payload.isDetailTruth,
+          )
+        : buildClipInstruction(preset, intensity, constraints, genDurationSec, payload.motionEmphasis);
 
       const provider = getMotionProvider();
       const result = await provider.generateClip({
@@ -81,7 +105,7 @@ export async function handleMotionRender(payload: MotionRenderPayload): Promise<
         constraints,
         durationSec: genDurationSec,
         cropRegion: payload.cropRegion,
-        usage: { feature: "catalogue_motion", userId: job.userId, storeId: job.userId },
+        usage: { feature: isReel ? "catalogue_motion_reel" : "catalogue_motion", userId: job.userId, storeId: job.userId },
       });
       videoBase64 = result.videoBase64;
       mimeType = result.mimeType;
@@ -112,6 +136,7 @@ export async function handleMotionRender(payload: MotionRenderPayload): Promise<
       clipUrl: upload.secure_url,
       sourceImageUrl: payload.sourceImageUrl,
       renderMode: payload.renderMode,
+      deliverable: payload.deliverable,
     };
     await boss.send(QUEUES.MOTION_QA, qaPayload);
     await maybeAdvanceToQA(payload.jobId);
@@ -137,7 +162,8 @@ async function failOrRetry(payload: MotionRenderPayload, err: unknown): Promise<
     data: { retryCount: { increment: 1 } },
     select: { retryCount: true },
   });
-  if (clip.retryCount > MAX_RENDER_RETRIES) {
+  const ceiling = payload.deliverable === "reel" ? MAX_RENDER_RETRIES_REEL : MAX_RENDER_RETRIES;
+  if (clip.retryCount > ceiling) {
     await db.motionClip.update({ where: { id: payload.clipId }, data: { status: "failed", errorMessage: message.slice(0, 500) } });
     return;
   }

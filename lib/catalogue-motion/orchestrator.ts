@@ -22,13 +22,22 @@ import { resolveShotSources } from "./source-resolver";
 import { directorAgent } from "./agents/directorAgent";
 import { DEFAULT_INTENSITY, isMotionIntensity } from "./constraints";
 import { DEFAULT_MOTION_PROVIDER_ID, type MotionProviderId } from "./provider";
-import type { DirectorPlan, MotionIntensity } from "./types";
+import { reelStoryboardFor } from "./reel/reel-storyboards";
+import { resolveReelShotSources } from "./reel/reference-resolver";
+import { lightingDescriptorFor } from "./reel/lighting";
+import { assessPatternRisk } from "./reel/pattern-risk";
+import { DEFAULT_REEL_ARCHETYPE, isMotionDeliverable, isReelPresentation, type ReelPresentation } from "./reel/reel-types";
+import type { DirectorPlan, MotionIntensity, MotionDeliverable, ReelArchetype } from "./types";
 
 export interface CreateMotionJobInput {
   productId: string;
   userId: string;
   intensity?: MotionIntensity;
   provider?: MotionProviderId;
+  deliverable?: MotionDeliverable;
+  /** Required (validated by the API route) when deliverable is "reel". */
+  presentation?: ReelPresentation;
+  archetype?: ReelArchetype;
 }
 
 export async function createMotionJob(input: CreateMotionJobInput): Promise<{ id: string }> {
@@ -39,16 +48,24 @@ export async function createMotionJob(input: CreateMotionJobInput): Promise<{ id
   if (!product) throw new Error(`Product ${input.productId} not found`);
 
   const intensity = input.intensity && isMotionIntensity(input.intensity) ? input.intensity : DEFAULT_INTENSITY;
-  const storyboard = storyboardFor(product.category);
+  const deliverable: MotionDeliverable = isMotionDeliverable(input.deliverable) ? input.deliverable : "catalogue";
+  const isReel = deliverable === "reel";
+  if (isReel && !isReelPresentation(input.presentation)) {
+    throw new Error(`A reel job requires a valid presentation ("model" or "mannequin")`);
+  }
+  const storyboardId = isReel ? reelStoryboardFor(product.category).categoryKey : storyboardFor(product.category).categoryKey;
 
   const job = await db.motionJob.create({
     data: {
       productId: input.productId,
       userId: input.userId,
       intensity,
-      storyboardId: storyboard.categoryKey,
+      storyboardId,
       provider: input.provider ?? DEFAULT_MOTION_PROVIDER_ID,
       status: "queued",
+      deliverable,
+      archetype: isReel ? input.archetype ?? DEFAULT_REEL_ARCHETYPE : null,
+      presentation: isReel && isReelPresentation(input.presentation) ? input.presentation : null,
     },
     select: { id: true },
   });
@@ -70,10 +87,15 @@ export async function startMotionJob(jobId: string): Promise<void> {
 
   const product = await db.product.findUnique({
     where: { id: job.productId },
-    select: { category: true, color: true, detailNotes: true, imageUrl: true, backImageUrl: true },
+    select: { category: true, color: true, detailNotes: true, imageUrl: true, backImageUrl: true, material: true, pattern: true },
   });
   if (!product) {
     await db.motionJob.update({ where: { id: jobId }, data: { status: "failed", errorMessage: "Product not found" } });
+    return;
+  }
+
+  if (job.deliverable === "reel") {
+    await startReelMotionJob(jobId, job.productId, job.intensity, job.presentation, product);
     return;
   }
 
@@ -164,6 +186,109 @@ export async function startMotionJob(jobId: string): Promise<void> {
 }
 
 /**
+ * Reel counterpart to the catalogue path above. No director-agent call: the
+ * hook → interaction → detail → close structure is authoritative per
+ * reel-playbook.ts, not chosen per-product, so there's nothing for an LLM to
+ * plan — reel-storyboards.ts's fixed shot list IS the plan. Everything else
+ * (clip creation, queueing) mirrors the catalogue path above.
+ */
+async function startReelMotionJob(
+  jobId: string,
+  productId: string,
+  intensity: string,
+  presentationRaw: string | null,
+  product: { category: string; imageUrl: string | null; backImageUrl: string | null; material?: string | null; pattern?: string | null },
+): Promise<void> {
+  if (!isReelPresentation(presentationRaw)) {
+    await db.motionJob.update({ where: { id: jobId }, data: { status: "failed", errorMessage: "Reel job missing a valid presentation" } });
+    return;
+  }
+  const presentation = presentationRaw;
+  const lightingDescriptor = lightingDescriptorFor(product.material, product.pattern);
+
+  // Real, vision-extracted embellishment density (Garment Intelligence) —
+  // Product.pattern's coarse text can't distinguish a simple scattered motif
+  // from dense all-over mirror-work (confirmed live, 2026-09-06: both get
+  // tagged "Embroidered"). GI-gated on purpose: no GI row means no
+  // assessment, not a guess from the unreliable field.
+  const gi = await db.garmentIntelligence.findUnique({ where: { productId }, select: { data: true } });
+  const patternRisk = assessPatternRisk(gi?.data ?? null);
+  const effectiveIntensity = patternRisk.highRisk ? "minimal" : intensity;
+
+  const storyboard = reelStoryboardFor(product.category, { material: product.material, pattern: product.pattern });
+  const { resolved, skippedSourceNote } = await resolveReelShotSources(productId, product.category, presentation, storyboard.shots, {
+    front: product.imageUrl ?? undefined,
+    back: product.backImageUrl ?? undefined,
+  });
+
+  if (resolved.length === 0) {
+    await db.motionJob.update({
+      where: { id: jobId },
+      data: {
+        status: "failed",
+        errorMessage:
+          skippedSourceNote ??
+          "No shot sources could be resolved (missing base catalogue images)",
+      },
+    });
+    return;
+  }
+
+  const createdClips = await db.$transaction(
+    resolved.map((r, index) =>
+      db.motionClip.create({
+        data: {
+          jobId,
+          shotIndex: index,
+          view: r.shot.view,
+          presetId: r.shot.presetId,
+          sourceImageUrl: r.imageUrl,
+          plannedHoldSec: r.shot.durationSec,
+          status: "queued",
+          renderMode: r.shot.renderMode,
+        },
+      })
+    )
+  );
+
+  // intensity is persisted here (not just used locally) so a later retry —
+  // enqueueRenderForClip reads job.intensity fresh from the DB — stays
+  // consistent with whatever was actually decided for this job, rather than
+  // silently reverting to the originally-requested value on retry.
+  await db.motionJob.update({
+    where: { id: jobId },
+    data: {
+      status: "rendering",
+      intensity: effectiveIntensity,
+      patternRiskNote: patternRisk.note,
+      sourceGapNote: skippedSourceNote,
+    },
+  });
+
+  const boss = await getBoss();
+  for (let i = 0; i < createdClips.length; i++) {
+    const clip = createdClips[i];
+    const shot = resolved[i].shot;
+    const payload: MotionRenderPayload = {
+      clipId: clip.id,
+      jobId,
+      sourceImageUrl: clip.sourceImageUrl,
+      presetId: clip.presetId,
+      renderMode: clip.renderMode as "ai-motion" | "pan-zoom",
+      intensity: effectiveIntensity,
+      durationSec: clip.plannedHoldSec ?? 4,
+      cropRegion: resolved[i].cropRegion,
+      deliverable: "reel",
+      presentation,
+      engagementCue: shot.engagementCue,
+      lightingDescriptor,
+      isDetailTruth: shot.isDetailTruth,
+    };
+    await boss.send(QUEUES.MOTION_RENDER, payload);
+  }
+}
+
+/**
  * Re-enqueues motion.render for one existing clip — used by the QA worker
  * when a clip is rejected (see workers/qa.ts). Regenerates at the SAME
  * plan (same preset, hold duration, motionEmphasis pulled back out of the
@@ -174,8 +299,6 @@ export async function startMotionJob(jobId: string): Promise<void> {
 export async function enqueueRenderForClip(clipId: string): Promise<void> {
   const clip = await db.motionClip.findUniqueOrThrow({ where: { id: clipId } });
   const job = await db.motionJob.findUniqueOrThrow({ where: { id: clip.jobId } });
-  const plan = job.directorPlan ? (JSON.parse(job.directorPlan) as DirectorPlan) : null;
-  const planShot = plan?.shots.find((s) => s.view === clip.view);
 
   const payload: MotionRenderPayload = {
     clipId: clip.id,
@@ -183,10 +306,35 @@ export async function enqueueRenderForClip(clipId: string): Promise<void> {
     sourceImageUrl: clip.sourceImageUrl,
     presetId: clip.presetId,
     renderMode: clip.renderMode as "ai-motion" | "pan-zoom",
-    motionEmphasis: planShot?.motionEmphasis,
     intensity: job.intensity,
     durationSec: clip.plannedHoldSec ?? 4,
   };
+
+  if (job.deliverable === "reel") {
+    // Regeneration attempt-retries the SAME shot — re-derive its
+    // engagementCue from the fixed reel storyboard by matching clip.view,
+    // the reel equivalent of pulling motionEmphasis back out of directorPlan
+    // below (reel has no directorPlan — its structure is fixed, not planned).
+    const product = await db.product.findUnique({ where: { id: job.productId }, select: { category: true, material: true, pattern: true } });
+    const shot = reelStoryboardFor(product?.category ?? null).shots.find((s) => s.view === clip.view);
+    payload.deliverable = "reel";
+    payload.presentation = isReelPresentation(job.presentation) ? job.presentation : undefined;
+    // This function is only reached for a RETRY (a fresh clip is created and
+    // queued directly by startReelMotionJob, never routed through here) — by
+    // this point clip.retryCount has already been incremented past 0 by the
+    // caller (qa.ts's rejected branch). Retrying with the identical cue that
+    // just failed QA mostly just re-confirms the same failure at full Veo
+    // price, so the one retry a reel clip gets uses the shot's deliberately
+    // more conservative fallback cue when one exists (see reel-types.ts's
+    // engagementCueAlt doc comment) instead of repeating the original bet.
+    payload.engagementCue = (clip.retryCount > 0 && shot?.engagementCueAlt) ? shot.engagementCueAlt : shot?.engagementCue;
+    payload.lightingDescriptor = lightingDescriptorFor(product?.material, product?.pattern);
+    payload.isDetailTruth = shot?.isDetailTruth;
+  } else {
+    const plan = job.directorPlan ? (JSON.parse(job.directorPlan) as DirectorPlan) : null;
+    const planShot = plan?.shots.find((s) => s.view === clip.view);
+    payload.motionEmphasis = planShot?.motionEmphasis;
+  }
 
   await db.motionClip.update({ where: { id: clipId }, data: { status: "queued" } });
   const boss = await getBoss();

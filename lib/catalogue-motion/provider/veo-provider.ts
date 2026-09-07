@@ -296,6 +296,16 @@ function buildRequestBody(instructionText: string, imageBase64: string, imageMim
       resolution: "720p",
       // Catalogue Motion is silent by design (see architecture spec, §Audio).
       generateAudio: false,
+      // Every source image here is a legitimate adult fashion-catalogue
+      // photo — explicitly declaring that (rather than leaving Vertex's
+      // safety parameters unset, which defaults to a stricter, undocumented
+      // threshold) is why a live reel test saw the same kind of input get
+      // rejected as "violating usage guidelines" on some attempts and not
+      // others. block_only_high is Vertex's least aggressive documented
+      // tier — appropriate for non-explicit commercial apparel content, not
+      // a general safety bypass.
+      personGeneration: "allow_adult",
+      safetySetting: "block_only_high",
     },
   };
 }
