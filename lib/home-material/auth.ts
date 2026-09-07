@@ -36,9 +36,48 @@ function generateOtp(): string {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
 
+const HM_OTP_MESSAGE = (otp: string) =>
+  `Your Home Material Intelligence verification code is ${otp}. Do not share this code with anyone.`;
+
+// ─────────────────────────────────────────────────────────────────────────
+// TEMPORARY TEST BYPASS — added 2026-09-07, MUST BE REMOVED before any real
+// user relies on OTP delivery for this domain.
+//
+// Reason it exists: the MSG91 account currently has zero SMS balance (see
+// [[db-migration-drift-risk]]'s sibling note, or just check
+// GET api.msg91.com/api/balance.php?authkey=...&type=4), so real OTP
+// delivery is not currently possible to test end-to-end at all. This lets
+// local testing continue by short-circuiting delivery for one fixed,
+// clearly-fake phone number with a fixed, publicly-known code.
+//
+// Also gated on NODE_ENV !== "production" as defense in depth, but do not
+// rely on that alone — remove this block outright once MSG91 has balance
+// again (and, separately, once HM_OTP_MESSAGE has an actual DLT-registered
+// template — see lib/sms/msg91.ts's sendOtpSms doc comment).
+// ─────────────────────────────────────────────────────────────────────────
+const TEST_BYPASS_PHONE = "9876543210";
+const TEST_BYPASS_OTP = "000000";
+
 /** Issues and delivers an OTP over real SMS via MSG91. Throws if delivery fails, so a caller who didn't receive a code sees an error rather than a false "sent" confirmation. */
 export async function issueHmPendingOtp(rawPhone: string): Promise<void> {
   const phone = normalizePhone(rawPhone);
+
+  if (phone === TEST_BYPASS_PHONE && process.env.NODE_ENV !== "production") {
+    const payload: PendingHmOtp = { phone, otp: TEST_BYPASS_OTP, type: "hm_otp_pending" };
+    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: HM_OTP_DURATION });
+    const cookieStore = await cookies();
+    cookieStore.set(HM_OTP_COOKIE, token, {
+      httpOnly: true,
+      // Never "production" here — this whole branch is gated on NODE_ENV !== "production" above.
+      secure: false,
+      sameSite: "lax",
+      maxAge: HM_OTP_DURATION,
+      path: "/",
+    });
+    console.log(`[home-material/auth] TEST BYPASS active for ${phone} — no SMS sent, code is ${TEST_BYPASS_OTP}`);
+    return;
+  }
+
   const otp = generateOtp();
   const payload: PendingHmOtp = { phone, otp, type: "hm_otp_pending" };
   const token = jwt.sign(payload, JWT_SECRET, { expiresIn: HM_OTP_DURATION });
@@ -52,7 +91,7 @@ export async function issueHmPendingOtp(rawPhone: string): Promise<void> {
     path: "/",
   });
 
-  await sendOtpSms(phone, otp);
+  await sendOtpSms(phone, otp, HM_OTP_MESSAGE(otp));
 }
 
 export async function verifyHmPendingOtp(rawPhone: string, otp: string): Promise<boolean> {
