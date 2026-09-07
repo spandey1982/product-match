@@ -340,3 +340,65 @@ touching mask/compositing code again:
   silhouette and past a hand-painted mask — mask dilation (grow the painted
   region by a margin before compositing) catches this without requiring the
   retailer to trace shadows precisely.
+
+---
+
+## AI discoverability / GEO-AEO-SEO strategy
+
+Full assessment (codebase audit + evidence-tiered research review, Sept 2026):
+`https://claude.ai/code/artifact/9346f37e-911d-4f4d-9ea4-ed4b8aba42af`. What
+follows is the durable summary — read the artifact for the full research
+citations and the phased architecture.
+
+**What actually exists (as of `feature/geo-aeo-seo`, Sept 2026):** a real SEO/AEO
+technical foundation — `app/robots.ts`, DB-driven `app/sitemap.ts`,
+`public/llms.txt`, Organization/Product/BreadcrumbList/FAQPage/ItemList
+JSON-LD, real visible content (`lib/shop/related-products.ts`,
+`best-sellers.ts`, `category-content.ts` — all real-data-driven, never
+fabricated), a dormant `Review`/`AggregateRating` model, a self-hosted health
+score (`lib/seo/health-score.ts`, `/admin/seo-health`), and a curated
+deferred-work backlog (`/admin/tasks`). **What does not exist:** any
+measurement of how AI systems (ChatGPT/Perplexity/Gemini/AI Overviews)
+actually represent a retailer — no query testing, no citation tracking, no
+competitor intelligence, no analytics (GA4/Search Console) integration, no
+`LocalBusiness` structured data, no business/brand profile data model
+(positioning, USP, named competitors, GBP id, social handles), no product
+feed. Everything built so far makes Mentis *legible*; nothing checks whether
+that legibility changed anything.
+
+**Known marketing/code mismatch, not yet resolved:** the pricing page
+(`app/HomeClient.tsx`) sells "SEO & AEO optimization" as a Business/Enterprise
+tier feature — nothing in code gates it by tier, every retailer already gets
+the same treatment. "MCP server setup" (Enterprise tier) has **zero backing
+code anywhere** — the phrase was written into the pricing copy 2026-06-23,
+2.5 months before any real SEO/GEO work started, and has never been touched
+since. Needs a founder decision: build it, or stop selling it.
+
+**Research posture — do not repeat these as settled facts:** the widely-cited
+"GEO boosts AI visibility 40%" statistic (Aggarwal et al. 2024,
+arXiv:2311.09735) came partly from a tactic — adding statistics/citations with
+no requirement that they be factually grounded — that this codebase's own
+no-fabrication principle already rules out replicating. A 2026 critical
+survey (arXiv:2607.14035) found no GEO technique with a stable, cross-platform,
+longitudinal causal effect on discoverability. AI answers vary 10–40%+ for
+identical queries across days/phrasing (arXiv:2604.07585 and multiple
+converging industry sources) — **any future AI-visibility measurement system
+must be built around repeated, multi-variant sampling from day one**, never a
+single test query, or its output is not credible. Google's own official
+guidance (Search Central, May 2026) states no special schema.org markup or
+"AI text files" are required for AI Overviews/AI Mode — the same
+helpful-content/E-E-A-T signals that earn organic rankings are what surface
+there. `llms.txt` is shipped and harmless but should never be marketed as a
+meaningful lever on the strength of that guidance.
+
+**Strategic direction, if pursued:** not another GEO content generator —
+every AI-visibility vendor in this category (Profound, Scrunch, Peec, Otterly)
+already does scheduled brand-mention tracking and stops there. None of them
+measure whether an *individual product* is understood correctly by an AI
+system, and none run controlled before/after experiments to establish that a
+change caused a visibility shift rather than merely preceding one. Mentis is
+the only party in this comparison already holding the structured per-product
+metadata (category/color/occasion/material/price) a product-level
+measurement-and-experimentation system needs as input — see the artifact's
+§14/§23/§28 for why that's the actual differentiation candidate, not a bigger
+dashboard.
