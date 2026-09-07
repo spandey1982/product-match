@@ -1194,3 +1194,401 @@ model MotionQAResult {
 
   @@map("motion_qa_results")
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// Home Material Intelligence Platform — a separate product domain (walls:
+// paint, wallpaper, wall texture, wall panels; India-first, V1). See
+// docs/home-material/README.md for the domain brief, locked decisions, and
+// AI boundaries. `hm_` table prefix keeps ownership unambiguous in
+// migrations. No relation from any model below into the fashion-retailer
+// domain (User, Product, Customer, etc.) — see CLAUDE.md §22.
+// ═══════════════════════════════════════════════════════════════════════
+
+// Consumer identity for the Home Material product — deliberately separate
+// from Customer (the fashion /shop marketplace's identity), even though
+// both authenticate via phone OTP. See domain brief's locked decisions.
+model HmUser {
+  id    String  @id @default(cuid())
+  phone String  @unique
+  name  String?
+  email String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  projects       HmProject[]
+  shortlist      HmShortlistItem[]
+  leads          HmLead[]
+  customSwatches HmProduct[]
+
+  @@map("hm_users")
+}
+
+// A user's home/renovation project — groups rooms. V1 UX may only ever
+// surface one active project per user, but the model doesn't assume that.
+model HmProject {
+  id       String @id @default(cuid())
+  hmUserId String
+  hmUser   HmUser @relation(fields: [hmUserId], references: [id], onDelete: Cascade)
+
+  name String  @default("My Home")
+  city String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  rooms HmRoom[]
+  leads HmLead[]
+
+  @@index([hmUserId])
+  @@map("hm_projects")
+}
+
+model HmRoom {
+  id        String    @id @default(cuid())
+  projectId String
+  project   HmProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  roomType String // free string (e.g. "living_room", "bedroom") — no fixed enum yet, V1 walls-only doesn't need one
+  imageUrl String // Cloudinary URL of the uploaded room photo
+
+  // pending | analyzing | completed | failed — plain string, matches this
+  // schema's existing stage-field convention (see AutoCatalogItem).
+  analysisState String @default("pending")
+
+  // Structured CV output (wall/furniture/window/door regions, lighting) as
+  // JSON — shape owned by lib/home-material (not yet built). Null until
+  // analysisState reaches "completed".
+  analysisResult String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  surfaces HmSurface[]
+
+  @@index([projectId])
+  @@map("hm_rooms")
+}
+
+model HmSurface {
+  id     String @id @default(cuid())
+  roomId String
+  room   HmRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  // "wall" only in V1 — kept as a free string, not an enum, since floor/
+  // ceiling are an explicit future-phase expansion (see domain brief).
+  surfaceType String  @default("wall")
+  label       String? // e.g. "accent wall", "north wall" — user- or CV-assigned
+
+  // CV-detected region (polygon/bbox) as JSON, null until analyzed.
+  geometryData String?
+
+  widthMeters  Float?
+  heightMeters Float?
+  areaSqm      Float?
+
+  // ai_estimated | user_confirmed | professional — never silently treat an
+  // estimate as a measurement (Constitution Principle 6, §11).
+  measurementSource     String @default("ai_estimated")
+  measurementConfidence Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  visualizations  HmVisualization[]
+  recommendations HmRecommendation[]
+
+  @@index([roomId])
+  @@map("hm_surfaces")
+}
+
+// Category-level material knowledge — "what type of material should I
+// consider", independent of any SKU (domain brief §12). Curated/admin
+// content, not AI-generated at read time.
+model HmMaterial {
+  id String @id @default(cuid())
+
+  category    String // "paint" | "wallpaper" | "wall_texture" | "wall_panel"
+  subtype     String // e.g. "emulsion", "vinyl_wallpaper", "textured_plaster", "pvc_panel"
+  name        String
+  description String?
+
+  durability          String?
+  maintenance         String?
+  moistureSuitability String?
+  installationNotes   String?
+  removalNotes        String?
+
+  avgCostPerSqftMinInr Float?
+  avgCostPerSqftMaxInr Float?
+
+  advantages  String @default("[]") // JSON array (lib/serialize.ts)
+  limitations String @default("[]") // JSON array (lib/serialize.ts)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products        HmProduct[]
+  visualizations  HmVisualization[]
+  recommendations HmRecommendation[]
+
+  @@index([category])
+  @@map("hm_materials")
+}
+
+// A real SKU. materialId links it to its category-level knowledge but is
+// nullable — a product can exist before it's been categorized against the
+// knowledge base.
+model HmProduct {
+  id String @id @default(cuid())
+
+  materialId String?
+  material   HmMaterial? @relation(fields: [materialId], references: [id])
+
+  sku        String?
+  brand      String?
+  collection String?
+  name       String
+
+  colorName String?
+  colorHex  String?
+  finish    String?
+
+  patternName     String?
+  patternRepeatCm Float?
+  orientation     String?
+
+  // Free-text dimensions (roll width/length, panel size, etc. — too varied
+  // across paint/wallpaper/texture/panel to normalize into fixed columns
+  // for V1).
+  dimensions String?
+
+  priceInr  Float?
+  priceUnit String? // "per_sqft" | "per_roll" | "per_panel" | "per_litre"
+
+  warrantyInfo String?
+  availability String  @default("unspecified") // "in_stock" | "order" | "discontinued" | "unspecified"
+
+  imageUrls       String  @default("[]") // JSON array (lib/serialize.ts)
+  // Reference texture asset for product-accurate visualization (pattern/
+  // colour source, not a room photo). For a custom upload (see
+  // uploadedByHmUserId below) this IS the uploaded photo — the
+  // visualization pipeline sends it to the model as a reference image
+  // instead of relying on colorName/finish text, since an arbitrary
+  // upload can't be reliably characterized in structured fields.
+  textureAssetUrl String?
+
+  // Set only for a user-uploaded custom swatch (added 2026-09-07, "upload
+  // your own wallpaper/paint" feature) — null for curated/admin swatches.
+  // Scopes visibility: a custom upload is private to the uploading HmUser,
+  // never shown in another user's swatch list.
+  uploadedByHmUserId String?
+  uploadedByHmUser   HmUser? @relation(fields: [uploadedByHmUserId], references: [id], onDelete: Cascade)
+
+  lastUpdatedAt DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  evidence         HmProductEvidence[]
+  retailerListings HmRetailerProduct[]
+  visualizations   HmVisualization[]
+  recommendations  HmRecommendation[]
+  shortlistedBy    HmShortlistItem[]
+  leads            HmLead[]
+
+  @@index([materialId])
+  @@index([uploadedByHmUserId])
+  @@map("hm_products")
+}
+
+// Per-field provenance — first-class from day one, not retrofitted later
+// (see domain brief and PROJECT_KNOWLEDGE.md's "a fix isn't done until
+// it's structural"). One row per fact worth tracing back to its origin.
+model HmProductEvidence {
+  id        String    @id @default(cuid())
+  productId String
+  product   HmProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  field String // e.g. "price", "moistureResistance", "warrantyInfo"
+  value String
+
+  // manufacturer | retailer | user | platform | ai_inferred | external_verified | unspecified
+  sourceType   String
+  sourceDetail String? // free text — retailer name, URL, etc.
+  confidence   Float?
+
+  createdAt DateTime @default(now())
+
+  @@index([productId, field])
+  @@map("hm_product_evidence")
+}
+
+// Admin-seeded for V1 — no self-serve retailer onboarding yet (locked
+// decision). Deliberately separate from the fashion User model.
+model HmRetailer {
+  id   String @id @default(cuid())
+  name String
+
+  city        String?
+  serviceArea String? // free text description for V1
+
+  // JSON array of HmMaterial.category values this retailer carries.
+  categories String @default("[]")
+
+  contactPhone String?
+  contactEmail String?
+
+  isVerified Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  productListings HmRetailerProduct[]
+  leads           HmLead[]
+
+  @@map("hm_retailers")
+}
+
+// A retailer's specific listing of a product — price/availability are
+// retailer-specific, the product facts above are not.
+model HmRetailerProduct {
+  id String @id @default(cuid())
+
+  retailerId String
+  retailer   HmRetailer @relation(fields: [retailerId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   HmProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  priceInr     Float?
+  availability String @default("unspecified")
+
+  lastUpdatedAt DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([retailerId, productId])
+  @@index([productId])
+  @@map("hm_retailer_products")
+}
+
+// One AI visualization render. materialId (quick preview, no specific SKU)
+// and productId (product-accurate) are both nullable but mutually
+// exclusive in practice — enforced in application logic, not the schema.
+model HmVisualization {
+  id String @id @default(cuid())
+
+  surfaceId String
+  surface   HmSurface @relation(fields: [surfaceId], references: [id], onDelete: Cascade)
+
+  // "quick_preview" | "product_accurate"
+  mode String
+
+  materialId String?
+  material   HmMaterial? @relation(fields: [materialId], references: [id])
+
+  productId String?
+  product   HmProduct? @relation(fields: [productId], references: [id])
+
+  inputImageUrl  String
+  outputImageUrl String?
+
+  // queued | processing | completed | failed
+  status String @default("queued")
+
+  provider String? // "gemini" | "vertex" | future
+  model    String?
+
+  generationMs Int?
+  errorMessage String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([surfaceId])
+  @@map("hm_visualizations")
+}
+
+// Deterministic/hybrid recommendation for a surface — never an
+// LLM-invented score (see domain brief's AI boundaries table).
+model HmRecommendation {
+  id String @id @default(cuid())
+
+  surfaceId String
+  surface   HmSurface @relation(fields: [surfaceId], references: [id], onDelete: Cascade)
+
+  materialId String?
+  material   HmMaterial? @relation(fields: [materialId], references: [id])
+
+  productId String?
+  product   HmProduct? @relation(fields: [productId], references: [id])
+
+  score      Float
+  confidence Float
+
+  reasons  String @default("[]") // JSON array (lib/serialize.ts)
+  concerns String @default("[]") // JSON array (lib/serialize.ts)
+
+  explanation String?
+
+  createdAt DateTime @default(now())
+
+  @@index([surfaceId, score])
+  @@map("hm_recommendations")
+}
+
+// Comparison + Shortlist collapsed into one table for V1 (simplification
+// proposed during discovery — see domain brief's "open/deferred").
+model HmShortlistItem {
+  id String @id @default(cuid())
+
+  hmUserId String
+  hmUser   HmUser @relation(fields: [hmUserId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   HmProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  note String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([hmUserId, productId])
+  @@map("hm_shortlist_items")
+}
+
+// A retailer lead/quote request — the only "commerce" action in V1 (no
+// checkout/payment). Mirrors ShopOrder's inline-contact-fields pattern.
+model HmLead {
+  id String @id @default(cuid())
+
+  hmUserId String
+  hmUser   HmUser @relation(fields: [hmUserId], references: [id], onDelete: Cascade)
+
+  projectId String?
+  project   HmProject? @relation(fields: [projectId], references: [id])
+
+  retailerId String
+  retailer   HmRetailer @relation(fields: [retailerId], references: [id])
+
+  productId String?
+  product   HmProduct? @relation(fields: [productId], references: [id])
+
+  materialCategory String? // set when no specific product is attached yet
+
+  contactName  String
+  contactPhone String
+  contactEmail String?
+
+  message          String?
+  estimatedAreaSqm Float?
+
+  // new | contacted | quoted | closed
+  status String @default("new")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([retailerId, status])
+  @@index([hmUserId])
+  @@map("hm_leads")
+}
