@@ -1,6 +1,8 @@
 # Home Material Intelligence Platform — Domain Brief
 
-Status: **Phase 1 — foundation**. This is the anchor doc for this domain;
+Status: **Fast-lane demo pivot (2026-09-07)** — see that section below
+before anything else; it changes what's active vs. paused relative to the
+original V1 plan. This is the anchor doc for this domain;
 read it before re-deriving architecture context in a future session (see
 CLAUDE.md §6). It intentionally stays lightweight — not the full docs/
 hierarchy sketched in the original discovery brief — until there's enough
@@ -40,6 +42,74 @@ model — architecture should treat AI providers as replaceable.
 - Not in V1: floors, tiles, kitchens, bathrooms, countertops, furniture,
   contractor/installer tooling, self-serve retailer onboarding.
 
+## Fast-lane demo pivot (2026-09-07)
+
+**Decision (LOCKED):** pause breadth-first V1 buildout in favor of getting
+one path fully demo-ready: upload a straight-on wall photo → AI detects the
+wall → pick a swatch → generate a real preview. Reason: the first
+end-to-end test proved the mechanism but wasn't "a proper visual" — the
+priority became showing something convincing to potential customers, not
+completing every V1 section in parallel. This is a **sequencing change,
+not a scope-cut** — nothing below is removed from the plan, see "paused"
+list.
+
+**✅ V1 plan items now addressed by this pivot** (were planned, now real):
+- Core V1 journey, "I know what I want" path (brief §8, §16): Upload Room →
+  Select Wall → Actual Product → Visualize is now real end-to-end, with a
+  curated swatch set standing in for retailer inventory (see "flagged"
+  below for the gap that leaves).
+- Constitution Principle 6 ("visualization is not measurement") and
+  Principle 4 ("never manufacture certainty") are now exercised for real,
+  not just schema-shaped: `HmSurface.measurementSource="ai_estimated"` is
+  actually set by AI detection now, and `detectWallRegion` returns
+  `wallVisible:false` rather than guessing when no clear wall is visible.
+
+**✅ Future-roadmap item pulled forward (brief §15, partially — not fully
+complete):** the **Computer Vision** AI-boundary component
+(`lib/home-material/wall-detection.ts`) — was explicitly deferred as future
+work in the original discovery response; now implemented, but **narrowly**
+(see "flagged" below — this is not the general room/multi-wall
+understanding §15 and §23 describe, just a single-wall bounding box for a
+constrained photo).
+
+**🆕 New addition, worth keeping long-term (update to the plan):**
+guided capture UX — asking the user to stand facing the wall, straight-on,
+before uploading — is a real, worthwhile product pattern (comparable
+products in the Inspiration Register-adjacent space use similar guided
+capture for reliability), not just a fast-lane hack. Keep this as the
+recommended capture flow even after general-purpose CV is built; it
+improves detection reliability regardless of how sophisticated the CV
+gets.
+
+**⚠️ Flagged — fast-lane shortcuts, NOT the long-term design, revisit
+before real launch:**
+- **Wall detection is single-wall, front-on only.** It will not handle
+  angled shots, multiple visible walls, or heavy occlusion — real V1 (per
+  the original brief's CV section) needs the fuller room/surface
+  understanding this intentionally skips. Treat `wall-detection.ts` as a
+  first CV increment, not the final implementation.
+- **The swatch catalog is 6 hand-picked demo colors/patterns
+  (`scripts/seed-home-material.ts`), not real retailer inventory** — no
+  pricing, no real availability, `availability: "unspecified"`. Fine for a
+  demo; violates Principle 7 ("product database defines the product") as a
+  real launch catalogue. Already self-documented in the seed script, worth
+  restating here.
+- **Visualization quality is still unvalidated on a real photo** — the
+  mask/composite pipeline (`lib/home-material/visualization.ts`) was only
+  proven against a synthetic test image so far. Resolution/feathering
+  parameters may need tuning once real-photo results come in; don't assume
+  today's settings are final.
+- **Room-photo privacy policy is still an open gap** (see "Open/deferred"
+  below) — now more urgent, not less, since real photos of real homes are
+  about to be used for actual customer demos.
+
+**Paused, not abandoned** (still in the plan, just not being built right
+now): Material Knowledge content, the deterministic Recommendation Engine
+("help me choose" mode), Product-Accurate visualization mode (tied to a
+real retailer SKU with provenance), Retailer/Lead capture, self-serve
+retailer onboarding. Resume these once the fast-lane demo path is
+validated with real photos and real feedback.
+
 ## Locked decisions (2026-09-07)
 
 | Decision | Choice | Why |
@@ -74,12 +144,15 @@ backlog.
   garment cross-sell) and the fashion scorer is protected IP.
 - "Structured JSON, not prose" + "absence is information, never invent it"
   (Garment Intelligence's hard-won lessons, see root `PROJECT_KNOWLEDGE.md`)
-  → this domain's room/surface CV analysis output shape.
+  → `lib/home-material/wall-detection.ts`'s CV output shape: structured
+  JSON only (`responseMimeType: "application/json"`), and an explicit
+  `wallVisible: false` rather than a guessed box when nothing clear is
+  visible.
 - Deterministic post-generation mask compositing (`lib/model-gen/erase.ts`)
-  → the technique for guaranteeing "preserve the room" (Constitution
-  Principle 2) in product-accurate visualization: don't trust the model to
-  respect a mask boundary, composite the edit against the original
-  afterward.
+  → `lib/home-material/visualization.ts` uses the same technique for
+  guaranteeing "preserve the room" (Constitution Principle 2): don't trust
+  the model to respect a mask boundary, composite the edit against the
+  original afterward.
 - `GuestTryOnUsage`'s device-scoped free-quota pattern → this domain's
   visualization usage limits (V1 needs a cost policy before shipping, same
   reason the AI-usage ledger/wallet system exists for the fashion product).
@@ -88,7 +161,7 @@ backlog.
 
 | Layer | Responsibility | Not responsible for |
 |---|---|---|
-| Computer Vision | Wall/surface/furniture/window/door detection, geometry, lighting, structured facts only | Commercial recommendations |
+| Computer Vision | Wall/surface/furniture/window/door detection, geometry, lighting, structured facts only. **Partially implemented** (2026-09-07 fast-lane pivot) — `lib/home-material/wall-detection.ts` does single-wall bounding-box detection for a straight-on photo; general multi-wall/geometry/lighting understanding is still future work | Commercial recommendations |
 | Material Knowledge | Category-level properties (durability, maintenance, moisture, install/removal), curated/config data | Being generated live per-request |
 | Product DB | SKU facts, identity, attributes, source/evidence | Being defined by the image model |
 | Recommendation Engine | Deterministic/hybrid scoring over room + requirements + material + product data | Arbitrary LLM-invented scores |

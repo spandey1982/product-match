@@ -7,6 +7,7 @@ type Surface = {
   id: string;
   label: string | null;
   geometryData: string | null;
+  measurementSource?: string;
 };
 
 type Room = {
@@ -45,10 +46,11 @@ function parseGeometry(geometryData: string | null): Rect | null {
 }
 
 /**
- * V1 has no CV wall-detection yet — the user draws the wall region directly
- * by dragging on the photo (locked decision, 2026-09-07). The rectangle is
- * stored as fractions of the image (0-1), so it stays correct at any
- * display size.
+ * AI wall detection (fast-lane pivot, 2026-09-07) is the primary path —
+ * scoped to a straight-on, facing-the-wall photo. Manual drag-select
+ * remains available as a fallback when detection fails or for correction.
+ * The rectangle is stored as fractions of the image (0-1) either way, so it
+ * stays correct at any display size.
  */
 export function RoomView({ roomId }: { roomId: string }) {
   const router = useRouter();
@@ -62,6 +64,10 @@ export function RoomView({ roomId }: { roomId: string }) {
   const [draftRect, setDraftRect] = useState<Rect | null>(null);
   const [label, setLabel] = useState("");
   const [saving, setSaving] = useState(false);
+  const [showManualSelect, setShowManualSelect] = useState(false);
+
+  const [detecting, setDetecting] = useState(false);
+  const [detectError, setDetectError] = useState("");
 
   const [swatches, setSwatches] = useState<Swatch[]>([]);
   const [selectedSwatch, setSelectedSwatch] = useState<Record<string, string>>({});
@@ -88,6 +94,26 @@ export function RoomView({ roomId }: { roomId: string }) {
       .then((data) => setSwatches(data.products ?? []))
       .catch(() => setSwatches([]));
   }, [roomId, router]);
+
+  async function handleDetectWall() {
+    setDetectError("");
+    setDetecting(true);
+    try {
+      const res = await fetch(`/api/home-material/rooms/${roomId}/detect-wall`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        setDetectError(data.error || "Could not detect a wall in this photo. Try selecting it manually below.");
+        setShowManualSelect(true);
+        return;
+      }
+      setRoom((r) => (r ? { ...r, surfaces: [...r.surfaces, data.surface] } : r));
+    } catch {
+      setDetectError("Something went wrong. Please try again or select the wall manually.");
+      setShowManualSelect(true);
+    } finally {
+      setDetecting(false);
+    }
+  }
 
   async function handleGeneratePreview(surfaceId: string) {
     const productId = selectedSwatch[surfaceId];
@@ -177,21 +203,27 @@ export function RoomView({ roomId }: { roomId: string }) {
   if (error && !room) return <div className="max-w-2xl mx-auto py-16 px-6 text-sm text-red-500">{error}</div>;
   if (!room) return null;
 
+  const hasSurfaces = room.surfaces.length > 0;
+
   return (
     <div className="max-w-2xl mx-auto py-10 px-6 space-y-4">
       <div>
-        <h1 className="text-xl font-bold text-gray-900">Mark a wall</h1>
+        <h1 className="text-xl font-bold text-gray-900">
+          {hasSurfaces ? "Wall detected" : "Find the wall"}
+        </h1>
         <p className="text-sm text-gray-500 mt-1">
-          Drag on the photo to select the wall you want to preview materials on.
+          {hasSurfaces
+            ? "Pick a swatch below to preview it on this wall."
+            : "For best results, stand directly facing the wall, straight-on. We'll detect it automatically."}
         </p>
       </div>
 
       <div
         ref={imageRef}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        className="relative w-full rounded-2xl overflow-hidden border border-gray-200 select-none touch-none cursor-crosshair"
+        onPointerDown={showManualSelect ? handlePointerDown : undefined}
+        onPointerMove={showManualSelect ? handlePointerMove : undefined}
+        onPointerUp={showManualSelect ? handlePointerUp : undefined}
+        className={`relative w-full rounded-2xl overflow-hidden border border-gray-200 select-none touch-none ${showManualSelect ? "cursor-crosshair" : ""}`}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={room.imageUrl} alt="Room" className="w-full h-auto block pointer-events-none" draggable={false} />
@@ -199,10 +231,11 @@ export function RoomView({ roomId }: { roomId: string }) {
         {room.surfaces.map((s) => {
           const g = parseGeometry(s.geometryData);
           if (!g) return null;
+          const isAiDetected = s.measurementSource === "ai_estimated";
           return (
             <div
               key={s.id}
-              className="absolute border-2 border-emerald-500 bg-emerald-500/15"
+              className={`absolute border-2 ${isAiDetected ? "border-indigo-500 bg-indigo-500/15" : "border-emerald-500 bg-emerald-500/15"}`}
               style={{
                 left: `${g.x * 100}%`,
                 top: `${g.y * 100}%`,
@@ -211,7 +244,7 @@ export function RoomView({ roomId }: { roomId: string }) {
               }}
             >
               {s.label && (
-                <span className="absolute -top-6 left-0 text-xs font-medium bg-emerald-500 text-white px-2 py-0.5 rounded">
+                <span className={`absolute -top-6 left-0 text-xs font-medium text-white px-2 py-0.5 rounded ${isAiDetected ? "bg-indigo-500" : "bg-emerald-500"}`}>
                   {s.label}
                 </span>
               )}
@@ -231,6 +264,27 @@ export function RoomView({ roomId }: { roomId: string }) {
           />
         )}
       </div>
+
+      {!hasSurfaces && (
+        <Button className="w-full" size="lg" onClick={handleDetectWall} loading={detecting}>
+          Detect wall automatically
+        </Button>
+      )}
+      {detectError && <p className="text-sm text-red-500">{detectError}</p>}
+
+      {!showManualSelect && !hasSurfaces && (
+        <button
+          type="button"
+          onClick={() => setShowManualSelect(true)}
+          className="text-xs text-gray-400 hover:text-gray-600 underline w-full text-center"
+        >
+          Or select the wall manually
+        </button>
+      )}
+
+      {showManualSelect && (
+        <p className="text-xs text-gray-500">Drag on the photo above to select the wall manually.</p>
+      )}
 
       {draftRect && (
         <div className="flex items-center gap-2">
