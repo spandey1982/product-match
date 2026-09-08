@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, RotateCcw, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { parseJsonSafe } from "@/lib/home-material/client";
 
 type Point = { x: number; y: number };
 
@@ -185,17 +186,17 @@ export function RoomView({ roomId }: { roomId: string }) {
     resetDraft();
     try {
       const res = await fetch(`/api/home-material/rooms/${roomId}/detect-wall`, { method: "POST" });
-      const data = await res.json();
+      const data = await parseJsonSafe(res);
       if (!res.ok) {
-        setDetectError(data.error || "Could not detect a wall in this photo. Try selecting it manually below.");
+        setDetectError(typeof data.error === "string" ? data.error : "Could not detect a wall in this photo. Try selecting it manually below.");
         setManualDrawing(true);
         return;
       }
-      setDraftPoints(data.polygon);
+      setDraftPoints(data.polygon as Point[]);
       setDraftOrigin("ai");
-      setDraftConfidence(data.confidence ?? null);
-    } catch {
-      setDetectError("Something went wrong. Please try again or select the wall manually.");
+      setDraftConfidence((data.confidence as number) ?? null);
+    } catch (err) {
+      setDetectError(`Something went wrong: ${err instanceof Error ? err.message : String(err)}`);
       setManualDrawing(true);
     } finally {
       setDetecting(false);
@@ -270,12 +271,12 @@ export function RoomView({ roomId }: { roomId: string }) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ points: draftPoints, label: label || null }),
         });
-        const data = await res.json();
+        const data = await parseJsonSafe(res);
         if (!res.ok) {
-          setError(data.error || "Could not save this shape");
+          setError(typeof data.error === "string" ? data.error : "Could not save this shape");
           return;
         }
-        setRoom((r) => (r ? { ...r, surfaces: r.surfaces.map((s) => (s.id === editingSurfaceId ? data.surface : s)) } : r));
+        setRoom((r) => (r ? { ...r, surfaces: r.surfaces.map((s) => (s.id === editingSurfaceId ? (data.surface as Surface) : s)) } : r));
       } else {
         const res = await fetch(`/api/home-material/rooms/${roomId}/surfaces`, {
           method: "POST",
@@ -287,16 +288,16 @@ export function RoomView({ roomId }: { roomId: string }) {
             measurementConfidence: draftOrigin === "ai" ? draftConfidence : undefined,
           }),
         });
-        const data = await res.json();
+        const data = await parseJsonSafe(res);
         if (!res.ok) {
-          setError(data.error || "Could not save this wall selection");
+          setError(typeof data.error === "string" ? data.error : "Could not save this wall selection");
           return;
         }
-        setRoom((r) => (r ? { ...r, surfaces: [...r.surfaces, data.surface] } : r));
+        setRoom((r) => (r ? { ...r, surfaces: [...r.surfaces, data.surface as Surface] } : r));
       }
       resetDraft();
-    } catch {
-      setError("Something went wrong. Please try again.");
+    } catch (err) {
+      setError(`Something went wrong: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setSaving(false);
     }
@@ -309,18 +310,18 @@ export function RoomView({ roomId }: { roomId: string }) {
       const formData = new FormData();
       formData.append("file", file);
       const res = await fetch(`/api/home-material/rooms/${roomId}`, { method: "PATCH", body: formData });
-      const data = await res.json();
+      const data = await parseJsonSafe(res);
       if (!res.ok) {
-        setReuploadError(data.error || "Reupload failed");
+        setReuploadError(typeof data.error === "string" ? data.error : "Reupload failed");
         return;
       }
-      setRoom(data.room);
+      setRoom(data.room as Room);
       resetDraft();
       setVisualizations({});
       setSelectedSwatch({});
       setPreviewError({});
-    } catch {
-      setReuploadError("Something went wrong. Please try again.");
+    } catch (err) {
+      setReuploadError(`Something went wrong: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setReuploading(false);
       if (reuploadInputRef.current) reuploadInputRef.current.value = "";
@@ -341,15 +342,15 @@ export function RoomView({ roomId }: { roomId: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ surfaceId, productId }),
       });
-      const data = await res.json();
+      const data = await parseJsonSafe(res);
       if (!res.ok) {
-        setPreviewError((p) => ({ ...p, [surfaceId]: data.error || "Preview failed" }));
-        if (data.visualization) setVisualizations((v) => ({ ...v, [surfaceId]: data.visualization }));
+        setPreviewError((p) => ({ ...p, [surfaceId]: typeof data.error === "string" ? data.error : "Preview failed" }));
+        if (data.visualization) setVisualizations((v) => ({ ...v, [surfaceId]: data.visualization as Visualization }));
         return;
       }
-      setVisualizations((v) => ({ ...v, [surfaceId]: data.visualization }));
-    } catch {
-      setPreviewError((p) => ({ ...p, [surfaceId]: "Something went wrong. Please try again." }));
+      setVisualizations((v) => ({ ...v, [surfaceId]: data.visualization as Visualization }));
+    } catch (err) {
+      setPreviewError((p) => ({ ...p, [surfaceId]: `Something went wrong: ${err instanceof Error ? err.message : String(err)}` }));
     } finally {
       setGenerating((g) => ({ ...g, [surfaceId]: false }));
     }
@@ -367,16 +368,16 @@ export function RoomView({ roomId }: { roomId: string }) {
       formData.append("file", uploadFile);
       if (uploadName) formData.append("name", uploadName);
       const res = await fetch(`/api/home-material/products/upload`, { method: "POST", body: formData });
-      const data = await res.json();
+      const data = await parseJsonSafe(res);
       if (!res.ok) {
-        setUploadError(data.error || "Upload failed");
+        setUploadError(typeof data.error === "string" ? data.error : "Upload failed");
         return;
       }
       setUploadFile(null);
       setUploadName("");
       loadSwatches();
-    } catch {
-      setUploadError("Something went wrong. Please try again.");
+    } catch (err) {
+      setUploadError(`Something went wrong: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setUploading(false);
     }
