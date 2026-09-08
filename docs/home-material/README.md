@@ -1,8 +1,9 @@
 # Home Material Intelligence Platform — Domain Brief
 
-Status: **Fast-lane demo pivot (2026-09-07)** — see that section below
-before anything else; it changes what's active vs. paused relative to the
-original V1 plan. This is the anchor doc for this domain;
+Status: **Resuming the original V1 pathway (2026-09-08)** — the fast-lane
+demo pivot section below is still accurate for what it covers, but
+Material Knowledge content (previously "paused") is now started; see
+"Material Knowledge — shipped" further down. This is the anchor doc for this domain;
 read it before re-deriving architecture context in a future session (see
 CLAUDE.md §6). It intentionally stays lightweight — not the full docs/
 hierarchy sketched in the original discovery brief — until there's enough
@@ -166,6 +167,43 @@ up for it yet (see flagged).
   the model is instructed to fall back to a simpler outer boundary + a
   text note rather than force it, but that fallback hasn't been tested
   against a genuinely complex wall yet.
+
+## Material Knowledge — shipped (2026-09-08)
+
+The first item resumed from the original V1 pathway (was "paused" during
+the fast-lane pivot; see that section above). Answers brief §12's "what
+type of material should I consider?" independently of any SKU.
+
+- `lib/home-material/material-taxonomy.ts`: 16 curated subtype entries (4
+  each across paint/wallpaper/wall_texture/wall_panel) — durability,
+  maintenance, moisture suitability, installation/removal notes,
+  advantages/limitations, and an indicative INR/sqft cost range. Typed
+  single source of truth, not buried in a seed script.
+- **Honesty split, deliberately recorded, not glossed over:** the
+  durability/maintenance/installation/moisture text is general,
+  well-established domain knowledge (e.g. "vinyl wallpaper is washable and
+  moisture-resistant") — low risk of being materially wrong. The **cost
+  ranges are the genuinely uncertain part** — Claude-estimated, not
+  verified against any live supplier/market data, and both the app (see
+  the guide page's own copy) and this doc say so explicitly. Needs real
+  market verification before being treated as authoritative (Constitution
+  Principle 4 — never manufacture certainty).
+- `scripts/seed-material-knowledge.ts` (`npm run db:seed:hm-materials`,
+  also chained into `db:seed:hm`) seeds it into `HmMaterial`. The demo
+  product seed now links each swatch to a real subtype instead of the old
+  generic per-category placeholder rows (which are deleted on re-seed).
+- `GET /api/home-material/materials` — deliberately the **one public,
+  unauthenticated** Home Material endpoint. This is general reference
+  content, not user- or room-specific, and per brief §8 Mode B
+  understanding material types logically precedes needing an account at
+  all.
+- `/materials/guide` — a public browse page, category-sectioned, linked
+  from the `/materials` home page.
+
+**Still not built:** the deterministic Recommendation Engine that would
+actually use this content for "help me choose" mode (this ships the
+knowledge base it needs, not the engine itself), Product-Accurate mode,
+retailer/lead capture.
 
 ## Locked decisions (2026-09-07)
 

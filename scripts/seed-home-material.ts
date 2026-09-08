@@ -7,10 +7,15 @@
  * (colorHex, finish descriptions) are illustrative placeholders for testing
  * the quick-preview visualization loop — not real manufacturer SKUs.
  *
- * Uses upsert on sku so re-running is safe.
+ * Each product links to a real Material Knowledge subtype (see
+ * lib/home-material/material-taxonomy.ts) via materialSlug — run
+ * scripts/seed-material-knowledge.ts FIRST so those rows exist (the FK
+ * would otherwise fail).
+ *
+ * Uses upsert on a deterministic id so re-running is safe.
  *
  * Usage:
- *   npx tsx scripts/seed-home-material.ts
+ *   npx tsx scripts/seed-material-knowledge.ts && npx tsx scripts/seed-home-material.ts
  */
 import "dotenv/config";
 import { db } from "../lib/db";
@@ -18,7 +23,7 @@ import { db } from "../lib/db";
 type SeedProduct = {
   sku: string;
   name: string;
-  category: "paint" | "wallpaper" | "wall_texture" | "wall_panel";
+  materialSlug: string;
   colorName: string;
   colorHex: string;
   finish?: string;
@@ -26,26 +31,21 @@ type SeedProduct = {
 };
 
 const PRODUCTS: SeedProduct[] = [
-  { sku: "HM-DEMO-PAINT-001", name: "Warm Beige", category: "paint", colorName: "Warm Beige", colorHex: "#D9C7A8", finish: "matte emulsion" },
-  { sku: "HM-DEMO-PAINT-002", name: "Soft Sage", category: "paint", colorName: "Soft Sage", colorHex: "#A9B99B", finish: "matte emulsion" },
-  { sku: "HM-DEMO-PAINT-003", name: "Charcoal Grey", category: "paint", colorName: "Charcoal Grey", colorHex: "#4A4A4A", finish: "eggshell emulsion" },
-  { sku: "HM-DEMO-PAINT-004", name: "Terracotta", category: "paint", colorName: "Terracotta", colorHex: "#C1683A", finish: "matte emulsion" },
-  { sku: "HM-DEMO-WALLPAPER-001", name: "Botanical Leaf Wallpaper", category: "wallpaper", colorName: "Deep Green", colorHex: "#2F4F3A", finish: "non-woven, matte", patternName: "large-scale botanical leaf" },
-  { sku: "HM-DEMO-TEXTURE-001", name: "Lime Plaster Texture", category: "wall_texture", colorName: "Natural Off-White", colorHex: "#EDE6D6", finish: "textured lime plaster" },
+  { sku: "HM-DEMO-PAINT-001", name: "Warm Beige", materialSlug: "paint_emulsion_matte", colorName: "Warm Beige", colorHex: "#D9C7A8", finish: "matte emulsion" },
+  { sku: "HM-DEMO-PAINT-002", name: "Soft Sage", materialSlug: "paint_emulsion_matte", colorName: "Soft Sage", colorHex: "#A9B99B", finish: "matte emulsion" },
+  { sku: "HM-DEMO-PAINT-003", name: "Charcoal Grey", materialSlug: "paint_emulsion_sheen", colorName: "Charcoal Grey", colorHex: "#4A4A4A", finish: "silk sheen emulsion" },
+  { sku: "HM-DEMO-PAINT-004", name: "Terracotta", materialSlug: "paint_emulsion_matte", colorName: "Terracotta", colorHex: "#C1683A", finish: "matte emulsion" },
+  { sku: "HM-DEMO-WALLPAPER-001", name: "Botanical Leaf Wallpaper", materialSlug: "wallpaper_non_woven", colorName: "Deep Green", colorHex: "#2F4F3A", finish: "non-woven, matte", patternName: "large-scale botanical leaf" },
+  { sku: "HM-DEMO-TEXTURE-001", name: "Lime Plaster Texture", materialSlug: "texture_lime_plaster", colorName: "Natural Off-White", colorHex: "#EDE6D6", finish: "textured lime plaster" },
 ];
 
 async function main() {
   for (const p of PRODUCTS) {
-    const material = await db.hmMaterial.upsert({
-      where: { id: `seed_material_${p.category}` },
-      update: {},
-      create: {
-        id: `seed_material_${p.category}`,
-        category: p.category,
-        subtype: p.category,
-        name: p.category.replace("_", " "),
-      },
-    });
+    const materialId = `hm_material_${p.materialSlug}`;
+    const material = await db.hmMaterial.findUnique({ where: { id: materialId } });
+    if (!material) {
+      throw new Error(`Material "${materialId}" not found — run scripts/seed-material-knowledge.ts first.`);
+    }
 
     await db.hmProduct.upsert({
       where: { id: `seed_product_${p.sku}` },
@@ -55,7 +55,7 @@ async function main() {
         colorHex: p.colorHex,
         finish: p.finish ?? null,
         patternName: p.patternName ?? null,
-        materialId: material.id,
+        materialId,
       },
       create: {
         id: `seed_product_${p.sku}`,
@@ -65,12 +65,21 @@ async function main() {
         colorHex: p.colorHex,
         finish: p.finish ?? null,
         patternName: p.patternName ?? null,
-        materialId: material.id,
+        materialId,
         availability: "unspecified",
       },
     });
-    console.log(`Upserted ${p.sku} — ${p.name}`);
+    console.log(`Upserted ${p.sku} — ${p.name} (${p.materialSlug})`);
   }
+
+  // Clean up the old generic per-category placeholder rows from before
+  // Material Knowledge existed — no longer referenced by anything once the
+  // products above are re-pointed at real subtype entries.
+  const stale = await db.hmMaterial.deleteMany({
+    where: { id: { in: ["seed_material_paint", "seed_material_wallpaper", "seed_material_wall_texture", "seed_material_wall_panel"] } },
+  });
+  if (stale.count > 0) console.log(`Removed ${stale.count} stale generic placeholder material(s).`);
+
   console.log(`Done. ${PRODUCTS.length} demo swatches seeded.`);
 }
 
