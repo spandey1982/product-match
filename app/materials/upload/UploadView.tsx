@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Upload, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { parseJsonSafe } from "@/lib/home-material/client";
 
 const ROOM_TYPES = [
   { value: "living_room", label: "Living room" },
@@ -40,19 +41,24 @@ export function UploadView() {
       formData.append("roomType", roomType);
 
       const res = await fetch("/api/home-material/rooms", { method: "POST", body: formData });
-      const data = await res.json();
 
       if (res.status === 401) {
         router.push(`/materials/login?returnTo=${encodeURIComponent("/materials/upload")}`);
         return;
       }
+      const data = await parseJsonSafe(res);
       if (!res.ok) {
-        setError(data.error || "Upload failed");
+        setError(typeof data.error === "string" ? data.error : "Upload failed");
         return;
       }
-      router.push(`/materials/rooms/${data.room.id}`);
-    } catch {
-      setError("Something went wrong. Please try again.");
+      const room = data.room as { id: string } | undefined;
+      if (!room?.id) {
+        setError("Upload succeeded but the response was unexpected. Please try again.");
+        return;
+      }
+      router.push(`/materials/rooms/${room.id}`);
+    } catch (err) {
+      setError(`Something went wrong: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setLoading(false);
     }

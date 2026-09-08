@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Phone, ShieldCheck, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { parseJsonSafe } from "@/lib/home-material/client";
 
 type Step = "phone" | "otp";
 
@@ -29,15 +30,15 @@ export function LoginView() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone }),
       });
-      const data = await res.json();
+      const data = await parseJsonSafe(res);
       if (!res.ok) {
-        setError(data.error || "Could not send OTP");
+        setError(typeof data.error === "string" ? data.error : "Could not send OTP");
         return;
       }
       setOtp("");
       setStep("otp");
-    } catch {
-      setError("Something went wrong. Please try again.");
+    } catch (err) {
+      setError(`Something went wrong: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setLoading(false);
     }
@@ -53,15 +54,15 @@ export function LoginView() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone, otp }),
       });
-      const data = await res.json();
+      const data = await parseJsonSafe(res);
       if (!res.ok) {
-        setError(data.error || "Incorrect or expired OTP");
+        setError(typeof data.error === "string" ? data.error : "Incorrect or expired OTP");
         return;
       }
       router.push(returnTo);
       router.refresh();
-    } catch {
-      setError("Something went wrong. Please try again.");
+    } catch (err) {
+      setError(`Something went wrong: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setLoading(false);
     }
