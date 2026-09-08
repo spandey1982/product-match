@@ -38,6 +38,7 @@ type Visualization = {
   status: string;
   outputImageUrl: string | null;
   errorMessage: string | null;
+  mode?: string;
 };
 
 type Requirements = {
@@ -652,8 +653,17 @@ export function RoomView({ roomId }: { roomId: string }) {
                 </Button>
                 {previewError[s.id] && <p className="text-sm text-red-500">{previewError[s.id]}</p>}
                 {vis?.status === "completed" && vis.outputImageUrl && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={vis.outputImageUrl} alt="Preview" className="w-full rounded-xl border border-gray-200" />
+                  <div className="space-y-1.5">
+                    <span
+                      className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full ${
+                        vis.mode === "product_accurate" ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-600"
+                      }`}
+                    >
+                      {vis.mode === "product_accurate" ? "Product-accurate — from your uploaded photo" : "Quick preview — AI interpretation"}
+                    </span>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={vis.outputImageUrl} alt="Preview" className="w-full rounded-xl border border-gray-200" />
+                  </div>
                 )}
                 {vis?.status === "failed" && (
                   <p className="text-xs text-red-500">{vis.errorMessage || "Preview generation failed."}</p>

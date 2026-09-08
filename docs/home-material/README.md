@@ -238,7 +238,45 @@ returned the persisted set after the last POST.
 
 **Still not built:** Product-Accurate mode as a first-class DB concept
 (tied to a real retailer SKU with full provenance), retailer/lead
-capture.
+capture. See below — the mode-tagging half shipped same day.
+
+## Product-Accurate mode — partially shipped (2026-09-08)
+
+Reframed to something buildable honestly without fabricating retailer
+data (see "Deferred pending your input" below): `HmVisualization.mode` is
+now actually set correctly instead of always hardcoded to
+`"quick_preview"`. When a product carries a real uploaded reference photo
+(`textureAssetUrl` — currently only custom uploads have one), the
+generation is genuinely using the real material, not an AI-imagined
+approximation of a text description — that's `"product_accurate"` per
+Constitution Principle 1 ("reality over imagination"), regardless of
+whether a retailer is attached yet. A curated demo swatch (text fields
+only, no photo) stays `"quick_preview"`.
+
+- `lib/home-material/visualization.ts`'s `QuickPreviewResult.mode` is
+  computed from whether a reference image was actually used.
+- The visualizations API sets this at creation (from whether the product
+  has a `textureAssetUrl`) and confirms it from the actual result.
+- RoomView now visibly labels every completed preview "Product-accurate —
+  from your uploaded photo" or "Quick preview — AI interpretation" — this
+  was a real transparency gap before (Principle 1's "do not silently
+  substitute" was true in the pixels but never disclosed in the UI).
+
+Live-tested both paths directly against the API: a curated swatch
+correctly tagged `quick_preview`, an existing custom upload correctly
+tagged `product_accurate`.
+
+**Deliberately NOT done as part of this: seeding fake retailer data.**
+`HmLead.retailerId` is a required FK, so real lead-capture needs at least
+one `HmRetailer` row to exist — but this repo has zero actual retailer
+partnerships right now, and inventing a named business (even a clearly
+"demo" one) risks being shown to the actual potential customers this
+fast-lane work is FOR, which is a real trust/impersonation concern, not
+just a modeling detail. Flagged for the user rather than decided
+unilaterally — see the open question in session history around
+2026-09-08. Until resolved, retailer/lead capture stays unbuilt; a full
+"real retailer SKU + provenance" product-accurate tier also waits on this,
+since it needs a real retailer-sourced product to attach to.
 
 ## Locked decisions (2026-09-07)
 

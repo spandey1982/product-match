@@ -1,7 +1,9 @@
 /**
- * Quick AI Preview — apply a swatch's colour/finish (or a user-uploaded
- * reference photo) to a user-selected wall region while leaving the rest
- * of the room untouched.
+ * Applies a swatch's colour/finish (or a user-uploaded reference photo) to
+ * a user-selected wall region while leaving the rest of the room
+ * untouched. Actually produces BOTH of the brief's visualization fidelity
+ * tiers depending on the input, not just "Quick AI Preview" — see
+ * QuickPreviewResult.mode.
  *
  * Independently implemented for this domain (not a call into
  * lib/model-gen/erase.ts, which is fashion/garment-image tuned — aspect
@@ -63,6 +65,16 @@ export interface QuickPreviewResult {
   height: number;
   bytes: number;
   model: string;
+  /**
+   * "product_accurate" when a real reference image (a custom upload) was
+   * used to condition the generation — that's the actual material, not an
+   * AI-imagined approximation of a text description, satisfying
+   * Constitution Principle 1 ("reality over imagination"). "quick_preview"
+   * for a curated swatch described only in text (colour/finish/pattern
+   * fields). Not yet distinguishing a further "verified retailer SKU" tier
+   * — see docs/home-material/README.md's Product-Accurate mode section.
+   */
+  mode: "quick_preview" | "product_accurate";
 }
 
 /**
@@ -345,5 +357,6 @@ export async function runQuickPreviewVisualization(
     height: origHeight,
     bytes: composited.length,
     model: MODEL_ID,
+    mode: referenceImage ? "product_accurate" : "quick_preview",
   };
 }

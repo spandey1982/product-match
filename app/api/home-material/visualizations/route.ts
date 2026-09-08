@@ -33,11 +33,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "This wall has no selected region yet" }, { status: 400 });
   }
 
+  // A product with a real uploaded reference photo gets product-accurate
+  // treatment (the actual material, not an AI-imagined approximation of a
+  // text description) — see lib/home-material/visualization.ts's
+  // QuickPreviewResult.mode doc comment and docs/home-material/README.md's
+  // Product-Accurate mode section.
+  const initialMode = product.textureAssetUrl ? "product_accurate" : "quick_preview";
+
   const visualization = await db.hmVisualization.create({
     data: {
       surfaceId,
       productId,
-      mode: "quick_preview",
+      mode: initialMode,
       inputImageUrl: surface.room.imageUrl,
       status: "processing",
       provider: "gemini",
@@ -76,6 +83,7 @@ export async function POST(req: NextRequest) {
       status: "completed",
       outputImageUrl: result.url,
       model: result.model,
+      mode: result.mode,
     },
   });
 
