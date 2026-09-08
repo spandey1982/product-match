@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { productId, materialCategory, contactName, contactPhone, contactEmail, message } = await req.json();
+  const { productId, materialCategory, contactName, contactPhone, contactEmail, message, areaSqft } = await req.json();
 
   if (typeof contactName !== "string" || !contactName.trim()) {
     return NextResponse.json({ error: "Your name is required" }, { status: 400 });
@@ -28,6 +28,13 @@ export async function POST(req: NextRequest) {
   if (!productId && !materialCategory) {
     return NextResponse.json({ error: "A product or material category is required" }, { status: 400 });
   }
+  // HmLead.estimatedAreaSqm is genuinely square metres — the UI collects
+  // sqft (the unit every cost figure in this domain is quoted in, and the
+  // common Indian real-estate unit) and this is the one place that
+  // converts, so the stored field matches its own name honestly.
+  const SQFT_TO_SQM = 0.092903;
+  const estimatedAreaSqm =
+    typeof areaSqft === "number" && Number.isFinite(areaSqft) && areaSqft > 0 ? areaSqft * SQFT_TO_SQM : null;
 
   if (productId) {
     const product = await db.hmProduct.findUnique({ where: { id: productId } });
@@ -55,6 +62,7 @@ export async function POST(req: NextRequest) {
       contactPhone: contactPhone.trim(),
       contactEmail: typeof contactEmail === "string" && contactEmail.trim() ? contactEmail.trim() : null,
       message: typeof message === "string" && message.trim() ? message.trim() : null,
+      estimatedAreaSqm,
     },
   });
 

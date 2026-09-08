@@ -26,11 +26,36 @@ export async function GET() {
       textureAssetUrl: true,
       uploadedByHmUserId: true,
       materialId: true,
-      material: { select: { category: true } },
+      material: {
+        select: { category: true, avgCostPerSqftMinInr: true, avgCostPerSqftMaxInr: true },
+      },
+      retailerListings: {
+        where: { priceInr: { not: null } },
+        orderBy: { priceInr: "asc" },
+        take: 1,
+        select: { priceInr: true },
+      },
     },
   });
 
   return NextResponse.json({
-    products: products.map((p) => ({ ...p, isCustom: p.uploadedByHmUserId != null })),
+    products: products.map((p) => {
+      const { retailerListings, ...rest } = p;
+      const realPrice = retailerListings[0]?.priceInr ?? null;
+      return {
+        ...rest,
+        isCustom: p.uploadedByHmUserId != null,
+        // Real, retailer-listed price per sqft when a listing exists;
+        // otherwise fall back to the material category's general
+        // indicative range (docs/home-material/README.md — same
+        // "platform estimate, not a quotation" honesty as everywhere
+        // else cost appears). Never both — the UI should show one or
+        // the other, not blend them.
+        priceInr: realPrice,
+        priceIsExact: realPrice != null,
+        costRangeMinInr: realPrice == null ? p.material?.avgCostPerSqftMinInr ?? null : null,
+        costRangeMaxInr: realPrice == null ? p.material?.avgCostPerSqftMaxInr ?? null : null,
+      };
+    }),
   });
 }

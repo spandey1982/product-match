@@ -31,6 +31,10 @@ type Swatch = {
   textureAssetUrl?: string | null;
   isCustom?: boolean;
   materialId?: string | null;
+  priceInr?: number | null;
+  priceIsExact?: boolean;
+  costRangeMinInr?: number | null;
+  costRangeMaxInr?: number | null;
 };
 
 type Visualization = {
@@ -56,7 +60,13 @@ type Recommendation = {
   confidence: number;
   reasons: string[];
   concerns: string[];
-  material: { id: string; name: string; category: string } | null;
+  material: {
+    id: string;
+    name: string;
+    category: string;
+    avgCostPerSqftMinInr?: number | null;
+    avgCostPerSqftMaxInr?: number | null;
+  } | null;
 };
 
 const DEFAULT_REQUIREMENTS: Requirements = {
@@ -130,6 +140,62 @@ function SwatchCarousel({
 }
 
 /**
+ * Cost estimate — brief's "Estimate" step (§16 core journey, §35 cost
+ * model), material cost only (no installation/labour, stated explicitly).
+ * Shows a real retailer-listed per-sqft price when one exists (exact),
+ * else the material category's general indicative range (platform
+ * estimate) — never both, so the user isn't shown a false sense of
+ * precision. Self-contained: its own area (sqft) input, not shared with
+ * the lead form's separate area field.
+ */
+function CostEstimator({
+  minPerSqft,
+  maxPerSqft,
+  exactPerSqft,
+}: {
+  minPerSqft?: number | null;
+  maxPerSqft?: number | null;
+  exactPerSqft?: number | null;
+}) {
+  const [areaSqft, setAreaSqft] = useState("");
+  const area = parseFloat(areaSqft);
+  const hasArea = Number.isFinite(area) && area > 0;
+
+  const fmt = (n: number) => `₹${Math.round(n).toLocaleString("en-IN")}`;
+
+  if (exactPerSqft == null && (minPerSqft == null || maxPerSqft == null)) return null;
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+      <input
+        type="number"
+        min={1}
+        placeholder="Area (sqft)"
+        value={areaSqft}
+        onChange={(e) => setAreaSqft(e.target.value)}
+        className="w-24 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+      />
+      {exactPerSqft != null ? (
+        <span>
+          ₹{exactPerSqft}/sqft{hasArea && <> · est. total {fmt(exactPerSqft * area)}</>}{" "}
+          <span className="text-gray-400">(material only, retailer-listed price)</span>
+        </span>
+      ) : (
+        <span>
+          ₹{minPerSqft}–₹{maxPerSqft}/sqft
+          {hasArea && (
+            <>
+              {" "}· est. total {fmt(minPerSqft! * area)}–{fmt(maxPerSqft! * area)}
+            </>
+          )}{" "}
+          <span className="text-gray-400">(material only, platform estimate)</span>
+        </span>
+      )}
+    </div>
+  );
+}
+
+/**
  * "Request a quote" lead capture (brief §17) — tied to either a specific
  * product or just a material category (recommendations are material-level,
  * not SKU-level, so productId won't always apply). Self-contained: manages
@@ -149,9 +215,10 @@ function LeadCaptureButton({ productId, materialCategory }: { productId?: string
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
+  const [areaSqft, setAreaSqft] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [result, setResult] = useState<{ retailerName: string; isVerified: boolean } | null>(null);
+  const [result, setResult] = useState<{ name: string; isVerified: boolean } | null>(null);
 
   async function handleSubmit() {
     if (!name.trim() || !phone.trim()) {
@@ -161,17 +228,26 @@ function LeadCaptureButton({ productId, materialCategory }: { productId?: string
     setError("");
     setSubmitting(true);
     try {
+      const parsedArea = parseFloat(areaSqft);
       const res = await fetch(`/api/home-material/leads`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productId, materialCategory, contactName: name, contactPhone: phone, contactEmail: email || undefined, message: message || undefined }),
+        body: JSON.stringify({
+          productId,
+          materialCategory,
+          contactName: name,
+          contactPhone: phone,
+          contactEmail: email || undefined,
+          message: message || undefined,
+          areaSqft: Number.isFinite(parsedArea) && parsedArea > 0 ? parsedArea : undefined,
+        }),
       });
       const data = await parseJsonSafe(res);
       if (!res.ok) {
         setError(typeof data.error === "string" ? data.error : "Could not submit request");
         return;
       }
-      setResult(data.retailer as { retailerName: string; isVerified: boolean });
+      setResult(data.retailer as { name: string; isVerified: boolean });
     } catch (err) {
       setError(`Something went wrong: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
@@ -182,7 +258,7 @@ function LeadCaptureButton({ productId, materialCategory }: { productId?: string
   if (result) {
     return (
       <p className="text-xs text-emerald-700 mt-2">
-        ✓ Request saved. Note: {result.retailerName} is placeholder demo data, not a real business yet — this won&apos;t
+        ✓ Request saved. Note: {result.name} is placeholder demo data, not a real business yet — this won&apos;t
         reach an actual retailer until real partners are onboarded.
       </p>
     );
@@ -218,6 +294,14 @@ function LeadCaptureButton({ productId, materialCategory }: { productId?: string
         placeholder="Email (optional)"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
+        className="w-full rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+      />
+      <input
+        type="number"
+        min={1}
+        placeholder="Approximate area in sqft (optional)"
+        value={areaSqft}
+        onChange={(e) => setAreaSqft(e.target.value)}
         className="w-full rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
       />
       <textarea
@@ -756,6 +840,17 @@ export function RoomView({ roomId }: { roomId: string }) {
                   selectedId={selectedSwatch[s.id]}
                   onSelect={(id) => setSelectedSwatch((sel) => ({ ...sel, [s.id]: id }))}
                 />
+                {(() => {
+                  const selected = swatches.find((sw) => sw.id === selectedSwatch[s.id]);
+                  if (!selected) return null;
+                  return (
+                    <CostEstimator
+                      minPerSqft={selected.costRangeMinInr}
+                      maxPerSqft={selected.costRangeMaxInr}
+                      exactPerSqft={selected.priceIsExact ? selected.priceInr : null}
+                    />
+                  );
+                })()}
                 <Button className="w-full" onClick={() => handleGeneratePreview(s.id)} loading={generating[s.id]}>
                   Preview
                 </Button>
@@ -856,6 +951,10 @@ export function RoomView({ roomId }: { roomId: string }) {
                                 {rec.concerns.map((c) => (
                                   <p key={c} className="text-xs text-amber-700">⚠ {c}</p>
                                 ))}
+                                <CostEstimator
+                                  minPerSqft={rec.material?.avgCostPerSqftMinInr}
+                                  maxPerSqft={rec.material?.avgCostPerSqftMaxInr}
+                                />
                                 {swatchMatch ? (
                                   <Button
                                     size="sm"

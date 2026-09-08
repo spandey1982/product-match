@@ -21,7 +21,13 @@ function serializeRecommendation(r: {
   reasons: string;
   concerns: string;
   explanation: string | null;
-  material?: { id: string; name: string; category: string } | null;
+  material?: {
+    id: string;
+    name: string;
+    category: string;
+    avgCostPerSqftMinInr: number | null;
+    avgCostPerSqftMaxInr: number | null;
+  } | null;
 }) {
   return {
     id: r.id,
@@ -50,7 +56,11 @@ export async function GET(
   const recommendations = await db.hmRecommendation.findMany({
     where: { surfaceId, productId: null },
     orderBy: { score: "desc" },
-    include: { material: { select: { id: true, name: true, category: true } } },
+    include: {
+      material: {
+        select: { id: true, name: true, category: true, avgCostPerSqftMinInr: true, avgCostPerSqftMaxInr: true },
+      },
+    },
   });
 
   return NextResponse.json({ recommendations: recommendations.map(serializeRecommendation) });
@@ -96,7 +106,11 @@ export async function POST(
   const stored = await db.hmRecommendation.findMany({
     where: { surfaceId, productId: null },
     orderBy: { score: "desc" },
-    include: { material: { select: { id: true, name: true, category: true } } },
+    include: {
+      material: {
+        select: { id: true, name: true, category: true, avgCostPerSqftMinInr: true, avgCostPerSqftMaxInr: true },
+      },
+    },
   });
 
   return NextResponse.json({ recommendations: stored.map(serializeRecommendation) });

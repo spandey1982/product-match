@@ -305,6 +305,38 @@ a material-category-tied lead with no product, and unauthenticated access
 tier still waits on actual retailer partnerships — the mechanism is
 proven, the data behind it is still a placeholder.
 
+## Cost Estimate — shipped (2026-09-08)
+
+The brief's "Estimate" step (§16 core journey, §35 cost model), the last
+gap between "Visualize" and "Request Quote." Material cost only — never
+blurs into installation/labour, and never presents a range with false
+precision when a real number exists.
+
+- `GET /api/home-material/products` now resolves each product's cost:
+  a real retailer-listed per-sqft price when one exists (exact — the demo
+  retailer's 6 listings), else the material category's general indicative
+  range (platform estimate) — deliberately never both at once.
+- `.../recommend` now also returns the material's cost range (recommendations are category-level, so only the range applies, never an exact price).
+- `CostEstimator`: a small reusable widget — area (sqft) in, total cost out
+  — shown next to the swatch picker (for the selected product) and inside
+  every recommendation card (for that material). Explicit "(material only,
+  retailer-listed price)" vs "(material only, platform estimate)" labels,
+  never blended.
+- The lead form gained its own "approximate area (sqft)" field, converted
+  server-side to `HmLead.estimatedAreaSqm` (which is genuinely square
+  metres — the conversion happens in exactly one place so the stored field
+  matches its own name honestly, while the UI stays in sqft, the unit
+  every cost figure in this domain already uses).
+- Fixed a real bug spotted while wiring this up: the lead confirmation
+  message referenced `result.retailerName` but the API returns `.name` —
+  would have silently rendered "undefined" in the confirmation text.
+
+Live-tested: a demo product's resolved price comes back exact (₹18/sqft,
+`priceIsExact: true`), a custom upload correctly has no price data at all
+(no fabricated numbers), a recommendation's material cost range comes
+through, and a lead submitted with `areaSqft: 100` stored
+`estimatedAreaSqm: 9.2903` — the exact expected conversion.
+
 ## Locked decisions (2026-09-07)
 
 | Decision | Choice | Why |
