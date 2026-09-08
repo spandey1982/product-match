@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, RotateCcw, Pencil } from "lucide-react";
+import { ArrowLeft, RotateCcw, Pencil, Heart, Scale } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { parseJsonSafe } from "@/lib/home-material/client";
 
@@ -98,32 +98,50 @@ function SwatchCarousel({
   swatches,
   selectedId,
   onSelect,
+  shortlisted,
+  onToggleShortlist,
 }: {
   swatches: Swatch[];
   selectedId: string | undefined;
   onSelect: (id: string) => void;
+  shortlisted: Set<string>;
+  onToggleShortlist: (id: string) => void;
 }) {
   function Card({ sw }: { sw: Swatch }) {
     const selected = sw.id === selectedId;
+    const isShortlisted = shortlisted.has(sw.id);
     return (
-      <button
-        type="button"
-        onClick={() => onSelect(sw.id)}
-        className={`shrink-0 w-20 snap-start flex flex-col items-center gap-1 rounded-xl p-1.5 border-2 transition-colors ${
-          selected ? "border-indigo-500 bg-indigo-50" : "border-transparent hover:bg-gray-50"
-        }`}
-      >
-        {sw.textureAssetUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={sw.textureAssetUrl} alt={sw.name} className="w-16 h-16 rounded-lg object-cover border border-gray-200" />
-        ) : (
-          <div
-            className="w-16 h-16 rounded-lg border border-gray-200"
-            style={{ backgroundColor: sw.colorHex || "#e5e7eb" }}
-          />
-        )}
-        <span className="text-[11px] text-gray-700 leading-tight text-center line-clamp-2">{sw.name}</span>
-      </button>
+      <div className="relative shrink-0 w-20 snap-start">
+        <button
+          type="button"
+          onClick={() => onSelect(sw.id)}
+          className={`w-full flex flex-col items-center gap-1 rounded-xl p-1.5 border-2 transition-colors ${
+            selected ? "border-indigo-500 bg-indigo-50" : "border-transparent hover:bg-gray-50"
+          }`}
+        >
+          {sw.textureAssetUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={sw.textureAssetUrl} alt={sw.name} className="w-16 h-16 rounded-lg object-cover border border-gray-200" />
+          ) : (
+            <div
+              className="w-16 h-16 rounded-lg border border-gray-200"
+              style={{ backgroundColor: sw.colorHex || "#e5e7eb" }}
+            />
+          )}
+          <span className="text-[11px] text-gray-700 leading-tight text-center line-clamp-2">{sw.name}</span>
+        </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleShortlist(sw.id);
+          }}
+          title={isShortlisted ? "Remove from shortlist" : "Add to shortlist"}
+          className="absolute top-0.5 right-0.5 rounded-full bg-white/90 p-1 shadow-sm hover:bg-white"
+        >
+          <Heart className={`h-3.5 w-3.5 ${isShortlisted ? "fill-rose-500 text-rose-500" : "text-gray-400"}`} />
+        </button>
+      </div>
     );
   }
 
@@ -371,11 +389,50 @@ export function RoomView({ roomId }: { roomId: string }) {
   const [recommendations, setRecommendations] = useState<Record<string, Recommendation[]>>({});
   const [recommendError, setRecommendError] = useState<Record<string, string>>({});
 
+  const [shortlisted, setShortlisted] = useState<Set<string>>(new Set());
+
   function loadSwatches() {
     fetch(`/api/home-material/products`)
       .then((res) => (res.ok ? res.json() : { products: [] }))
       .then((data) => setSwatches(data.products ?? []))
       .catch(() => setSwatches([]));
+  }
+
+  function loadShortlist() {
+    fetch(`/api/home-material/shortlist`)
+      .then((res) => (res.ok ? res.json() : { items: [] }))
+      .then((data) => setShortlisted(new Set((data.items ?? []).map((i: { product: { id: string } }) => i.product.id))))
+      .catch(() => {});
+  }
+
+  async function handleToggleShortlist(productId: string) {
+    const wasShortlisted = shortlisted.has(productId);
+    // Optimistic update — this is a lightweight toggle, not worth a loading spinner.
+    setShortlisted((prev) => {
+      const next = new Set(prev);
+      if (wasShortlisted) next.delete(productId);
+      else next.add(productId);
+      return next;
+    });
+    try {
+      if (wasShortlisted) {
+        await fetch(`/api/home-material/shortlist/${productId}`, { method: "DELETE" });
+      } else {
+        await fetch(`/api/home-material/shortlist`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ productId }),
+        });
+      }
+    } catch {
+      // Revert on failure — better than silently claiming it worked.
+      setShortlisted((prev) => {
+        const next = new Set(prev);
+        if (wasShortlisted) next.add(productId);
+        else next.delete(productId);
+        return next;
+      });
+    }
   }
 
   useEffect(() => {
@@ -393,6 +450,7 @@ export function RoomView({ roomId }: { roomId: string }) {
       .finally(() => setLoading(false));
 
     loadSwatches();
+    loadShortlist();
   }, [roomId, router]);
 
   function resetDraft() {
@@ -658,6 +716,10 @@ export function RoomView({ roomId }: { roomId: string }) {
         <Link href="/materials/upload" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700">
           <ArrowLeft className="h-4 w-4" /> Back
         </Link>
+        <div className="flex items-center gap-3">
+          <Link href="/materials/shortlist" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700">
+            <Scale className="h-4 w-4" /> Compare{shortlisted.size > 0 ? ` (${shortlisted.size})` : ""}
+          </Link>
         <div>
           <input
             ref={reuploadInputRef}
@@ -682,6 +744,7 @@ export function RoomView({ roomId }: { roomId: string }) {
           >
             <RotateCcw className="h-4 w-4" /> {reuploading ? "Uploading…" : "Reupload photo"}
           </button>
+        </div>
         </div>
       </div>
       {reuploadError && <p className="text-sm text-red-500">{reuploadError}</p>}
@@ -839,6 +902,8 @@ export function RoomView({ roomId }: { roomId: string }) {
                   swatches={swatches}
                   selectedId={selectedSwatch[s.id]}
                   onSelect={(id) => setSelectedSwatch((sel) => ({ ...sel, [s.id]: id }))}
+                  shortlisted={shortlisted}
+                  onToggleShortlist={handleToggleShortlist}
                 />
                 {(() => {
                   const selected = swatches.find((sw) => sw.id === selectedSwatch[s.id]);

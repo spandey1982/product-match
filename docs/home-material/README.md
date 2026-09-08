@@ -337,6 +337,34 @@ Live-tested: a demo product's resolved price comes back exact (₹18/sqft,
 through, and a lead submitted with `areaSqft: 100` stored
 `estimatedAreaSqm: 9.2903` — the exact expected conversion.
 
+## Shortlist + Compare — shipped (2026-09-08)
+
+The brief's "Compare"/"Shortlist" steps (§16 core journey, between
+Understand and Estimate). `HmShortlistItem` existed in the schema from
+Phase 1 with zero implementation until now — product-level (a specific
+swatch/SKU), not material-level, since you shortlist actual candidates,
+not whole categories.
+
+- `POST/GET /api/home-material/shortlist`, `DELETE .../shortlist/[productId]`:
+  add/list/remove, upsert-on-duplicate (re-adding just updates the note).
+  GET joins each product's material (durability/maintenance/moisture text)
+  and resolves cost the same exact-vs-range way as the products/recommend
+  endpoints — same honesty rule, never both at once.
+- A heart-toggle button on every swatch card in the carousel (not just on
+  a generated preview) — you can shortlist while browsing, before ever
+  clicking Preview.
+- `/materials/shortlist`: a comparison table, attributes as rows,
+  shortlisted products as columns (swatch/colour, material type, cost,
+  durability, maintenance, moisture suitability, your note), horizontally
+  scrollable for many items. Linked from the room page header (with a
+  live count) and the `/materials` home page.
+
+Live-tested 7 cases directly against the API: empty initial state, adding
+two products with notes, re-adding a duplicate (upsert, not an error),
+listing with full joined comparison data, removing one, confirming the
+right one remains, and unauthenticated access (→ 401). Test data cleaned
+up via the test's own delete calls, verified empty afterward.
+
 ## Locked decisions (2026-09-07)
 
 | Decision | Choice | Why |

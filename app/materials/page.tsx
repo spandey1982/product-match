@@ -29,6 +29,9 @@ export default function MaterialsPage() {
           <Link href="/materials/guide">
             <Button size="lg" variant="secondary">Browse material guide</Button>
           </Link>
+          <Link href="/materials/shortlist">
+            <Button size="lg" variant="ghost">My shortlist</Button>
+          </Link>
         </div>
       </div>
     </main>
