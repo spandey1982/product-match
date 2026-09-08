@@ -30,6 +30,7 @@ type Swatch = {
   finish: string | null;
   textureAssetUrl?: string | null;
   isCustom?: boolean;
+  materialId?: string | null;
 };
 
 type Visualization = {
@@ -37,6 +38,30 @@ type Visualization = {
   status: string;
   outputImageUrl: string | null;
   errorMessage: string | null;
+};
+
+type Requirements = {
+  wetArea: boolean;
+  budgetTier: "budget" | "mid" | "premium" | "any";
+  priority: "durability" | "low_maintenance" | "premium_look" | "any";
+  preferredCategory: "paint" | "wallpaper" | "wall_texture" | "wall_panel" | "any";
+};
+
+type Recommendation = {
+  id: string;
+  materialId: string | null;
+  score: number;
+  confidence: number;
+  reasons: string[];
+  concerns: string[];
+  material: { id: string; name: string; category: string } | null;
+};
+
+const DEFAULT_REQUIREMENTS: Requirements = {
+  wetArea: false,
+  budgetTier: "any",
+  priority: "any",
+  preferredCategory: "any",
 };
 
 function parsePolygon(geometryData: string | null): Point[] | null {
@@ -146,6 +171,12 @@ export function RoomView({ roomId }: { roomId: string }) {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
+
+  const [showHelpMeChoose, setShowHelpMeChoose] = useState<Record<string, boolean>>({});
+  const [requirements, setRequirements] = useState<Record<string, Requirements>>({});
+  const [recommending, setRecommending] = useState<Record<string, boolean>>({});
+  const [recommendations, setRecommendations] = useState<Record<string, Recommendation[]>>({});
+  const [recommendError, setRecommendError] = useState<Record<string, string>>({});
 
   function loadSwatches() {
     fetch(`/api/home-material/products`)
@@ -354,6 +385,42 @@ export function RoomView({ roomId }: { roomId: string }) {
     } finally {
       setGenerating((g) => ({ ...g, [surfaceId]: false }));
     }
+  }
+
+  function getRequirements(surfaceId: string): Requirements {
+    return requirements[surfaceId] ?? DEFAULT_REQUIREMENTS;
+  }
+
+  function updateRequirements(surfaceId: string, patch: Partial<Requirements>) {
+    setRequirements((r) => ({ ...r, [surfaceId]: { ...getRequirements(surfaceId), ...patch } }));
+  }
+
+  async function handleGetRecommendations(surfaceId: string) {
+    setRecommendError((p) => ({ ...p, [surfaceId]: "" }));
+    setRecommending((g) => ({ ...g, [surfaceId]: true }));
+    try {
+      const res = await fetch(`/api/home-material/rooms/${roomId}/surfaces/${surfaceId}/recommend`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(getRequirements(surfaceId)),
+      });
+      const data = await parseJsonSafe(res);
+      if (!res.ok) {
+        setRecommendError((p) => ({ ...p, [surfaceId]: typeof data.error === "string" ? data.error : "Could not get recommendations" }));
+        return;
+      }
+      setRecommendations((r) => ({ ...r, [surfaceId]: (data.recommendations as Recommendation[]) ?? [] }));
+    } catch (err) {
+      setRecommendError((p) => ({ ...p, [surfaceId]: `Something went wrong: ${err instanceof Error ? err.message : String(err)}` }));
+    } finally {
+      setRecommending((g) => ({ ...g, [surfaceId]: false }));
+    }
+  }
+
+  /** A demo/custom swatch that's actually of the recommended material, if one exists — lets "Preview" shortcut straight into the existing visualization flow instead of just describing the material. */
+  function findSwatchForMaterial(materialId: string | null): Swatch | undefined {
+    if (!materialId) return undefined;
+    return swatches.find((sw) => sw.materialId === materialId);
   }
 
   async function handleUploadSwatch() {
@@ -591,6 +658,107 @@ export function RoomView({ roomId }: { roomId: string }) {
                 {vis?.status === "failed" && (
                   <p className="text-xs text-red-500">{vis.errorMessage || "Preview generation failed."}</p>
                 )}
+
+                <div className="border-t border-gray-100 pt-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowHelpMeChoose((prev) => ({ ...prev, [s.id]: !prev[s.id] }))}
+                    className="text-xs font-medium text-indigo-600 hover:text-indigo-800"
+                  >
+                    {showHelpMeChoose[s.id] ? "Hide" : "Not sure? Help me choose a material"}
+                  </button>
+
+                  {showHelpMeChoose[s.id] && (
+                    <div className="mt-3 space-y-3">
+                      <label className="flex items-center gap-2 text-sm text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={getRequirements(s.id).wetArea}
+                          onChange={(e) => updateRequirements(s.id, { wetArea: e.target.checked })}
+                        />
+                        This wall is in a moisture-prone area (kitchen/bathroom)
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <select
+                          value={getRequirements(s.id).budgetTier}
+                          onChange={(e) => updateRequirements(s.id, { budgetTier: e.target.value as Requirements["budgetTier"] })}
+                          className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        >
+                          <option value="any">Any budget</option>
+                          <option value="budget">Budget</option>
+                          <option value="mid">Mid-range</option>
+                          <option value="premium">Premium</option>
+                        </select>
+                        <select
+                          value={getRequirements(s.id).priority}
+                          onChange={(e) => updateRequirements(s.id, { priority: e.target.value as Requirements["priority"] })}
+                          className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        >
+                          <option value="any">No strong priority</option>
+                          <option value="durability">Durability matters most</option>
+                          <option value="low_maintenance">Low maintenance matters most</option>
+                          <option value="premium_look">Premium look matters most</option>
+                        </select>
+                      </div>
+                      <select
+                        value={getRequirements(s.id).preferredCategory}
+                        onChange={(e) => updateRequirements(s.id, { preferredCategory: e.target.value as Requirements["preferredCategory"] })}
+                        className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      >
+                        <option value="any">Any material type</option>
+                        <option value="paint">Paint</option>
+                        <option value="wallpaper">Wallpaper</option>
+                        <option value="wall_texture">Wall Texture</option>
+                        <option value="wall_panel">Wall Panels</option>
+                      </select>
+                      <Button className="w-full" onClick={() => handleGetRecommendations(s.id)} loading={recommending[s.id]}>
+                        Get recommendations
+                      </Button>
+                      {recommendError[s.id] && <p className="text-sm text-red-500">{recommendError[s.id]}</p>}
+
+                      {(recommendations[s.id]?.length ?? 0) > 0 && (
+                        <div className="space-y-2">
+                          {recommendations[s.id].map((rec, i) => {
+                            const swatchMatch = findSwatchForMaterial(rec.materialId);
+                            return (
+                              <div
+                                key={rec.id}
+                                className={`rounded-xl border p-3 ${i === 0 ? "border-indigo-300 bg-indigo-50/40" : "border-gray-200"}`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <p className="text-sm font-semibold text-gray-900">
+                                    {i === 0 ? "🏆 " : ""}{rec.material?.name ?? "Unknown material"}
+                                  </p>
+                                  <span className="text-xs text-gray-400">{Math.round(rec.score * 100)}% match</span>
+                                </div>
+                                {rec.reasons.map((r) => (
+                                  <p key={r} className="text-xs text-emerald-700">✓ {r}</p>
+                                ))}
+                                {rec.concerns.map((c) => (
+                                  <p key={c} className="text-xs text-amber-700">⚠ {c}</p>
+                                ))}
+                                {swatchMatch ? (
+                                  <Button
+                                    size="sm"
+                                    className="mt-2"
+                                    onClick={() => {
+                                      setSelectedSwatch((sel) => ({ ...sel, [s.id]: swatchMatch.id }));
+                                      handleGeneratePreview(s.id);
+                                    }}
+                                  >
+                                    Preview this
+                                  </Button>
+                                ) : (
+                                  <p className="text-xs text-gray-400 mt-2">No demo swatch for this material yet — browse the <Link href="/materials/guide" className="underline">material guide</Link> for details.</p>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })}

@@ -25,6 +25,7 @@ export async function GET() {
       patternName: true,
       textureAssetUrl: true,
       uploadedByHmUserId: true,
+      materialId: true,
       material: { select: { category: true } },
     },
   });

@@ -200,10 +200,45 @@ type of material should I consider?" independently of any SKU.
 - `/materials/guide` — a public browse page, category-sectioned, linked
   from the `/materials` home page.
 
-**Still not built:** the deterministic Recommendation Engine that would
-actually use this content for "help me choose" mode (this ships the
-knowledge base it needs, not the engine itself), Product-Accurate mode,
-retailer/lead capture.
+**Still not built (as of the Material Knowledge commit):** the
+deterministic Recommendation Engine — see the next section, shipped the
+same day.
+
+## Recommendation Engine — shipped (2026-09-08)
+
+"Help me choose" mode (brief §8 Mode B) is now real. Deterministic,
+per the AI-boundaries rule — never an LLM-invented score.
+
+- `lib/home-material/recommendation.ts`: scores every Material Knowledge
+  entry against stated requirements (wet-area, budget tier, a single
+  priority — durability / low-maintenance / premium-look / none —, and an
+  optional preferred category), weighted sum (moisture 0.35, budget 0.25,
+  priority 0.30, category 0.10), plus a rule-based explainer producing
+  ✓ reasons / ⚠ concerns per brief §40's example format. Architecturally
+  mirrors `lib/matching-engine/scorer.ts` + `explainer.ts`'s separation of
+  concerns — no code shared, entirely different weights/rules, since that
+  engine is protected fashion IP.
+- `POST/GET .../surfaces/[surfaceId]/recommend`: computes and persists
+  (replacing any prior set for that surface) top-6 `HmRecommendation` rows,
+  material-only (`productId: null`) — this recommends a material
+  *category*, not a specific SKU, matching brief §8's "Material
+  Recommendation" step preceding "Product Recommendation."
+- RoomView: a "Not sure? Help me choose a material" section per wall,
+  alongside (not replacing) the existing swatch-picker "I know what I
+  want" path — both Mode A and Mode B now coexist on the same surface. A
+  recommended material with a matching demo swatch gets a one-click
+  "Preview this" shortcut into the existing visualization flow; one
+  without a swatch yet links to the material guide instead of a dead end.
+
+Live-tested three requirement combinations directly against the API
+(wet-area+budget+low-maintenance; premium-look+wallpaper preference;
+no preferences at all) — rankings and reasons/concerns came back
+correctly differentiated and sensible in every case, and GET correctly
+returned the persisted set after the last POST.
+
+**Still not built:** Product-Accurate mode as a first-class DB concept
+(tied to a real retailer SKU with full provenance), retailer/lead
+capture.
 
 ## Locked decisions (2026-09-07)
 

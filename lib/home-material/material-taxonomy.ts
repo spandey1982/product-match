@@ -4,7 +4,7 @@
  * AI-boundaries table: "Material Knowledge... curated/config data, not
  * generated live per-request"). Single typed source of truth, seeded into
  * HmMaterial by scripts/seed-material-knowledge.ts and reusable directly
- * by application code (a browse page, the future recommendation engine)
+ * by application code (the guide page, lib/home-material/recommendation.ts)
  * without re-reading the seed script.
  *
  * Curated by Claude, not sourced from live market data — durability/
@@ -17,9 +17,19 @@
  * rather than silently presenting an estimate as verified. Flagged in
  * docs/home-material/README.md as needing real review before these
  * numbers inform an actual purchase decision.
+ *
+ * durabilityYearsApprox/maintenanceLevel/moistureLevel/costTier are
+ * STRUCTURED restatements of the prose fields above (durability/
+ * maintenance/moistureSuitability/cost range) — added for
+ * lib/home-material/recommendation.ts's deterministic scorer, which needs
+ * comparable values, not free text to parse. Not new claims: each was
+ * derived directly from the prose already here, kept consistent with it.
  */
 
 export type MaterialCategory = "paint" | "wallpaper" | "wall_texture" | "wall_panel";
+export type MaintenanceLevel = "low" | "medium" | "high";
+export type MoistureLevel = "poor" | "fair" | "good" | "excellent";
+export type CostTier = "budget" | "mid" | "premium";
 
 export interface MaterialTaxonomyEntry {
   /** Stable slug — used to derive the seeded HmMaterial.id, so re-seeding is idempotent. */
@@ -38,6 +48,15 @@ export interface MaterialTaxonomyEntry {
   avgCostPerSqftMaxInr: number;
   advantages: string[];
   limitations: string[];
+
+  /** A single representative "typical years" figure derived from the `durability` prose above. */
+  durabilityYearsApprox: number;
+  /** How much upkeep effort it needs, derived from the `maintenance` prose above ("low" = least effort). */
+  maintenanceLevel: MaintenanceLevel;
+  /** Derived from the `moistureSuitability` prose above. */
+  moistureLevel: MoistureLevel;
+  /** Where this sits in the Indian market for its category — a judgment call, not mechanically derived from the cost numbers (installation/labour complexity varies a lot by category). */
+  costTier: CostTier;
 }
 
 export const MATERIAL_TAXONOMY: MaterialTaxonomyEntry[] = [
@@ -57,6 +76,10 @@ export const MATERIAL_TAXONOMY: MaterialTaxonomyEntry[] = [
     avgCostPerSqftMaxInr: 25,
     advantages: ["Widest colour range", "Cheapest wall-paint option", "Easy to repaint over"],
     limitations: ["Not washable", "Shows marks/scuffs more than sheen finishes", "Not moisture-suitable"],
+    durabilityYearsApprox: 6,
+    maintenanceLevel: "medium",
+    moistureLevel: "poor",
+    costTier: "budget",
   },
   {
     slug: "paint_emulsion_sheen",
@@ -73,6 +96,10 @@ export const MATERIAL_TAXONOMY: MaterialTaxonomyEntry[] = [
     avgCostPerSqftMaxInr: 30,
     advantages: ["Washable", "More stain-resistant than matte", "Good for high-traffic rooms"],
     limitations: ["Highlights wall imperfections more than matte", "Slightly higher cost"],
+    durabilityYearsApprox: 7,
+    maintenanceLevel: "low",
+    moistureLevel: "fair",
+    costTier: "budget",
   },
   {
     slug: "paint_enamel",
@@ -89,6 +116,10 @@ export const MATERIAL_TAXONOMY: MaterialTaxonomyEntry[] = [
     avgCostPerSqftMaxInr: 35,
     advantages: ["Most washable/durable common paint", "Best moisture resistance among paints", "Classic look for trims and wet areas"],
     limitations: ["Highlights every surface flaw", "Harder to repaint over", "Glossy look isn't to everyone's taste for full walls"],
+    durabilityYearsApprox: 9,
+    maintenanceLevel: "low",
+    moistureLevel: "good",
+    costTier: "mid",
   },
   {
     slug: "paint_premium_textured",
@@ -105,6 +136,10 @@ export const MATERIAL_TAXONOMY: MaterialTaxonomyEntry[] = [
     avgCostPerSqftMaxInr: 55,
     advantages: ["Richer colour depth", "Better durability than standard emulsion", "Often includes stain-resistant additives"],
     limitations: ["Meaningfully more expensive", "Still not a true wet-area finish"],
+    durabilityYearsApprox: 9,
+    maintenanceLevel: "low",
+    moistureLevel: "fair",
+    costTier: "premium",
   },
 
   // ── Wallpaper ──────────────────────────────────────────────────────────
@@ -123,6 +158,10 @@ export const MATERIAL_TAXONOMY: MaterialTaxonomyEntry[] = [
     avgCostPerSqftMaxInr: 90,
     advantages: ["Huge pattern/colour selection", "Reasonably durable and wipeable", "Widely available"],
     limitations: ["Removal can damage the wall surface underneath", "Needs a smooth wall to look good", "Seams can show on a poor install"],
+    durabilityYearsApprox: 6.5,
+    maintenanceLevel: "low",
+    moistureLevel: "good",
+    costTier: "budget",
   },
   {
     slug: "wallpaper_non_woven",
@@ -139,6 +178,10 @@ export const MATERIAL_TAXONOMY: MaterialTaxonomyEntry[] = [
     avgCostPerSqftMaxInr: 120,
     advantages: ["Cleanest install and removal of common wallpaper types", "Breathable", "Good dimensional stability (less stretching/bubbling)"],
     limitations: ["More expensive than vinyl", "Less washable than vinyl for most product lines"],
+    durabilityYearsApprox: 8,
+    maintenanceLevel: "medium",
+    moistureLevel: "fair",
+    costTier: "mid",
   },
   {
     slug: "wallpaper_textile",
@@ -155,6 +198,10 @@ export const MATERIAL_TAXONOMY: MaterialTaxonomyEntry[] = [
     avgCostPerSqftMaxInr: 300,
     advantages: ["Distinctive luxury texture no paint or vinyl can replicate", "Strong visual statement for an accent wall"],
     limitations: ["Expensive", "Delicate — stains and fades easily", "Not moisture-tolerant", "Harder to install and remove"],
+    durabilityYearsApprox: 4,
+    maintenanceLevel: "high",
+    moistureLevel: "poor",
+    costTier: "premium",
   },
   {
     slug: "wallpaper_peel_stick",
@@ -171,6 +218,10 @@ export const MATERIAL_TAXONOMY: MaterialTaxonomyEntry[] = [
     avgCostPerSqftMaxInr: 70,
     advantages: ["No professional installation needed", "Fully reversible — ideal for rentals", "Fast to apply"],
     limitations: ["Shorter lifespan", "Edges can lift over time, especially in humidity", "Quality/adhesion varies a lot by brand"],
+    durabilityYearsApprox: 3.5,
+    maintenanceLevel: "medium",
+    moistureLevel: "poor",
+    costTier: "budget",
   },
 
   // ── Wall Texture ───────────────────────────────────────────────────────
@@ -189,6 +240,10 @@ export const MATERIAL_TAXONOMY: MaterialTaxonomyEntry[] = [
     avgCostPerSqftMaxInr: 90,
     advantages: ["More accessible than plaster-based textures", "Wide range of pattern options", "Good accent-wall option on a moderate budget"],
     limitations: ["Traps more dust than a flat wall", "Harder to touch up a small damaged area invisibly"],
+    durabilityYearsApprox: 6.5,
+    maintenanceLevel: "medium",
+    moistureLevel: "fair",
+    costTier: "mid",
   },
   {
     slug: "texture_pop_design",
@@ -205,6 +260,10 @@ export const MATERIAL_TAXONOMY: MaterialTaxonomyEntry[] = [
     avgCostPerSqftMaxInr: 150,
     advantages: ["Distinctive 3D decorative detail paint/wallpaper can't achieve", "Very common, well-understood trade in India", "Long-lasting if kept dry"],
     limitations: ["Not moisture-tolerant at all", "Specialist labour required", "Effectively permanent — expensive to change your mind"],
+    durabilityYearsApprox: 10,
+    maintenanceLevel: "low",
+    moistureLevel: "poor",
+    costTier: "premium",
   },
   {
     slug: "texture_lime_plaster",
@@ -221,6 +280,10 @@ export const MATERIAL_TAXONOMY: MaterialTaxonomyEntry[] = [
     avgCostPerSqftMaxInr: 200,
     advantages: ["Naturally moisture-regulating and mould-resistant", "Distinctive premium organic texture", "Very long lifespan"],
     limitations: ["Expensive", "Requires specialist artisan labour", "Long lead time", "Effectively permanent"],
+    durabilityYearsApprox: 15,
+    maintenanceLevel: "low",
+    moistureLevel: "good",
+    costTier: "premium",
   },
   {
     slug: "texture_venetian_stucco",
@@ -237,6 +300,10 @@ export const MATERIAL_TAXONOMY: MaterialTaxonomyEntry[] = [
     avgCostPerSqftMaxInr: 350,
     advantages: ["High-end, distinctive marble-like appearance", "Long-lasting when sealed", "Low ongoing maintenance"],
     limitations: ["One of the most expensive wall finishes", "Requires a specialist applicator", "Effectively permanent"],
+    durabilityYearsApprox: 12,
+    maintenanceLevel: "low",
+    moistureLevel: "fair",
+    costTier: "premium",
   },
 
   // ── Wall Panel ─────────────────────────────────────────────────────────
@@ -255,6 +322,10 @@ export const MATERIAL_TAXONOMY: MaterialTaxonomyEntry[] = [
     avgCostPerSqftMaxInr: 110,
     advantages: ["Excellent moisture resistance", "Fast installation", "Low maintenance", "Budget-friendly for a paneled look"],
     limitations: ["Printed surface can look less premium up close than real materials", "Can fade in strong direct sunlight"],
+    durabilityYearsApprox: 10,
+    maintenanceLevel: "low",
+    moistureLevel: "excellent",
+    costTier: "budget",
   },
   {
     slug: "panel_wpc",
@@ -271,6 +342,10 @@ export const MATERIAL_TAXONOMY: MaterialTaxonomyEntry[] = [
     avgCostPerSqftMaxInr: 160,
     advantages: ["More realistic wood-like look than PVC", "Good moisture resistance for a wood-look product", "Doesn't need refinishing like real wood"],
     limitations: ["More expensive than PVC", "Still not as water-resistant as pure PVC"],
+    durabilityYearsApprox: 12,
+    maintenanceLevel: "low",
+    moistureLevel: "good",
+    costTier: "mid",
   },
   {
     slug: "panel_mdf_veneer",
@@ -287,6 +362,10 @@ export const MATERIAL_TAXONOMY: MaterialTaxonomyEntry[] = [
     avgCostPerSqftMaxInr: 350,
     advantages: ["Genuine premium wood-grain appearance", "Warm, high-end feel real composites can't fully match"],
     limitations: ["Poor moisture tolerance", "Most expensive panel option", "Needs skilled carpentry to install well"],
+    durabilityYearsApprox: 12,
+    maintenanceLevel: "medium",
+    moistureLevel: "poor",
+    costTier: "premium",
   },
   {
     slug: "panel_3d_decorative",
@@ -303,6 +382,10 @@ export const MATERIAL_TAXONOMY: MaterialTaxonomyEntry[] = [
     avgCostPerSqftMaxInr: 180,
     advantages: ["Strong sculptural visual impact for an accent wall", "Good lighting/shadow play", "Range of base materials to match a budget"],
     limitations: ["Moisture tolerance varies a lot by base material — check the specific product", "Pattern alignment mistakes are visible"],
+    durabilityYearsApprox: 10,
+    maintenanceLevel: "low",
+    moistureLevel: "fair",
+    costTier: "mid",
   },
 ];
 
