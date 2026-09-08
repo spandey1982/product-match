@@ -236,9 +236,8 @@ no preferences at all) — rankings and reasons/concerns came back
 correctly differentiated and sensible in every case, and GET correctly
 returned the persisted set after the last POST.
 
-**Still not built:** Product-Accurate mode as a first-class DB concept
-(tied to a real retailer SKU with full provenance), retailer/lead
-capture. See below — the mode-tagging half shipped same day.
+**At the time of this commit:** Product-Accurate mode and retailer/lead
+capture were still open — both shipped later the same day, see below.
 
 ## Product-Accurate mode — partially shipped (2026-09-08)
 
@@ -266,17 +265,45 @@ Live-tested both paths directly against the API: a curated swatch
 correctly tagged `quick_preview`, an existing custom upload correctly
 tagged `product_accurate`.
 
-**Deliberately NOT done as part of this: seeding fake retailer data.**
-`HmLead.retailerId` is a required FK, so real lead-capture needs at least
-one `HmRetailer` row to exist — but this repo has zero actual retailer
-partnerships right now, and inventing a named business (even a clearly
-"demo" one) risks being shown to the actual potential customers this
-fast-lane work is FOR, which is a real trust/impersonation concern, not
-just a modeling detail. Flagged for the user rather than decided
-unilaterally — see the open question in session history around
-2026-09-08. Until resolved, retailer/lead capture stays unbuilt; a full
-"real retailer SKU + provenance" product-accurate tier also waits on this,
-since it needs a real retailer-sourced product to attach to.
+**Resolved, same day — retailer/lead capture shipped.** Flagged the
+fake-retailer-data question to the user rather than deciding unilaterally;
+they confirmed: seed one clearly-labeled, swappable placeholder for
+building/testing purposes, replace with real retailer data whenever real
+partnerships exist.
+
+- `scripts/seed-retailers.ts` (`npm run db:seed:hm-retailers`, chained
+  into `db:seed:hm`): exactly ONE `HmRetailer` row —
+  `"[Demo] Sample Retailer — not a real business"`, contact email on the
+  `.invalid` TLD (RFC 2606 — reserved specifically for addresses
+  guaranteed never to resolve, not a plausible-looking fake domain),
+  `isVerified: false`. Linked to the 6 existing demo products via
+  `HmRetailerProduct` with illustrative per-sqft prices (same "indicative,
+  not verified" honesty as the material taxonomy's cost ranges). Nothing
+  else in the codebase assumes this specific row — only that *some*
+  `HmRetailer` exists.
+- `POST /api/home-material/leads`: creates an `HmLead`, resolving to
+  whichever retailer exists and the user's project automatically. Accepts
+  either a `productId` (from a completed preview) or a `materialCategory`
+  (from a recommendation, which is material-level, not SKU-level) —
+  matches brief §17's "consumer-first experience + retailer
+  catalogue/lead backend, no marketplace in V1." Response always echoes
+  the real retailer name/`isVerified` back — never lets the UI assume or
+  hardcode who "received" the request.
+- RoomView: a "Request a quote" control next to a completed preview
+  (product-tied) and next to each recommendation card (category-tied).
+  The open form shows "⚠ Demo mode — no real retailer will receive this
+  yet" before submission, and the confirmation explicitly names the demo
+  retailer and restates that it isn't real — never a silent success
+  message that could be mistaken for reaching an actual business.
+
+Live-tested directly against the API: validation (missing name/phone →
+400), a real product-tied lead (correct retailer + auto-resolved project),
+a material-category-tied lead with no product, and unauthenticated access
+(→ 401). Test leads cleaned up after.
+
+**Still open:** a full "real retailer SKU + provenance" product-accurate
+tier still waits on actual retailer partnerships — the mechanism is
+proven, the data behind it is still a placeholder.
 
 ## Locked decisions (2026-09-07)
 
