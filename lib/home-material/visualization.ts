@@ -127,8 +127,21 @@ function nearestAspectRatio(width: number, height: number): string {
   return best[0];
 }
 
+/**
+ * Reduced from 1%/8px-min to 0.6%/5px-min (2026-09-08) — a known cosmetic
+ * artifact: when the AI polygon routes around a small cutout (e.g. a
+ * window) via the standard single-path "bridge" technique, blurring the
+ * mask at the larger radius could bleed a faint halo across the thin
+ * bridge into the cutout's edge. A smaller feather doesn't eliminate the
+ * root cause (the bridge isn't necessarily zero-width in the model's own
+ * coordinates) but measurably shrinks the affected area — a proportionate
+ * fix for a confirmed-cosmetic issue, not a full geometry-aware rewrite.
+ * If it resurfaces as a real complaint, the real fix is detecting the
+ * bridge and rendering a true multi-subpath SVG hole instead of trusting
+ * the model's single self-intersecting point list as one polygon.
+ */
 function featherPxFor(width: number, height: number): number {
-  return Math.max(8, Math.round(Math.min(width, height) * 0.01));
+  return Math.max(5, Math.round(Math.min(width, height) * 0.006));
 }
 
 async function fetchImageBuffer(url: string): Promise<Buffer> {

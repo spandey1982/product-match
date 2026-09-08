@@ -1,13 +1,27 @@
 # Home Material Intelligence Platform — Domain Brief
 
-Status: **Resuming the original V1 pathway (2026-09-08)** — the fast-lane
-demo pivot section below is still accurate for what it covers, but
-Material Knowledge content (previously "paused") is now started; see
-"Material Knowledge — shipped" further down. This is the anchor doc for this domain;
-read it before re-deriving architecture context in a future session (see
-CLAUDE.md §6). It intentionally stays lightweight — not the full docs/
-hierarchy sketched in the original discovery brief — until there's enough
-real code to justify splitting it.
+Status: **Full V1 core journey shipped (2026-09-08)** — see the dated
+"shipped" sections below for what exists. This is the anchor doc for this
+domain; read it before re-deriving architecture context in a future
+session (see CLAUDE.md §6). It intentionally stays lightweight — not the
+full docs/ hierarchy sketched in the original discovery brief — until
+there's enough real code to justify splitting it.
+
+**Current direction, locked 2026-09-08 (read this before picking up
+work):**
+- Real-photo visualization quality is user-confirmed working (manually
+  verified against an actual room wall) — the "only tested on synthetic
+  images" gap from earlier is closed.
+- **Multi-wall detection/selection is explicitly NOT being built yet.**
+  User wants a proper discussion first to align on approach before any
+  code — do not start implementing this without that discussion, even if
+  it looks like the obvious next increment.
+- **UI visual polish is paused pending reference designs the user will
+  upload.** Don't restyle existing screens speculatively — wait for the
+  references, then build against them.
+- In the meantime: close out small, non-business-blocked, non-UI,
+  non-multi-wall gaps (field-level product provenance, the cosmetic
+  mask-halo artifact) — see "Flagged" lists throughout this doc.
 
 This product is a **separate domain** from the rest of Product Match (the
 Indian ethnic-fashion retailer SaaS). It must not inherit fashion/garment
@@ -154,14 +168,11 @@ up for it yet (see flagged).
   untouched in testing), but worth tightening later (candidate fix: render
   true multi-subpath SVG holes instead of trusting the model's single
   self-intersecting point list as-is).
-- **No re-editing of an already-confirmed wall yet** — the drag-to-adjust
-  step only exists for a draft, before it's saved. Adjusting a saved
-  surface currently means adding a new one, not correcting the existing
-  one. A `PATCH .../surfaces/[id]` is the natural next step.
-- Custom uploads are scoped to the uploading `HmUser` (`uploadedByHmUserId`)
-  but don't yet get `HmProductEvidence` rows recording that provenance
-  field-by-field — ownership is enforced, richer provenance isn't populated
-  yet.
+- ~~No re-editing of an already-confirmed wall yet~~ — **resolved**, see
+  the "back nav, reupload, re-shape" commit: `PATCH .../surfaces/[id]`
+  plus an "Edit shape" control in RoomView.
+- ~~Custom uploads don't get HmProductEvidence rows~~ — **resolved
+  2026-09-08**, see "Field-level provenance — shipped" below.
 - AI polygon vertex count is capped at 12 — a wall with several
   windows/doors/obstructions may exceed what's traceable in that budget;
   the model is instructed to fall back to a simpler outer boundary + a
@@ -365,6 +376,56 @@ listing with full joined comparison data, removing one, confirming the
 right one remains, and unauthenticated access (→ 401). Test data cleaned
 up via the test's own delete calls, verified empty afterward.
 
+## Field-level provenance — shipped (2026-09-08)
+
+`HmProductEvidence` existed in the schema since Phase 1 with nothing ever
+writing to it — Constitution Principle 3 ("separate facts from
+inference") and brief §14 Data Provenance, finally real. Closed as one of
+the small, non-business-blocked, non-UI gaps while multi-wall detection
+waits for a dedicated discussion and UI polish waits for reference
+designs (both explicitly deferred by the user, 2026-09-08).
+
+- `lib/home-material/provenance.ts`'s `recordProductEvidence` — "set
+  latest evidence for this field" semantics (no unique constraint exists
+  on productId+field in the schema, so this deletes any prior row for the
+  same field before inserting, keeping re-seeds idempotent rather than
+  piling up duplicates).
+- Wired into all three places a product fact actually originates:
+  demo-product seed → `sourceType: "platform"` (curated by Claude, not a
+  real manufacturer spec — said honestly, not implied otherwise), the
+  retailer seed's price → `sourceType: "retailer"` (genuinely retailer-
+  sourced, since that row IS the retailer's listing), custom upload →
+  `sourceType: "user"` (they uploaded the actual photo) — this last one
+  runs live on every future upload, not just backfilled demo data.
+
+Live-tested: re-running the full seed chain twice produced the same 19
+evidence rows both times (idempotent, no duplicates), and a real API
+upload created a `sourceType: "user"` row that cascade-deleted correctly
+when the test product was removed.
+
+## Mask-halo feather tuning (2026-09-08)
+
+The cosmetic artifact flagged earlier (a faint halo where the AI
+polygon's "bridge" technique routes around a small cutout) — reduced the
+feather blur radius (1%/8px-min → 0.6%/5px-min) to shrink the affected
+area. This is a proportionate tuning fix for a confirmed-cosmetic issue,
+not the full geometry-aware rewrite (detecting the bridge and rendering a
+true multi-subpath SVG hole) — that's still the real fix if this
+resurfaces as an actual complaint rather than a known minor artifact.
+
+## Current priorities, locked 2026-09-08
+
+1. **Multi-wall detection/selection** — explicitly paused pending a
+   dedicated discussion with the user before any implementation, even
+   though it's the most obvious remaining CV gap. Do not start this
+   without that discussion.
+2. **UI visual polish** — paused pending reference designs the user will
+   upload. The app is functionally complete end-to-end but not yet
+   "presentable"; don't restyle speculatively before the references
+   arrive.
+3. Real-photo visualization quality is user-confirmed working (manually
+   verified against an actual room wall) — no longer an open gap.
+
 ## Locked decisions (2026-09-07)
 
 | Decision | Choice | Why |
@@ -448,9 +509,9 @@ usage data — revisit if/when the two need to diverge).
 - **Minimum viable catalogue depth** for launch — not yet defined; both
   recommendation quality and product-accurate visualization are bottlenecked
   on real `HmProduct`/`HmRetailer` data existing.
-- **Material Knowledge content** (durability/maintenance/moisture text per
-  subtype) is likely the true critical path for the "help me choose" mode —
-  content work, not code. Not yet started.
+- ~~Material Knowledge content... not yet started~~ — **shipped**, see the
+  "Material Knowledge — shipped" section above. (Stale note, left visible
+  rather than silently deleted — see CLAUDE.md §21 on curated knowledge.)
 - Full `docs/` hierarchy (product/domain/ai/architecture/research/decisions)
   from the original discovery brief — deliberately not built yet; this
   single doc is the placeholder until there's enough content to justify it.

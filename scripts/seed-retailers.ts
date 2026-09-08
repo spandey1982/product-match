@@ -18,6 +18,7 @@
 import "dotenv/config";
 import { db } from "../lib/db";
 import { serializeArray } from "../lib/serialize";
+import { recordProductEvidence } from "../lib/home-material/provenance";
 
 const DEMO_RETAILER_ID = "hm_retailer_demo_placeholder";
 
@@ -66,6 +67,18 @@ async function main() {
         availability: "in_stock",
       },
     });
+    // The price genuinely IS retailer-sourced now (this row is that
+    // retailer's listing) — sourceType "retailer" is accurate here, unlike
+    // the descriptive fields seeded in seed-home-material.ts (those are
+    // "platform"/curated, not from any real retailer or manufacturer).
+    await recordProductEvidence({
+      productId: listing.productId,
+      field: "priceInr",
+      value: String(listing.priceInr),
+      sourceType: "retailer",
+      sourceDetail: retailer.name,
+    });
+
     console.log(`Linked ${listing.productId} @ ₹${listing.priceInr}/sqft`);
   }
 

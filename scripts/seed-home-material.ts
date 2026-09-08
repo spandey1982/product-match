@@ -19,6 +19,7 @@
  */
 import "dotenv/config";
 import { db } from "../lib/db";
+import { recordProductEvidence } from "../lib/home-material/provenance";
 
 type SeedProduct = {
   sku: string;
@@ -69,6 +70,14 @@ async function main() {
         availability: "unspecified",
       },
     });
+    const productId = `seed_product_${p.sku}`;
+    // Curated by Claude for demo/testing purposes, not a real manufacturer
+    // spec — sourceType "platform" says exactly that, honestly, rather
+    // than implying a manufacturer-verified fact.
+    await recordProductEvidence({ productId, field: "colorName", value: p.colorName, sourceType: "platform", sourceDetail: "Curated demo content" });
+    if (p.finish) await recordProductEvidence({ productId, field: "finish", value: p.finish, sourceType: "platform", sourceDetail: "Curated demo content" });
+    if (p.patternName) await recordProductEvidence({ productId, field: "patternName", value: p.patternName, sourceType: "platform", sourceDetail: "Curated demo content" });
+
     console.log(`Upserted ${p.sku} — ${p.name} (${p.materialSlug})`);
   }
 

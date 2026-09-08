@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getHmUserSession } from "@/lib/home-material/auth";
 import { uploadWithRetry, isCloudinaryConnectivityError } from "@/lib/cloudinary";
+import { recordProductEvidence } from "@/lib/home-material/provenance";
 
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_SIZE = 5 * 1024 * 1024;
@@ -47,6 +48,17 @@ export async function POST(req: NextRequest) {
         availability: "unspecified",
         uploadedByHmUserId: session.id,
       },
+    });
+
+    // This one is genuinely user-sourced — they uploaded the actual photo
+    // themselves, unlike the curated demo swatches (sourceType "platform")
+    // or the retailer's listed prices (sourceType "retailer").
+    await recordProductEvidence({
+      productId: product.id,
+      field: "textureAssetUrl",
+      value: result.secure_url,
+      sourceType: "user",
+      sourceDetail: `Uploaded by HmUser ${session.id}`,
     });
 
     return NextResponse.json({ product });
