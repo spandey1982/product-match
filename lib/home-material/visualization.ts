@@ -171,6 +171,47 @@ async function fetchImageBuffer(url: string): Promise<Buffer> {
   return Buffer.from(await res.arrayBuffer());
 }
 
+const COVERAGE_SAMPLE_EDGE = 300;
+const COVERAGE_CHANGE_THRESHOLD = 12; // out of 255 — catches a real material change, ignores lighting/JPEG noise
+
+/**
+ * Coarse "did the edit actually cover the masked region" check (2026-09-09)
+ * — live-testing showed Gemini's adherence to filling a thin or
+ * irregularly-shaped mask varies between calls on IDENTICAL inputs,
+ * sometimes leaving part of the selected wall untouched. This compares
+ * the edited candidate against the original, greyscale and downscaled for
+ * speed, counting what fraction of pixels INSIDE the mask actually
+ * changed — used to decide whether a retry is worth it, not to judge
+ * visual quality.
+ */
+async function estimateMaskCoverage(
+  originalBuf: Buffer,
+  editedNativeBuf: Buffer,
+  maskNative: Buffer,
+  width: number,
+  height: number
+): Promise<number> {
+  const scale = Math.min(1, COVERAGE_SAMPLE_EDGE / Math.max(width, height));
+  const sw = Math.max(1, Math.round(width * scale));
+  const sh = Math.max(1, Math.round(height * scale));
+
+  const [orig, edited, mask] = await Promise.all([
+    sharp(originalBuf).rotate().resize(sw, sh, { fit: "fill" }).greyscale().raw().toBuffer(),
+    sharp(editedNativeBuf).resize(sw, sh, { fit: "fill" }).greyscale().raw().toBuffer(),
+    sharp(maskNative).resize(sw, sh, { fit: "fill" }).greyscale().raw().toBuffer(),
+  ]);
+
+  let maskedPixels = 0;
+  let changedPixels = 0;
+  const n = sw * sh;
+  for (let i = 0; i < n; i++) {
+    if (mask[i] < 128) continue;
+    maskedPixels++;
+    if (Math.abs(orig[i] - edited[i]) >= COVERAGE_CHANGE_THRESHOLD) changedPixels++;
+  }
+  return maskedPixels === 0 ? 0 : changedPixels / maskedPixels;
+}
+
 /** Renders an arbitrary polygon as a white-on-black mask at the given pixel size — the SVG is rasterized by sharp, so this supports any shape, not just an axis-aligned rect. */
 async function renderPolygonMask(points: Point[], width: number, height: number): Promise<Buffer> {
   const pointsAttr = points.map((p) => `${(p.x * width).toFixed(1)},${(p.y * height).toFixed(1)}`).join(" ");
@@ -499,116 +540,115 @@ export async function runQuickPreviewVisualization(
   const imageInputs = 2 + (referenceImage ? 1 : 0);
   const requestBytes = outlinedBase.length + modelMask.length + (referenceImage?.length ?? 0);
 
-  const t0 = Date.now();
-  let res: Response;
-  try {
-    res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_ID}:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts }],
-          generationConfig: {
-            responseModalities: ["IMAGE"],
-            imageConfig: { imageSize: "1K", aspectRatio },
-          },
-        }),
-      }
-    );
-  } catch (err) {
-    void recordAiUsage({
-      provider: "gemini",
-      model: MODEL_ID,
-      feature: "hm_visualization",
-      operation: "quick_preview",
-      requestBytes,
-      imageInputs,
-      userId: input.hmUserId,
-      status: "error",
-      errorMessage: `fetch failed: ${String(err)}`,
-      metadata: { visualizationId: input.visualizationId },
-    });
-    return { error: "Could not reach the image generation service." };
-  }
-  const generationMs = Date.now() - t0;
+  // Retry-on-undercoverage (2026-09-09): even with the outlined base and
+  // explicit prompt instructions, Gemini's adherence to filling a thin or
+  // irregularly-shaped masked region is genuinely non-deterministic —
+  // live-testing showed the SAME inputs succeed on one call and leave a
+  // visible gap on another. Rather than pretend one prompt tweak can
+  // guarantee full coverage, this retries once and keeps whichever
+  // attempt actually covered more of the masked region — a reliability
+  // mitigation, not a claim of a deterministic fix.
+  const MAX_ATTEMPTS = 2;
+  const MIN_ACCEPTABLE_COVERAGE = 0.5; // stop retrying early once an attempt clears this
+  const MIN_USABLE_COVERAGE = 0.15; // below this even after retrying, honest failure beats a near-blank "success"
 
-  if (!res.ok) {
-    const errText = await res.text();
-    void recordAiUsage({
-      provider: "gemini",
-      model: MODEL_ID,
-      feature: "hm_visualization",
-      operation: "quick_preview",
-      durationMs: generationMs,
-      requestBytes,
-      imageInputs,
-      userId: input.hmUserId,
-      status: "error",
-      errorMessage: `HTTP ${res.status}: ${errText.slice(0, 300)}`,
-      metadata: { visualizationId: input.visualizationId },
-    });
-    return { error: "Generation failed. Please try again." };
-  }
+  let bestEditedResized: Buffer | null = null;
+  let bestCoverage = -1;
+  let bestResponseBytes = 0;
+  let lastError: string | null = null;
 
-  const data = (await res.json()) as {
-    candidates?: Array<{
-      content?: { parts?: Array<{ inlineData?: { mimeType: string; data: string } }> };
-      finishReason?: string;
-    }>;
-    usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number };
-  };
-  const usageMeta = data.usageMetadata;
-  const responseParts = data.candidates?.[0]?.content?.parts ?? [];
-  const imagePart = responseParts.find((p) => p.inlineData?.data);
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const t0 = Date.now();
+    let res: Response;
+    try {
+      res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_ID}:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts }],
+            generationConfig: {
+              responseModalities: ["IMAGE"],
+              imageConfig: { imageSize: "1K", aspectRatio },
+            },
+          }),
+        }
+      );
+    } catch (err) {
+      lastError = "Could not reach the image generation service.";
+      void recordAiUsage({
+        provider: "gemini",
+        model: MODEL_ID,
+        feature: "hm_visualization",
+        operation: "quick_preview",
+        requestBytes,
+        imageInputs,
+        userId: input.hmUserId,
+        status: "error",
+        errorMessage: `fetch failed: ${String(err)}`,
+        metadata: { visualizationId: input.visualizationId, attempt },
+      });
+      continue;
+    }
+    const generationMs = Date.now() - t0;
 
-  if (!imagePart) {
-    const finishReason = data.candidates?.[0]?.finishReason;
-    void recordAiUsage({
-      provider: "gemini",
-      model: MODEL_ID,
-      feature: "hm_visualization",
-      operation: "quick_preview",
-      inputTokens: usageMeta?.promptTokenCount ?? null,
-      outputTokens: usageMeta?.candidatesTokenCount ?? null,
-      totalTokens: usageMeta?.totalTokenCount ?? null,
-      durationMs: generationMs,
-      requestBytes,
-      imageInputs,
-      userId: input.hmUserId,
-      status: "error",
-      errorMessage: `No image returned. Finish reason: ${finishReason ?? "unknown"}`,
-      metadata: { visualizationId: input.visualizationId },
-    });
-    return { error: "The AI did not return an image. Please try again." };
-  }
+    if (!res.ok) {
+      const errText = await res.text();
+      lastError = "Generation failed. Please try again.";
+      void recordAiUsage({
+        provider: "gemini",
+        model: MODEL_ID,
+        feature: "hm_visualization",
+        operation: "quick_preview",
+        durationMs: generationMs,
+        requestBytes,
+        imageInputs,
+        userId: input.hmUserId,
+        status: "error",
+        errorMessage: `HTTP ${res.status}: ${errText.slice(0, 300)}`,
+        metadata: { visualizationId: input.visualizationId, attempt },
+      });
+      continue;
+    }
 
-  const editedRaw = Buffer.from(imagePart.inlineData!.data, "base64");
+    const data = (await res.json()) as {
+      candidates?: Array<{
+        content?: { parts?: Array<{ inlineData?: { mimeType: string; data: string } }> };
+        finishReason?: string;
+      }>;
+      usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number };
+    };
+    const usageMeta = data.usageMetadata;
+    const responseParts = data.candidates?.[0]?.content?.parts ?? [];
+    const imagePart = responseParts.find((p) => p.inlineData?.data);
 
-  // Composite: resize the full-image candidate back to native resolution,
-  // then paste it through a feathered version of the native-resolution
-  // mask onto the untouched original — this is what actually enforces
-  // "only the selected wall changed," not the prompt instruction alone.
-  const editedResized = await sharp(editedRaw).resize(origWidth, origHeight, { fit: "fill" }).toBuffer();
-  const featherPx = featherPxFor(origWidth, origHeight);
-  const maskAlpha = await sharp(maskNative).greyscale().blur(featherPx).raw().toBuffer();
-  const editedWithAlpha = await sharp(editedResized)
-    .ensureAlpha()
-    .joinChannel(maskAlpha, { raw: { width: origWidth, height: origHeight, channels: 1 } })
-    .png()
-    .toBuffer();
-  const composited = await sharp(original)
-    .rotate()
-    .resize(origWidth, origHeight, { fit: "fill" })
-    .composite([{ input: editedWithAlpha, blend: "over" }])
-    .jpeg({ quality: 90, mozjpeg: true })
-    .toBuffer();
+    if (!imagePart) {
+      const finishReason = data.candidates?.[0]?.finishReason;
+      lastError = "The AI did not return an image. Please try again.";
+      void recordAiUsage({
+        provider: "gemini",
+        model: MODEL_ID,
+        feature: "hm_visualization",
+        operation: "quick_preview",
+        inputTokens: usageMeta?.promptTokenCount ?? null,
+        outputTokens: usageMeta?.candidatesTokenCount ?? null,
+        totalTokens: usageMeta?.totalTokenCount ?? null,
+        durationMs: generationMs,
+        requestBytes,
+        imageInputs,
+        userId: input.hmUserId,
+        status: "error",
+        errorMessage: `No image returned. Finish reason: ${finishReason ?? "unknown"}`,
+        metadata: { visualizationId: input.visualizationId, attempt },
+      });
+      continue;
+    }
 
-  const dataUri = `data:image/jpeg;base64,${composited.toString("base64")}`;
-  let uploaded: { secure_url: string } | null = null;
-  try {
-    uploaded = await uploadWithRetry(dataUri, { folder: "product-match/home-material/visualizations" });
-  } catch (err) {
+    const editedRaw = Buffer.from(imagePart.inlineData!.data, "base64");
+    const editedResizedAttempt = await sharp(editedRaw).resize(origWidth, origHeight, { fit: "fill" }).toBuffer();
+    const coverage = await estimateMaskCoverage(original, editedResizedAttempt, maskNative, origWidth, origHeight);
+
     void recordAiUsage({
       provider: "gemini",
       model: MODEL_ID,
@@ -623,30 +663,88 @@ export async function runQuickPreviewVisualization(
       responseBytes: editedRaw.length,
       durationMs: generationMs,
       userId: input.hmUserId,
+      status: "success",
+      metadata: { visualizationId: input.visualizationId, attempt, coverage },
+    });
+
+    // Opt-in diagnostic dump (unset in normal operation, zero cost/behavior
+    // change) — set HM_DEBUG_DIR to a local directory to inspect exactly
+    // what Gemini saw and returned per attempt. Proved genuinely useful
+    // for diagnosing both the wrong-wall and undercoverage bugs, 2026-09-09.
+    if (process.env.HM_DEBUG_DIR) {
+      const fs = await import("fs");
+      const dir = process.env.HM_DEBUG_DIR;
+      await fs.promises.writeFile(`${dir}/debug-editedRaw-${input.visualizationId}-attempt${attempt}.png`, editedRaw);
+      await fs.promises.writeFile(`${dir}/debug-outlinedBase-${input.visualizationId}.jpg`, outlinedBase);
+    }
+
+    if (coverage > bestCoverage) {
+      bestCoverage = coverage;
+      bestEditedResized = editedResizedAttempt;
+      bestResponseBytes = editedRaw.length;
+    }
+    if (coverage >= MIN_ACCEPTABLE_COVERAGE) break;
+  }
+
+  if (!bestEditedResized) {
+    return { error: lastError ?? "Generation failed. Please try again." };
+  }
+
+  // Never manufacture a "success" out of an edit that barely touched the
+  // wall (Constitution Principle 4) — even after retrying, this can still
+  // come back this low for a genuinely hard shape. Honest failure beats
+  // silently uploading a result that looks like nothing happened.
+  if (bestCoverage < MIN_USABLE_COVERAGE) {
+    return {
+      error:
+        "The AI couldn't clearly apply the material to this wall shape after a couple of tries — try a simpler wall selection, or try again.",
+    };
+  }
+
+  // Composite: paste the best attempt's full-image candidate (already
+  // resized to native resolution) through a feathered version of the
+  // native-resolution mask onto the untouched original — this is what
+  // actually enforces "only the selected wall changed," not the prompt
+  // instruction alone.
+  const editedResized = bestEditedResized;
+  const featherPx = featherPxFor(origWidth, origHeight);
+  const maskAlpha = await sharp(maskNative).greyscale().blur(featherPx).raw().toBuffer();
+  const editedWithAlpha = await sharp(editedResized)
+    .ensureAlpha()
+    .joinChannel(maskAlpha, { raw: { width: origWidth, height: origHeight, channels: 1 } })
+    .png()
+    .toBuffer();
+  const composited = await sharp(original)
+    .rotate()
+    .resize(origWidth, origHeight, { fit: "fill" })
+    .composite([{ input: editedWithAlpha, blend: "over" }])
+    .jpeg({ quality: 90, mozjpeg: true })
+    .toBuffer();
+
+  // The Gemini generation itself (each attempt) is already logged inside
+  // the retry loop above — this only needs to cover the upload step,
+  // which happens once regardless of how many attempts it took.
+  const dataUri = `data:image/jpeg;base64,${composited.toString("base64")}`;
+  let uploaded: { secure_url: string } | null = null;
+  try {
+    uploaded = await uploadWithRetry(dataUri, { folder: "product-match/home-material/visualizations" });
+  } catch (err) {
+    void recordAiUsage({
+      provider: "gemini",
+      model: MODEL_ID,
+      feature: "hm_visualization",
+      operation: "quick_preview",
+      imagesGenerated: 1,
+      imageInputs,
+      requestBytes,
+      responseBytes: bestResponseBytes,
+      userId: input.hmUserId,
       status: "error",
       errorMessage: `cloudinary_upload: ${String(err)}`,
-      metadata: { visualizationId: input.visualizationId },
+      metadata: { visualizationId: input.visualizationId, bestCoverage },
     });
     return { error: "Image storage is temporarily unreachable. The generation succeeded but wasn't saved — please try again." };
   }
-
-  void recordAiUsage({
-    provider: "gemini",
-    model: MODEL_ID,
-    feature: "hm_visualization",
-    operation: "quick_preview",
-    inputTokens: usageMeta?.promptTokenCount ?? null,
-    outputTokens: usageMeta?.candidatesTokenCount ?? null,
-    totalTokens: usageMeta?.totalTokenCount ?? null,
-    imagesGenerated: 1,
-    imageInputs,
-    requestBytes,
-    responseBytes: editedRaw.length,
-    durationMs: generationMs,
-    userId: input.hmUserId,
-    status: "success",
-    metadata: { visualizationId: input.visualizationId, swatchId: input.swatch.id },
-  });
 
   return {
     url: uploaded.secure_url,

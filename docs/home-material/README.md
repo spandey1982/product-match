@@ -635,6 +635,66 @@ one visually plausible wall in frame — the user's own earlier
 single dominant back wall, where there's no ambiguity for Gemini to get
 wrong.
 
+## Second real bug + reliability fix: retry-on-undercoverage (2026-09-09)
+
+User tested a different wall (the left one, an irregular/tapering shape —
+a wide wedge above a wardrobe narrowing into a thin sliver beside it) on
+the same real photo, with the magenta-outline fix already live. One
+generation came back visibly incomplete — "missed a part of the wall and
+covered a section." Root-caused by comparing the magenta-outlined base
+against Gemini's raw edit again: the outline was correct, but Gemini's
+edit painted almost the ENTIRE back wall, ignoring the thin/irregular
+outline shape entirely — our masking correctly clipped that back down to
+the true selection (confirmed: outline shape and final composited shape
+matched exactly), so nothing leaked outside the wall. The user's complaint
+was really "the material barely shows up," not "it's in the wrong place."
+
+**Critically, re-running the EXACT same polygon + product twice gave
+different results** — one run covered the shape well, another barely
+touched it. This is Gemini's own reliability varying between calls on a
+hard (thin/irregular) mask shape, not a deterministic bug with one fix.
+
+**Fix — retry-on-undercoverage, `visualization.ts`:**
+- New `estimateMaskCoverage(original, edited, mask, w, h)`: downscales
+  both images, converts to greyscale, and measures what fraction of
+  pixels INSIDE the mask actually changed by a meaningful amount (≥12/255)
+  — a coarse "did the edit really touch this region" signal, not a
+  quality judgment.
+- The Gemini call now runs in a loop (`MAX_ATTEMPTS = 2`): after each
+  attempt, coverage is measured; if it clears `MIN_ACCEPTABLE_COVERAGE`
+  (0.5) the loop stops early, otherwise it retries once more and keeps
+  whichever attempt covered more.
+- **Honesty floor:** if even the best attempt is still below
+  `MIN_USABLE_COVERAGE` (0.15) after all attempts, the function now
+  returns an honest error ("couldn't clearly apply the material... try a
+  simpler wall selection, or try again") instead of silently uploading a
+  near-blank result as a "success" — Constitution Principle 4 applied to
+  a case that previously would have quietly shipped a bad result with a
+  green checkmark.
+- Every attempt is logged to the `AiUsageEvent` ledger individually
+  (tagged with `attempt` and `coverage` in `metadata`) so a retry's real
+  extra cost is visible, not hidden inside a single averaged row.
+- A permanent, opt-in diagnostic hook (`HM_DEBUG_DIR` env var — unset by
+  default, zero cost/behavior change) dumps the outlined base and each
+  attempt's raw edit to a local directory; this is what made both this
+  bug and the wrong-wall bug tractable to diagnose and is being kept for
+  future troubleshooting.
+
+Live-tested: reproduced the original low-coverage case (both attempts
+scored 3-5% coverage — confirmed by eye that the result was genuinely
+near-blank, correctly triggering the new honesty-floor error instead of
+a false "success"), then a separate run where attempt 1 narrowly missed
+the retry threshold (49.8%) and attempt 2 cleared it (54.1%), producing a
+visibly well-covered result — confirming the retry mechanism improves
+outcomes rather than just adding cost.
+
+**Known remaining limitation, not fixed here:** a genuinely thin sliver
+of wall (e.g. behind/beside furniture, only a few percent of the image)
+may still legitimately fail even after retrying, and 2 attempts is a
+cost/reliability tradeoff, not a guarantee. This is a per-generation
+reliability mitigation, not a claim that irregular-shape coverage is now
+100% solved.
+
 ## Locked decisions (2026-09-07)
 
 | Decision | Choice | Why |
@@ -724,6 +784,38 @@ usage data — revisit if/when the two need to diverge).
 - Full `docs/` hierarchy (product/domain/ai/architecture/research/decisions)
   from the original discovery brief — deliberately not built yet; this
   single doc is the placeholder until there's enough content to justify it.
+- **Wallpaper/material sheet-dimension-aware rendering** (flagged
+  2026-09-09) — every material is currently rendered as if it's one
+  customizable image stretched to fit the wall, which is wrong for real
+  repeat-pattern sheet goods. Two distinct cases need distinguishing on
+  `HmProduct`/`HmMaterial`: (1) a customizable/themed design (one
+  non-repeating artwork, e.g. a mural) that scales up to the wall, with a
+  minimum order size the design can't shrink below; (2) repeat-pattern
+  sheet goods (mandala/leaf-print wallpaper, veneer, wood panels, and
+  eventually tiles) that come in fixed real sheet dimensions (e.g.
+  10m x 1.5m) — the pattern must render at its TRUE physical scale, not
+  stretched, and the system must calculate sheet count from sheet size vs.
+  wall size (always horizontal placement, per the user's explicit
+  simplification, to avoid orientation-dependent math). Needs new
+  `patternType`/`sheetWidthM`/`sheetHeightM`/minimum-order fields, changes
+  to the cost-estimate flow (sheet-count pricing, not flat area×price for
+  case 2), and changes to visualization rendering (true-scale tiling vs.
+  scale-to-fit). Needs its own scoping discussion before building, same as
+  every other structural change this session.
+- **Walls whose true length isn't visible in the photo** (flagged
+  2026-09-09) — when a selected wall's real boundary extends beyond the
+  photo frame (cut off by the image edge, not a real corner), the system
+  currently has no way to know the wall's true length, so it can't
+  correctly scale a repeat-pattern material or give an honest area/cost
+  estimate — and doesn't even detect or flag this case today. User
+  proposed two mitigations: (a) let the user manually enter the wall's
+  real dimensions when this is detected, and/or (b) warn explicitly that
+  the output/estimate won't be fully accurate, treating the image-frame
+  edge as an assumed (not real) boundary. Needs a heuristic in
+  `wall-detection.ts` distinguishing "polygon edge is a real corner" vs.
+  "polygon edge coincides with the image frame" (likely truncated), then a
+  decision on which mitigation(s) to build. Needs its own scoping
+  discussion before implementation.
 
 ## Known environment issue (pre-existing, not caused by this work — resolved)
 
