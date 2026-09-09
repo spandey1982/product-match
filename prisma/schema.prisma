@@ -1307,6 +1307,23 @@ model HmSurface {
   // manually-drawn shape (no AI judgment exists to set it true).
   possiblyTruncated Boolean @default(false)
 
+  // User-confirmed adjacency for sheet-count math (2026-09-09) —
+  // deliberately NOT auto-detected from the photo (that's sub-problem A
+  // from the multi-wall discussion, explicitly paused). Surfaces sharing
+  // the same non-null value are treated as one continuous run when the
+  // SAME repeat_sheet product is selected across them: their widths sum
+  // before the sheet-count ceiling formula applies once, instead of
+  // computing each wall independently — matching how wallpaper is
+  // actually hung continuously across a real corner. Null means "not
+  // marked adjacent to anything," the default/independent case.
+  adjacencyGroupId String?
+
+  // True when widthMeters/heightMeters came from AI reference-object
+  // estimation rather than the user typing them in (2026-09-09) — never
+  // blur estimate vs. confirmed (Constitution Principle 6, same rule
+  // measurementSource already follows). Meaningless while both are null.
+  dimensionsEstimated Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1314,6 +1331,7 @@ model HmSurface {
   recommendations HmRecommendation[]
 
   @@index([roomId])
+  @@index([adjacencyGroupId])
   @@map("hm_surfaces")
 }
 
@@ -1375,8 +1393,30 @@ model HmProduct {
 
   // Free-text dimensions (roll width/length, panel size, etc. — too varied
   // across paint/wallpaper/texture/panel to normalize into fixed columns
-  // for V1).
+  // for V1). Superseded for repeat-pattern sheet goods specifically by
+  // the structured fields below (2026-09-09) — kept for other/legacy use.
   dimensions String?
+
+  // Sheet-size-aware rendering + ordering (2026-09-09) — mandatory at the
+  // application layer (upload/seed forms must explicitly choose; the
+  // "customizable" DB default below exists only so existing rows and
+  // migrations don't break, never as a silent app-level default for a
+  // NEW product):
+  // - "customizable": one non-repeating design (e.g. a themed mural) that
+  //   scales up to the wall as a single image. minWidthM/minHeightM are
+  //   the smallest size it can be scaled down to without losing detail
+  //   (null = no known floor).
+  // - "repeat_sheet": real sheet goods (patterned wallpaper, veneer, wood
+  //   panels, and eventually tiles) with a fixed real-world sheet size
+  //   (sheetWidthM/sheetHeightM) — the pattern renders at TRUE physical
+  //   scale, tiled, not stretched, and sheet count is calculated from
+  //   sheet size vs. wall size. Required (validated at the API layer,
+  //   not the DB) whenever patternType is "repeat_sheet".
+  patternType  String @default("customizable")
+  sheetWidthM  Float?
+  sheetHeightM Float?
+  minWidthM    Float?
+  minHeightM   Float?
 
   priceInr  Float?
   priceUnit String? // "per_sqft" | "per_roll" | "per_panel" | "per_litre"
@@ -1524,6 +1564,12 @@ model HmVisualization {
   // prototype). provider/model above read "deterministic" /
   // "homography+shading-v1" for these rows, never a Gemini model id.
   perspectiveCorrected Boolean @default(false)
+
+  // True when a repeat-pattern sheet good was rendered at its real
+  // physical scale (tiled, not stretched) — sub-problem "wallpaper
+  // sheet-size scaling", 2026-09-09. provider/model read "deterministic"
+  // / "tiled-true-scale-v1" for these rows.
+  trueScaleRendered Boolean @default(false)
 
   // "Honest overview" — mandatory post-generation opinion pass over the
   // FINAL composited image (see docs/home-material/README.md, "Honest

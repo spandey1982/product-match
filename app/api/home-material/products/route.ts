@@ -25,6 +25,11 @@ export async function GET() {
       patternName: true,
       textureAssetUrl: true,
       uploadedByHmUserId: true,
+      patternType: true,
+      sheetWidthM: true,
+      sheetHeightM: true,
+      minWidthM: true,
+      minHeightM: true,
       materialId: true,
       material: {
         select: { category: true, avgCostPerSqftMinInr: true, avgCostPerSqftMaxInr: true },

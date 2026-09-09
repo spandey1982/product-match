@@ -7,6 +7,12 @@ import { recordProductEvidence } from "@/lib/home-material/provenance";
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_SIZE = 5 * 1024 * 1024;
 
+function parsePositiveFloat(raw: FormDataEntryValue | null): number | null {
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  const n = parseFloat(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 /**
  * "Upload your own wallpaper/paint photo" — a real product photo the user
  * already has (e.g. a store sample, a listing screenshot), used directly as
@@ -34,6 +40,28 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "File size must be under 5MB" }, { status: 400 });
   }
 
+  // Mandatory classification (2026-09-09) — every upload must explicitly
+  // say whether it's a one-off customizable design or real repeat-pattern
+  // sheet goods; a patterned upload must give its real sheet size, since
+  // that's what lets the visualization render it at true physical scale
+  // instead of stretching it (see lib/home-material/visualization.ts).
+  const patternType = formData.get("patternType") as string | null;
+  if (patternType !== "customizable" && patternType !== "repeat_sheet") {
+    return NextResponse.json({ error: "Select whether this is a customizable design or a repeating pattern" }, { status: 400 });
+  }
+
+  let sheetWidthM: number | null = null;
+  let sheetHeightM: number | null = null;
+  if (patternType === "repeat_sheet") {
+    sheetWidthM = parsePositiveFloat(formData.get("sheetWidthM"));
+    sheetHeightM = parsePositiveFloat(formData.get("sheetHeightM"));
+    if (sheetWidthM === null || sheetHeightM === null) {
+      return NextResponse.json({ error: "A repeating pattern needs its real sheet width and height (in meters)" }, { status: 400 });
+    }
+  }
+  const minWidthM = parsePositiveFloat(formData.get("minWidthM"));
+  const minHeightM = parsePositiveFloat(formData.get("minHeightM"));
+
   try {
     const bytes = await file.arrayBuffer();
     const b64 = Buffer.from(bytes).toString("base64");
@@ -47,6 +75,11 @@ export async function POST(req: NextRequest) {
         textureAssetUrl: result.secure_url,
         availability: "unspecified",
         uploadedByHmUserId: session.id,
+        patternType,
+        sheetWidthM,
+        sheetHeightM,
+        minWidthM,
+        minHeightM,
       },
     });
 

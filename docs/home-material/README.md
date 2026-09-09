@@ -793,6 +793,137 @@ Two issues surfaced immediately from real usage:
    evidence, no frame-touching edge) does NOT get force-flagged — the
    heuristic stays targeted, not overly aggressive.
 
+## Wallpaper sheet-size / repeat-pattern scaling (2026-09-09)
+
+Discussed at length before building (per the user's request) — the full
+back-and-forth (sheet-count math derivation, the adjacency rule, the
+decision to keep adjacency manual) is worth reading in the memory file
+if picking this up cold. Core problem the user identified: every
+material was being rendered as if it's one customizable image stretched
+to fit the wall, which is wrong for real repeat-pattern sheet goods (a
+mandala motif shouldn't visually become one giant mandala the size of
+the wall) — and there was no way to calculate how many physical sheets
+an order actually needs.
+
+### Data model — `HmProduct`
+
+New fields (mandatory at the API/upload-form layer, not just a silent
+DB default): `patternType` ("customizable" | "repeat_sheet"),
+`sheetWidthM`/`sheetHeightM` (required when `repeat_sheet`),
+`minWidthM`/`minHeightM` (optional, customizable's "can't shrink below
+this" floor). Supersedes the old free-text `dimensions` field's
+deferred intent for repeat-pattern goods specifically. A product's
+uploaded reference photo is assumed to depict exactly one full sheet —
+a deliberate simplification rather than tracking a separate "what area
+does this specific photo show" dimension.
+
+### Sheet-count math — `lib/home-material/sheet-calculation.ts`
+
+Verified against the user's own worked example before writing any
+integration code: sheet 10m×1.5m on a 12m×9m wall → 12 sheets
+(ceil(12/10)=2 cols, ceil(9/1.5)=6 rows, 2×6=12). Always uses the
+"horizontal" orientation (sheet's long side along the wall's width) —
+the user's explicit simplification, never compares against a vertical
+alternative.
+
+**Adjacency rule** (confirmed via a second worked example): if 2+ walls
+using the SAME product are marked adjacent (share a real corner), their
+widths are SUMMED into one continuous run before the ceiling formula
+applies once — 12m + 15m wall run → ceil(27/10)=3 × ceil(9/1.5)=6 = 18
+sheets, not 12+12=24 computed separately. Matches how wallpaper is
+actually hung continuously across a corner, with less material waste.
+Non-adjacent walls are computed independently and summed.
+
+**Adjacency is deliberately manual, never AI-detected** — auto-detecting
+real physical adjacency from a photo is sub-problem A from the
+multi-wall discussion (2026-09-09), explicitly paused pending its own
+conversation. `HmSurface.adjacencyGroupId` is a user-confirmed fact only,
+set via the new `PATCH .../surfaces/adjacency` endpoint (2+ ids → shared
+new group; 1 id → removed from any group) and RoomView.tsx's
+`AdjacencyMarker`, shown only when 2+ confirmed walls share the same
+repeat_sheet product selection.
+
+Verified with the unit tests in the user's own examples: single wall
+(12 sheets), two adjacent walls (18), two independent walls (24) — all
+matched exactly before any UI was built.
+
+### True-scale tiled rendering — `visualization.ts`
+
+A THIRD deterministic path (alongside sub-problem B's perspective
+homography), gated on: `repeat_sheet` product, no `corners` (straight-on
+walls only for this pass — combining tiling with perspective correction
+is deferred, same scoping decision as sub-problem B originally got), and
+BOTH the wall's and the product's real dimensions known. Computes
+pixels-per-meter from the wall's photographed bounding box vs. its real
+size, resizes the reference texture to one real "tile" at that scale,
+repeats it across the bounding box (`renderTiledPattern` — plain 2D grid
+compositing, not novel math, which is why this didn't need an isolated
+prototype phase the way the homography work did), applies the same
+shading-map relighting and feathered-mask compositing already proven in
+the perspective path. Falls through to the existing Gemini path when any
+condition is missing — never blocks a preview for lack of this data
+alone.
+
+New `HmVisualization.trueScaleRendered` boolean + `model:
+"tiled-true-scale-v1"` for full traceability, mirroring how
+`perspectiveCorrected` already works. UI badge "True-scale pattern" next
+to the existing mode/perspective badges.
+
+### Reference-object dimension estimation — `lib/home-material/scale-estimation.ts`
+
+Per the user's explicit instruction: when a repeat_sheet product is
+selected and the wall's real size isn't known, try to estimate it from a
+common object of well-known typical size visible in the photo (a door,
+wardrobe, bed, sofa, chair) before asking the user for anything — the
+same technique real AR measurement apps use. Reuses the magenta-outline
+technique from `visualization.ts`'s `renderOutlinedBase` to point the
+model at the right wall. Never guesses without a real reference object
+(`referenceObjectFound: false` → `unavailable`, Constitution Principle
+4) — a successful estimate is stored on the surface with
+`dimensionsEstimated: true` (a new honesty flag, matching the "never
+blur estimate vs. confirmed" rule `measurementSource` already follows).
+
+**Blocking behavior** (per the user's explicit instruction — an
+intentional, scoped exception to this domain's usual "always optional,
+never blocking" pattern, since a repeat-pattern preview genuinely can't
+be scaled sensibly with zero information): the FIRST preview attempt for
+a repeat_sheet product with no known wall size tries the estimate
+automatically; if that fails too, the API returns `needsDimensions: true`
+and RoomView.tsx's `NeedsDimensionsPrompt` blocks that one attempt with
+an inline form (enter width/height, or "Continue anyway" — which passes
+`skipDimensionCheck` and falls back to today's stretch-to-fit rendering).
+Once resolved either way, the wall's dimensions are set and nothing
+blocks again for that surface.
+
+### Live-tested end to end (2026-09-09)
+
+API-level (zero AI cost, manually-entered dimensions): uploaded a
+repeat_sheet product (rejected correctly without `patternType`; accepted
+with sheet size 2m×1m), confirmed two independent wall rectangles, set
+Wall A to 3m×2m and Wall B to 4m×2m, marked them adjacent, generated a
+preview for Wall A — confirmed `provider: "deterministic"`, `model:
+"tiled-true-scale-v1"`, `trueScaleRendered: true`, and the output image
+showed a checkerboard tile repeating at a uniform, consistent scale
+across the wall (not stretched into one giant checker), correctly masked
+to only the selected wall.
+
+Reference-object estimation: live-tested against the user's own real
+bedroom photo — found a standard interior door, used it to estimate a
+narrow wall section's real size, returned a plausible small estimate
+(0.75m × 0.9m) with a stated confidence — confirming the mechanism works
+(finds a reference, calibrates, returns typed data) even though the
+exact number is inherently a best-effort AI estimate, not a
+measurement.
+
+Browser-verified: the mandatory pattern-type selector and conditional
+sheet-width/height fields render and toggle correctly on the custom
+upload form.
+
+**Deliberately out of scope for this pass**: combining true-scale
+tiling with perspective correction (angled walls) — falls back to the
+existing behavior for that specific combination; AI-detected adjacency
+(sub-problem A, still paused).
+
 ## Locked decisions (2026-09-07)
 
 | Decision | Choice | Why |
@@ -882,24 +1013,12 @@ usage data — revisit if/when the two need to diverge).
 - Full `docs/` hierarchy (product/domain/ai/architecture/research/decisions)
   from the original discovery brief — deliberately not built yet; this
   single doc is the placeholder until there's enough content to justify it.
-- **Wallpaper/material sheet-dimension-aware rendering** (flagged
-  2026-09-09) — every material is currently rendered as if it's one
-  customizable image stretched to fit the wall, which is wrong for real
-  repeat-pattern sheet goods. Two distinct cases need distinguishing on
-  `HmProduct`/`HmMaterial`: (1) a customizable/themed design (one
-  non-repeating artwork, e.g. a mural) that scales up to the wall, with a
-  minimum order size the design can't shrink below; (2) repeat-pattern
-  sheet goods (mandala/leaf-print wallpaper, veneer, wood panels, and
-  eventually tiles) that come in fixed real sheet dimensions (e.g.
-  10m x 1.5m) — the pattern must render at its TRUE physical scale, not
-  stretched, and the system must calculate sheet count from sheet size vs.
-  wall size (always horizontal placement, per the user's explicit
-  simplification, to avoid orientation-dependent math). Needs new
-  `patternType`/`sheetWidthM`/`sheetHeightM`/minimum-order fields, changes
-  to the cost-estimate flow (sheet-count pricing, not flat area×price for
-  case 2), and changes to visualization rendering (true-scale tiling vs.
-  scale-to-fit). Needs its own scoping discussion before building, same as
-  every other structural change this session.
+- ~~Wallpaper/material sheet-dimension-aware rendering~~ — **shipped
+  2026-09-09**, see "Wallpaper sheet-size / repeat-pattern scaling"
+  above (data model, sheet-count math with the adjacency rule,
+  true-scale tiled rendering, reference-object dimension estimation).
+  Explicitly NOT combined with perspective correction (angled walls)
+  this pass, and adjacency stays manual (sub-problem A still paused).
 - ~~Walls whose true length isn't visible in the photo~~ — **shipped
   2026-09-09**, see "Wall-truncation honesty + real-dimension entry"
   above (detection flag + warning + optional real-dimension entry,

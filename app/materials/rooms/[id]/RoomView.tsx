@@ -6,6 +6,7 @@ import { ArrowLeft, RotateCcw, Pencil, Heart, Scale } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { parseJsonSafe } from "@/lib/home-material/client";
 import { parseArray } from "@/lib/serialize";
+import { calculateSheetsNeeded } from "@/lib/home-material/sheet-calculation";
 
 type Point = { x: number; y: number };
 
@@ -26,6 +27,8 @@ type Surface = {
   widthMeters?: number | null;
   heightMeters?: number | null;
   areaSqm?: number | null;
+  dimensionsEstimated?: boolean;
+  adjacencyGroupId?: string | null;
 };
 
 type Room = {
@@ -48,6 +51,12 @@ type Swatch = {
   priceIsExact?: boolean;
   costRangeMinInr?: number | null;
   costRangeMaxInr?: number | null;
+  // Sheet-size-aware scaling (2026-09-09) — see lib/home-material/sheet-calculation.ts.
+  patternType?: string;
+  sheetWidthM?: number | null;
+  sheetHeightM?: number | null;
+  minWidthM?: number | null;
+  minHeightM?: number | null;
 };
 
 type Visualization = {
@@ -58,6 +67,7 @@ type Visualization = {
   mode?: string;
   productId?: string | null;
   perspectiveCorrected?: boolean;
+  trueScaleRendered?: boolean;
   // "Honest overview" (2026-09-09) — raw Prisma row fields, JSON-string
   // arrays (lib/serialize.ts), parsed client-side by OverviewCard below.
   overviewStatus?: string;
@@ -360,6 +370,181 @@ function WallDimensionsNotice({
 }
 
 /**
+ * Blocks ONE preview attempt for a repeat-pattern sheet good when the
+ * wall's real size couldn't be determined at all (not user-entered, and
+ * the reference-object AI estimate found nothing usable) — per the
+ * user's explicit instruction (2026-09-09): a rough size makes a real
+ * difference for a repeating pattern's scale and sheet count, so this
+ * asks once rather than silently rendering at a guessed scale. Never
+ * traps the user: "Continue anyway" re-runs the same preview with
+ * skipDimensionCheck, falling back to today's stretch-to-fit rendering.
+ */
+function NeedsDimensionsPrompt({
+  roomId,
+  surfaceId,
+  message,
+  onSaved,
+  onContinueAnyway,
+  continuing,
+}: {
+  roomId: string;
+  surfaceId: string;
+  message: string;
+  onSaved: (updated: Surface) => void;
+  onContinueAnyway: () => void;
+  continuing: boolean;
+}) {
+  const [widthFt, setWidthFt] = useState("");
+  const [heightFt, setHeightFt] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSaveAndPreview() {
+    const w = parseFloat(widthFt);
+    const h = parseFloat(heightFt);
+    if (!Number.isFinite(w) || w <= 0 || !Number.isFinite(h) || h <= 0) {
+      setError("Enter positive numbers for both width and height.");
+      return;
+    }
+    setError("");
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/home-material/rooms/${roomId}/surfaces/${surfaceId}/dimensions`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ widthMeters: w / FEET_PER_METER, heightMeters: h / FEET_PER_METER }),
+      });
+      const data = await parseJsonSafe(res);
+      if (!res.ok) {
+        setError(typeof data.error === "string" ? data.error : "Could not save dimensions");
+        return;
+      }
+      onSaved(data.surface as Surface);
+    } catch (err) {
+      setError(`Something went wrong: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 space-y-2">
+      <p className="text-xs text-amber-800">⚠ {message}</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          type="number"
+          min={1}
+          placeholder="Width (ft)"
+          value={widthFt}
+          onChange={(e) => setWidthFt(e.target.value)}
+          className="w-24 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        />
+        <input
+          type="number"
+          min={1}
+          placeholder="Height (ft)"
+          value={heightFt}
+          onChange={(e) => setHeightFt(e.target.value)}
+          className="w-24 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        />
+        <Button size="sm" onClick={handleSaveAndPreview} loading={saving}>Save &amp; preview</Button>
+        <Button size="sm" variant="secondary" onClick={onContinueAnyway} loading={continuing}>Continue anyway</Button>
+      </div>
+      {error && <p className="text-xs text-red-500">{error}</p>}
+    </div>
+  );
+}
+
+/**
+ * Marks 2+ walls as physically adjacent for sheet-count purposes
+ * (2026-09-09) — deliberately manual (see HmSurface.adjacencyGroupId's
+ * doc comment: auto-detecting real adjacency is sub-problem A from the
+ * multi-wall discussion, explicitly paused). Only shown when the same
+ * repeat_sheet product is selected on 2+ confirmed walls in one room.
+ */
+function AdjacencyMarker({
+  roomId,
+  surfaces,
+  productName,
+  onUpdated,
+}: {
+  roomId: string;
+  surfaces: Surface[];
+  productName: string;
+  onUpdated: (updated: Surface[]) => void;
+}) {
+  const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleMark() {
+    if (checked.size < 2) {
+      setError("Select at least 2 walls that are physically adjacent.");
+      return;
+    }
+    setError("");
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/home-material/rooms/${roomId}/surfaces/adjacency`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ surfaceIds: [...checked] }),
+      });
+      const data = await parseJsonSafe(res);
+      if (!res.ok) {
+        setError(typeof data.error === "string" ? data.error : "Could not save");
+        return;
+      }
+      onUpdated(data.surfaces as Surface[]);
+      setChecked(new Set());
+    } catch (err) {
+      setError(`Something went wrong: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const groups = new Map<string, Surface[]>();
+  for (const s of surfaces) {
+    if (!s.adjacencyGroupId) continue;
+    const list = groups.get(s.adjacencyGroupId) ?? [];
+    list.push(s);
+    groups.set(s.adjacencyGroupId, list);
+  }
+
+  return (
+    <div className="rounded-xl border border-gray-200 p-3 space-y-2">
+      <p className="text-xs font-medium text-gray-700">Multiple walls use {productName} — are any physically adjacent (share a corner)?</p>
+      <p className="text-[11px] text-gray-500">Marking adjacent walls combines them into one continuous run for sheet counting — more accurate, less wasteful.</p>
+      {[...groups.entries()].map(([gid, list]) => (
+        <p key={gid} className="text-xs text-emerald-700">✓ Adjacent: {list.map((s) => s.label || "Wall").join(", ")}</p>
+      ))}
+      <div className="flex flex-wrap gap-3">
+        {surfaces.map((s) => (
+          <label key={s.id} className="inline-flex items-center gap-1.5 text-xs text-gray-600">
+            <input
+              type="checkbox"
+              checked={checked.has(s.id)}
+              onChange={(e) =>
+                setChecked((prev) => {
+                  const next = new Set(prev);
+                  if (e.target.checked) next.add(s.id);
+                  else next.delete(s.id);
+                  return next;
+                })
+              }
+            />
+            {s.label || "Wall"}
+          </label>
+        ))}
+      </div>
+      <Button size="sm" onClick={handleMark} loading={saving}>Mark selected as adjacent</Button>
+      {error && <p className="text-xs text-red-500">{error}</p>}
+    </div>
+  );
+}
+
+/**
  * "Request a quote" lead capture (brief §17) — tied to either a specific
  * product or just a material category (recommendations are material-level,
  * not SKU-level, so productId won't always apply). Self-contained: manages
@@ -612,11 +797,22 @@ export function RoomView({ roomId }: { roomId: string }) {
   const [generating, setGenerating] = useState<Record<string, boolean>>({});
   const [visualizations, setVisualizations] = useState<Record<string, Visualization>>({});
   const [previewError, setPreviewError] = useState<Record<string, string>>({});
+  // Repeat-pattern sheet goods need the wall's real size to render at
+  // true scale (2026-09-09) — set when the API blocks a preview for this
+  // reason, cleared once resolved (dimensions entered, or "continue
+  // anyway"). See NeedsDimensionsPrompt below.
+  const [needsDimensionsFor, setNeedsDimensionsFor] = useState<Record<string, { productId: string; message: string }>>({});
 
   const [uploadName, setUploadName] = useState("");
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
+  // Mandatory classification (2026-09-09) — every upload must say which
+  // it is; "" means not yet chosen, forcing an explicit pick rather than
+  // silently defaulting. See lib/home-material/sheet-calculation.ts.
+  const [uploadPatternType, setUploadPatternType] = useState<"" | "customizable" | "repeat_sheet">("");
+  const [uploadSheetWidthFt, setUploadSheetWidthFt] = useState("");
+  const [uploadSheetHeightFt, setUploadSheetHeightFt] = useState("");
 
   const [showHelpMeChoose, setShowHelpMeChoose] = useState<Record<string, boolean>>({});
   const [requirements, setRequirements] = useState<Record<string, Requirements>>({});
@@ -887,7 +1083,7 @@ export function RoomView({ roomId }: { roomId: string }) {
     }
   }
 
-  async function handleGeneratePreview(surfaceId: string, productIdOverride?: string) {
+  async function handleGeneratePreview(surfaceId: string, productIdOverride?: string, skipDimensionCheck?: boolean) {
     // productIdOverride lets a caller that just called setSelectedSwatch
     // (e.g. "Preview this" / an overview's alternative swatch) pass the
     // new id directly, since selectedSwatch here is still the state from
@@ -898,15 +1094,27 @@ export function RoomView({ roomId }: { roomId: string }) {
       return;
     }
     setPreviewError((p) => ({ ...p, [surfaceId]: "" }));
+    setNeedsDimensionsFor((m) => {
+      const next = { ...m };
+      delete next[surfaceId];
+      return next;
+    });
     setGenerating((g) => ({ ...g, [surfaceId]: true }));
     try {
       const res = await fetch(`/api/home-material/visualizations`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ surfaceId, productId }),
+        body: JSON.stringify({ surfaceId, productId, skipDimensionCheck: skipDimensionCheck || undefined }),
       });
       const data = await parseJsonSafe(res);
       if (!res.ok) {
+        if (data.needsDimensions) {
+          setNeedsDimensionsFor((m) => ({
+            ...m,
+            [surfaceId]: { productId, message: typeof data.error === "string" ? data.error : "Enter the wall's real size for an accurate preview." },
+          }));
+          return;
+        }
         setPreviewError((p) => ({ ...p, [surfaceId]: typeof data.error === "string" ? data.error : "Preview failed" }));
         if (data.visualization) setVisualizations((v) => ({ ...v, [surfaceId]: data.visualization as Visualization }));
         return;
@@ -960,12 +1168,31 @@ export function RoomView({ roomId }: { roomId: string }) {
       setUploadError("Choose a photo first.");
       return;
     }
+    if (!uploadPatternType) {
+      setUploadError("Choose whether this is a customizable design or a repeating pattern.");
+      return;
+    }
+    let sheetWidthM: number | null = null;
+    let sheetHeightM: number | null = null;
+    if (uploadPatternType === "repeat_sheet") {
+      const wFt = parseFloat(uploadSheetWidthFt);
+      const hFt = parseFloat(uploadSheetHeightFt);
+      if (!Number.isFinite(wFt) || wFt <= 0 || !Number.isFinite(hFt) || hFt <= 0) {
+        setUploadError("A repeating pattern needs its real sheet width and height (in feet).");
+        return;
+      }
+      sheetWidthM = wFt / FEET_PER_METER;
+      sheetHeightM = hFt / FEET_PER_METER;
+    }
     setUploadError("");
     setUploading(true);
     try {
       const formData = new FormData();
       formData.append("file", uploadFile);
       if (uploadName) formData.append("name", uploadName);
+      formData.append("patternType", uploadPatternType);
+      if (sheetWidthM != null) formData.append("sheetWidthM", String(sheetWidthM));
+      if (sheetHeightM != null) formData.append("sheetHeightM", String(sheetHeightM));
       const res = await fetch(`/api/home-material/products/upload`, { method: "POST", body: formData });
       const data = await parseJsonSafe(res);
       if (!res.ok) {
@@ -974,6 +1201,9 @@ export function RoomView({ roomId }: { roomId: string }) {
       }
       setUploadFile(null);
       setUploadName("");
+      setUploadPatternType("");
+      setUploadSheetWidthFt("");
+      setUploadSheetHeightFt("");
       loadSwatches();
     } catch (err) {
       setUploadError(`Something went wrong: ${err instanceof Error ? err.message : String(err)}`);
@@ -1262,18 +1492,64 @@ export function RoomView({ roomId }: { roomId: string }) {
                 {(() => {
                   const selected = swatches.find((sw) => sw.id === selectedSwatch[s.id]);
                   if (!selected) return null;
+                  // Sheet-count-aware quote (2026-09-09) — only meaningful
+                  // for a real repeat-pattern sheet good once the wall's
+                  // real size is known; combines every OTHER confirmed
+                  // wall using this SAME product too (adjacency-aware —
+                  // see lib/home-material/sheet-calculation.ts).
+                  const sheetInfo =
+                    selected.patternType === "repeat_sheet" && selected.sheetWidthM && selected.sheetHeightM
+                      ? (() => {
+                          const wallsUsingThisProduct = room.surfaces
+                            .filter((sur) => selectedSwatch[sur.id] === selected.id && sur.widthMeters != null && sur.heightMeters != null)
+                            .map((sur) => ({
+                              id: sur.id,
+                              widthM: sur.widthMeters as number,
+                              heightM: sur.heightMeters as number,
+                              adjacencyGroupId: sur.adjacencyGroupId ?? null,
+                            }));
+                          if (wallsUsingThisProduct.length === 0) return null;
+                          return calculateSheetsNeeded(wallsUsingThisProduct, { widthM: selected.sheetWidthM as number, heightM: selected.sheetHeightM as number });
+                        })()
+                      : null;
                   return (
-                    <CostEstimator
-                      minPerSqft={selected.costRangeMinInr}
-                      maxPerSqft={selected.costRangeMaxInr}
-                      exactPerSqft={selected.priceIsExact ? selected.priceInr : null}
-                      initialAreaSqft={s.areaSqm != null ? s.areaSqm / SQM_PER_SQFT : null}
-                    />
+                    <>
+                      <CostEstimator
+                        minPerSqft={selected.costRangeMinInr}
+                        maxPerSqft={selected.costRangeMaxInr}
+                        exactPerSqft={selected.priceIsExact ? selected.priceInr : null}
+                        initialAreaSqft={s.areaSqm != null ? s.areaSqm / SQM_PER_SQFT : null}
+                      />
+                      {sheetInfo && (
+                        <p className="text-xs text-gray-500">
+                          Sheets needed: <span className="font-medium text-gray-700">{sheetInfo.totalSheets}</span>{" "}
+                          ({selected.sheetWidthM}m × {selected.sheetHeightM}m each
+                          {sheetInfo.groups.length > 1 || sheetInfo.groups.some((g) => g.wallIds.length > 1)
+                            ? `, across ${room.surfaces.filter((sur) => selectedSwatch[sur.id] === selected.id).length} walls using this pattern`
+                            : ""}
+                          )
+                        </p>
+                      )}
+                    </>
                   );
                 })()}
-                <Button className="w-full" onClick={() => handleGeneratePreview(s.id)} loading={generating[s.id]}>
-                  Preview
-                </Button>
+                {needsDimensionsFor[s.id] ? (
+                  <NeedsDimensionsPrompt
+                    roomId={room.id}
+                    surfaceId={s.id}
+                    message={needsDimensionsFor[s.id].message}
+                    continuing={generating[s.id] ?? false}
+                    onSaved={(updated) => {
+                      setRoom((r) => (r ? { ...r, surfaces: r.surfaces.map((x) => (x.id === updated.id ? updated : x)) } : r));
+                      handleGeneratePreview(s.id, needsDimensionsFor[s.id].productId);
+                    }}
+                    onContinueAnyway={() => handleGeneratePreview(s.id, needsDimensionsFor[s.id].productId, true)}
+                  />
+                ) : (
+                  <Button className="w-full" onClick={() => handleGeneratePreview(s.id)} loading={generating[s.id]}>
+                    Preview
+                  </Button>
+                )}
                 {previewError[s.id] && <p className="text-sm text-red-500">{previewError[s.id]}</p>}
                 {vis?.status === "completed" && vis.outputImageUrl && (
                   <div className="space-y-1.5">
@@ -1290,6 +1566,14 @@ export function RoomView({ roomId }: { roomId: string }) {
                         title="This wall was viewed at an angle — the material was mapped onto its real perspective using its exact geometry, not an AI guess."
                       >
                         Perspective-corrected
+                      </span>
+                    )}
+                    {vis.trueScaleRendered && (
+                      <span
+                        className="inline-block text-xs font-medium px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 ml-1.5"
+                        title="This pattern was rendered at its real physical size and tiled across the wall, not stretched to fit."
+                      >
+                        True-scale pattern
                       </span>
                     )}
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1418,6 +1702,42 @@ export function RoomView({ roomId }: { roomId: string }) {
             );
           })}
 
+          {(() => {
+            // Group confirmed walls by which repeat_sheet product they've
+            // selected — only surfaced once 2+ walls share the same one
+            // (adjacency is only meaningful in that case).
+            const byProduct = new Map<string, Surface[]>();
+            for (const sur of room.surfaces) {
+              const swId = selectedSwatch[sur.id];
+              const sw = swId ? swatches.find((x) => x.id === swId) : undefined;
+              if (!sw || sw.patternType !== "repeat_sheet") continue;
+              const list = byProduct.get(swId!) ?? [];
+              list.push(sur);
+              byProduct.set(swId!, list);
+            }
+            const entries = [...byProduct.entries()].filter(([, list]) => list.length >= 2);
+            if (entries.length === 0) return null;
+            return (
+              <div className="space-y-3">
+                {entries.map(([productId, surfacesForProduct]) => (
+                  <AdjacencyMarker
+                    key={productId}
+                    roomId={room.id}
+                    surfaces={surfacesForProduct}
+                    productName={swatches.find((x) => x.id === productId)?.name ?? "this pattern"}
+                    onUpdated={(updatedSurfaces) =>
+                      setRoom((r) =>
+                        r
+                          ? { ...r, surfaces: r.surfaces.map((x) => updatedSurfaces.find((u) => u.id === x.id) ?? x) }
+                          : r
+                      )
+                    }
+                  />
+                ))}
+              </div>
+            );
+          })()}
+
           <div className="rounded-2xl border border-dashed border-gray-300 p-4 space-y-2">
             <p className="text-sm font-medium text-gray-700">Have your own wallpaper or paint photo?</p>
             <p className="text-xs text-gray-500">Upload a photo of it — we&apos;ll match its actual colour and pattern in the preview.</p>
@@ -1435,8 +1755,49 @@ export function RoomView({ roomId }: { roomId: string }) {
                 onChange={(e) => setUploadName(e.target.value)}
                 className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
-              <Button onClick={handleUploadSwatch} loading={uploading}>Upload</Button>
             </div>
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-gray-600">Is this a customizable design or a repeating pattern? *</p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setUploadPatternType("customizable")}
+                  className={`flex-1 rounded-lg border px-3 py-1.5 text-xs ${uploadPatternType === "customizable" ? "border-indigo-500 bg-indigo-50 text-indigo-700" : "border-gray-200 text-gray-600"}`}
+                >
+                  Customizable design (one image, scales to the wall)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUploadPatternType("repeat_sheet")}
+                  className={`flex-1 rounded-lg border px-3 py-1.5 text-xs ${uploadPatternType === "repeat_sheet" ? "border-indigo-500 bg-indigo-50 text-indigo-700" : "border-gray-200 text-gray-600"}`}
+                >
+                  Repeating pattern (comes in fixed-size sheets)
+                </button>
+              </div>
+              {uploadPatternType === "repeat_sheet" && (
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    type="number"
+                    min={0.1}
+                    step={0.1}
+                    placeholder="Sheet width (ft)"
+                    value={uploadSheetWidthFt}
+                    onChange={(e) => setUploadSheetWidthFt(e.target.value)}
+                    className="w-32 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <input
+                    type="number"
+                    min={0.1}
+                    step={0.1}
+                    placeholder="Sheet height (ft)"
+                    value={uploadSheetHeightFt}
+                    onChange={(e) => setUploadSheetHeightFt(e.target.value)}
+                    className="w-32 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              )}
+            </div>
+            <Button onClick={handleUploadSwatch} loading={uploading}>Upload</Button>
             {uploadError && <p className="text-sm text-red-500">{uploadError}</p>}
           </div>
         </div>

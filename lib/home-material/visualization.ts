@@ -74,6 +74,25 @@ export interface QuickPreviewInput {
   referenceImageUrl?: string | null;
   /** 4-point perspective quad (TL, TR, BR, BL) from wall-detection.ts — null unless the wall is confidently angled. See file header. */
   corners?: Point[] | null;
+  /**
+   * Sheet-size-aware true-scale rendering (2026-09-09) — only takes effect
+   * when ALL of: patternType is "repeat_sheet", sheetWidthM/sheetHeightM
+   * (the product's real sheet size) AND wallWidthM/wallHeightM (the
+   * wall's real size — user-entered or reference-object-estimated) are
+   * known, corners is absent (straight-on walls only for this pass —
+   * combining true-scale tiling with perspective correction is deferred),
+   * and a real referenceImageUrl exists. The reference image is assumed
+   * to depict exactly one full sheet (sheetWidthM x sheetHeightM) — a
+   * deliberate, documented simplification rather than tracking a
+   * separate "what area does this specific photo show" dimension.
+   * Missing any of these silently falls back to today's behavior
+   * (Gemini full-image edit, stretched to fit) — never blocks anything.
+   */
+  patternType?: string | null;
+  sheetWidthM?: number | null;
+  sheetHeightM?: number | null;
+  wallWidthM?: number | null;
+  wallHeightM?: number | null;
   hmUserId: string;
   visualizationId: string;
 }
@@ -96,6 +115,8 @@ export interface QuickPreviewResult {
   mode: "quick_preview" | "product_accurate";
   /** True when this used the deterministic homography+shading path (sub-problem B), not a Gemini image edit. */
   perspectiveCorrected: boolean;
+  /** True when this used the deterministic true-scale tiled-pattern path (2026-09-09) — the repeat-pattern rendered at its real physical size, not stretched to fit. */
+  trueScaleRendered: boolean;
 }
 
 /**
@@ -247,6 +268,10 @@ async function renderOutlinedBase(baseBuf: Buffer, points: Point[], width: numbe
 function isValidQuad(corners: Point[] | null | undefined): corners is Point[] {
   if (!corners || corners.length !== 4) return false;
   return polygonAreaGeneric(corners) > 0.01;
+}
+
+function isPositiveFiniteNum(n: number | null | undefined): n is number {
+  return typeof n === "number" && Number.isFinite(n) && n > 0;
 }
 
 function polygonAreaGeneric(points: Point[]): number {
@@ -426,6 +451,43 @@ async function intersectAlphaWithMask(rgba: Buffer, canvasW: number, canvasH: nu
   return sharp(out, { raw: { width: canvasW, height: canvasH, channels: 4 } }).png().toBuffer();
 }
 
+// ---------- true-scale tiled rendering (2026-09-09) ----------
+// Straight-on walls only for this pass — see QuickPreviewInput's doc
+// comment for why perspective+tiling isn't combined yet.
+
+/** Fractional polygon's pixel bounding box at native resolution. */
+function polygonBoundingBoxPx(points: Point[], width: number, height: number) {
+  const xs = points.map((p) => p.x * width);
+  const ys = points.map((p) => p.y * height);
+  const left = Math.max(0, Math.floor(Math.min(...xs)));
+  const top = Math.max(0, Math.floor(Math.min(...ys)));
+  const right = Math.min(width, Math.ceil(Math.max(...xs)));
+  const bottom = Math.min(height, Math.ceil(Math.max(...ys)));
+  return { left, top, width: Math.max(1, right - left), height: Math.max(1, bottom - top) };
+}
+
+/**
+ * Repeats a single tile across a canvas of the given size — a plain 2D
+ * grid fill (sharp composites one entry per cell), not a novel technique
+ * like the homography warp; this is why true-scale tiling didn't need
+ * an isolated prototype phase the way sub-problem B did.
+ */
+async function renderTiledPattern(tileBuf: Buffer, tileWidthPx: number, tileHeightPx: number, canvasWidthPx: number, canvasHeightPx: number): Promise<Buffer> {
+  const tile = await sharp(tileBuf).resize(tileWidthPx, tileHeightPx, { fit: "fill" }).ensureAlpha().png().toBuffer();
+  const cols = Math.ceil(canvasWidthPx / tileWidthPx);
+  const rows = Math.ceil(canvasHeightPx / tileHeightPx);
+
+  const composites: Array<{ input: Buffer; left: number; top: number }> = [];
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      composites.push({ input: tile, left: col * tileWidthPx, top: row * tileHeightPx });
+    }
+  }
+
+  const canvas = sharp({ create: { width: canvasWidthPx, height: canvasHeightPx, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } });
+  return canvas.composite(composites).png().toBuffer();
+}
+
 export async function runQuickPreviewVisualization(
   input: QuickPreviewInput
 ): Promise<QuickPreviewResult | { error: string }> {
@@ -513,9 +575,90 @@ export async function runQuickPreviewVisualization(
         model: "homography+shading-v1",
         mode: "product_accurate",
         perspectiveCorrected: true,
+        trueScaleRendered: false,
       };
     } catch (err) {
       console.error("[home-material/visualization] perspective-correct path failed, falling back to AI generation:", err);
+    }
+  }
+
+  // True-scale tiled rendering (2026-09-09) — repeat_sheet materials
+  // only, straight-on walls only (no corners — see QuickPreviewInput's
+  // doc comment on why tiling isn't combined with perspective correction
+  // yet), and only when both the wall's and the product's real
+  // dimensions are known. Falls through to the Gemini path otherwise —
+  // never blocks a preview for lack of this data.
+  if (
+    !isValidQuad(input.corners) &&
+    input.patternType === "repeat_sheet" &&
+    isPositiveFiniteNum(input.sheetWidthM) &&
+    isPositiveFiniteNum(input.sheetHeightM) &&
+    isPositiveFiniteNum(input.wallWidthM) &&
+    isPositiveFiniteNum(input.wallHeightM) &&
+    referenceImage
+  ) {
+    try {
+      const originalRotated = await sharp(original).rotate().toBuffer();
+      const bbox = polygonBoundingBoxPx(input.points, origWidth, origHeight);
+
+      const pxPerMeterX = bbox.width / input.wallWidthM;
+      const pxPerMeterY = bbox.height / input.wallHeightM;
+      const tileWidthPx = Math.max(1, Math.round(input.sheetWidthM * pxPerMeterX));
+      const tileHeightPx = Math.max(1, Math.round(input.sheetHeightM * pxPerMeterY));
+
+      const tiledAtBbox = await renderTiledPattern(referenceImage, tileWidthPx, tileHeightPx, bbox.width, bbox.height);
+
+      // Paste the tiled fill (sized to the bbox) at its correct offset
+      // into a full-canvas transparent layer, then reuse the same
+      // masking/shading/feathering as the other deterministic path — the
+      // outline polygon still governs the true visible shape (routes
+      // around obstructions the same way); tiling only supplies what's
+      // INSIDE it.
+      const fullCanvas = await sharp({
+        create: { width: origWidth, height: origHeight, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+      })
+        .composite([{ input: tiledAtBbox, left: bbox.left, top: bbox.top }])
+        .png()
+        .toBuffer();
+
+      const bboxQuad: Point[] = [
+        { x: bbox.left, y: bbox.top },
+        { x: bbox.left + bbox.width, y: bbox.top },
+        { x: bbox.left + bbox.width, y: bbox.top + bbox.height },
+        { x: bbox.left, y: bbox.top + bbox.height },
+      ];
+      const shaded = await applyShadingMap(fullCanvas, origWidth, origHeight, originalRotated, bboxQuad);
+      const masked = await intersectAlphaWithMask(shaded, origWidth, origHeight, maskNative);
+
+      const featherPx = featherPxFor(origWidth, origHeight);
+      const alphaOnly = await sharp(masked).extractChannel(3).blur(featherPx).raw().toBuffer();
+      const featheredOverlay = await sharp(masked)
+        .ensureAlpha()
+        .joinChannel(alphaOnly, { raw: { width: origWidth, height: origHeight, channels: 1 } })
+        .png()
+        .toBuffer();
+
+      const composited = await sharp(originalRotated)
+        .resize(origWidth, origHeight, { fit: "fill" })
+        .composite([{ input: featheredOverlay, blend: "over" }])
+        .jpeg({ quality: 90, mozjpeg: true })
+        .toBuffer();
+
+      const dataUri = `data:image/jpeg;base64,${composited.toString("base64")}`;
+      const uploaded = await uploadWithRetry(dataUri, { folder: "product-match/home-material/visualizations" });
+
+      return {
+        url: uploaded.secure_url,
+        width: origWidth,
+        height: origHeight,
+        bytes: composited.length,
+        model: "tiled-true-scale-v1",
+        mode: "product_accurate",
+        perspectiveCorrected: false,
+        trueScaleRendered: true,
+      };
+    } catch (err) {
+      console.error("[home-material/visualization] true-scale tiling path failed, falling back to AI generation:", err);
     }
   }
 
@@ -754,5 +897,6 @@ export async function runQuickPreviewVisualization(
     model: MODEL_ID,
     mode: referenceImage ? "product_accurate" : "quick_preview",
     perspectiveCorrected: false,
+    trueScaleRendered: false,
   };
 }

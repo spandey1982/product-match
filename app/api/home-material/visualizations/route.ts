@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getHmUserSession } from "@/lib/home-material/auth";
 import { runQuickPreviewVisualization } from "@/lib/home-material/visualization";
 import { generateVisualizationOverview, pickAlternativeProductIds } from "@/lib/home-material/overview";
+import { estimateWallDimensions } from "@/lib/home-material/scale-estimation";
 import { serializeArray } from "@/lib/serialize";
 
 export async function POST(req: NextRequest) {
@@ -11,7 +12,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { surfaceId, productId } = await req.json();
+  const { surfaceId, productId, skipDimensionCheck } = await req.json();
   if (typeof surfaceId !== "string" || typeof productId !== "string") {
     return NextResponse.json({ error: "surfaceId and productId are required" }, { status: 400 });
   }
@@ -49,6 +50,38 @@ export async function POST(req: NextRequest) {
   // Product-Accurate mode section.
   const initialMode = product.textureAssetUrl ? "product_accurate" : "quick_preview";
 
+  // Repeat-pattern sheet goods need the WALL's real size to render at
+  // true physical scale (2026-09-09) — a customizable design doesn't
+  // (it just scales to fit, same as always). Per the user's explicit
+  // instruction: try a reference-object AI estimate first when the wall's
+  // real size isn't already known; if that isn't possible either, block
+  // this one preview attempt with a message rather than silently
+  // rendering at a made-up scale — once resolved (either way), the wall's
+  // widthMeters/heightMeters is set and nothing blocks again.
+  let wallWidthM = surface.widthMeters;
+  let wallHeightM = surface.heightMeters;
+
+  if (product.patternType === "repeat_sheet" && (wallWidthM == null || wallHeightM == null) && skipDimensionCheck !== true) {
+    const estimate = await estimateWallDimensions(surface.room.imageUrl, points, session.id);
+    if ("widthM" in estimate) {
+      wallWidthM = estimate.widthM;
+      wallHeightM = estimate.heightM;
+      await db.hmSurface.update({
+        where: { id: surfaceId },
+        data: { widthMeters: wallWidthM, heightMeters: wallHeightM, areaSqm: wallWidthM * wallHeightM, dimensionsEstimated: true },
+      });
+    } else {
+      const reason = "unavailable" in estimate ? estimate.reason : estimate.error;
+      return NextResponse.json(
+        {
+          needsDimensions: true,
+          error: `A rough wall size will give a much more accurate preview and sheet count for this repeating pattern — we couldn't estimate one automatically (${reason}). Enter the wall's real width/height, or continue anyway for an illustrative-scale preview.`,
+        },
+        { status: 422 }
+      );
+    }
+  }
+
   const visualization = await db.hmVisualization.create({
     data: {
       surfaceId,
@@ -75,6 +108,11 @@ export async function POST(req: NextRequest) {
     // swatches don't have one) — real pixels beat a text description.
     referenceImageUrl: product.textureAssetUrl,
     corners,
+    patternType: product.patternType,
+    sheetWidthM: product.sheetWidthM,
+    sheetHeightM: product.sheetHeightM,
+    wallWidthM,
+    wallHeightM,
     hmUserId: session.id,
     visualizationId: visualization.id,
   });
@@ -121,8 +159,9 @@ export async function POST(req: NextRequest) {
       outputImageUrl: result.url,
       model: result.model,
       mode: result.mode,
-      provider: result.perspectiveCorrected ? "deterministic" : "gemini",
+      provider: result.perspectiveCorrected || result.trueScaleRendered ? "deterministic" : "gemini",
       perspectiveCorrected: result.perspectiveCorrected,
+      trueScaleRendered: result.trueScaleRendered,
       overviewStatus: "error" in overview ? "failed" : "completed",
       overviewOpening: "error" in overview ? null : overview.opening,
       overviewHighlights: "error" in overview ? "[]" : serializeArray(overview.highlights),
