@@ -108,7 +108,7 @@ export interface QuickPreviewResult {
 export function buildQuickPreviewPrompt(swatch: QuickPreviewSwatch, hasReferenceImage: boolean): string {
   const parts: string[] = [];
   parts.push(
-    `You are editing a photo of a room. Change the appearance of ONLY the highlighted wall region to show this wall material:`
+    `You are editing a photo of a room. The photo has a bright magenta outline drawn on it marking exactly one wall region — change the appearance of ONLY the area enclosed by that magenta outline to show this wall material. A second black-and-white image is also provided as a mask (white = that same region, black = leave untouched) confirming the exact boundary. Do not change any other wall in the photo, even if it looks more prominent or more like a "main" wall — the magenta-outlined region is the one to change, and only that one. The magenta outline itself is only a location marker: do not include it, or any trace of its colour, in your output — render the material's own true edge at that boundary instead.`
   );
   if (hasReferenceImage) {
     parts.push(
@@ -176,6 +176,26 @@ async function renderPolygonMask(points: Point[], width: number, height: number)
   const pointsAttr = points.map((p) => `${(p.x * width).toFixed(1)},${(p.y * height).toFixed(1)}`).join(" ");
   const svg = `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg"><rect width="100%" height="100%" fill="black"/><polygon points="${pointsAttr}" fill="white"/></svg>`;
   return sharp(Buffer.from(svg)).png().toBuffer();
+}
+
+/**
+ * Bakes a bright, unambiguous outline directly onto the photo sent to
+ * Gemini, in addition to the separate black/white mask — a real bug
+ * found via live-testing on a large real multi-wall photo (2026-09-09):
+ * Gemini sometimes doesn't correlate a SEPARATE mask image with the
+ * correct region of a busy, real photo and instead edits whichever wall
+ * it considers "the main one," ignoring the mask entirely. A visible
+ * marker baked into the SAME image the model looks at is far harder to
+ * misinterpret. This does not weaken the safety guarantee: the final
+ * composite still only takes pixels from within the real (unannotated)
+ * mask, regardless of how well Gemini honors this outline.
+ */
+async function renderOutlinedBase(baseBuf: Buffer, points: Point[], width: number, height: number): Promise<Buffer> {
+  const pointsAttr = points.map((p) => `${(p.x * width).toFixed(1)},${(p.y * height).toFixed(1)}`).join(" ");
+  const strokeWidth = Math.max(4, Math.round(Math.min(width, height) * 0.012));
+  const svg = `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg"><polygon points="${pointsAttr}" fill="none" stroke="#ff00ff" stroke-width="${strokeWidth}"/></svg>`;
+  const overlay = await sharp(Buffer.from(svg)).png().toBuffer();
+  return sharp(baseBuf).composite([{ input: overlay, blend: "over" }]).jpeg({ quality: 90 }).toBuffer();
 }
 
 // ---------- sub-problem B: homography (perspective/angle-correct projection) ----------
@@ -461,8 +481,14 @@ export async function runQuickPreviewVisualization(
   const prompt = buildQuickPreviewPrompt(input.swatch, Boolean(referenceImage));
   const aspectRatio = nearestAspectRatio(modelWidth, modelHeight);
 
+  // The primary image Gemini sees has the target wall outlined directly
+  // on it (see renderOutlinedBase's doc comment) — the separate B/W mask
+  // is still sent too, as a reinforcing second signal, but is no longer
+  // the ONLY way the model learns which region to edit.
+  const outlinedBase = await renderOutlinedBase(modelBase, input.points, modelWidth, modelHeight);
+
   const parts: Array<Record<string, unknown>> = [
-    { inline_data: { mime_type: "image/jpeg", data: modelBase.toString("base64") } },
+    { inline_data: { mime_type: "image/jpeg", data: outlinedBase.toString("base64") } },
     { inline_data: { mime_type: "image/png", data: modelMask.toString("base64") } },
   ];
   if (referenceImage) {
@@ -471,7 +497,7 @@ export async function runQuickPreviewVisualization(
   parts.push({ text: prompt });
 
   const imageInputs = 2 + (referenceImage ? 1 : 0);
-  const requestBytes = modelBase.length + modelMask.length + (referenceImage?.length ?? 0);
+  const requestBytes = outlinedBase.length + modelMask.length + (referenceImage?.length ?? 0);
 
   const t0 = Date.now();
   let res: Response;

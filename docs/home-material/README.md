@@ -596,6 +596,45 @@ recolored only the confirmed wall, leaving the other wall, the furniture,
 floor, and ceiling pixel-identical (aside from the known, already-
 documented feather-halo cosmetic artifact at a hard geometric seam).
 
+## Real bug found via manual testing: Gemini editing the wrong wall (2026-09-09)
+
+User manually tested on an actual (large, real, multi-wall) bedroom photo
+— selected the right-hand wall (a door + adjacent panel), tried both a
+custom-uploaded wallpaper photo and a curated paint swatch ("Soft Sage").
+Both came back showing almost no visible change on the selected wall.
+
+**Root cause, isolated by comparing Gemini's raw edit candidate against
+the mask we sent it:** the mask (`modelMask`, a separate black/white
+image) was correctly positioned over the right wall — but Gemini's
+actual edit painted the new material onto the CENTER wall instead,
+ignoring the mask entirely. This wasn't a masking/geometry bug (confirmed
+by testing both the AI-detected 7-point notched outline AND a clean
+simple rectangle over the same area — both failed identically); Gemini
+was simply defaulting to editing whichever wall it considered "the main
+one" in a busy real photo with more than one wall in frame, rather than
+correlating the separate mask image with the correct region.
+
+**Fix:** `visualization.ts`'s new `renderOutlinedBase` bakes a bright
+magenta outline directly onto the SAME photo sent to Gemini (in addition
+to, not instead of, the existing separate mask), and the prompt now
+explicitly says to edit only inside that outline and to exclude the
+marker itself from the output. This doesn't weaken the existing safety
+guarantee — the final composite still only takes pixels from within the
+real, unannotated mask regardless of how well Gemini honors the outline
+— it just makes it far more likely Gemini targets the correct wall in
+the first place. Confirmed via live-testing: the same notched polygon,
+simple rectangle, and the original wood-wallpaper reference image all
+now correctly land on the right wall, with no trace of the magenta
+marker in the final output.
+
+This bug was pre-existing (part of the original Quick AI Preview
+pipeline, unrelated to the 2026-09-09 B/E/G work) and had simply never
+surfaced before because it only manifests on a real photo with more than
+one visually plausible wall in frame — the user's own earlier
+"manually verified on an actual room wall" test happened to use the
+single dominant back wall, where there's no ambiguity for Gemini to get
+wrong.
+
 ## Locked decisions (2026-09-07)
 
 | Decision | Choice | Why |
