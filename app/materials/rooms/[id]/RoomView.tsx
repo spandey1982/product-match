@@ -9,13 +9,23 @@ import { parseArray } from "@/lib/serialize";
 
 type Point = { x: number; y: number };
 
-type WallCandidate = { polygon: Point[]; confidence: number; label: string | null; corners: Point[] | null };
+type WallCandidate = {
+  polygon: Point[];
+  confidence: number;
+  label: string | null;
+  corners: Point[] | null;
+  possiblyTruncated: boolean;
+};
 
 type Surface = {
   id: string;
   label: string | null;
   geometryData: string | null;
   measurementSource?: string;
+  possiblyTruncated?: boolean;
+  widthMeters?: number | null;
+  heightMeters?: number | null;
+  areaSqm?: number | null;
 };
 
 type Room = {
@@ -182,12 +192,24 @@ function CostEstimator({
   minPerSqft,
   maxPerSqft,
   exactPerSqft,
+  initialAreaSqft,
 }: {
   minPerSqft?: number | null;
   maxPerSqft?: number | null;
   exactPerSqft?: number | null;
+  /** Pre-fills the area field from a wall's known real dimensions (see WallDimensionsNotice) — still fully editable, never overwrites something the user already typed. */
+  initialAreaSqft?: number | null;
 }) {
-  const [areaSqft, setAreaSqft] = useState("");
+  const [areaSqft, setAreaSqft] = useState(initialAreaSqft ? String(Math.round(initialAreaSqft)) : "");
+  // Adjust state during render (React's recommended pattern for syncing
+  // to a prop change without an effect) — fills in the area once the
+  // wall's real dimensions become known, but never overwrites something
+  // the user already typed.
+  const [lastAppliedInitial, setLastAppliedInitial] = useState(initialAreaSqft ?? null);
+  if ((initialAreaSqft ?? null) !== lastAppliedInitial) {
+    setLastAppliedInitial(initialAreaSqft ?? null);
+    if (initialAreaSqft && !areaSqft) setAreaSqft(String(Math.round(initialAreaSqft)));
+  }
   const area = parseFloat(areaSqft);
   const hasArea = Number.isFinite(area) && area > 0;
 
@@ -220,6 +242,118 @@ function CostEstimator({
           )}{" "}
           <span className="text-gray-400">(material only, platform estimate)</span>
         </span>
+      )}
+    </div>
+  );
+}
+
+const FEET_PER_METER = 1 / 0.3048;
+const SQM_PER_SQFT = 0.092903; // same conversion factor used app-wide (e.g. HmLead.estimatedAreaSqm)
+
+/**
+ * Wall-truncation honesty mitigation (2026-09-09, "never manufacture
+ * certainty" applied to wall length, not just shape) — when detection
+ * isn't confident the photo captured the wall's full physical extent,
+ * this shows a plain warning and an OPTIONAL real-dimension entry (feet,
+ * India convention; stored as meters, schema-literal unit — same
+ * pattern as HmLead.estimatedAreaSqm). Never blocks anything: a wall
+ * with no dimensions set just keeps estimating from the visible photo
+ * portion, same as before this existed. Renders nothing for a wall not
+ * flagged as possibly truncated.
+ */
+function WallDimensionsNotice({
+  roomId,
+  surface,
+  onSaved,
+}: {
+  roomId: string;
+  surface: Surface;
+  onSaved: (updated: Surface) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [widthFt, setWidthFt] = useState("");
+  const [heightFt, setHeightFt] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  if (!surface.possiblyTruncated) return null;
+
+  const hasDimensions = surface.widthMeters != null && surface.heightMeters != null;
+
+  async function handleSave() {
+    const w = parseFloat(widthFt);
+    const h = parseFloat(heightFt);
+    if (!Number.isFinite(w) || w <= 0 || !Number.isFinite(h) || h <= 0) {
+      setError("Enter positive numbers for both width and height.");
+      return;
+    }
+    setError("");
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/home-material/rooms/${roomId}/surfaces/${surface.id}/dimensions`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ widthMeters: w / FEET_PER_METER, heightMeters: h / FEET_PER_METER }),
+      });
+      const data = await parseJsonSafe(res);
+      if (!res.ok) {
+        setError(typeof data.error === "string" ? data.error : "Could not save dimensions");
+        return;
+      }
+      onSaved(data.surface as Surface);
+      setEditing(false);
+    } catch (err) {
+      setError(`Something went wrong: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (hasDimensions && !editing) {
+    const wFt = Math.round((surface.widthMeters ?? 0) * FEET_PER_METER);
+    const hFt = Math.round((surface.heightMeters ?? 0) * FEET_PER_METER);
+    return (
+      <p className="text-xs text-gray-500">
+        Wall size: {wFt} ft × {hFt} ft{" "}
+        <button type="button" onClick={() => { setWidthFt(String(wFt)); setHeightFt(String(hFt)); setEditing(true); }} className="text-indigo-600 hover:text-indigo-800 underline">
+          Edit
+        </button>
+      </p>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 space-y-2">
+      <p className="text-xs text-amber-800">
+        ⚠ This wall may extend beyond what&apos;s captured in the photo — the preview and any area estimate reflect only the visible portion.
+      </p>
+      {editing ? (
+        <>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={1}
+              placeholder="Width (ft)"
+              value={widthFt}
+              onChange={(e) => setWidthFt(e.target.value)}
+              className="w-24 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            <input
+              type="number"
+              min={1}
+              placeholder="Height (ft)"
+              value={heightFt}
+              onChange={(e) => setHeightFt(e.target.value)}
+              className="w-24 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            <Button size="sm" onClick={handleSave} loading={saving}>Save</Button>
+          </div>
+          {error && <p className="text-xs text-red-500">{error}</p>}
+        </>
+      ) : (
+        <button type="button" onClick={() => setEditing(true)} className="text-xs font-medium text-indigo-600 hover:text-indigo-800">
+          Know the wall&apos;s real size? Enter it for a more accurate estimate
+        </button>
       )}
     </div>
   );
@@ -452,6 +586,12 @@ export function RoomView({ roomId }: { roomId: string }) {
   // handleVertexPointerDown, which clears this the moment a vertex is
   // dragged, since an edited outline makes the original quad suspect too.
   const [draftCorners, setDraftCorners] = useState<Point[] | null>(null);
+  // Wall-truncation honesty (2026-09-09) — the AI's judgment on whether
+  // this wall's full extent was captured. Unlike draftCorners, adjusting
+  // the outline's shape doesn't make this stale (it's about the wall's
+  // real-world extent, not the traced geometry), so it's NOT cleared on
+  // vertex drag — only reset alongside everything else in resetDraft.
+  const [draftPossiblyTruncated, setDraftPossiblyTruncated] = useState(false);
   const [editingSurfaceId, setEditingSurfaceId] = useState<string | null>(null);
   const [manualDrawing, setManualDrawing] = useState(false);
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
@@ -553,6 +693,7 @@ export function RoomView({ roomId }: { roomId: string }) {
     setDraftOrigin(null);
     setDraftConfidence(null);
     setDraftCorners(null);
+    setDraftPossiblyTruncated(false);
     setEditingSurfaceId(null);
     setManualDrawing(false);
     setActiveCandidateIndex(null);
@@ -564,6 +705,7 @@ export function RoomView({ roomId }: { roomId: string }) {
     setDraftOrigin("ai");
     setDraftConfidence(c.confidence);
     setDraftCorners(c.corners);
+    setDraftPossiblyTruncated(c.possiblyTruncated);
     setLabel(c.label ?? "");
     setEditingSurfaceId(null);
     setManualDrawing(false);
@@ -698,6 +840,7 @@ export function RoomView({ roomId }: { roomId: string }) {
             measurementSource: draftOrigin === "ai" ? "ai_estimated" : "user_confirmed",
             measurementConfidence: draftOrigin === "ai" ? draftConfidence : undefined,
             corners: draftCorners ?? undefined,
+            possiblyTruncated: draftPossiblyTruncated,
           }),
         });
         const data = await parseJsonSafe(res);
@@ -1093,6 +1236,13 @@ export function RoomView({ roomId }: { roomId: string }) {
                     <Pencil className="h-3 w-3" /> {isBeingEdited ? "Editing…" : "Edit shape"}
                   </button>
                 </div>
+                <WallDimensionsNotice
+                  roomId={room.id}
+                  surface={s}
+                  onSaved={(updated) =>
+                    setRoom((r) => (r ? { ...r, surfaces: r.surfaces.map((x) => (x.id === updated.id ? updated : x)) } : r))
+                  }
+                />
                 <SwatchCarousel
                   swatches={swatches}
                   selectedId={selectedSwatch[s.id]}
@@ -1108,6 +1258,7 @@ export function RoomView({ roomId }: { roomId: string }) {
                       minPerSqft={selected.costRangeMinInr}
                       maxPerSqft={selected.costRangeMaxInr}
                       exactPerSqft={selected.priceIsExact ? selected.priceInr : null}
+                      initialAreaSqft={s.areaSqm != null ? s.areaSqm / SQM_PER_SQFT : null}
                     />
                   );
                 })()}

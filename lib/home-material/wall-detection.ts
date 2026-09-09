@@ -56,6 +56,16 @@ export interface WallCandidate {
   label: string | null;
   /** 4-point perspective quad (TL, TR, BR, BL) — null unless the wall is genuinely angled and confidently quadrilateral. See file header. */
   corners: Point[] | null;
+  /**
+   * True when the model isn't confident the FULL physical wall is
+   * captured — its outline's edge coincides with the image frame rather
+   * than a visible real corner/ceiling-floor convergence, so the wall may
+   * continue beyond what's photographed. Defaults to true (flag it) on
+   * any missing/malformed signal — "never manufacture certainty" applied
+   * to wall length, not just shape. Never blocks anything; just drives an
+   * honest warning + an optional real-dimension entry in the UI.
+   */
+  possiblyTruncated: boolean;
 }
 
 export interface WallDetectionResult {
@@ -69,6 +79,7 @@ interface RawCandidate {
   polygon?: unknown;
   label?: unknown;
   corners?: unknown;
+  possiblyTruncated?: unknown;
 }
 
 interface RawDetection {
@@ -124,7 +135,10 @@ function parseCandidate(raw: RawCandidate): WallCandidate | null {
       : null;
 
   if (!points || polygonArea(points) <= 0.02) return null;
-  return { polygon: points, confidence, label, corners: parseCorners(raw.corners) };
+  // Missing/malformed defaults to true (flag as possibly truncated) —
+  // only an explicit `false` is trusted as "confidently the full wall."
+  const possiblyTruncated = raw.possiblyTruncated === false ? false : true;
+  return { polygon: points, confidence, label, corners: parseCorners(raw.corners), possiblyTruncated };
 }
 
 /**
@@ -156,6 +170,8 @@ Treat each wall as an INDEPENDENT region — do not attempt to correct for persp
 
 For EACH wall, additionally judge whether it is viewed at a significant ANGLE rather than roughly straight-on (i.e. the camera is not directly facing it, so the wall appears as a non-rectangular, perspective-foreshortened shape — one side visibly taller/wider than the other). If — and ONLY if — the wall is genuinely angled AND you are confident about its true shape, also provide "corners": exactly 4 points marking the wall's real top-left, top-right, bottom-right, and bottom-left corners as they actually appear in the photo (in that order) — this will usually be a non-rectangular quadrilateral, that's expected and correct for an angled wall. If the wall is roughly straight-on, or you're not confident of its exact corners, set "corners" to null — do not force a quad onto a wall that doesn't need one, and do not guess corners you're unsure of.
 
+For EACH wall, additionally judge whether the photo likely captures the wall's FULL physical extent, or only PART of it (the wall keeps going but the camera's frame cut it off). Look for real evidence either way: a visible corner line, a shadow, an adjoining wall, or a ceiling/floor line converging exactly where the wall's outline ends means the full wall is likely captured (set "possiblyTruncated" to false). If instead an edge of your outline sits at the photo's outer border with no such corner evidence — the wall surface just continues right up to the edge of the frame with nothing marking a real end — set "possiblyTruncated" to true. When genuinely unsure, set it to true — never assume the full wall is shown without real visual evidence.
+
 If no clear, mostly-unobstructed wall is visible at all, set wallVisible to false, return an empty walls array, and briefly say why in notes — do not guess a polygon.
 
 Respond with ONLY this JSON shape, no other text:
@@ -166,7 +182,8 @@ Respond with ONLY this JSON shape, no other text:
       "confidence": number (0 to 1),
       "label": string | null (a short human label if it's obvious, e.g. "left wall", "back wall" — null if not obvious),
       "polygon": [{ "x": number, "y": number }, ...],
-      "corners": [{ "x": number, "y": number }, ...] | null (exactly 4 points: top-left, top-right, bottom-right, bottom-left — ONLY when genuinely angled and confident, else null)
+      "corners": [{ "x": number, "y": number }, ...] | null (exactly 4 points: top-left, top-right, bottom-right, bottom-left — ONLY when genuinely angled and confident, else null),
+      "possiblyTruncated": boolean (true unless you have real visual evidence the full wall is captured)
     }
   ],
   "notes": string | null

@@ -695,6 +695,62 @@ cost/reliability tradeoff, not a guarantee. This is a per-generation
 reliability mitigation, not a claim that irregular-shape coverage is now
 100% solved.
 
+## Wall-truncation honesty + real-dimension entry (2026-09-09)
+
+Discussed before building (per the user's request) — see the design
+recap in the memory file for the full back-and-forth. Core problem: when
+a wall's real boundary extends beyond the photo (a side wall cut off by
+the frame, not a real corner), geometry alone can't tell which case
+applies, and area/cost estimates + the future repeat-pattern sheet-count
+work both need a real physical dimension to work from.
+
+**Detection — `wall-detection.ts`:** each candidate now carries
+`possiblyTruncated: boolean`, judged in the SAME detection call (no extra
+API cost). The model looks for real evidence — a corner line, a shadow,
+an adjoining wall, a ceiling/floor convergence — where its outline ends;
+absent that evidence, it flags true. Missing/malformed data defaults to
+`true` (flag it) — never assume the full wall is captured without
+evidence.
+
+**Schema — `HmSurface`:** added `possiblyTruncated Boolean @default(false)`.
+Reused the ALREADY-EXISTING but previously entirely unused
+`widthMeters`/`heightMeters`/`areaSqm` fields from the Phase 1 schema for
+the optional real-dimension entry — no new dimension fields needed.
+
+**New endpoint:** `PATCH .../surfaces/[surfaceId]/dimensions` — sets or
+clears `widthMeters`/`heightMeters` (UI takes feet, India convention;
+stored as meters, schema-literal unit, same as `HmLead.estimatedAreaSqm`),
+computing `areaSqm` when both are present. Deliberately separate from the
+shape-reshape PATCH (which always requires `points`) since dimension
+entry is an orthogonal fact about the physical wall, not the traced
+outline.
+
+**UI — `RoomView.tsx`'s `WallDimensionsNotice`:** renders nothing unless
+`possiblyTruncated` is true. Shows a plain warning + an optional
+width/height (ft) entry form; once set, shows "Wall size: X ft × Y ft"
+with an edit link. Never blocks anything — a wall with no dimensions set
+just keeps estimating from the visible photo portion, exactly as before
+this existed. `CostEstimator` now accepts `initialAreaSqft` and
+auto-fills the area field from the wall's known `areaSqm` once set
+(converted to sqft) — still fully editable, never overwrites something
+the user already typed (state adjusted during render, not via a
+`useEffect` calling setState, to avoid a cascading-render lint issue).
+
+Live-tested end to end in the actual browser (not just via script): a
+synthetic room where one wall's left edge has no corner evidence (main
+wall) and both candidates' remaining frame-touching edges genuinely lack
+corner evidence too — detection correctly flagged BOTH as
+`possiblyTruncated: true`, matching the honest reality of that image.
+Confirmed the warning renders, the width/height (12 ft × 9 ft) form
+saves correctly via the new endpoint, "Wall size: 12 ft × 9 ft" displays
+with a working Edit link, and the cost estimator auto-filled 108 sqft
+(12×9) with the correct total.
+
+**Deliberately out of scope for this pass** (per user's explicit
+sequencing): the wallpaper sheet-size/repeat-pattern scaling work itself
+— this only builds the shared dimension-entry foundation that work will
+extend, not sheet-count calculation or repeat-pattern-aware rendering.
+
 ## Locked decisions (2026-09-07)
 
 | Decision | Choice | Why |
@@ -802,20 +858,16 @@ usage data — revisit if/when the two need to diverge).
   case 2), and changes to visualization rendering (true-scale tiling vs.
   scale-to-fit). Needs its own scoping discussion before building, same as
   every other structural change this session.
-- **Walls whose true length isn't visible in the photo** (flagged
-  2026-09-09) — when a selected wall's real boundary extends beyond the
-  photo frame (cut off by the image edge, not a real corner), the system
-  currently has no way to know the wall's true length, so it can't
-  correctly scale a repeat-pattern material or give an honest area/cost
-  estimate — and doesn't even detect or flag this case today. User
-  proposed two mitigations: (a) let the user manually enter the wall's
-  real dimensions when this is detected, and/or (b) warn explicitly that
-  the output/estimate won't be fully accurate, treating the image-frame
-  edge as an assumed (not real) boundary. Needs a heuristic in
-  `wall-detection.ts` distinguishing "polygon edge is a real corner" vs.
-  "polygon edge coincides with the image frame" (likely truncated), then a
-  decision on which mitigation(s) to build. Needs its own scoping
-  discussion before implementation.
+- ~~Walls whose true length isn't visible in the photo~~ — **shipped
+  2026-09-09**, see "Wall-truncation honesty + real-dimension entry"
+  above (detection flag + warning + optional real-dimension entry,
+  reusing the wallpaper sheet-scaling item's dimension needs).
+- **UI polish: room-photo selector card has rounded corners** (noted
+  2026-09-09) — `RoomView.tsx`'s image container uses `rounded-2xl` +
+  `overflow-hidden`, which can make it fiddly to place/grab a polygon
+  vertex exactly at one of the image's 4 corners (the rounding clips the
+  interactive area right at the corner). Low priority, not yet in the
+  user's build sequence.
 
 ## Known environment issue (pre-existing, not caused by this work — resolved)
 

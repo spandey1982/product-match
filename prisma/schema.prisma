@@ -1283,6 +1283,12 @@ model HmSurface {
   // CV-detected region (polygon/bbox) as JSON, null until analyzed.
   geometryData String?
 
+  // Real-world dimensions (meters, schema-literal unit — same convention
+  // as HmLead.estimatedAreaSqm; UI shows feet, India convention). Null
+  // means "unknown — estimate from the visible photo portion only."
+  // Previously-unused placeholder fields from the Phase 1 schema, now
+  // wired up (2026-09-09) by the wall-truncation honesty feature below —
+  // also feeds the future repeat-pattern sheet-count work.
   widthMeters  Float?
   heightMeters Float?
   areaSqm      Float?
@@ -1291,6 +1297,15 @@ model HmSurface {
   // estimate as a measurement (Constitution Principle 6, §11).
   measurementSource     String @default("ai_estimated")
   measurementConfidence Float?
+
+  // True when wall-detection isn't confident the full physical wall was
+  // captured in the photo (its edge coincides with the image frame
+  // rather than a visible real corner/ceiling-floor convergence) —
+  // 2026-09-09, "never manufacture certainty" applied to wall length.
+  // Never blocks anything: triggers an honest warning + an optional
+  // widthMeters/heightMeters entry, nothing more. Always false for a
+  // manually-drawn shape (no AI judgment exists to set it true).
+  possiblyTruncated Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

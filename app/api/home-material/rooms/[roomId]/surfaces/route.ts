@@ -50,7 +50,7 @@ export async function POST(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const { points, label, measurementSource, measurementConfidence, corners } = await req.json();
+  const { points, label, measurementSource, measurementConfidence, corners, possiblyTruncated } = await req.json();
 
   if (
     !Array.isArray(points) ||
@@ -77,6 +77,10 @@ export async function POST(
       geometryData: JSON.stringify(validCorners ? { points, corners: validCorners } : { points }),
       measurementSource: source,
       measurementConfidence: source === "ai_estimated" && typeof measurementConfidence === "number" ? measurementConfidence : null,
+      // Only trust the AI's own judgment — a manual/from-scratch trace
+      // has no such signal, so it defaults to false (schema default)
+      // rather than flagging something no model ever assessed.
+      possiblyTruncated: source === "ai_estimated" && possiblyTruncated === true,
     },
   });
 
