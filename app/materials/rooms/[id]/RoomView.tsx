@@ -9,7 +9,7 @@ import { parseArray } from "@/lib/serialize";
 
 type Point = { x: number; y: number };
 
-type WallCandidate = { polygon: Point[]; confidence: number; label: string | null };
+type WallCandidate = { polygon: Point[]; confidence: number; label: string | null; corners: Point[] | null };
 
 type Surface = {
   id: string;
@@ -47,6 +47,7 @@ type Visualization = {
   errorMessage: string | null;
   mode?: string;
   productId?: string | null;
+  perspectiveCorrected?: boolean;
   // "Honest overview" (2026-09-09) — raw Prisma row fields, JSON-string
   // arrays (lib/serialize.ts), parsed client-side by OverviewCard below.
   overviewStatus?: string;
@@ -446,6 +447,11 @@ export function RoomView({ roomId }: { roomId: string }) {
   const [draftPoints, setDraftPoints] = useState<Point[] | null>(null);
   const [draftOrigin, setDraftOrigin] = useState<"ai" | "manual" | null>(null);
   const [draftConfidence, setDraftConfidence] = useState<number | null>(null);
+  // Sub-problem B (2026-09-09): the AI's perspective quad, carried along
+  // only until the user manually adjusts the outline — see
+  // handleVertexPointerDown, which clears this the moment a vertex is
+  // dragged, since an edited outline makes the original quad suspect too.
+  const [draftCorners, setDraftCorners] = useState<Point[] | null>(null);
   const [editingSurfaceId, setEditingSurfaceId] = useState<string | null>(null);
   const [manualDrawing, setManualDrawing] = useState(false);
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
@@ -546,6 +552,7 @@ export function RoomView({ roomId }: { roomId: string }) {
     setDraftPoints(null);
     setDraftOrigin(null);
     setDraftConfidence(null);
+    setDraftCorners(null);
     setEditingSurfaceId(null);
     setManualDrawing(false);
     setActiveCandidateIndex(null);
@@ -556,6 +563,7 @@ export function RoomView({ roomId }: { roomId: string }) {
     setDraftPoints(c.polygon);
     setDraftOrigin("ai");
     setDraftConfidence(c.confidence);
+    setDraftCorners(c.corners);
     setLabel(c.label ?? "");
     setEditingSurfaceId(null);
     setManualDrawing(false);
@@ -644,6 +652,12 @@ export function RoomView({ roomId }: { roomId: string }) {
     e.stopPropagation();
     (e.target as Element).setPointerCapture?.(e.pointerId);
     setDraggingIndex(index);
+    // Once the user starts correcting the AI's outline by hand, the AI's
+    // perspective quad becomes suspect too (it was computed from the same
+    // detection pass) — drop it rather than risk warping onto a
+    // now-stale quad. Falls back to the standard flat-mask/AI-generation
+    // path, same as if no quad had ever been detected.
+    setDraftCorners(null);
   }
 
   function handleContainerPointerMove(e: React.PointerEvent) {
@@ -683,6 +697,7 @@ export function RoomView({ roomId }: { roomId: string }) {
             label: label || undefined,
             measurementSource: draftOrigin === "ai" ? "ai_estimated" : "user_confirmed",
             measurementConfidence: draftOrigin === "ai" ? draftConfidence : undefined,
+            corners: draftCorners ?? undefined,
           }),
         });
         const data = await parseJsonSafe(res);
@@ -1109,6 +1124,14 @@ export function RoomView({ roomId }: { roomId: string }) {
                     >
                       {vis.mode === "product_accurate" ? "Product-accurate — from your uploaded photo" : "Quick preview — AI interpretation"}
                     </span>
+                    {vis.perspectiveCorrected && (
+                      <span
+                        className="inline-block text-xs font-medium px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 ml-1.5"
+                        title="This wall was viewed at an angle — the material was mapped onto its real perspective using its exact geometry, not an AI guess."
+                      >
+                        Perspective-corrected
+                      </span>
+                    )}
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={vis.outputImageUrl} alt="Preview" className="w-full rounded-xl border border-gray-200" />
                     <OverviewCard

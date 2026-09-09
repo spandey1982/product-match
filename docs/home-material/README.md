@@ -435,9 +435,10 @@ sub-problems for phased delivery:
 
 - **A** — multi-wall/shared-corner recognition
 - **B** — perspective/angle-correct projection (homography) — genuinely
-  hard new CV work, needs an isolated prototype before a full build
+  hard new CV work; prototyped in isolation, then **wired in 2026-09-09**
+  (see below)
 - **C** — cross-wall pattern continuity across a shared corner — depends
-  on B
+  on B, **still paused**
 - **D** — wide-angle/panoramic multi-wall (3+ walls, lens curvature) —
   recommended permanent deferral; the guided straight-on capture avoids
   this scenario entirely
@@ -445,14 +446,92 @@ sub-problems for phased delivery:
   mostly already architecturally possible; **lightweight version shipped
   2026-09-09** (see below)
 - **F** — proactive "these go well together" combination recommendations
-  — can slot in alongside B/C
+  — can slot in alongside B/C, **still paused**
 - **G** — mandatory post-generation "honest overview" with alternatives,
   strict tone requirements — **shipped 2026-09-09** (see below)
 
-User's explicit choice: **"Start with G + lightweight E"**. B, C, D, F
-remain paused — do not start any of them without further explicit
-go-ahead, per the same "proper discussion first" instruction that
-triggered this whole breakdown.
+User's explicit choice: **"Start with G + lightweight E"**, then, after
+reviewing a prototype comparison image, **"Go ahead and wire it in"** for
+B. C, D, F remain paused — do not start any of them without further
+explicit go-ahead, per the same "proper discussion first" instruction
+that triggered this whole breakdown.
+
+### B — Perspective/angle-correct projection, wired 2026-09-09
+
+Prototyped in isolation first (a scratchpad script, homography math
+against a synthetic angled test photo with hand-supplied corners) —
+confirmed a true projective warp reads as genuinely perspective-correct
+(grid lines converge to match the quad) vs. the naive flat-resize-and-clip
+baseline (uniform grid, reads as a pasted sticker). User reviewed the
+comparison and said "go ahead and wire it in."
+
+**wall-detection.ts**: each candidate may now carry an optional `corners`
+field — a 4-point quad (TL/TR/BR/BL) — populated ONLY when the model
+judges the wall genuinely angled AND is confident of the exact shape;
+null for the (overwhelmingly common) straight-on case or any uncertainty.
+Never a guessed quad (Constitution Principle 4).
+
+**visualization.ts**: when a confident quad AND a real reference texture
+(a custom upload) are both available, `runQuickPreviewVisualization`
+takes a SEPARATE, fully deterministic path — no Gemini image-generation
+call at all:
+1. Warp the real reference pixels onto the wall's exact quad via a
+   homography (4-point DLT solve, 3x3 inverse, inverse-mapped bilinear
+   sampling — plain arithmetic, `sharp` only for image I/O, no new
+   dependency).
+2. Approximate the room's real lighting with a coarse shading map (a
+   heavily blurred greyscale of the ORIGINAL photo, normalized to the
+   wall's own mean brightness, multiplied onto the warped texture,
+   clamped to a modest range) — a deterministic relighting technique, not
+   an AI guess, since trusting an AI model to redraw the pattern
+   correctly would undermine the whole point of doing exact geometry
+   ourselves.
+3. Intersect the warped result's alpha with the outline polygon's mask
+   (so an obstruction routed around in the outline — a window, a light
+   switch — stays protected even where the quad geometrically overlaps
+   it), feather the combined edge the same way the existing pipeline
+   does, composite onto the original photo, upload.
+
+Falls back to the existing Gemini path on any failure (degenerate quad,
+missing reference image, etc.) or whenever a quad/reference isn't
+available — fully backward compatible with the common case. New
+`HmVisualization.perspectiveCorrected` boolean + `provider: "deterministic"`
+/ `model: "homography+shading-v1"` make this path fully traceable in the
+domain's own data, distinct from a Gemini-generated row. UI shows a
+"Perspective-corrected" badge next to the existing product-accurate
+badge when this path was used.
+
+**Scope boundary (known, deliberate):** no corner-editing UI yet — the
+AI's own `corners` are used as-is; if the user manually drags any outline
+vertex afterward, `corners` is dropped entirely (RoomView.tsx's
+`handleVertexPointerDown`) and the flow falls back to the standard path,
+since a hand-edited outline makes the original quad's validity suspect
+too. A future iteration could let users adjust the quad directly, but
+that's out of scope for this pass.
+
+**A real bug found and fixed while wiring this in:** `sharp`'s
+`.removeAlpha().joinChannel(buf, {raw:{...}})` silently fails to attach
+the joined channel (stays at 3 channels, alpha effectively lost) when the
+base image has no alpha channel going in — discovered because the first
+live-tested output came back with the entire background outside the
+warped wall rendered solid black. `.ensureAlpha()` before `.joinChannel()`
+works correctly (confirmed by isolating the exact call pattern in a
+throwaway script) and matches the pattern the existing Gemini-path
+compositing already used — fixed by swapping `.removeAlpha()` for
+`.ensureAlpha()` in the new code.
+
+Live-tested 2026-09-09: the AI's own judgment of a synthetic angled test
+photo was genuinely inconsistent between runs (once split it into two
+"walls" with corners populated, another run correctly judged both regions
+"perfectly rectangular" and declined to guess corners at all — the
+"never manufacture certainty" behavior working as intended, though it
+means this particular synthetic image isn't a reliable trigger for the
+new path). To directly exercise and validate the deterministic code path
+itself, a hand-supplied quad matching the drawn geometry was used instead
+— confirmed `provider: "deterministic"`, `model: "homography+shading-v1"`,
+`perspectiveCorrected: true`, and the final composited image showed the
+full room untouched outside the wall with a correctly perspective-warped,
+plausibly-shaded checkerboard inside it.
 
 ### G — Honest overview, shipped 2026-09-09
 

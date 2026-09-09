@@ -1496,11 +1496,19 @@ model HmVisualization {
   // queued | processing | completed | failed
   status String @default("queued")
 
-  provider String? // "gemini" | "vertex" | future
+  provider String? // "gemini" | "vertex" | "deterministic" | future
   model    String?
 
   generationMs Int?
   errorMessage String?
+
+  // True when the wall was detected at a significant angle (a confident
+  // 4-corner perspective quad, not just an outline) and the reference
+  // texture was warped onto it via a deterministic homography — not an
+  // AI-generated edit — before compositing (sub-problem B, 2026-09-09
+  // prototype). provider/model above read "deterministic" /
+  // "homography+shading-v1" for these rows, never a Gemini model id.
+  perspectiveCorrected Boolean @default(false)
 
   // "Honest overview" — mandatory post-generation opinion pass over the
   // FINAL composited image (see docs/home-material/README.md, "Honest

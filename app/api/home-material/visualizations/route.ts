@@ -37,6 +37,10 @@ export async function POST(req: NextRequest) {
   if (!Array.isArray(points) || points.length < 3) {
     return NextResponse.json({ error: "This wall has no selected region yet" }, { status: 400 });
   }
+  // Optional perspective quad (sub-problem B) — present only when the
+  // wall was confidently detected at an angle; null for the common
+  // straight-on case, same as always.
+  const corners = Array.isArray(geometry?.corners) && geometry.corners.length === 4 ? geometry.corners : null;
 
   // A product with a real uploaded reference photo gets product-accurate
   // treatment (the actual material, not an AI-imagined approximation of a
@@ -70,6 +74,7 @@ export async function POST(req: NextRequest) {
     // Custom-uploaded swatches carry their real photo here (curated demo
     // swatches don't have one) — real pixels beat a text description.
     referenceImageUrl: product.textureAssetUrl,
+    corners,
     hmUserId: session.id,
     visualizationId: visualization.id,
   });
@@ -116,6 +121,8 @@ export async function POST(req: NextRequest) {
       outputImageUrl: result.url,
       model: result.model,
       mode: result.mode,
+      provider: result.perspectiveCorrected ? "deterministic" : "gemini",
+      perspectiveCorrected: result.perspectiveCorrected,
       overviewStatus: "error" in overview ? "failed" : "completed",
       overviewOpening: "error" in overview ? null : overview.opening,
       overviewHighlights: "error" in overview ? "[]" : serializeArray(overview.highlights),

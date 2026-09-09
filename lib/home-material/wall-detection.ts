@@ -25,6 +25,18 @@
  * STRUCTURED FACTS ONLY (polygons + confidences + an explicit "not
  * visible" signal) — this function makes no commercial/recommendation
  * judgment, per the AI-boundaries rule that CV doesn't decide suitability.
+ *
+ * Sub-problem B (perspective/angle-correct projection) wiring, 2026-09-09:
+ * each candidate MAY also carry a 4-point `corners` quad (top-left,
+ * top-right, bottom-right, bottom-left, in that order) tracing just the
+ * wall's true corners as they appear in the photo — a non-rectangular
+ * quad when the wall is viewed at an angle. This is populated ONLY when
+ * the model judges the wall genuinely angled and is confident in the
+ * quad; null otherwise (a straight-on wall, or a wall too obstructed to
+ * tell) — never a guessed quad, same "never manufacture certainty" rule
+ * as the rest of this file. Consumed by lib/home-material/visualization.ts
+ * to warp a real reference texture onto the wall's actual perspective via
+ * homography, instead of the flat mask alone.
  */
 import { recordAiUsage } from "@/lib/ai-usage/record";
 
@@ -42,6 +54,8 @@ export interface WallCandidate {
   polygon: Point[];
   confidence: number;
   label: string | null;
+  /** 4-point perspective quad (TL, TR, BR, BL) — null unless the wall is genuinely angled and confidently quadrilateral. See file header. */
+  corners: Point[] | null;
 }
 
 export interface WallDetectionResult {
@@ -54,6 +68,7 @@ interface RawCandidate {
   confidence?: unknown;
   polygon?: unknown;
   label?: unknown;
+  corners?: unknown;
 }
 
 interface RawDetection {
@@ -78,6 +93,18 @@ function polygonArea(points: Point[]): number {
 }
 
 /**
+ * Validates a candidate's optional 4-point perspective quad. Same "never
+ * manufacture certainty" rule as the outline polygon: a malformed or
+ * degenerate quad is dropped to null (flat-mask fallback), never patched.
+ */
+function parseCorners(raw: unknown): Point[] | null {
+  if (!Array.isArray(raw) || raw.length !== 4) return null;
+  if (!raw.every((p) => p && isFraction(p.x) && isFraction(p.y))) return null;
+  const points = raw.map((p) => ({ x: p.x, y: p.y })) as Point[];
+  return polygonArea(points) > 0.01 ? points : null;
+}
+
+/**
  * Validates one raw candidate polygon. Never trusts a polygon that's out
  * of bounds, too small, or malformed — Constitution Principle 4 ("never
  * manufacture certainty"): a bad polygon is dropped, never silently
@@ -97,7 +124,7 @@ function parseCandidate(raw: RawCandidate): WallCandidate | null {
       : null;
 
   if (!points || polygonArea(points) <= 0.02) return null;
-  return { polygon: points, confidence, label };
+  return { polygon: points, confidence, label, corners: parseCorners(raw.corners) };
 }
 
 /**
@@ -127,6 +154,8 @@ Identify EVERY distinct, mostly-unobstructed flat WALL surface suitable for appl
 
 Treat each wall as an INDEPENDENT region — do not attempt to correct for perspective or align polygons precisely at a shared corner; a rough, honest outline per wall is enough.
 
+For EACH wall, additionally judge whether it is viewed at a significant ANGLE rather than roughly straight-on (i.e. the camera is not directly facing it, so the wall appears as a non-rectangular, perspective-foreshortened shape — one side visibly taller/wider than the other). If — and ONLY if — the wall is genuinely angled AND you are confident about its true shape, also provide "corners": exactly 4 points marking the wall's real top-left, top-right, bottom-right, and bottom-left corners as they actually appear in the photo (in that order) — this will usually be a non-rectangular quadrilateral, that's expected and correct for an angled wall. If the wall is roughly straight-on, or you're not confident of its exact corners, set "corners" to null — do not force a quad onto a wall that doesn't need one, and do not guess corners you're unsure of.
+
 If no clear, mostly-unobstructed wall is visible at all, set wallVisible to false, return an empty walls array, and briefly say why in notes — do not guess a polygon.
 
 Respond with ONLY this JSON shape, no other text:
@@ -136,7 +165,8 @@ Respond with ONLY this JSON shape, no other text:
     {
       "confidence": number (0 to 1),
       "label": string | null (a short human label if it's obvious, e.g. "left wall", "back wall" — null if not obvious),
-      "polygon": [{ "x": number, "y": number }, ...]
+      "polygon": [{ "x": number, "y": number }, ...],
+      "corners": [{ "x": number, "y": number }, ...] | null (exactly 4 points: top-left, top-right, bottom-right, bottom-left — ONLY when genuinely angled and confident, else null)
     }
   ],
   "notes": string | null
