@@ -2,47 +2,63 @@
  * AI wall detection — the Computer Vision boundary from
  * docs/home-material/README.md's AI-boundaries table, pulled forward from
  * "future" into the fast-lane demo scope (2026-09-07 pivot, upgraded to
- * polygon outlines 2026-09-07). Scoped narrowly: a single photo taken
- * standing directly facing a wall ("least complex" case) — NOT general
- * multi-wall/perspective room understanding, which stays future work (see
- * the domain brief's "flagged as shortcut" section for why).
+ * polygon outlines 2026-09-07, upgraded to multi-wall candidates
+ * 2026-09-09 — "lightweight E" from the multi-wall discussion). Still
+ * scoped narrowly: a single photo taken standing roughly facing the
+ * wall(s) ("least complex" case) — this returns each visible wall as an
+ * INDEPENDENT candidate with no perspective-correction and no cross-wall
+ * continuity guarantee. Genuine multi-wall geometry (shared corners,
+ * angle/perspective correction, pattern continuity across a corner) is
+ * explicitly out of scope here — see the domain brief's sub-problems
+ * A/B/C, deferred pending a dedicated prototype.
  *
- * Returns a POLYGON outline (not a rectangle) so the selection can hug the
+ * Returns POLYGON outlines (not rectangles) so each selection can hug its
  * wall's real boundary — ceiling/floor/corner lines, door/window edges —
  * instead of a generic axis-aligned box. This is a preview only: the
- * caller shows it as an editable draft (draggable vertices) before the
- * user confirms and it's persisted as an HmSurface.
+ * caller shows each candidate as an editable draft (draggable vertices)
+ * before the user confirms one and it's persisted as an HmSurface.
  *
  * Independently implemented — not a call into lib/garment-intelligence,
  * which is fashion/garment-specific — but the same proven pattern: one
  * generateContent call, image + prompt in, structured JSON out
  * (responseMimeType: "application/json"), never prose. Output is
- * STRUCTURED FACTS ONLY (a polygon + a confidence + explicit "not visible"
- * signal) — this function makes no commercial/recommendation judgment,
- * per the AI-boundaries rule that CV doesn't decide suitability.
+ * STRUCTURED FACTS ONLY (polygons + confidences + an explicit "not
+ * visible" signal) — this function makes no commercial/recommendation
+ * judgment, per the AI-boundaries rule that CV doesn't decide suitability.
  */
 import { recordAiUsage } from "@/lib/ai-usage/record";
 
 const MODEL_ID = "gemini-2.5-flash";
 const MIN_POINTS = 3;
 const MAX_POINTS = 12;
+const MAX_CANDIDATES = 5;
 
 export interface Point {
   x: number;
   y: number;
 }
 
+export interface WallCandidate {
+  polygon: Point[];
+  confidence: number;
+  label: string | null;
+}
+
 export interface WallDetectionResult {
   wallVisible: boolean;
-  confidence: number;
-  polygon: Point[] | null;
+  candidates: WallCandidate[];
   notes: string | null;
+}
+
+interface RawCandidate {
+  confidence?: unknown;
+  polygon?: unknown;
+  label?: unknown;
 }
 
 interface RawDetection {
   wallVisible?: unknown;
-  confidence?: unknown;
-  polygon?: unknown;
+  walls?: unknown;
   notes?: unknown;
 }
 
@@ -62,14 +78,14 @@ function polygonArea(points: Point[]): number {
 }
 
 /**
- * Validates the model's raw JSON into a trustworthy result. Never trusts a
- * polygon that's out of bounds, too small, or malformed — Constitution
- * Principle 4 ("never manufacture certainty"): a bad polygon is treated as
- * "not detected," never silently patched into something plausible-looking.
+ * Validates one raw candidate polygon. Never trusts a polygon that's out
+ * of bounds, too small, or malformed — Constitution Principle 4 ("never
+ * manufacture certainty"): a bad polygon is dropped, never silently
+ * patched into something plausible-looking.
  */
-function parseDetection(raw: RawDetection): WallDetectionResult {
+function parseCandidate(raw: RawCandidate): WallCandidate | null {
   const confidence = typeof raw.confidence === "number" && raw.confidence >= 0 && raw.confidence <= 1 ? raw.confidence : 0;
-  const notes = typeof raw.notes === "string" && raw.notes.trim() ? raw.notes.trim() : null;
+  const label = typeof raw.label === "string" && raw.label.trim() ? raw.label.trim() : null;
 
   const rawPoints = Array.isArray(raw.polygon) ? raw.polygon : null;
   const points: Point[] | null =
@@ -80,30 +96,53 @@ function parseDetection(raw: RawDetection): WallDetectionResult {
       ? rawPoints.map((p) => ({ x: p.x, y: p.y }))
       : null;
 
-  const validPolygon = points && polygonArea(points) > 0.02;
-
-  if (!raw.wallVisible || !validPolygon) {
-    return { wallVisible: false, confidence, polygon: null, notes };
-  }
-
-  return { wallVisible: true, confidence, polygon: points, notes };
+  if (!points || polygonArea(points) <= 0.02) return null;
+  return { polygon: points, confidence, label };
 }
 
-const PROMPT = `You are analyzing a photo of a room, taken by someone standing directly facing a wall, parallel to it (a straight-on shot, not an angled one).
+/**
+ * Validates the model's raw JSON into a trustworthy result — a list of
+ * independent wall candidates (lightweight multi-wall, 2026-09-09). Each
+ * candidate is validated on its own; a malformed candidate is dropped
+ * rather than rejecting the whole response.
+ */
+function parseDetection(raw: RawDetection): WallDetectionResult {
+  const notes = typeof raw.notes === "string" && raw.notes.trim() ? raw.notes.trim() : null;
+  const rawWalls = Array.isArray(raw.walls) ? raw.walls : [];
+  const candidates = rawWalls
+    .map((w) => parseCandidate(w as RawCandidate))
+    .filter((c): c is WallCandidate => c !== null)
+    .slice(0, MAX_CANDIDATES);
 
-Trace the OUTLINE of the single largest contiguous flat WALL surface suitable for applying wallpaper or paint, as a closed polygon that hugs its real boundary — following the ceiling line, floor line, and side corners where the wall actually ends. Exclude furniture, windows, doors, mirrors, artwork/frames, light switches/outlets, the floor, and the ceiling from the polygon — if one of these interrupts the wall's boundary, route the polygon around it using extra vertices (up to 12 total); if that's impractical, trace the simpler outer boundary and mention the obstruction in notes instead of guessing.
+  if (!raw.wallVisible || candidates.length === 0) {
+    return { wallVisible: false, candidates: [], notes };
+  }
 
-If no clear, mostly-unobstructed wall is visible (e.g. the photo is not a straight-on wall shot), set wallVisible to false and briefly say why in notes — do not guess a polygon.
+  return { wallVisible: true, candidates, notes };
+}
+
+const PROMPT = `You are analyzing a photo of a room, taken by someone standing roughly facing the wall(s) they want to redecorate.
+
+Identify EVERY distinct, mostly-unobstructed flat WALL surface suitable for applying wallpaper or paint — there may be just one, or several (e.g. two walls meeting at a corner, both visible in the shot). For EACH wall, trace its OUTLINE as a closed polygon that hugs its real boundary — following the ceiling line, floor line, and corners where the wall actually ends. Exclude furniture, windows, doors, mirrors, artwork/frames, light switches/outlets, the floor, and the ceiling from each polygon — if one of these interrupts a wall's boundary, route the polygon around it using extra vertices (up to 12 total per wall); if that's impractical, trace the simpler outer boundary and mention the obstruction in notes instead of guessing.
+
+Treat each wall as an INDEPENDENT region — do not attempt to correct for perspective or align polygons precisely at a shared corner; a rough, honest outline per wall is enough.
+
+If no clear, mostly-unobstructed wall is visible at all, set wallVisible to false, return an empty walls array, and briefly say why in notes — do not guess a polygon.
 
 Respond with ONLY this JSON shape, no other text:
 {
   "wallVisible": boolean,
-  "confidence": number (0 to 1),
-  "polygon": [{ "x": number, "y": number }, ...] | null,
+  "walls": [
+    {
+      "confidence": number (0 to 1),
+      "label": string | null (a short human label if it's obvious, e.g. "left wall", "back wall" — null if not obvious),
+      "polygon": [{ "x": number, "y": number }, ...]
+    }
+  ],
   "notes": string | null
 }
 
-Polygon points are fractions of the image (0 to 1, top-left origin), listed in order around the shape (clockwise or counter-clockwise, consistently) — between 3 and 12 points. Omit or null the polygon when wallVisible is false.`;
+Polygon points are fractions of the image (0 to 1, top-left origin), listed in order around the shape (clockwise or counter-clockwise, consistently) — between 3 and 12 points per wall. Return up to 5 walls, ordered largest/most prominent first. Return an empty "walls" array when wallVisible is false.`;
 
 export async function detectWallRegion(roomImageUrl: string, hmUserId: string): Promise<WallDetectionResult | { error: string }> {
   const apiKey = process.env.GEMINI_API_KEY;

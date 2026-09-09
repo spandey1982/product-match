@@ -1502,6 +1502,25 @@ model HmVisualization {
   generationMs Int?
   errorMessage String?
 
+  // "Honest overview" — mandatory post-generation opinion pass over the
+  // FINAL composited image (see docs/home-material/README.md, "Honest
+  // overview"). Tracked separately from status/errorMessage above so a
+  // failed overview never hides an otherwise-successful preview. Never a
+  // bare numeric score shown to the customer — natural language only,
+  // tone-constrained (positive opening, hedged doubt, never negative).
+  overviewStatus String @default("pending") // pending | completed | failed | skipped
+
+  overviewOpening        String?
+  overviewHighlights     String  @default("[]") // JSON array (lib/serialize.ts)
+  overviewConsiderations String  @default("[]") // JSON array (lib/serialize.ts) — always softly hedged, never negative
+  overviewClosing        String?
+
+  // Deterministically chosen HmProduct ids (lib/serialize.ts JSON array) —
+  // never AI-invented, per Constitution Principle 7 ("product database
+  // defines the product"). Always populated alongside the overview,
+  // regardless of how well the primary result scored.
+  overviewAlternativeProductIds String @default("[]")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

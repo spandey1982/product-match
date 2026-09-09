@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getHmUserSession } from "@/lib/home-material/auth";
 import { runQuickPreviewVisualization } from "@/lib/home-material/visualization";
+import { generateVisualizationOverview, pickAlternativeProductIds } from "@/lib/home-material/overview";
+import { serializeArray } from "@/lib/serialize";
 
 export async function POST(req: NextRequest) {
   const session = await getHmUserSession();
@@ -22,7 +24,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const product = await db.hmProduct.findUnique({ where: { id: productId } });
+  const product = await db.hmProduct.findUnique({
+    where: { id: productId },
+    include: { material: { select: { category: true } } },
+  });
   if (!product) {
     return NextResponse.json({ error: "Swatch not found" }, { status: 404 });
   }
@@ -77,6 +82,33 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ visualization: updated, error: result.error }, { status: 502 });
   }
 
+  // Deterministic alternatives — chosen from the catalogue, never
+  // AI-invented (Constitution Principle 7). Computed before the AI
+  // overview call so it's available even if that call fails.
+  const otherProducts = await db.hmProduct.findMany({
+    where: {
+      id: { not: product.id },
+      OR: [{ uploadedByHmUserId: null }, { uploadedByHmUserId: session.id }],
+    },
+    select: { id: true, material: { select: { category: true } } },
+  });
+  const alternativeProductIds = pickAlternativeProductIds(
+    product.id,
+    product.material?.category ?? null,
+    otherProducts.map((p) => ({ id: p.id, category: p.material?.category ?? null }))
+  );
+
+  // Mandatory "honest overview" pass over the FINAL composited image (see
+  // docs/home-material/README.md) — a soft feature: its failure never
+  // hides an otherwise-successful preview, so this is awaited but never
+  // allowed to fail the request.
+  const overview = await generateVisualizationOverview({
+    outputImageUrl: result.url,
+    materialName: product.name,
+    hmUserId: session.id,
+    visualizationId: visualization.id,
+  });
+
   const updated = await db.hmVisualization.update({
     where: { id: visualization.id },
     data: {
@@ -84,6 +116,12 @@ export async function POST(req: NextRequest) {
       outputImageUrl: result.url,
       model: result.model,
       mode: result.mode,
+      overviewStatus: "error" in overview ? "failed" : "completed",
+      overviewOpening: "error" in overview ? null : overview.opening,
+      overviewHighlights: "error" in overview ? "[]" : serializeArray(overview.highlights),
+      overviewConsiderations: "error" in overview ? "[]" : serializeArray(overview.considerations),
+      overviewClosing: "error" in overview ? null : overview.closing,
+      overviewAlternativeProductIds: serializeArray(alternativeProductIds),
     },
   });
 

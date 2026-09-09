@@ -415,16 +415,107 @@ resurfaces as an actual complaint rather than a known minor artifact.
 
 ## Current priorities, locked 2026-09-08
 
-1. **Multi-wall detection/selection** — explicitly paused pending a
-   dedicated discussion with the user before any implementation, even
-   though it's the most obvious remaining CV gap. Do not start this
-   without that discussion.
+1. ~~**Multi-wall detection/selection** — explicitly paused pending a
+   dedicated discussion with the user before any implementation~~ —
+   discussion happened 2026-09-09 (see below), broken into sub-problems
+   A–G; user chose to start with **G + lightweight E**, both shipped
+   2026-09-09. **B/C/D/F remain paused** pending further explicit go-ahead
+   — see "Multi-wall discussion" below.
 2. **UI visual polish** — paused pending reference designs the user will
    upload. The app is functionally complete end-to-end but not yet
    "presentable"; don't restyle speculatively before the references
    arrive.
 3. Real-photo visualization quality is user-confirmed working (manually
    verified against an actual room wall) — no longer an open gap.
+
+## Multi-wall discussion (2026-09-09) — sub-problem taxonomy
+
+The user's detailed multi-wall requirements were broken into 7 labeled
+sub-problems for phased delivery:
+
+- **A** — multi-wall/shared-corner recognition
+- **B** — perspective/angle-correct projection (homography) — genuinely
+  hard new CV work, needs an isolated prototype before a full build
+- **C** — cross-wall pattern continuity across a shared corner — depends
+  on B
+- **D** — wide-angle/panoramic multi-wall (3+ walls, lens curvature) —
+  recommended permanent deferral; the guided straight-on capture avoids
+  this scenario entirely
+- **E** — multiple materials in one photo (different walls/zones) —
+  mostly already architecturally possible; **lightweight version shipped
+  2026-09-09** (see below)
+- **F** — proactive "these go well together" combination recommendations
+  — can slot in alongside B/C
+- **G** — mandatory post-generation "honest overview" with alternatives,
+  strict tone requirements — **shipped 2026-09-09** (see below)
+
+User's explicit choice: **"Start with G + lightweight E"**. B, C, D, F
+remain paused — do not start any of them without further explicit
+go-ahead, per the same "proper discussion first" instruction that
+triggered this whole breakdown.
+
+### G — Honest overview, shipped 2026-09-09
+
+`lib/home-material/overview.ts`: a `gemini-2.5-flash` vision-QA pass over
+the FINAL composited image (not the pre-generation choice), run
+automatically after every completed visualization
+(`app/api/home-material/visualizations/route.ts`). Structured JSON output
+(never prose): `{ opening, highlights[], considerations[], closing }`.
+Tone is enforced two ways — strict prompt instructions (always-positive
+opening, hedge doubt softly, forbidden blunt/negative words listed
+explicitly) AND a belt-and-suspenders server-side filter that drops any
+line containing a blacklisted word, so a bad model output can never reach
+the user even if it ignores the prompt. Never shows a bare numeric score
+to the customer.
+
+Alternative products (1-3, always shown regardless of how good the
+primary result is) are chosen **deterministically** from the product
+catalogue (`pickAlternativeProductIds`, same-category-first) — never
+AI-invented, per Constitution Principle 7. New `HmVisualization` columns:
+`overviewStatus`/`overviewOpening`/`overviewHighlights`/
+`overviewConsiderations`/`overviewClosing`/`overviewAlternativeProductIds`.
+The overview is a soft feature — its failure is tracked separately
+(`overviewStatus: "failed"`) and never blocks or hides an otherwise-
+successful preview. Rendered client-side by `RoomView.tsx`'s
+`OverviewCard`, with alternative swatches one tap away from re-previewing
+(`handleGeneratePreview` now takes an explicit `productIdOverride` param —
+fixed a latent stale-closure bug in the pre-existing "Preview this"
+button while wiring this up, since both now share the same call pattern).
+
+Live-tested 2026-09-09 against a synthetic two-wall test image — tone
+came back clean (positive opening, one softly-hedged consideration,
+positive closing, correct same-category alternatives), no forbidden
+wording.
+
+### Lightweight E — multi-wall detection, shipped 2026-09-09
+
+`lib/home-material/wall-detection.ts`'s `detectWallRegion` now returns
+`{ wallVisible, candidates: WallCandidate[], notes }` (up to 5
+candidates) instead of a single polygon — each wall is an INDEPENDENT
+region with no perspective-correction and no cross-wall continuity
+guarantee (that's B/C, still paused). `app/api/home-material/rooms/
+[roomId]/detect-wall/route.ts` returns `{ walls: [...] }`.
+
+`RoomView.tsx`: the common single-wall case is unchanged (skips straight
+into the existing adjust-and-confirm draft). When 2+ candidates come
+back, they're shown as numbered polygons overlaid on the photo (click to
+select) plus a text picker below; picking one enters the same
+draggable-vertex draft flow as before. A candidate stays pickable until
+actually confirmed as a surface — discarding a draft puts it back. The
+"Detect wall automatically" button is now also available after the first
+wall is confirmed ("Detect another wall"), so a user can pull additional
+candidates from the same photo. Each confirmed wall keeps its own
+independent material choice, generation, and overview — no shared-corner
+awareness yet.
+
+Live-tested 2026-09-09: a synthetic room-corner image (two flat-colored
+walls meeting at a corner, with a piece of furniture against one wall)
+correctly returned 2 candidates labeled "left wall"/"right wall", with
+the furniture correctly excluded from its wall's polygon and mentioned in
+`notes` rather than guessed through. The masked composite correctly
+recolored only the confirmed wall, leaving the other wall, the furniture,
+floor, and ceiling pixel-identical (aside from the known, already-
+documented feather-halo cosmetic artifact at a hard geometric seam).
 
 ## Locked decisions (2026-09-07)
 

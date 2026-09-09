@@ -5,8 +5,11 @@ import Link from "next/link";
 import { ArrowLeft, RotateCcw, Pencil, Heart, Scale } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { parseJsonSafe } from "@/lib/home-material/client";
+import { parseArray } from "@/lib/serialize";
 
 type Point = { x: number; y: number };
+
+type WallCandidate = { polygon: Point[]; confidence: number; label: string | null };
 
 type Surface = {
   id: string;
@@ -44,6 +47,14 @@ type Visualization = {
   errorMessage: string | null;
   mode?: string;
   productId?: string | null;
+  // "Honest overview" (2026-09-09) — raw Prisma row fields, JSON-string
+  // arrays (lib/serialize.ts), parsed client-side by OverviewCard below.
+  overviewStatus?: string;
+  overviewOpening?: string | null;
+  overviewHighlights?: string;
+  overviewConsiderations?: string;
+  overviewClosing?: string | null;
+  overviewAlternativeProductIds?: string;
 };
 
 type Requirements = {
@@ -339,6 +350,78 @@ function LeadCaptureButton({ productId, materialCategory }: { productId?: string
 }
 
 /**
+ * Mandatory "honest overview" (2026-09-09, "start with G + lightweight E").
+ * A soft, always-encouraging read of the ACTUAL generated result — never a
+ * bare score, never negative wording (enforced server-side in
+ * lib/home-material/overview.ts's tone guard) — plus deterministically
+ * chosen alternative swatches, always shown regardless of how well the
+ * primary result scored. Renders nothing when the overview pass failed or
+ * hasn't completed — a soft feature whose absence should never look like
+ * an error next to an otherwise-successful preview.
+ */
+function OverviewCard({
+  vis,
+  swatches,
+  onPreviewAlternative,
+}: {
+  vis: Visualization;
+  swatches: Swatch[];
+  onPreviewAlternative: (productId: string) => void;
+}) {
+  if (vis.overviewStatus !== "completed" || !vis.overviewOpening) return null;
+
+  const highlights = parseArray(vis.overviewHighlights);
+  const considerations = parseArray(vis.overviewConsiderations);
+  const alternatives = parseArray(vis.overviewAlternativeProductIds)
+    .map((id) => swatches.find((sw) => sw.id === id))
+    .filter((sw): sw is Swatch => Boolean(sw));
+
+  return (
+    <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-3 space-y-2">
+      <p className="text-sm text-gray-800">{vis.overviewOpening}</p>
+      {highlights.length > 0 && (
+        <ul className="space-y-0.5">
+          {highlights.map((h) => (
+            <li key={h} className="text-xs text-emerald-700">✓ {h}</li>
+          ))}
+        </ul>
+      )}
+      {considerations.length > 0 && (
+        <ul className="space-y-0.5">
+          {considerations.map((c) => (
+            <li key={c} className="text-xs text-amber-700">✦ {c}</li>
+          ))}
+        </ul>
+      )}
+      {vis.overviewClosing && <p className="text-xs text-gray-600 italic">{vis.overviewClosing}</p>}
+      {alternatives.length > 0 && (
+        <div className="pt-1.5 border-t border-indigo-100">
+          <p className="text-[11px] text-gray-500 mb-1">Worth a look too:</p>
+          <div className="flex gap-2">
+            {alternatives.map((sw) => (
+              <button
+                key={sw.id}
+                type="button"
+                onClick={() => onPreviewAlternative(sw.id)}
+                className="shrink-0 flex flex-col items-center gap-1 w-14"
+              >
+                {sw.textureAssetUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={sw.textureAssetUrl} alt={sw.name} className="w-12 h-12 rounded-lg object-cover border border-gray-200" />
+                ) : (
+                  <div className="w-12 h-12 rounded-lg border border-gray-200" style={{ backgroundColor: sw.colorHex || "#e5e7eb" }} />
+                )}
+                <span className="text-[10px] text-gray-600 text-center line-clamp-2">{sw.name}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
  * AI wall detection (fast-lane pivot, 2026-09-07) returns a POLYGON outline
  * — scoped to a straight-on, facing-the-wall photo — shown as an editable
  * draft (draggable vertices) before the user confirms it. Manual
@@ -371,6 +454,12 @@ export function RoomView({ roomId }: { roomId: string }) {
 
   const [detecting, setDetecting] = useState(false);
   const [detectError, setDetectError] = useState("");
+  // Lightweight multi-wall (2026-09-09): every independent wall candidate
+  // from the last detection call, still pending a pick. No perspective-
+  // correction or cross-wall continuity guarantee — see
+  // lib/home-material/wall-detection.ts.
+  const [wallCandidates, setWallCandidates] = useState<WallCandidate[]>([]);
+  const [activeCandidateIndex, setActiveCandidateIndex] = useState<number | null>(null);
 
   const [swatches, setSwatches] = useState<Swatch[]>([]);
   const [selectedSwatch, setSelectedSwatch] = useState<Record<string, string>>({});
@@ -459,13 +548,33 @@ export function RoomView({ roomId }: { roomId: string }) {
     setDraftConfidence(null);
     setEditingSurfaceId(null);
     setManualDrawing(false);
+    setActiveCandidateIndex(null);
     setLabel("");
+  }
+
+  function enterDraftFromCandidate(c: WallCandidate) {
+    setDraftPoints(c.polygon);
+    setDraftOrigin("ai");
+    setDraftConfidence(c.confidence);
+    setLabel(c.label ?? "");
+    setEditingSurfaceId(null);
+    setManualDrawing(false);
+  }
+
+  /** Picking one of several detected walls to adjust/confirm — the rest stay pickable (discarding the draft, e.g. Cancel, puts this one back too since it's never removed from wallCandidates until actually confirmed). */
+  function selectCandidate(index: number) {
+    const c = wallCandidates[index];
+    if (!c) return;
+    enterDraftFromCandidate(c);
+    setActiveCandidateIndex(index);
+    setError("");
   }
 
   async function handleDetectWall() {
     setDetectError("");
     setDetecting(true);
     resetDraft();
+    setWallCandidates([]);
     try {
       const res = await fetch(`/api/home-material/rooms/${roomId}/detect-wall`, { method: "POST" });
       const data = await parseJsonSafe(res);
@@ -474,9 +583,14 @@ export function RoomView({ roomId }: { roomId: string }) {
         setManualDrawing(true);
         return;
       }
-      setDraftPoints(data.polygon as Point[]);
-      setDraftOrigin("ai");
-      setDraftConfidence((data.confidence as number) ?? null);
+      const walls = (data.walls as WallCandidate[]) ?? [];
+      if (walls.length <= 1) {
+        // The common single-wall case skips the picker entirely — go
+        // straight into the familiar adjust-and-confirm draft flow.
+        if (walls[0]) enterDraftFromCandidate(walls[0]);
+      } else {
+        setWallCandidates(walls);
+      }
     } catch (err) {
       setDetectError(`Something went wrong: ${err instanceof Error ? err.message : String(err)}`);
       setManualDrawing(true);
@@ -546,6 +660,7 @@ export function RoomView({ roomId }: { roomId: string }) {
     if (!draftPoints || draftPoints.length < 3) return;
     setError("");
     setSaving(true);
+    const consumedCandidateIndex = activeCandidateIndex;
     try {
       if (editingSurfaceId) {
         const res = await fetch(`/api/home-material/rooms/${roomId}/surfaces/${editingSurfaceId}`, {
@@ -576,6 +691,9 @@ export function RoomView({ roomId }: { roomId: string }) {
           return;
         }
         setRoom((r) => (r ? { ...r, surfaces: [...r.surfaces, data.surface as Surface] } : r));
+        if (consumedCandidateIndex !== null) {
+          setWallCandidates((cands) => cands.filter((_, i) => i !== consumedCandidateIndex));
+        }
       }
       resetDraft();
     } catch (err) {
@@ -599,6 +717,7 @@ export function RoomView({ roomId }: { roomId: string }) {
       }
       setRoom(data.room as Room);
       resetDraft();
+      setWallCandidates([]);
       setVisualizations({});
       setSelectedSwatch({});
       setPreviewError({});
@@ -610,8 +729,12 @@ export function RoomView({ roomId }: { roomId: string }) {
     }
   }
 
-  async function handleGeneratePreview(surfaceId: string) {
-    const productId = selectedSwatch[surfaceId];
+  async function handleGeneratePreview(surfaceId: string, productIdOverride?: string) {
+    // productIdOverride lets a caller that just called setSelectedSwatch
+    // (e.g. "Preview this" / an overview's alternative swatch) pass the
+    // new id directly, since selectedSwatch here is still the state from
+    // this render — the setSelectedSwatch update hasn't landed yet.
+    const productId = productIdOverride ?? selectedSwatch[surfaceId];
     if (!productId) {
       setPreviewError((p) => ({ ...p, [surfaceId]: "Pick a swatch first." }));
       return;
@@ -757,6 +880,8 @@ export function RoomView({ roomId }: { roomId: string }) {
             ? "Adjust the outline"
             : manualDrawing
             ? "Trace the wall"
+            : wallCandidates.length > 0
+            ? `Found ${wallCandidates.length} walls`
             : hasSurfaces
             ? "Wall detected"
             : "Find the wall"}
@@ -766,9 +891,11 @@ export function RoomView({ roomId }: { roomId: string }) {
             ? "Drag any corner to match the wall precisely, then confirm."
             : manualDrawing
             ? "Click around the wall's edges to trace its outline, then finish."
+            : wallCandidates.length > 0
+            ? "Tap a highlighted wall below to adjust and confirm it — you can come back for the others after."
             : hasSurfaces
             ? "Pick a swatch below to preview it on this wall."
-            : "For best results, stand directly facing the wall, straight-on. We'll detect its outline automatically."}
+            : "For best results, stand roughly facing the wall(s). We'll detect their outlines automatically."}
         </p>
       </div>
 
@@ -796,6 +923,34 @@ export function RoomView({ roomId }: { roomId: string }) {
                 strokeWidth={0.5}
                 vectorEffect="non-scaling-stroke"
               />
+            );
+          })}
+
+          {wallCandidates.map((c, i) => {
+            const cx = c.polygon.reduce((sum, p) => sum + p.x, 0) / c.polygon.length;
+            const cy = c.polygon.reduce((sum, p) => sum + p.y, 0) / c.polygon.length;
+            return (
+              <g key={`candidate-${i}`} className="cursor-pointer" onClick={() => selectCandidate(i)}>
+                <polygon
+                  points={polygonPointsAttr(c.polygon)}
+                  fill="rgba(234,179,8,0.18)"
+                  stroke="#eab308"
+                  strokeWidth={0.5}
+                  vectorEffect="non-scaling-stroke"
+                />
+                <circle cx={cx * 100} cy={cy * 100} r={3.2} fill="#eab308" vectorEffect="non-scaling-stroke" />
+                <text
+                  x={cx * 100}
+                  y={cy * 100}
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  fontSize={3.5}
+                  fill="#ffffff"
+                  style={{ pointerEvents: "none" }}
+                >
+                  {i + 1}
+                </text>
+              </g>
             );
           })}
 
@@ -830,12 +985,37 @@ export function RoomView({ roomId }: { roomId: string }) {
         </svg>
       </div>
 
-      {!hasSurfaces && !hasDraft && !manualDrawing && (
-        <Button className="w-full" size="lg" onClick={handleDetectWall} loading={detecting}>
-          Detect wall automatically
+      {!hasDraft && !manualDrawing && wallCandidates.length === 0 && (
+        <Button className="w-full" size="lg" variant={hasSurfaces ? "secondary" : "default"} onClick={handleDetectWall} loading={detecting}>
+          {hasSurfaces ? "Detect another wall" : "Detect wall automatically"}
         </Button>
       )}
       {detectError && <p className="text-sm text-red-500">{detectError}</p>}
+
+      {wallCandidates.length > 0 && !hasDraft && (
+        <div className="space-y-2">
+          <div className="flex flex-wrap gap-2">
+            {wallCandidates.map((c, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => selectCandidate(i)}
+                className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100"
+              >
+                <span className="flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[10px] text-white">{i + 1}</span>
+                {c.label || `Wall ${i + 1}`} · {Math.round(c.confidence * 100)}%
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => setWallCandidates([])}
+            className="text-xs text-gray-400 hover:text-gray-600 underline"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {!hasDraft && !manualDrawing && (
         <button
@@ -931,6 +1111,14 @@ export function RoomView({ roomId }: { roomId: string }) {
                     </span>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={vis.outputImageUrl} alt="Preview" className="w-full rounded-xl border border-gray-200" />
+                    <OverviewCard
+                      vis={vis}
+                      swatches={swatches}
+                      onPreviewAlternative={(productId) => {
+                        setSelectedSwatch((sel) => ({ ...sel, [s.id]: productId }));
+                        handleGeneratePreview(s.id, productId);
+                      }}
+                    />
                     {vis.productId && <LeadCaptureButton productId={vis.productId} />}
                   </div>
                 )}
@@ -1026,7 +1214,7 @@ export function RoomView({ roomId }: { roomId: string }) {
                                     className="mt-2"
                                     onClick={() => {
                                       setSelectedSwatch((sel) => ({ ...sel, [s.id]: swatchMatch.id }));
-                                      handleGeneratePreview(s.id);
+                                      handleGeneratePreview(s.id, swatchMatch.id);
                                     }}
                                   >
                                     Preview this
