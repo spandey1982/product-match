@@ -751,6 +751,48 @@ sequencing): the wallpaper sheet-size/repeat-pattern scaling work itself
 — this only builds the shared dimension-entry foundation that work will
 extend, not sheet-count calculation or repeat-pattern-aware rendering.
 
+### Follow-up fixes from the user's own real-photo retest (2026-09-09)
+
+Two issues surfaced immediately from real usage:
+
+1. **Rounded card corners clip vertex handles.** The room-photo container
+   uses `rounded-2xl` + `overflow-hidden`; a draggable vertex placed right
+   at the image's own corner (where a real wall corner often is) was
+   visually clipped by the curve, making it hard to see/grab precisely.
+   Fixed: `RoomView.tsx`'s image container drops rounding (keeps
+   `overflow-hidden`, now clipping a plain rectangle) during any active
+   editing (`isAdjustingDraft || manualDrawing`), and rounds again once
+   idle — a targeted interaction fix, not a broader restyle (UI polish
+   otherwise stays paused pending the user's reference designs).
+
+2. **No truncation warning appeared for a wall that clearly needed one.**
+   Root-caused by re-running detection on the user's own already-uploaded
+   real photo: the model flagged the exact same wall/shape `true` in that
+   fresh call, confirming the code path works — but the user's actual
+   test apparently got `false` for it. This is genuine model-to-model
+   variance on the SAME photo (already observed repeatedly this session —
+   the same image has produced 2, then 4 different wall-candidate splits
+   across separate calls), not a code bug.
+
+   **Fix — a deterministic geometric safety net under the AI's semantic
+   judgment:** `wall-detection.ts`'s new `hasFrameAlignedEdge(points)`
+   checks whether a WHOLE polygon edge (both endpoints, not just one
+   corner) runs along the image's own left/right/top/bottom border — a
+   real wall boundary (a ceiling line, a corner shadow) essentially never
+   aligns perfectly with the photo's rectangular edge by coincidence, so
+   this is strong, specific, and directly inspectable (no extra API call
+   needed). `possiblyTruncated` is now `modelSaidTruncated ||
+   hasFrameAlignedEdge(points)` — geometry can only ADD caution, never
+   remove it; the model can still flag something geometry alone wouldn't
+   catch (e.g. an obstructed but not frame-touching wall).
+
+   Verified by hand-tracing the exact polygon from the user's screenshot
+   (`[{0,0.22},{0.29,0.22},{0.29,0.6},{0,0.6}]`) — the left edge (both
+   points at x=0) correctly triggers the override. Cross-checked the
+   "Back wall" candidate from the same photo (real wardrobe/door corner
+   evidence, no frame-touching edge) does NOT get force-flagged — the
+   heuristic stays targeted, not overly aggressive.
+
 ## Locked decisions (2026-09-07)
 
 | Decision | Choice | Why |

@@ -1062,7 +1062,16 @@ export function RoomView({ roomId }: { roomId: string }) {
         onClick={handleImageClick}
         onPointerMove={handleContainerPointerMove}
         onPointerUp={handleContainerPointerUp}
-        className={`relative w-full rounded-2xl overflow-hidden border border-gray-200 select-none touch-none ${manualDrawing ? "cursor-crosshair" : ""}`}
+        // The card's ROUNDED corners clip whatever sits right at the
+        // image's own corners — including a draggable vertex placed
+        // there, exactly where a real wall corner often is. Squared off
+        // (rounding only, overflow-hidden stays — it just clips a plain
+        // rectangle now, not a curve) during any active editing so
+        // nothing near a corner is clipped or hard to grab; rounded again
+        // once idle, for the same look elsewhere.
+        className={`relative w-full overflow-hidden border border-gray-200 select-none touch-none ${
+          isAdjustingDraft || manualDrawing ? "rounded-none" : "rounded-2xl"
+        } ${manualDrawing ? "cursor-crosshair" : ""}`}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={room.imageUrl} alt="Room" className="w-full h-auto block pointer-events-none" draggable={false} />

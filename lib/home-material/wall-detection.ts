@@ -103,6 +103,22 @@ function polygonArea(points: Point[]): number {
   return Math.abs(area) / 2;
 }
 
+const FRAME_EDGE_EPSILON = 0.015;
+
+/** True when a whole polygon edge (both endpoints) runs along the image's own left/right/top/bottom border — a strong, specific "this side was cut by the frame" signal, distinct from a single corner merely landing near an edge. */
+function hasFrameAlignedEdge(points: Point[]): boolean {
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    const bothLeft = a.x <= FRAME_EDGE_EPSILON && b.x <= FRAME_EDGE_EPSILON;
+    const bothRight = a.x >= 1 - FRAME_EDGE_EPSILON && b.x >= 1 - FRAME_EDGE_EPSILON;
+    const bothTop = a.y <= FRAME_EDGE_EPSILON && b.y <= FRAME_EDGE_EPSILON;
+    const bothBottom = a.y >= 1 - FRAME_EDGE_EPSILON && b.y >= 1 - FRAME_EDGE_EPSILON;
+    if (bothLeft || bothRight || bothTop || bothBottom) return true;
+  }
+  return false;
+}
+
 /**
  * Validates a candidate's optional 4-point perspective quad. Same "never
  * manufacture certainty" rule as the outline polygon: a malformed or
@@ -137,7 +153,15 @@ function parseCandidate(raw: RawCandidate): WallCandidate | null {
   if (!points || polygonArea(points) <= 0.02) return null;
   // Missing/malformed defaults to true (flag as possibly truncated) —
   // only an explicit `false` is trusted as "confidently the full wall."
-  const possiblyTruncated = raw.possiblyTruncated === false ? false : true;
+  const modelSaidTruncated = raw.possiblyTruncated === false ? false : true;
+  // Geometric safety net (2026-09-09) — live-testing showed the model's
+  // own truncated/not-truncated judgment can vary between calls on the
+  // EXACT same wall. A whole polygon edge sitting along the image's own
+  // border is a much more reliable signal: real wall boundaries (a
+  // ceiling line, a corner shadow) essentially never align perfectly
+  // with the photo's rectangular edge by coincidence, so this overrides
+  // a model "false" — never a model "true", only ever adds caution.
+  const possiblyTruncated = modelSaidTruncated || hasFrameAlignedEdge(points);
   return { polygon: points, confidence, label, corners: parseCorners(raw.corners), possiblyTruncated };
 }
 
