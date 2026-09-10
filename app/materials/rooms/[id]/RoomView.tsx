@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, RotateCcw, Pencil, Heart, Scale } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -833,6 +833,12 @@ function OverviewCard({
  */
 export function RoomView({ roomId }: { roomId: string }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Carried over from the landing/browse page's "See in my room" action
+  // (2026-09-10) — pre-selects the product the user was already looking
+  // at once they confirm their first wall, so browsing before uploading
+  // (Mode A) doesn't dead-end into re-picking the same material again.
+  const preselectedProductId = searchParams.get("product");
   const imageRef = useRef<HTMLDivElement>(null);
   const reuploadInputRef = useRef<HTMLInputElement>(null);
 
@@ -1136,9 +1142,13 @@ export function RoomView({ roomId }: { roomId: string }) {
           setError(typeof data.error === "string" ? data.error : "Could not save this wall selection");
           return;
         }
-        setRoom((r) => (r ? { ...r, surfaces: [...r.surfaces, data.surface as Surface] } : r));
+        const newSurface = data.surface as Surface;
+        setRoom((r) => (r ? { ...r, surfaces: [...r.surfaces, newSurface] } : r));
         if (consumedCandidateIndex !== null) {
           setWallCandidates((cands) => cands.filter((_, i) => i !== consumedCandidateIndex));
+        }
+        if (preselectedProductId) {
+          setSelectedSwatch((sel) => (sel[newSurface.id] ? sel : { ...sel, [newSurface.id]: preselectedProductId }));
         }
       }
       resetDraft();

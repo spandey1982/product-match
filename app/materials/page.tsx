@@ -1,39 +1,165 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ArrowRight } from "lucide-react";
+import { db } from "@/lib/db";
 import { Button } from "@/components/ui/button";
 
-// Home Material Intelligence Platform (walls: paint, wallpaper, wall
-// texture, wall panels — V1 scope). See docs/home-material/README.md for
-// the domain brief and current phase.
+// Home Material Intelligence Platform — landing + Mode A browse, merged
+// into one screen per the 2026-09-10 UI discovery decision (Q1/Q2 in
+// research/home-material-ui-discovery.html): a standalone catalogue-browse
+// page ("I know what I want", no room upload required) doubles as the
+// marketing entry point, since the two closest real competitors (Roomvo,
+// IKEA Kreativ) both open directly into a working tool rather than a
+// generic hero. See docs/home-material/README.md for the domain brief.
 
 export const metadata: Metadata = {
   title: "Home Material Intelligence",
-  description:
-    "See it. Understand it. Compare it. Buy it. Material decision intelligence for your home, starting with walls.",
+  description: "See real paint, wallpaper, texture, and wall panels on your own wall before you buy — browse materials or start with your room.",
 };
 
-export default function MaterialsPage() {
+// Prices and the product list itself change independently of a deploy
+// (retailer listings, new demo/custom products) — this must never serve a
+// build-time snapshot of pricing, per the domain's cost-honesty principle.
+export const dynamic = "force-dynamic";
+
+const CATEGORY_LABELS: Record<string, string> = {
+  paint: "Paint",
+  wallpaper: "Wallpaper",
+  wall_texture: "Wall Texture",
+  wall_panel: "Wall Panels",
+};
+const CATEGORY_ORDER = ["paint", "wallpaper", "wall_texture", "wall_panel"];
+
+async function getBrowseProducts() {
+  // Curated/public products only — a signed-out visitor is the primary
+  // audience for this page, and a private custom upload belongs to
+  // exactly one HmUser, never shown here.
+  const products = await db.hmProduct.findMany({
+    where: { uploadedByHmUserId: null },
+    orderBy: { createdAt: "asc" },
+    select: {
+      id: true,
+      name: true,
+      colorName: true,
+      colorHex: true,
+      finish: true,
+      patternName: true,
+      priceInr: true,
+      priceUnit: true,
+      material: { select: { category: true, avgCostPerSqftMinInr: true, avgCostPerSqftMaxInr: true } },
+      retailerListings: {
+        where: { priceInr: { not: null } },
+        orderBy: { priceInr: "asc" },
+        take: 1,
+        select: { priceInr: true },
+      },
+    },
+  });
+
+  return products.map((p) => {
+    const realPrice = p.retailerListings[0]?.priceInr ?? null;
+    return {
+      id: p.id,
+      name: p.name,
+      colorHex: p.colorHex,
+      finish: p.finish,
+      patternName: p.patternName,
+      category: p.material?.category ?? null,
+      priceInr: realPrice,
+      priceIsExact: realPrice != null,
+      costRangeMinInr: realPrice == null ? p.material?.avgCostPerSqftMinInr ?? null : null,
+      costRangeMaxInr: realPrice == null ? p.material?.avgCostPerSqftMaxInr ?? null : null,
+    };
+  });
+}
+
+function PriceTag({ p }: { p: Awaited<ReturnType<typeof getBrowseProducts>>[number] }) {
+  if (p.priceIsExact) return <span className="text-sm font-medium text-gray-900">₹{p.priceInr} / sq.ft</span>;
+  if (p.costRangeMinInr != null && p.costRangeMaxInr != null) {
+    return <span className="text-sm text-gray-500">₹{p.costRangeMinInr}–₹{p.costRangeMaxInr} / sq.ft (indicative)</span>;
+  }
+  return <span className="text-sm text-gray-400">Price on request</span>;
+}
+
+export default async function MaterialsPage() {
+  const products = await getBrowseProducts();
+  const byCategory = CATEGORY_ORDER.map((cat) => ({
+    category: cat,
+    items: products.filter((p) => p.category === cat),
+  })).filter((g) => g.items.length > 0);
+
   return (
-    <main className="flex min-h-screen items-center justify-center px-6 text-center">
-      <div className="max-w-md space-y-5">
-        <h1 className="text-2xl font-semibold">Home Material Intelligence</h1>
-        <p className="text-muted-foreground">
-          Make better material decisions before you spend money on your home.
-          Upload a room photo to preview real materials on your wall, or
-          browse the material guide first to understand your options.
-        </p>
-        <div className="flex flex-wrap items-center justify-center gap-3">
-          <Link href="/materials/upload">
-            <Button size="lg">Upload a room photo</Button>
-          </Link>
-          <Link href="/materials/guide">
-            <Button size="lg" variant="secondary">Browse material guide</Button>
-          </Link>
-          <Link href="/materials/shortlist">
-            <Button size="lg" variant="ghost">My shortlist</Button>
-          </Link>
+    <div className="min-h-screen">
+      <section className="px-6 py-16 sm:py-20 text-center bg-gradient-to-b from-indigo-50/60 to-transparent">
+        <div className="max-w-2xl mx-auto space-y-5">
+          <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 text-balance">
+            See real materials on your own wall before you buy.
+          </h1>
+          <p className="text-gray-600 text-base sm:text-lg max-w-xl mx-auto">
+            Upload one photo of your room. Try real paint, wallpaper, texture, and wall panels on the actual wall —
+            not a mockup — then compare, estimate cost, and request a sample or quote when you&apos;re confident.
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+            <Link href="/materials/upload">
+              <Button size="lg">
+                Upload your room <ArrowRight className="h-4 w-4" />
+              </Button>
+            </Link>
+            <Link href="/materials/guide">
+              <Button size="lg" variant="secondary">Browse the material guide</Button>
+            </Link>
+            <Link href="/materials/shortlist">
+              <Button size="lg" variant="ghost">My shortlist</Button>
+            </Link>
+          </div>
         </div>
-      </div>
-    </main>
+      </section>
+
+      <section className="max-w-5xl mx-auto px-6 py-12 space-y-10">
+        <div className="text-center max-w-xl mx-auto">
+          <h2 className="text-xl font-semibold text-gray-900">Already know what you want?</h2>
+          <p className="text-sm text-gray-500 mt-1">
+            Browse real materials below. Pick one and see it in your own room — no account or upload needed until then.
+          </p>
+        </div>
+
+        {byCategory.length === 0 && (
+          <p className="text-sm text-gray-400 text-center">No materials available yet — check back soon.</p>
+        )}
+
+        {byCategory.map((g) => (
+          <div key={g.category} className="space-y-4">
+            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-100 pb-2">
+              {CATEGORY_LABELS[g.category] ?? g.category}
+            </h3>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {g.items.map((p) => (
+                <div key={p.id} className="rounded-2xl border border-gray-200 bg-white p-4 space-y-3">
+                  <div className="flex items-center gap-3">
+                    {p.colorHex && (
+                      <span
+                        className="h-10 w-10 rounded-lg border border-gray-200 shrink-0"
+                        style={{ backgroundColor: p.colorHex }}
+                        aria-hidden
+                      />
+                    )}
+                    <div className="min-w-0">
+                      <p className="font-medium text-gray-900 truncate">{p.name}</p>
+                      <p className="text-xs text-gray-400">
+                        {[p.patternName, p.finish].filter(Boolean).join(" · ") || (CATEGORY_LABELS[g.category] ?? g.category)}
+                      </p>
+                    </div>
+                  </div>
+                  <PriceTag p={p} />
+                  <Link href={`/materials/upload?product=${p.id}`} className="block">
+                    <Button size="sm" className="w-full">See in my room</Button>
+                  </Link>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </section>
+    </div>
   );
 }

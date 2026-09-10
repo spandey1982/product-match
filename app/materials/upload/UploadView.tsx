@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Upload, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,11 @@ const ROOM_TYPES = [
 
 export function UploadView() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Carried over from the browse page's "See in my room" action (2026-09-10)
+  // so a product picked before an account/room exists isn't lost partway
+  // through login or room creation.
+  const preselectedProductId = searchParams.get("product");
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [roomType, setRoomType] = useState(ROOM_TYPES[0].value);
@@ -43,7 +48,8 @@ export function UploadView() {
       const res = await fetch("/api/home-material/rooms", { method: "POST", body: formData });
 
       if (res.status === 401) {
-        router.push(`/materials/login?returnTo=${encodeURIComponent("/materials/upload")}`);
+        const returnTo = preselectedProductId ? `/materials/upload?product=${preselectedProductId}` : "/materials/upload";
+        router.push(`/materials/login?returnTo=${encodeURIComponent(returnTo)}`);
         return;
       }
       const data = await parseJsonSafe(res);
@@ -56,7 +62,7 @@ export function UploadView() {
         setError("Upload succeeded but the response was unexpected. Please try again.");
         return;
       }
-      router.push(`/materials/rooms/${room.id}`);
+      router.push(preselectedProductId ? `/materials/rooms/${room.id}?product=${preselectedProductId}` : `/materials/rooms/${room.id}`);
     } catch (err) {
       setError(`Something went wrong: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
