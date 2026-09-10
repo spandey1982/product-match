@@ -89,6 +89,11 @@ export async function POST(
   };
 
   const results = generateMaterialRecommendations(requirements);
+  // Score-breakdown components (2026-09-10, Decision-layer "why this
+  // recommendation" vocabulary) aren't persisted — see
+  // MaterialRecommendationResult's doc comment — so keep them here to
+  // merge into this POST's own response only, matched by materialId.
+  const componentsByMaterialId = new Map(results.map((r) => [r.materialId, r.components]));
 
   await db.hmRecommendation.deleteMany({ where: { surfaceId, productId: null } });
   await db.hmRecommendation.createMany({
@@ -113,5 +118,10 @@ export async function POST(
     },
   });
 
-  return NextResponse.json({ recommendations: stored.map(serializeRecommendation) });
+  return NextResponse.json({
+    recommendations: stored.map((r) => ({
+      ...serializeRecommendation(r),
+      components: r.materialId ? componentsByMaterialId.get(r.materialId) ?? null : null,
+    })),
+  });
 }

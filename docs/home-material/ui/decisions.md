@@ -112,3 +112,41 @@ two-generation test on the same wall (Charcoal Grey, then Soft Sage);
 the fix itself was verified via type-check and code review rather than a
 third live generation, to avoid unnecessary further AI cost for a
 narrowly-understood React lifecycle fix.
+
+## Decision-layer vocabulary — shipped 2026-09-10
+
+Second piece of the approved phase order (§26 step 3): recommendation
+explainer, cost/estimate strip, and a provenance indicator — all reusing
+data the backend already computes, no new AI surface.
+
+- **"Why this score?" breakdown** (`RoomView.tsx`'s `ScoreBreakdown`,
+  `lib/home-material/recommendation.ts`'s new exported `WEIGHTS` +
+  `MaterialRecommendationResult.components`): brief §37 calls for
+  explaining a recommendation rather than showing a bare percentage.
+  Each recommendation card now has a collapsed-by-default (progressive
+  disclosure) breakdown of the four weighted scoring dimensions
+  (moisture/budget/priority/category), each as a small bar + its real
+  weight. **Deliberately not persisted or restorable after a GET/page
+  reload** — the requirements a score was computed from were never
+  persisted either, so a breakdown can't be honestly reconstructed after
+  the fact; only present on a fresh POST response. Verified live: wet-
+  area + budget + durability requirements produced `{moisture:1,
+  budget:1, priority:0.8, category:0.8}` for the top pick, and a
+  follow-up GET (simulating a page reload) correctly omitted the field.
+- **Cost/estimate strip tightened** (`CostEstimator`): the existing
+  exact-vs-range distinction was inline parenthetical text; now a
+  persistent visual chip ("Retailer price" vs "Platform estimate") sits
+  before the number, so the estimate-vs-real-price distinction survives
+  a skim rather than requiring the user to read the whole line.
+- **Provenance signal on the swatch picker** (`SwatchCarousel`): a small
+  "You" badge now marks your own custom-uploaded materials in the
+  carousel, distinct from curated catalogue items — previously this
+  distinction only surfaced AFTER generating a preview (the "Product-
+  accurate — from your uploaded photo" mode badge), not while choosing.
+  Scoped narrowly: `HmProductEvidence` (sourceType platform/retailer/
+  user) is written on every product today but still has no broader
+  reader anywhere in the app — a fuller provenance UI (e.g. distinguishing
+  a real retailer-verified identity once retailer partnerships exist)
+  is deferred, not attempted this pass, since every non-custom product
+  today is platform-curated demo content and a repeated "platform
+  example" badge on every single card would be noise, not signal.

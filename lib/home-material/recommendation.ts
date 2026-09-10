@@ -33,9 +33,23 @@ export interface MaterialRecommendationResult {
   reasons: string[];
   concerns: string[];
   explanation: string;
+  /**
+   * The four weighted components behind `score` (each 0–1, before its
+   * WEIGHTS multiplier is applied) — added 2026-09-10 (Decision-layer
+   * "why this recommendation" vocabulary, brief §37: explain a
+   * recommendation rather than just showing a bare score). Not persisted
+   * to HmRecommendation (no schema column for it) — only ever present on
+   * a freshly-computed response, not after a GET restores a prior
+   * persisted set from the database. That's a deliberate scope call: the
+   * requirements a score was computed from aren't persisted anywhere
+   * either, so a breakdown can't be honestly reconstructed after the
+   * fact without them.
+   */
+  components: { moisture: number; budget: number; priority: number; category: number };
 }
 
-const WEIGHTS = {
+/** Exported so the UI can label each score-breakdown row with its real weight, rather than hardcoding a second copy of these numbers. */
+export const WEIGHTS = {
   moisture: 0.35,
   budget: 0.25,
   priority: 0.3,
@@ -157,6 +171,12 @@ export function scoreMaterial(
     reasons,
     concerns,
     explanation,
+    components: {
+      moisture: Math.round(components.moisture * 100) / 100,
+      budget: Math.round(components.budget * 100) / 100,
+      priority: Math.round(components.priority * 100) / 100,
+      category: Math.round(components.category * 100) / 100,
+    },
   };
 }
 

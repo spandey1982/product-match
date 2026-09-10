@@ -100,6 +100,8 @@ type Recommendation = {
     avgCostPerSqftMinInr?: number | null;
     avgCostPerSqftMaxInr?: number | null;
   } | null;
+  /** Only present right after a fresh POST — see lib/home-material/recommendation.ts's MaterialRecommendationResult doc comment for why this isn't persisted/restored on GET. */
+  components?: { moisture: number; budget: number; priority: number; category: number } | null;
 };
 
 /** One half of a combination pick — mirrors lib/home-material/recommendation.ts's MaterialRecommendationResult (ephemeral, never persisted, so no joined HmMaterial cost fields). */
@@ -240,6 +242,14 @@ function SwatchCarousel({
           )}
           <span className="text-[11px] text-gray-700 leading-tight text-center line-clamp-2">{sw.name}</span>
         </button>
+        {sw.isCustom && (
+          <span
+            className="absolute top-0.5 left-0.5 rounded-full bg-indigo-600 text-white text-[9px] font-medium px-1.5 py-0.5 leading-none"
+            title="Your own uploaded photo — not a catalogue item, private to you"
+          >
+            You
+          </span>
+        )}
         <button
           type="button"
           onClick={(e) => {
@@ -315,6 +325,41 @@ function SpatialCompare({ history, swatches }: { history: Visualization[]; swatc
   );
 }
 
+const SCORE_BREAKDOWN_ROWS: { key: keyof NonNullable<Recommendation["components"]>; label: string; weightPct: number }[] = [
+  { key: "moisture", label: "Moisture fit", weightPct: 35 },
+  { key: "budget", label: "Budget fit", weightPct: 25 },
+  { key: "priority", label: "Priority fit", weightPct: 30 },
+  { key: "category", label: "Category fit", weightPct: 10 },
+];
+
+/**
+ * "Why this score?" (2026-09-10, Decision-layer precision vocabulary) —
+ * brief §37: a recommendation should explain itself rather than just
+ * showing a bare percentage. Collapsed by default (progressive
+ * disclosure, per NN/g's finding that deferring detail speeds the
+ * primary task) — the top-line reasons/concerns above it already give
+ * the short version; this is for a user who wants the real weighted
+ * breakdown lib/home-material/recommendation.ts actually computed.
+ */
+function ScoreBreakdown({ components }: { components: NonNullable<Recommendation["components"]> }) {
+  return (
+    <details className="mt-1.5 group">
+      <summary className="text-[11px] text-gray-400 cursor-pointer hover:text-gray-600 select-none">Why this score?</summary>
+      <div className="mt-1.5 space-y-1">
+        {SCORE_BREAKDOWN_ROWS.map((row) => (
+          <div key={row.key} className="flex items-center gap-2">
+            <span className="text-[11px] text-gray-500 w-20 shrink-0">{row.label}</span>
+            <div className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+              <div className="h-full bg-indigo-400 rounded-full" style={{ width: `${Math.round((components[row.key] ?? 0) * 100)}%` }} />
+            </div>
+            <span className="text-[10px] text-gray-400 w-16 text-right shrink-0">{row.weightPct}% weight</span>
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}
+
 /**
  * Cost estimate — brief's "Estimate" step (§16 core journey, §35 cost
  * model), material cost only (no installation/labour, stated explicitly).
@@ -364,19 +409,35 @@ function CostEstimator({
         className="w-24 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
       />
       {exactPerSqft != null ? (
-        <span>
-          ₹{exactPerSqft}/sqft{hasArea && <> · est. total {fmt(exactPerSqft * area)}</>}{" "}
-          <span className="text-gray-400">(material only, retailer-listed price)</span>
+        <span className="inline-flex items-center gap-1.5 flex-wrap">
+          <span
+            className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 shrink-0"
+            title="A real retailer's listed price, not a platform estimate"
+          >
+            Retailer price
+          </span>
+          <span>
+            ₹{exactPerSqft}/sqft{hasArea && <> · est. total {fmt(exactPerSqft * area)}</>}{" "}
+            <span className="text-gray-400">(material only)</span>
+          </span>
         </span>
       ) : (
-        <span>
-          ₹{minPerSqft}–₹{maxPerSqft}/sqft
-          {hasArea && (
-            <>
-              {" "}· est. total {fmt(minPerSqft! * area)}–{fmt(maxPerSqft! * area)}
-            </>
-          )}{" "}
-          <span className="text-gray-400">(material only, platform estimate)</span>
+        <span className="inline-flex items-center gap-1.5 flex-wrap">
+          <span
+            className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 shrink-0"
+            title="Indicative only — no retailer has listed a specific price for this yet. Request a quote for a real number."
+          >
+            Platform estimate
+          </span>
+          <span>
+            ₹{minPerSqft}–₹{maxPerSqft}/sqft
+            {hasArea && (
+              <>
+                {" "}· est. total {fmt(minPerSqft! * area)}–{fmt(maxPerSqft! * area)}
+              </>
+            )}{" "}
+            <span className="text-gray-400">(material only)</span>
+          </span>
         </span>
       )}
     </div>
@@ -1935,6 +1996,7 @@ export function RoomView({ roomId }: { roomId: string }) {
                                 {rec.concerns.map((c) => (
                                   <p key={c} className="text-xs text-amber-700">⚠ {c}</p>
                                 ))}
+                                {rec.components && <ScoreBreakdown components={rec.components} />}
                                 <CostEstimator
                                   minPerSqft={rec.material?.avgCostPerSqftMinInr}
                                   maxPerSqft={rec.material?.avgCostPerSqftMaxInr}
