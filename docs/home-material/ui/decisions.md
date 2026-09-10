@@ -357,3 +357,57 @@ no visual regressions. `npx tsc --noEmit`, `eslint`, and a full
 production build all passed clean; test room deleted afterward via a
 throwaway Prisma script (`HmRoom` cascade-deletes its surfaces/
 visualizations).
+
+## Guide & Shortlist layout options — proposed, selected, and shipped, 2026-09-10
+
+Following the standing process rule above (every new screen gets
+progressive layout options against the Sage Studio base before
+implementation), built a "Guide & Shortlist Layout Options" artifact
+(https://claude.ai/code/artifact/4b68b155-eb2c-4f96-8b95-2677acb90591)
+proposing two structural directions each for `/materials/guide` and
+`/materials/shortlist` — neither screen was in the original 3-screen
+Sage Studio prototype, so both needed their own options rather than an
+assumed default. Same palette/type/component language throughout; only
+layout differs between options.
+
+**User picked 1B for the Material Guide and 2B for Shortlist/Compare.**
+
+- **Material Guide, option 1B (sticky category rail + comparative
+  bars)** — `app/materials/guide/page.tsx`: the previous pill-filter row
+  is replaced with a slim sticky in-page rail (`lg:sticky lg:top-6`,
+  category anchor links), and each material's durability/maintenance/
+  moisture — previously plain prose text — is now a relative horizontal
+  bar, easier to scan across many materials at once than reading full
+  sentences. Bar widths are presentation-only mappings derived from
+  `MATERIAL_TAXONOMY` (matched by category+subtype, same pattern
+  `app/materials/page.tsx` already uses): durability scales against the
+  taxonomy's real max (15 years, lime plaster) as the bar's full-scale
+  reference; maintenanceLevel/moistureLevel (ordinal, not numeric) map
+  to fixed bar-width bands. Not new domain claims — the underlying
+  level/prose text stays the source of truth, the bar is just a visual
+  restatement of it.
+- **Shortlist/Compare, option 2B (full comparison cards, no table)** —
+  `app/materials/shortlist/ShortlistView.tsx`: the attribute-by-row
+  table is replaced with each shortlisted product as its own card
+  (swatch, name, attribute rows, note, quote/sample actions) — reads
+  better on narrower screens and matches the mcard language already used
+  on the browse grid. The strongest value per row (durability/
+  maintenance/moisture, never cost — cheaper isn't objectively "better")
+  is bold-highlighted across the whole shortlist, computed client-side
+  from the same taxonomy lookup as the guide page. Required adding
+  `subtype` to the shortlist API's material `select`
+  (`app/api/home-material/shortlist/route.ts`) since the taxonomy lookup
+  needs category+subtype, not just category.
+
+Live-tested both: the guide page's rail+bars render correctly themed
+(forest-green bar fills) across all four categories; shortlisted three
+real seed products spanning categories (paint/wallpaper/wall_texture)
+via direct API calls, confirmed the card grid renders with correct
+best-value bold-highlighting (lime plaster's ~15yr durability and "good"
+moisture won outright; "low" maintenance tied and both bolded), the
+note text and quote/sample actions render correctly, and the
+`LeadCaptureButton`'s inline expanding form stays contained within its
+own card column with no overflow into neighboring cards. `npx tsc
+--noEmit`, `eslint`, and a full production build all passed clean; test
+shortlist rows deleted afterward via the same DELETE endpoint the UI
+uses.
