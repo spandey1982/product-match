@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, RotateCcw, Pencil, Heart, Scale } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { LeadCaptureButton } from "@/components/home-material/LeadCaptureButton";
 import { parseJsonSafe } from "@/lib/home-material/client";
 import { parseArray } from "@/lib/serialize";
 import { calculateSheetsNeeded } from "@/lib/home-material/sheet-calculation";
@@ -782,131 +783,6 @@ function AdjacencyMarker({
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-/**
- * "Request a quote" lead capture (brief §17) — tied to either a specific
- * product or just a material category (recommendations are material-level,
- * not SKU-level, so productId won't always apply). Self-contained: manages
- * its own open/closed + form + submit state rather than living in
- * RoomView's already-large state surface.
- *
- * Resolves server-side to whichever HmRetailer exists — as of 2026-09-08
- * that's exactly one deliberately-labeled placeholder
- * (scripts/seed-retailers.ts), not a real business. The confirmation
- * copy below always echoes the real retailer name/isVerified flag from
- * the response rather than assuming — never silently implies a real
- * business received the request.
- */
-function LeadCaptureButton({ productId, materialCategory }: { productId?: string; materialCategory?: string }) {
-  const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
-  const [message, setMessage] = useState("");
-  const [areaSqft, setAreaSqft] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
-  const [result, setResult] = useState<{ name: string; isVerified: boolean } | null>(null);
-
-  async function handleSubmit() {
-    if (!name.trim() || !phone.trim()) {
-      setError("Name and phone are required.");
-      return;
-    }
-    setError("");
-    setSubmitting(true);
-    try {
-      const parsedArea = parseFloat(areaSqft);
-      const res = await fetch(`/api/home-material/leads`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          productId,
-          materialCategory,
-          contactName: name,
-          contactPhone: phone,
-          contactEmail: email || undefined,
-          message: message || undefined,
-          areaSqft: Number.isFinite(parsedArea) && parsedArea > 0 ? parsedArea : undefined,
-        }),
-      });
-      const data = await parseJsonSafe(res);
-      if (!res.ok) {
-        setError(typeof data.error === "string" ? data.error : "Could not submit request");
-        return;
-      }
-      setResult(data.retailer as { name: string; isVerified: boolean });
-    } catch (err) {
-      setError(`Something went wrong: ${err instanceof Error ? err.message : String(err)}`);
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  if (result) {
-    return (
-      <p className="text-xs text-emerald-700 mt-2">
-        ✓ Request saved. Note: {result.name} is placeholder demo data, not a real business yet — this won&apos;t
-        reach an actual retailer until real partners are onboarded.
-      </p>
-    );
-  }
-
-  if (!open) {
-    return (
-      <button type="button" onClick={() => setOpen(true)} className="text-xs font-medium text-indigo-600 hover:text-indigo-800 mt-2">
-        Request a quote
-      </button>
-    );
-  }
-
-  return (
-    <div className="mt-2 space-y-2 rounded-xl border border-gray-200 p-3">
-      <p className="text-xs text-amber-700">⚠ Demo mode — no real retailer will receive this yet.</p>
-      <input
-        type="text"
-        placeholder="Your name"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        className="w-full rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-      />
-      <input
-        type="tel"
-        placeholder="Phone"
-        value={phone}
-        onChange={(e) => setPhone(e.target.value)}
-        className="w-full rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-      />
-      <input
-        type="email"
-        placeholder="Email (optional)"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        className="w-full rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-      />
-      <input
-        type="number"
-        min={1}
-        placeholder="Approximate area in sqft (optional)"
-        value={areaSqft}
-        onChange={(e) => setAreaSqft(e.target.value)}
-        className="w-full rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-      />
-      <textarea
-        placeholder="Message (optional)"
-        value={message}
-        onChange={(e) => setMessage(e.target.value)}
-        rows={2}
-        className="w-full rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-      />
-      {error && <p className="text-xs text-red-500">{error}</p>}
-      <div className="flex gap-2">
-        <Button size="sm" variant="secondary" className="flex-1" onClick={() => setOpen(false)}>Cancel</Button>
-        <Button size="sm" className="flex-1" onClick={handleSubmit} loading={submitting}>Submit</Button>
-      </div>
     </div>
   );
 }

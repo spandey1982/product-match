@@ -1679,6 +1679,20 @@ model HmLead {
   message          String?
   estimatedAreaSqm Float?
 
+  // "quote" | "sample" (2026-09-10, Validation-layer flows) — a sample
+  // request is a physically different fulfillment (ship a real swatch,
+  // brief §41's Visualize->Shortlist->Request sample->Receive sample
+  // loop) from a price quote, so it's tracked as its own intent rather
+  // than folded into a generic "message" — only ever set on a real
+  // productId (you can't physically sample a whole material category).
+  leadType String @default("quote")
+
+  // Only meaningful/required when leadType is "sample" — a single plain
+  // free-text field (deliberately not a structured address book; this
+  // domain has no address infrastructure yet and V1's demo-retailer
+  // flow doesn't need one) — see HmLead's Validation-layer doc note.
+  shippingAddress String?
+
   // new | contacted | quoted | closed
   status String @default("new")
 

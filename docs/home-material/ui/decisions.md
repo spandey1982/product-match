@@ -150,3 +150,46 @@ data the backend already computes, no new AI surface.
   is deferred, not attempted this pass, since every non-custom product
   today is platform-curated demo content and a repeated "platform
   example" badge on every single card would be noise, not signal.
+
+## Validation-layer flows — shipped 2026-09-10
+
+Third and last piece of the approved phase order (§26 step 4) —
+deliberately the plainest work of the four phases, per the discovery
+document's own principle that precision/plainness increases as
+commitment increases. No illustrated pickers, no progressive disclosure,
+no scoring — standard forms.
+
+- **"Request a sample," new alongside "Request a quote"** (brief §41's
+  Validation-layer loop: Visualize -> Shortlist -> Request sample ->
+  Receive sample -> ... -> Purchase). Previously only a price-quote
+  request existed; a sample is a physically different fulfillment (a
+  retailer ships a real swatch) tracked as its own `HmLead.leadType`
+  ("quote" | "sample", new column) with its own optional
+  `shippingAddress` field — a single plain free-text field, deliberately
+  not a structured address book, since this domain has no address
+  infrastructure yet and inventing one wasn't justified for a demo-
+  retailer flow. A sample can only be requested against a real product
+  (`productId`) — you can't physically ship "a material category" — so
+  the API rejects a sample tied only to `materialCategory`, and the UI
+  only offers the sample trigger when a real product is in context.
+- **Extracted `LeadCaptureButton` into `components/home-material/
+  LeadCaptureButton.tsx`** (previously a private function inside
+  `RoomView.tsx`) so it could be reused rather than duplicated.
+- **Closed a real gap: the shortlist/compare page had no path to actually
+  act on anything.** `/materials/shortlist`'s comparison table already
+  showed every fact side by side but had no "now what" — brief §16's
+  core journey explicitly has Compare/Shortlist leading into Estimate ->
+  Request Quote, and that link was missing entirely. Added a "Next step"
+  row with the same quote/sample actions available inline per shortlisted
+  product.
+
+Live-tested: shortlisting a product then loading `/materials/shortlist`
+correctly returns it; a quote request succeeds with no shipping address
+required; a sample request without an address correctly 400s ("A
+shipping address is required to send a sample"); the same request with
+an address succeeds and stores `leadType: "sample"`; a sample tied only
+to a `materialCategory` correctly 400s ("needs a specific product, not
+just a material category"). Browser-verified the shortlist page's new
+row renders both actions per column, and the sample form correctly shows
+a shipping-address textarea in place of the quote form's area-in-sqft
+field.

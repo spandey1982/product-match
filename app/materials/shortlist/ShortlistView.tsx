@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Trash2 } from "lucide-react";
+import { LeadCaptureButton } from "@/components/home-material/LeadCaptureButton";
 import { parseJsonSafe } from "@/lib/home-material/client";
 
 type ShortlistProduct = {
@@ -155,6 +156,14 @@ export function ShortlistView() {
                 <td className="p-3 text-xs font-medium text-gray-400 uppercase tracking-wide align-top">Your note</td>
                 {items.map((item) => (
                   <td key={item.id} className="p-3 text-sm text-gray-500 italic align-top">{item.note || "—"}</td>
+                ))}
+              </tr>
+              <tr className="border-t border-gray-100">
+                <td className="p-3 text-xs font-medium text-gray-400 uppercase tracking-wide align-top">Next step</td>
+                {items.map((item) => (
+                  <td key={item.id} className="p-3 align-top">
+                    <LeadCaptureButton productId={item.product.id} />
+                  </td>
                 ))}
               </tr>
             </tbody>
