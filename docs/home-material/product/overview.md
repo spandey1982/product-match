@@ -55,9 +55,11 @@ mechanism, schema location) and local-environment setup.
 2. **UI visual polish** — the full approved phase order (Mode A landing/
    browse -> Discovery-layer vocabulary -> Decision-layer vocabulary ->
    Validation-layer flows) is now shipped, see `../ui/decisions.md`. Only
-   step 5, the visual design system itself (palette/type/spacing), is
-   still paused — pending the reference designs discussed in
-   `research/home-material-ui-discovery.html`.
+   step 5, the visual design system, is now shipped too: "Sage Studio"
+   (sage-green + Sora/Manrope, scoped to `.hm-theme` in
+   `app/materials/layout.tsx`) applies across every `/materials/*`
+   screen. Not yet built: a persistent top nav/logo header and button
+   shape specifically (pill vs. boxy-rounded) — see `../ui/decisions.md`.
 3. Real-photo visualization quality is user-confirmed working (manually
    verified against an actual room wall) — no longer an open gap.
 

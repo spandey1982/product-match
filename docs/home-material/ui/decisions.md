@@ -193,3 +193,78 @@ just a material category"). Browser-verified the shortlist page's new
 row renders both actions per column, and the sample form correctly shows
 a shipping-address textarea in place of the quote form's area-in-sqft
 field.
+
+## Visual design system — 2 prototype directions proposed, 2026-09-10
+
+Step 5 of the phase order (the visual design system itself) started once
+the user supplied a first draft (a generic "sustainable materials
+library" mockup set — sage/cream palette, card grid, tag chips, sidebar
+nav, comparison table). Two directions were built on OUR actual screens
+(landing/browse, room workspace with wall+swatch+score-breakdown, and a
+validation form), not abstract style tiles, so they're a real side-by-
+side choice rather than a mood board:
+
+- **[Sage Studio](https://claude.ai/code/artifact/6154b33d-e485-4ee9-89c9-ad360cbf6f7b)**
+  (`research/ui-prototype-a-sage-studio.html`) — closely follows the
+  supplied draft's calm sage/cream palette and card/chip language, Sora +
+  Manrope type, but replaces the draft's persistent sidebar with a simple
+  top nav (our product is a guided flow, not a multi-section dashboard —
+  a real structural correction, not just a re-skin) and adds the room-
+  photo moment the draft doesn't show at all.
+- **[Wall & Hearth](https://claude.ai/code/artifact/010e55f5-5877-415f-a411-bf5bf6a594cf)**
+  (`research/ui-prototype-b-wall-and-hearth.html`) — a warmer, more
+  residential direction: the room photo leads the hero (matching Roomvo/
+  IKEA's "open into the tool" pattern), Petrona serif + Karla sans, a
+  plaster-grey neutral base (deliberately not the cream+terracotta
+  combination that reads as a generic AI-generated default).
+
+Both reuse every component already shipped this session (illustrated
+requirement pickers, "why this score" breakdown, cost/estimate chips,
+the "You" provenance badge, plain validation forms) — only the token
+system (color/type) and a couple of structural choices (sidebar vs. top
+nav, text-first vs. photo-first hero) differ, so the comparison is about
+visual direction, not different content.
+
+**Status: PROPOSED, awaiting selection** — neither is applied to the
+live app yet. Both are local-only files (published as Artifacts for
+review; not committed to git — `research/` is gitignored, see the note
+in the memory file about this).
+
+## Sage Studio applied to the live app — 2026-09-10
+
+User picked Sage Studio. Applied via a single scoped mechanism rather
+than editing every component's className strings:
+
+- New `app/materials/layout.tsx` — loads Sora (headings) + Manrope
+  (body) via `next/font/google`, wraps every `/materials/*` route in a
+  `.hm-theme` div. Fonts are loaded here, not in the root layout, so the
+  fashion side keeps its own Geist/Cormorant/Poppins typography
+  untouched — the same domain-separation principle CLAUDE.md already
+  applies to schema/business logic, applied here to visual design too.
+- New `app/materials/materials-theme.css` — overrides Tailwind v4's
+  color theme tokens (`--color-indigo-600`, `--color-gray-500`, etc. —
+  confirmed present in `node_modules/tailwindcss/theme.css`) scoped to
+  `.hm-theme`. Every home-material component already used plain
+  Tailwind utility classes (`bg-indigo-600`, `text-gray-700`, ...)
+  referencing these exact tokens, so overriding the underlying CSS
+  custom property reskins every one of them — including the SHARED
+  `components/ui/Button` — without touching a single component file,
+  and with zero effect outside `.hm-theme` (confirmed live: `/login`,
+  the fashion side's sign-in page, still renders its original indigo/
+  purple branding unchanged).
+- **Deliberately did not change border-radius.** Sage Studio's button
+  mockup is pill-shaped, but `rounded-xl`/`rounded-lg` are shared by
+  buttons AND cards/inputs/panels throughout this domain — overriding
+  that token would have pill-shaped every card and input too, not just
+  buttons. Status chips are already `rounded-full` and match as-is;
+  button shape specifically is a follow-up if wanted, not attempted here.
+- Did not build a persistent top nav/logo header — that's a structural
+  IA addition beyond "apply the chosen palette/type," left as a
+  possible next increment.
+
+Verified: `npx tsc --noEmit`, `eslint`, and a full production build all
+clean; browser-verified the retheme across `/materials` (landing/
+browse), a room workspace (wall photo, swatch picker, illustrated
+budget/priority pickers, truncation warning banner), and `/materials/
+shortlist` — all correctly sage-green/Sora/Manrope; separately verified
+`/login` (fashion side) is completely unaffected.

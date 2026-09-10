@@ -1,0 +1,89 @@
+/*
+ * Home Material Intelligence — "Sage Studio" visual direction, applied
+ * 2026-09-10 after the user picked it from the two prototypes in
+ * research/ui-prototype-a-sage-studio.html (published as the "Sage
+ * Studio" Artifact — see docs/home-material/ui/decisions.md).
+ *
+ * Scoped entirely to `.hm-theme` (this domain's layout wrapper,
+ * app/materials/layout.tsx) via Tailwind v4's CSS-variable theme tokens
+ * (--color-indigo-600 etc., --radius-xl etc. — confirmed present in
+ * node_modules/tailwindcss/theme.css). Every existing home-material
+ * component already uses plain Tailwind utility classes like
+ * `bg-indigo-600` / `text-gray-700` / `rounded-2xl` — overriding the
+ * underlying CSS custom property here reskins every one of them
+ * (including the SHARED components/ui/Button, Card, etc.) without
+ * touching a single component file, and — critically — without
+ * affecting the fashion-retailer side of the app at all, since nothing
+ * outside `.hm-theme` ever sees these overridden values (plain CSS
+ * custom-property scoping, not a global override).
+ *
+ * Deliberately NOT touching border-radius: this domain's status/mode
+ * chips are already pill-shaped (`rounded-full`) and match Sage Studio's
+ * chip style as-is; but `rounded-xl`/`rounded-lg` are shared by BOTH
+ * buttons AND cards/inputs/panels throughout this domain's screens, so
+ * overriding that token to pill-shape buttons would also pill-shape
+ * every card and input — not what the chosen direction shows. Left as a
+ * follow-up if button shape specifically is wanted later.
+ */
+.hm-theme {
+  font-family: var(--font-manrope), "Segoe UI", sans-serif;
+  background: #f3f4ee;
+  min-height: 100vh;
+
+  /* indigo -> Sage Studio's deep forest-green accent (buttons, links, selected states) */
+  --color-indigo-50: #dbe4dc;
+  --color-indigo-100: #cddcd0;
+  --color-indigo-200: #b7cbb9;
+  --color-indigo-300: #9ab89c;
+  --color-indigo-400: #6f9773;
+  --color-indigo-500: #4c7a58;
+  --color-indigo-600: #2f4a3d;
+  --color-indigo-700: #1c2e25;
+  --color-indigo-800: #16241d;
+  --color-indigo-900: #101a15;
+
+  /* gray -> warm sage-tinted neutrals (text, borders, surfaces) */
+  --color-gray-50: #f6f7f2;
+  --color-gray-100: #eceee5;
+  --color-gray-200: #dde0d3;
+  --color-gray-300: #cdd2c1;
+  --color-gray-400: #aab19c;
+  --color-gray-500: #8a9280;
+  --color-gray-600: #6b7360;
+  --color-gray-700: #565f4d;
+  --color-gray-800: #383f32;
+  --color-gray-900: #222820;
+
+  /* emerald -> "good/positive" green, distinguishable from the accent green above */
+  --color-emerald-50: #dfeada;
+  --color-emerald-700: #3d6b3f;
+
+  /* amber -> Sage Studio's warm gold/ochre (warnings, "estimate" chips) */
+  --color-amber-50: #f2e6d3;
+  --color-amber-100: #eddcc0;
+  --color-amber-200: #e0c9a3;
+  --color-amber-300: #d4b989;
+  --color-amber-500: #c08f4f;
+  --color-amber-700: #a8763e;
+  --color-amber-800: #8a5f30;
+
+  /* rose -> deeper, less clinical red for delete/error states */
+  --color-rose-500: #a8493f;
+
+  /* teal -> true-scale-pattern badge, kept distinguishable but warmed slightly */
+  --color-teal-50: #dcebe6;
+  --color-teal-700: #2d6b5c;
+
+  /* violet -> adjacency-continuity badge, muted to sit alongside the rest */
+  --color-violet-50: #e6e0ec;
+  --color-violet-700: #5c4a78;
+}
+
+.hm-theme h1,
+.hm-theme h2,
+.hm-theme h3,
+.hm-theme h4,
+.hm-theme h5,
+.hm-theme h6 {
+  font-family: var(--font-sora), "Segoe UI", sans-serif;
+}
