@@ -1307,15 +1307,18 @@ model HmSurface {
   // manually-drawn shape (no AI judgment exists to set it true).
   possiblyTruncated Boolean @default(false)
 
-  // User-confirmed adjacency for sheet-count math (2026-09-09) —
-  // deliberately NOT auto-detected from the photo (that's sub-problem A
-  // from the multi-wall discussion, explicitly paused). Surfaces sharing
-  // the same non-null value are treated as one continuous run when the
-  // SAME repeat_sheet product is selected across them: their widths sum
-  // before the sheet-count ceiling formula applies once, instead of
-  // computing each wall independently — matching how wallpaper is
-  // actually hung continuously across a real corner. Null means "not
-  // marked adjacent to anything," the default/independent case.
+  // User-confirmed adjacency for sheet-count math (2026-09-09). Only ever
+  // WRITTEN by the user's own confirm action (PATCH .../surfaces/adjacency)
+  // — a 2026-09-10 addition (sub-problem A) lets AI SUGGEST which walls
+  // look adjacent from the photo, but that's a suggestion returned to the
+  // client only, never saved directly (see lib/home-material/
+  // adjacency-detection.ts). Surfaces sharing the same non-null value are
+  // treated as one continuous run when the SAME repeat_sheet product is
+  // selected across them: their widths sum before the sheet-count ceiling
+  // formula applies once, instead of computing each wall independently —
+  // matching how wallpaper is actually hung continuously across a real
+  // corner. Null means "not marked adjacent to anything," the default/
+  // independent case.
   adjacencyGroupId String?
 
   // True when widthMeters/heightMeters came from AI reference-object
@@ -1570,6 +1573,12 @@ model HmVisualization {
   // sheet-size scaling", 2026-09-09. provider/model read "deterministic"
   // / "tiled-true-scale-v1" for these rows.
   trueScaleRendered Boolean @default(false)
+
+  // True when the tile grid was phase-shifted to continue an adjacent
+  // wall's pattern across a real corner (sub-problem C, 2026-09-10) —
+  // only meaningful when trueScaleRendered is also true. See
+  // lib/home-material/visualization.ts's adjacencyOffsetM doc comment.
+  adjacencyContinuityApplied Boolean @default(false)
 
   // "Honest overview" — mandatory post-generation opinion pass over the
   // FINAL composited image (see docs/home-material/README.md, "Honest

@@ -68,6 +68,7 @@ type Visualization = {
   productId?: string | null;
   perspectiveCorrected?: boolean;
   trueScaleRendered?: boolean;
+  adjacencyContinuityApplied?: boolean;
   // "Honest overview" (2026-09-09) — raw Prisma row fields, JSON-string
   // arrays (lib/serialize.ts), parsed client-side by OverviewCard below.
   overviewStatus?: string;
@@ -99,6 +100,32 @@ type Recommendation = {
     avgCostPerSqftMinInr?: number | null;
     avgCostPerSqftMaxInr?: number | null;
   } | null;
+};
+
+/** One half of a combination pick — mirrors lib/home-material/recommendation.ts's MaterialRecommendationResult (ephemeral, never persisted, so no joined HmMaterial cost fields). */
+type ComboMaterial = {
+  materialId: string;
+  slug: string;
+  name: string;
+  category: string;
+  score: number;
+  reasons: string[];
+  concerns: string[];
+};
+
+type SameWallCombination = {
+  categories: [string, string];
+  materials: [ComboMaterial, ComboMaterial];
+  compatibility: "high" | "medium";
+  role: string;
+  score: number;
+  explanation: string;
+};
+
+type RoomScheme = {
+  featureWall: ComboMaterial;
+  surroundingWalls: ComboMaterial;
+  explanation: string;
 };
 
 const DEFAULT_REQUIREMENTS: Requirements = {
@@ -457,9 +484,13 @@ function NeedsDimensionsPrompt({
 
 /**
  * Marks 2+ walls as physically adjacent for sheet-count purposes
- * (2026-09-09) — deliberately manual (see HmSurface.adjacencyGroupId's
- * doc comment: auto-detecting real adjacency is sub-problem A from the
- * multi-wall discussion, explicitly paused). Only shown when the same
+ * (2026-09-09). Adjacency is still only EVER saved by the user clicking
+ * "Mark selected as adjacent" below — but as of 2026-09-10 (sub-problem A,
+ * built after a dedicated scoping discussion) an optional "Suggest
+ * adjacency (AI)" pass can pre-check the boxes for a group it's confident
+ * about. Suggest-only, never auto-saves: same "AI proposes, human
+ * confirms" pattern as wall-detection candidates and the honest-overview
+ * alternative products elsewhere in this domain. Only shown when the same
  * repeat_sheet product is selected on 2+ confirmed walls in one room.
  */
 function AdjacencyMarker({
@@ -476,6 +507,10 @@ function AdjacencyMarker({
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestError, setSuggestError] = useState("");
+  const [suggestedGroups, setSuggestedGroups] = useState<{ wallIds: string[]; confidence: number; reason: string }[] | null>(null);
+  const [suggestNotes, setSuggestNotes] = useState<string | null>(null);
 
   async function handleMark() {
     if (checked.size < 2) {
@@ -497,10 +532,36 @@ function AdjacencyMarker({
       }
       onUpdated(data.surfaces as Surface[]);
       setChecked(new Set());
+      setSuggestedGroups(null);
     } catch (err) {
       setError(`Something went wrong: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleSuggest() {
+    setSuggestError("");
+    setSuggesting(true);
+    setSuggestedGroups(null);
+    setSuggestNotes(null);
+    try {
+      const res = await fetch(`/api/home-material/rooms/${roomId}/surfaces/adjacency/suggest`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ surfaceIds: surfaces.map((s) => s.id) }),
+      });
+      const data = await parseJsonSafe(res);
+      if (!res.ok) {
+        setSuggestError(typeof data.error === "string" ? data.error : "Could not get a suggestion");
+        return;
+      }
+      setSuggestedGroups(Array.isArray(data.groups) ? data.groups : []);
+      setSuggestNotes(typeof data.notes === "string" ? data.notes : null);
+    } catch (err) {
+      setSuggestError(`Something went wrong: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setSuggesting(false);
     }
   }
 
@@ -538,8 +599,29 @@ function AdjacencyMarker({
           </label>
         ))}
       </div>
-      <Button size="sm" onClick={handleMark} loading={saving}>Mark selected as adjacent</Button>
+      <div className="flex items-center gap-2">
+        <Button size="sm" variant="secondary" onClick={handleSuggest} loading={suggesting}>Suggest adjacency (AI)</Button>
+        <Button size="sm" onClick={handleMark} loading={saving}>Mark selected as adjacent</Button>
+      </div>
       {error && <p className="text-xs text-red-500">{error}</p>}
+      {suggestError && <p className="text-xs text-red-500">{suggestError}</p>}
+      {suggestedGroups && suggestedGroups.length === 0 && (
+        <p className="text-[11px] text-gray-500">AI didn&apos;t find confident evidence of adjacency{suggestNotes ? ` (${suggestNotes})` : ""} — you can still mark it manually if you know they&apos;re physically adjacent.</p>
+      )}
+      {suggestedGroups && suggestedGroups.length > 0 && (
+        <div className="space-y-1">
+          {suggestedGroups.map((g, i) => (
+            <div key={i} className="flex items-center justify-between gap-2 rounded-lg bg-indigo-50 px-2 py-1.5">
+              <p className="text-[11px] text-indigo-800">
+                AI suggests <strong>{g.wallIds.map((id) => surfaces.find((s) => s.id === id)?.label || "Wall").join(" + ")}</strong> are adjacent ({Math.round(g.confidence * 100)}% confidence) — {g.reason}
+              </p>
+              <button type="button" className="shrink-0 text-[11px] font-medium text-indigo-700 underline" onClick={() => setChecked(new Set(g.wallIds))}>
+                Select these
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -819,6 +901,16 @@ export function RoomView({ roomId }: { roomId: string }) {
   const [recommending, setRecommending] = useState<Record<string, boolean>>({});
   const [recommendations, setRecommendations] = useState<Record<string, Recommendation[]>>({});
   const [recommendError, setRecommendError] = useState<Record<string, string>>({});
+
+  // Sub-problem F, combination recommendations (2026-09-10) — same-wall
+  // layered combos (per wall) and a cross-wall room scheme (per room),
+  // both ephemeral (see lib/home-material/combination-recommendation.ts).
+  const [combining, setCombining] = useState<Record<string, boolean>>({});
+  const [combinations, setCombinations] = useState<Record<string, SameWallCombination[]>>({});
+  const [combineError, setCombineError] = useState<Record<string, string>>({});
+  const [schemeLoading, setSchemeLoading] = useState(false);
+  const [schemeResult, setSchemeResult] = useState<RoomScheme | null>(null);
+  const [schemeError, setSchemeError] = useState("");
 
   const [shortlisted, setShortlisted] = useState<Set<string>>(new Set());
 
@@ -1154,6 +1246,50 @@ export function RoomView({ roomId }: { roomId: string }) {
       setRecommendError((p) => ({ ...p, [surfaceId]: `Something went wrong: ${err instanceof Error ? err.message : String(err)}` }));
     } finally {
       setRecommending((g) => ({ ...g, [surfaceId]: false }));
+    }
+  }
+
+  async function handleGetCombinations(surfaceId: string) {
+    setCombineError((p) => ({ ...p, [surfaceId]: "" }));
+    setCombining((g) => ({ ...g, [surfaceId]: true }));
+    try {
+      const res = await fetch(`/api/home-material/rooms/${roomId}/surfaces/${surfaceId}/recommend-combinations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(getRequirements(surfaceId)),
+      });
+      const data = await parseJsonSafe(res);
+      if (!res.ok) {
+        setCombineError((p) => ({ ...p, [surfaceId]: typeof data.error === "string" ? data.error : "Could not get combination ideas" }));
+        return;
+      }
+      setCombinations((c) => ({ ...c, [surfaceId]: (data.combinations as SameWallCombination[]) ?? [] }));
+    } catch (err) {
+      setCombineError((p) => ({ ...p, [surfaceId]: `Something went wrong: ${err instanceof Error ? err.message : String(err)}` }));
+    } finally {
+      setCombining((g) => ({ ...g, [surfaceId]: false }));
+    }
+  }
+
+  async function handleGetRoomScheme() {
+    setSchemeError("");
+    setSchemeLoading(true);
+    try {
+      const res = await fetch(`/api/home-material/rooms/${roomId}/recommend-scheme`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wetArea: false, budgetTier: "any", priority: "any", preferredCategory: "any" }),
+      });
+      const data = await parseJsonSafe(res);
+      if (!res.ok) {
+        setSchemeError(typeof data.error === "string" ? data.error : "Could not get a room scheme");
+        return;
+      }
+      setSchemeResult(data.scheme as RoomScheme);
+    } catch (err) {
+      setSchemeError(`Something went wrong: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setSchemeLoading(false);
     }
   }
 
@@ -1576,6 +1712,14 @@ export function RoomView({ roomId }: { roomId: string }) {
                         True-scale pattern
                       </span>
                     )}
+                    {vis.adjacencyContinuityApplied && (
+                      <span
+                        className="inline-block text-xs font-medium px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 ml-1.5"
+                        title="This wall is marked adjacent to another wall using the same pattern — the tiling continues in phase from that wall instead of restarting."
+                      >
+                        Continues from adjacent wall
+                      </span>
+                    )}
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={vis.outputImageUrl} alt="Preview" className="w-full rounded-xl border border-gray-200" />
                     <OverviewCard
@@ -1695,12 +1839,60 @@ export function RoomView({ roomId }: { roomId: string }) {
                           })}
                         </div>
                       )}
+
+                      <div className="border-t border-gray-100 pt-2">
+                        <Button size="sm" variant="secondary" onClick={() => handleGetCombinations(s.id)} loading={combining[s.id]}>
+                          Or combine two materials on this wall
+                        </Button>
+                        {combineError[s.id] && <p className="text-sm text-red-500 mt-1">{combineError[s.id]}</p>}
+                        {combinations[s.id] && combinations[s.id].length === 0 && (
+                          <p className="text-xs text-gray-400 mt-1">No recommendable combination found for these requirements.</p>
+                        )}
+                        {(combinations[s.id]?.length ?? 0) > 0 && (
+                          <div className="space-y-2 mt-2">
+                            {combinations[s.id].map((combo, i) => (
+                              <div key={i} className="rounded-xl border border-gray-200 p-3">
+                                <div className="flex items-center justify-between">
+                                  <p className="text-sm font-semibold text-gray-900">
+                                    {combo.materials[0].name} + {combo.materials[1].name}
+                                  </p>
+                                  <span className="text-xs text-gray-400">{Math.round(combo.score * 100)}% match</span>
+                                </div>
+                                <p className="text-xs text-gray-600 mt-0.5">{combo.explanation}</p>
+                                <span
+                                  className={`inline-block text-[11px] font-medium px-2 py-0.5 rounded-full mt-1 ${
+                                    combo.compatibility === "high" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
+                                  }`}
+                                >
+                                  {combo.compatibility === "high" ? "Well-matched combination" : "Workable combination"}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
               </div>
             );
           })}
+
+          {room.surfaces.length >= 2 && (
+            <div className="rounded-xl border border-gray-200 p-3 space-y-2">
+              <p className="text-xs font-medium text-gray-700">Not sure how to treat the whole room? Get a feature-wall + surrounding-walls scheme.</p>
+              <Button size="sm" variant="secondary" onClick={handleGetRoomScheme} loading={schemeLoading}>Suggest a room scheme</Button>
+              {schemeError && <p className="text-xs text-red-500">{schemeError}</p>}
+              {schemeResult && (
+                <div className="rounded-xl border border-indigo-200 bg-indigo-50/40 p-3 space-y-1">
+                  <p className="text-sm text-gray-800">{schemeResult.explanation}</p>
+                  <p className="text-xs text-gray-600">
+                    Feature wall: <strong>{schemeResult.featureWall.name}</strong> ({schemeResult.featureWall.category.replace("_", " ")}) — Other walls: <strong>{schemeResult.surroundingWalls.name}</strong> (paint)
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
           {(() => {
             // Group confirmed walls by which repeat_sheet product they've

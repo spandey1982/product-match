@@ -82,6 +82,35 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Cross-wall pattern continuity (sub-problem C, 2026-09-10) — only when
+  // this wall is in a user-confirmed adjacency group AND every wall in
+  // that group has a known real width and a saved outline. Order is
+  // inferred from each wall's mean X position in the same photo (left to
+  // right) — never asked of the user, never AI-guessed. If any sibling is
+  // missing a real width or an outline, this silently stays null (today's
+  // independent-phase rendering) rather than guessing an order.
+  let adjacencyOffsetM: number | null = null;
+  if (surface.adjacencyGroupId) {
+    const siblings = await db.hmSurface.findMany({ where: { adjacencyGroupId: surface.adjacencyGroupId } });
+    const withGeometry = siblings
+      .map((s) => {
+        const geo = s.geometryData ? JSON.parse(s.geometryData) : null;
+        const pts = geo?.points;
+        if (!Array.isArray(pts) || pts.length < 3 || s.widthMeters == null) return null;
+        const meanX = pts.reduce((sum: number, p: { x: number }) => sum + p.x, 0) / pts.length;
+        return { id: s.id, meanX, widthM: s.widthMeters as number };
+      })
+      .filter((s): s is { id: string; meanX: number; widthM: number } => s !== null);
+
+    if (withGeometry.length === siblings.length && withGeometry.length >= 2) {
+      const ordered = [...withGeometry].sort((a, b) => a.meanX - b.meanX);
+      const selfIndex = ordered.findIndex((s) => s.id === surfaceId);
+      if (selfIndex >= 0) {
+        adjacencyOffsetM = ordered.slice(0, selfIndex).reduce((sum, s) => sum + s.widthM, 0);
+      }
+    }
+  }
+
   const visualization = await db.hmVisualization.create({
     data: {
       surfaceId,
@@ -113,6 +142,7 @@ export async function POST(req: NextRequest) {
     sheetHeightM: product.sheetHeightM,
     wallWidthM,
     wallHeightM,
+    adjacencyOffsetM,
     hmUserId: session.id,
     visualizationId: visualization.id,
   });
@@ -162,6 +192,7 @@ export async function POST(req: NextRequest) {
       provider: result.perspectiveCorrected || result.trueScaleRendered ? "deterministic" : "gemini",
       perspectiveCorrected: result.perspectiveCorrected,
       trueScaleRendered: result.trueScaleRendered,
+      adjacencyContinuityApplied: result.adjacencyContinuityApplied,
       overviewStatus: "error" in overview ? "failed" : "completed",
       overviewOpening: "error" in overview ? null : overview.opening,
       overviewHighlights: "error" in overview ? "[]" : serializeArray(overview.highlights),

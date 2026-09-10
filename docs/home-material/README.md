@@ -1018,7 +1018,8 @@ usage data — revisit if/when the two need to diverge).
   above (data model, sheet-count math with the adjacency rule,
   true-scale tiled rendering, reference-object dimension estimation).
   Explicitly NOT combined with perspective correction (angled walls)
-  this pass, and adjacency stays manual (sub-problem A still paused).
+  this pass. Adjacency is now AI-suggested (never auto-saved) — see
+  "Sub-problems A, C, F" below, shipped 2026-09-10.
 - ~~Walls whose true length isn't visible in the photo~~ — **shipped
   2026-09-09**, see "Wall-truncation honesty + real-dimension entry"
   above (detection flag + warning + optional real-dimension entry,
@@ -1027,8 +1028,131 @@ usage data — revisit if/when the two need to diverge).
   2026-09-09) — `RoomView.tsx`'s image container uses `rounded-2xl` +
   `overflow-hidden`, which can make it fiddly to place/grab a polygon
   vertex exactly at one of the image's 4 corners (the rounding clips the
-  interactive area right at the corner). Low priority, not yet in the
-  user's build sequence.
+  interactive area right at the corner). Low priority, **next up** —
+  user confirmed 2026-09-10 this is the item after sub-problems A/C/F.
+- **Sub-problem D (panoramic/wide-angle)** — user explicitly confirmed
+  2026-09-10 to keep this permanently deferred, not attempted.
+
+## Sub-problems A, C, F — shipped 2026-09-10 (D stays deferred)
+
+Continuation of the 2026-09-09 multi-wall discussion's taxonomy (A–G).
+G, E, B shipped 2026-09-09 (see above). This round, after a dedicated
+scoping conversation (same pattern as before — align on approach before
+any code), the user chose to build **A, C, and F now**, keep **D
+permanently deferred**, with **UI visual polish next** after this.
+
+Scoping decisions confirmed before writing any code:
+- **A (AI-detected adjacency):** "AI suggests, user confirms" — never
+  replaces the existing manual `HmSurface.adjacencyGroupId` confirm step.
+- **F (combination recommendations):** scoped as **both** same-wall
+  layered combos (e.g. paint + wainscoting on one wall) **and** cross-wall
+  room combos (a feature wall + complementary paint on the rest).
+- **C (cross-wall pattern continuity):** wall order within an adjacency
+  run is **inferred from geometry** (each wall's mean X position in the
+  photo), never asked of the user.
+- **D (panoramic/wide-angle):** stays deferred, per the original
+  recommendation.
+
+### A — AI-suggested adjacency
+
+`lib/home-material/adjacency-detection.ts`'s `detectAdjacentWalls` —
+bakes a distinctly-colored, lettered outline onto each candidate wall in
+the SAME photo (extending the established `renderOutlinedBase`/
+`renderOutlinedPhoto` technique to multiple walls at once) and asks
+Gemini which labeled walls share a real physical corner, citing visual
+evidence (a corner line, a continuous ceiling/floor line). Suggest-only:
+returns groups to the caller, never writes `adjacencyGroupId` itself — a
+wall pair the model isn't confident about is left ungrouped, never
+force-grouped (same "never manufacture certainty" rule as the rest of
+this domain).
+
+New `POST .../rooms/[roomId]/surfaces/adjacency/suggest` (auth +
+ownership checked, same pattern as the existing manual PATCH endpoint).
+`RoomView.tsx`'s `AdjacencyMarker` gained a "Suggest adjacency (AI)"
+button — each suggested group renders with its confidence/reason and a
+"Select these" action that pre-checks exactly that group's boxes; the
+user still clicks the pre-existing "Mark selected as adjacent" button to
+persist anything. Multiple disjoint suggested groups (e.g. two separate
+adjacent pairs in a 4-wall room) are shown as separate selectable rows
+rather than blended into one checkbox soup.
+
+Live-tested against a synthetic two-wall corner photo (a real vertical
+corner shadow line between the walls) — the model correctly grouped both
+walls with confidence 1.0, citing "share a common vertical edge... meet
+at a physical corner," matching the scene's ground truth exactly.
+
+### C — cross-wall pattern continuity
+
+Only affects the existing true-scale tiled-rendering path (repeat_sheet,
+no perspective corners — same scoping boundary sub-problem B already
+established). `QuickPreviewInput.adjacencyOffsetM` (meters) — the
+combined real width of every OTHER wall in this wall's adjacency group
+that sits before it in left-to-right order — phase-shifts the tile grid
+so the pattern continues from the previous wall instead of restarting at
+column 0 on every wall.
+
+`visualization.ts`'s `renderTiledPattern` implements the shift by
+rendering onto a canvas padded wider by the offset, then cropping the
+padding away — deliberately avoids compositing a tile at a negative
+`left` coordinate. New `HmVisualization.adjacencyContinuityApplied`
+column (mirrors `perspectiveCorrected`/`trueScaleRendered`'s existing
+traceability pattern) + a "Continues from adjacent wall" badge in
+`RoomView.tsx`.
+
+Order is inferred, never asked: `app/api/home-material/visualizations/
+route.ts` fetches every wall sharing this wall's `adjacencyGroupId`,
+sorts them by mean polygon X in the same photo, and sums the real widths
+of everything before this wall in that order. If any sibling is missing
+a saved outline or a real width, this silently stays null (today's
+independent-phase behavior) rather than guessing an order — same
+"never blocks, never guesses" pattern as the rest of this feature.
+
+Verified two ways: (1) an isolated unit-level check of the phase-shift
+math with a 2-color test tile (a full-tile offset is a correct no-op;
+a half-tile offset correctly starts the pattern on the other half-color)
+— confirms the modulo/pad/crop logic is exactly right; (2) an end-to-end
+call through `runQuickPreviewVisualization` with two adjacent walls (3m
+and 4m) confirmed `adjacencyContinuityApplied` is only set true when a
+real offset applies, false for the first/only wall in a run.
+
+### F — combination recommendations
+
+`lib/home-material/combination-recommendation.ts` — same architectural
+level as the existing `recommendation.ts` scorer (taxonomy-level,
+deterministic, explainable); adds a category-PAIRING layer on top of it,
+does not re-score materials itself. Deliberately does NOT build real
+per-product color-harmony matching (HmProduct does carry `colorHex`, but
+a genuine color-theory algorithm would duplicate complexity the fashion
+side's protected `color-harmony.ts` already owns for a different domain,
+and goes beyond what was scoped) — stays at "which material TYPES combine
+well," the same level the rest of this recommendation engine operates at.
+
+- `generateSameWallCombinations` — a fixed compatibility table of which
+  category PAIRS work layered on one wall (paint+wall_panel and
+  wallpaper+wall_panel: high — wainscoting conventions; paint+wall_texture,
+  paint+wallpaper, wall_panel+wall_texture: medium; wallpaper+wall_texture
+  deliberately excluded — two full-coverage patterned/textured treatments
+  on one wall reads as visually busy). Picks the best-scoring taxonomy
+  entry per category against stated requirements, combines scores.
+- `generateRoomScheme` — cross-wall: one feature wall (best-scoring
+  wallpaper or wall_texture) + a complementary paint for the rest of the
+  room's confirmed walls. Needs 2+ confirmed walls to mean anything.
+
+New endpoints: `POST .../surfaces/[surfaceId]/recommend-combinations`
+(same-wall) and `POST .../rooms/[roomId]/recommend-scheme` (room-wide).
+Both are **ephemeral** — computed fresh every call, never persisted to
+`HmRecommendation` (unlike the single-material picks) — no schema change
+needed for this pass, and combos are cheap enough to recompute. Revisit
+if combo shortlisting/history is wanted later. `RoomView.tsx` gained an
+"Or combine two materials on this wall" action inside the existing "Help
+me choose" panel, and a room-level "Suggest a room scheme" section.
+
+Live-tested via a direct script (fully deterministic, zero AI cost):
+confirmed category-pair scores differentiate correctly across two
+requirement scenarios (a wet-area/budget/durability case correctly
+re-ranked `wall_texture+wall_panel` above `paint+wallpaper`, versus the
+"any" case's default ordering), and confirmed a 1-wall room correctly
+returns `null` (no scheme) while a 3-wall room returns a real one.
 
 ## Known environment issue (pre-existing, not caused by this work — resolved)
 

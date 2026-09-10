@@ -93,6 +93,19 @@ export interface QuickPreviewInput {
   sheetHeightM?: number | null;
   wallWidthM?: number | null;
   wallHeightM?: number | null;
+  /**
+   * Sub-problem C, cross-wall pattern continuity (2026-09-10) — only
+   * meaningful together with the true-scale tiling fields above. The
+   * combined real-world width (meters) of every OTHER wall in this wall's
+   * adjacencyGroupId that sits before it in the group's inferred
+   * left-to-right order (0 for the first/only wall in a run, or when this
+   * wall isn't in any adjacency group). Used to phase-shift the tile grid
+   * so the pattern appears to continue unbroken from the previous wall
+   * rather than restarting at zero on every wall — the same physical
+   * continuity the sheet-count math already assumes for adjacent runs.
+   * Missing/null behaves exactly like today (phase starts at zero).
+   */
+  adjacencyOffsetM?: number | null;
   hmUserId: string;
   visualizationId: string;
 }
@@ -117,6 +130,8 @@ export interface QuickPreviewResult {
   perspectiveCorrected: boolean;
   /** True when this used the deterministic true-scale tiled-pattern path (2026-09-09) — the repeat-pattern rendered at its real physical size, not stretched to fit. */
   trueScaleRendered: boolean;
+  /** True when the tile grid was phase-shifted to continue an adjacent wall's pattern (sub-problem C, 2026-09-10) — meaningless unless trueScaleRendered is also true. */
+  adjacencyContinuityApplied: boolean;
 }
 
 /**
@@ -471,10 +486,26 @@ function polygonBoundingBoxPx(points: Point[], width: number, height: number) {
  * grid fill (sharp composites one entry per cell), not a novel technique
  * like the homography warp; this is why true-scale tiling didn't need
  * an isolated prototype phase the way sub-problem B did.
+ *
+ * `offsetXPx` (sub-problem C, 2026-09-10) phase-shifts the grid so it
+ * continues an adjacent wall's pattern instead of always restarting at
+ * column 0 — built by rendering onto a canvas padded wider by the
+ * offset, then cropping the padding away, rather than compositing tiles
+ * at a negative `left` (sharp's composite offsets are always
+ * non-negative in practice; padding+crop sidesteps that entirely).
  */
-async function renderTiledPattern(tileBuf: Buffer, tileWidthPx: number, tileHeightPx: number, canvasWidthPx: number, canvasHeightPx: number): Promise<Buffer> {
+async function renderTiledPattern(
+  tileBuf: Buffer,
+  tileWidthPx: number,
+  tileHeightPx: number,
+  canvasWidthPx: number,
+  canvasHeightPx: number,
+  offsetXPx = 0
+): Promise<Buffer> {
   const tile = await sharp(tileBuf).resize(tileWidthPx, tileHeightPx, { fit: "fill" }).ensureAlpha().png().toBuffer();
-  const cols = Math.ceil(canvasWidthPx / tileWidthPx);
+  const normalizedOffset = ((offsetXPx % tileWidthPx) + tileWidthPx) % tileWidthPx;
+  const paddedWidth = canvasWidthPx + normalizedOffset;
+  const cols = Math.ceil(paddedWidth / tileWidthPx);
   const rows = Math.ceil(canvasHeightPx / tileHeightPx);
 
   const composites: Array<{ input: Buffer; left: number; top: number }> = [];
@@ -484,8 +515,13 @@ async function renderTiledPattern(tileBuf: Buffer, tileWidthPx: number, tileHeig
     }
   }
 
-  const canvas = sharp({ create: { width: canvasWidthPx, height: canvasHeightPx, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } });
-  return canvas.composite(composites).png().toBuffer();
+  const padded = await sharp({ create: { width: paddedWidth, height: canvasHeightPx, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+    .composite(composites)
+    .png()
+    .toBuffer();
+
+  if (normalizedOffset === 0) return padded;
+  return sharp(padded).extract({ left: Math.round(normalizedOffset), top: 0, width: canvasWidthPx, height: canvasHeightPx }).png().toBuffer();
 }
 
 export async function runQuickPreviewVisualization(
@@ -576,6 +612,7 @@ export async function runQuickPreviewVisualization(
         mode: "product_accurate",
         perspectiveCorrected: true,
         trueScaleRendered: false,
+        adjacencyContinuityApplied: false,
       };
     } catch (err) {
       console.error("[home-material/visualization] perspective-correct path failed, falling back to AI generation:", err);
@@ -606,7 +643,10 @@ export async function runQuickPreviewVisualization(
       const tileWidthPx = Math.max(1, Math.round(input.sheetWidthM * pxPerMeterX));
       const tileHeightPx = Math.max(1, Math.round(input.sheetHeightM * pxPerMeterY));
 
-      const tiledAtBbox = await renderTiledPattern(referenceImage, tileWidthPx, tileHeightPx, bbox.width, bbox.height);
+      const hasAdjacencyOffset = typeof input.adjacencyOffsetM === "number" && Number.isFinite(input.adjacencyOffsetM) && input.adjacencyOffsetM > 0;
+      const offsetXPx = hasAdjacencyOffset ? input.adjacencyOffsetM! * pxPerMeterX : 0;
+
+      const tiledAtBbox = await renderTiledPattern(referenceImage, tileWidthPx, tileHeightPx, bbox.width, bbox.height, offsetXPx);
 
       // Paste the tiled fill (sized to the bbox) at its correct offset
       // into a full-canvas transparent layer, then reuse the same
@@ -656,6 +696,7 @@ export async function runQuickPreviewVisualization(
         mode: "product_accurate",
         perspectiveCorrected: false,
         trueScaleRendered: true,
+        adjacencyContinuityApplied: hasAdjacencyOffset,
       };
     } catch (err) {
       console.error("[home-material/visualization] true-scale tiling path failed, falling back to AI generation:", err);
@@ -898,5 +939,6 @@ export async function runQuickPreviewVisualization(
     mode: referenceImage ? "product_accurate" : "quick_preview",
     perspectiveCorrected: false,
     trueScaleRendered: false,
+    adjacencyContinuityApplied: false,
   };
 }
