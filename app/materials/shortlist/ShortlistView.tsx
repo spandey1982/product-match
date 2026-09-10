@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, Trash2 } from "lucide-react";
 import { LeadCaptureButton } from "@/components/home-material/LeadCaptureButton";
 import { parseJsonSafe } from "@/lib/home-material/client";
+import { MATERIAL_TAXONOMY, type MaintenanceLevel, type MoistureLevel } from "@/lib/home-material/material-taxonomy";
 
 type ShortlistProduct = {
   id: string;
@@ -17,6 +18,7 @@ type ShortlistProduct = {
   material: {
     name: string;
     category: string;
+    subtype: string;
     durability: string | null;
     maintenance: string | null;
     moistureSuitability: string | null;
@@ -34,18 +36,19 @@ type ShortlistItem = {
 };
 
 function costLabel(p: ShortlistProduct): string {
-  if (p.priceIsExact && p.priceInr != null) return `₹${p.priceInr}/sqft (retailer-listed)`;
-  if (p.costRangeMinInr != null && p.costRangeMaxInr != null) return `₹${p.costRangeMinInr}–₹${p.costRangeMaxInr}/sqft (estimate)`;
+  if (p.priceIsExact && p.priceInr != null) return `₹${p.priceInr}/sqft`;
+  if (p.costRangeMinInr != null && p.costRangeMaxInr != null) return `₹${p.costRangeMinInr}–₹${p.costRangeMaxInr}/sqft`;
   return "—";
 }
 
-const ROWS: Array<{ label: string; render: (p: ShortlistProduct) => React.ReactNode }> = [
-  { label: "Material type", render: (p) => p.material?.name ?? "—" },
-  { label: "Cost (material only)", render: (p) => costLabel(p) },
-  { label: "Durability", render: (p) => p.material?.durability ?? "—" },
-  { label: "Maintenance", render: (p) => p.material?.maintenance ?? "—" },
-  { label: "Moisture suitability", render: (p) => p.material?.moistureSuitability ?? "—" },
-];
+// Structured durability/maintenance/moisture figures live only in the
+// typed MATERIAL_TAXONOMY source (see app/materials/page.tsx and
+// app/materials/guide/page.tsx — same lookup pattern), not on the
+// HmMaterial DB row. Used here to work out which shortlisted item is
+// objectively "best" per row (Option 2B highlights the strongest value),
+// not just to display the figures.
+const MAINTENANCE_RANK: Record<MaintenanceLevel, number> = { low: 3, medium: 2, high: 1 };
+const MOISTURE_RANK: Record<MoistureLevel, number> = { poor: 1, fair: 2, good: 3, excellent: 4 };
 
 export function ShortlistView() {
   const router = useRouter();
@@ -78,8 +81,18 @@ export function ShortlistView() {
     }
   }
 
+  const taxonomyByItem =
+    items?.map((item) => {
+      const m = item.product.material;
+      return m ? MATERIAL_TAXONOMY.find((t) => t.category === m.category && t.subtype === m.subtype) : undefined;
+    }) ?? [];
+  const bestDurability = Math.max(-Infinity, ...taxonomyByItem.map((t) => t?.durabilityYearsApprox ?? -Infinity));
+  const bestMaintenanceRank = Math.max(-Infinity, ...taxonomyByItem.map((t) => (t ? MAINTENANCE_RANK[t.maintenanceLevel] : -Infinity)));
+  const bestMoistureRank = Math.max(-Infinity, ...taxonomyByItem.map((t) => (t ? MOISTURE_RANK[t.moistureLevel] : -Infinity)));
+  const hasSpread = (items?.length ?? 0) > 1;
+
   return (
-    <div className="max-w-4xl mx-auto py-10 px-6 space-y-4">
+    <div className="max-w-5xl mx-auto py-10 px-6 space-y-4">
       <Link href="/materials" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700">
         <ArrowLeft className="h-4 w-4" /> Back
       </Link>
@@ -104,70 +117,69 @@ export function ShortlistView() {
       )}
 
       {items && items.length > 0 && (
-        <div className="overflow-x-auto -mx-6 px-6">
-          <table className="min-w-full border-separate border-spacing-0">
-            <thead>
-              <tr>
-                <th className="w-32" />
-                {items.map((item) => (
-                  <th key={item.id} className="text-left align-top p-3 min-w-[180px]">
-                    <div className="space-y-2">
-                      <div className="flex items-start justify-between gap-2">
-                        {item.product.textureAssetUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={item.product.textureAssetUrl}
-                            alt={item.product.name}
-                            className="w-16 h-16 rounded-lg object-cover border border-gray-200"
-                          />
-                        ) : (
-                          <div
-                            className="w-16 h-16 rounded-lg border border-gray-200"
-                            style={{ backgroundColor: item.product.colorHex || "#e5e7eb" }}
-                          />
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => handleRemove(item.product.id)}
-                          disabled={removing[item.product.id]}
-                          className="text-gray-300 hover:text-red-500 disabled:opacity-50"
-                          title="Remove from shortlist"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                      <p className="text-sm font-semibold text-gray-900">{item.product.name}</p>
-                      {item.product.colorName && <p className="text-xs text-gray-400">{item.product.colorName}</p>}
-                    </div>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {ROWS.map((row) => (
-                <tr key={row.label} className="border-t border-gray-100">
-                  <td className="p-3 text-xs font-medium text-gray-400 uppercase tracking-wide align-top">{row.label}</td>
-                  {items.map((item) => (
-                    <td key={item.id} className="p-3 text-sm text-gray-700 align-top">{row.render(item.product)}</td>
-                  ))}
-                </tr>
-              ))}
-              <tr className="border-t border-gray-100">
-                <td className="p-3 text-xs font-medium text-gray-400 uppercase tracking-wide align-top">Your note</td>
-                {items.map((item) => (
-                  <td key={item.id} className="p-3 text-sm text-gray-500 italic align-top">{item.note || "—"}</td>
-                ))}
-              </tr>
-              <tr className="border-t border-gray-100">
-                <td className="p-3 text-xs font-medium text-gray-400 uppercase tracking-wide align-top">Next step</td>
-                {items.map((item) => (
-                  <td key={item.id} className="p-3 align-top">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {items.map((item, i) => {
+            const t = taxonomyByItem[i];
+            const durabilityIsBest = hasSpread && t != null && t.durabilityYearsApprox === bestDurability;
+            const maintenanceIsBest = hasSpread && t != null && MAINTENANCE_RANK[t.maintenanceLevel] === bestMaintenanceRank;
+            const moistureIsBest = hasSpread && t != null && MOISTURE_RANK[t.moistureLevel] === bestMoistureRank;
+            return (
+              <div key={item.id} className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
+                <div className="relative h-24">
+                  {item.product.textureAssetUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={item.product.textureAssetUrl} alt={item.product.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full" style={{ backgroundColor: item.product.colorHex || "#e5e7eb" }} />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleRemove(item.product.id)}
+                    disabled={removing[item.product.id]}
+                    className="absolute top-2 right-2 w-6 h-6 rounded-full bg-white/90 flex items-center justify-center text-gray-500 hover:text-red-500 disabled:opacity-50"
+                    title="Remove from shortlist"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <div className="p-4 space-y-0">
+                  <h3 className="text-sm font-semibold text-gray-900">{item.product.name}</h3>
+                  {item.product.colorName && <p className="text-xs text-gray-400">{item.product.colorName}</p>}
+
+                  <div className="flex items-baseline justify-between py-2 border-t border-gray-100 mt-3">
+                    <span className="text-[0.68rem] font-medium uppercase tracking-wide text-gray-400">Cost</span>
+                    <span className="text-sm text-gray-700">{costLabel(item.product)}</span>
+                  </div>
+                  <div className="flex items-baseline justify-between py-2 border-t border-gray-100">
+                    <span className="text-[0.68rem] font-medium uppercase tracking-wide text-gray-400">Durability</span>
+                    <span className={`text-sm ${durabilityIsBest ? "font-bold text-indigo-700" : "text-gray-700"}`}>
+                      {t ? `~${t.durabilityYearsApprox} yrs` : item.product.material?.durability ?? "—"}
+                    </span>
+                  </div>
+                  <div className="flex items-baseline justify-between py-2 border-t border-gray-100">
+                    <span className="text-[0.68rem] font-medium uppercase tracking-wide text-gray-400">Maintenance</span>
+                    <span className={`text-sm ${maintenanceIsBest ? "font-bold text-indigo-700" : "text-gray-700"}`}>
+                      {t ? t.maintenanceLevel : item.product.material?.maintenance ?? "—"}
+                    </span>
+                  </div>
+                  <div className="flex items-baseline justify-between py-2 border-t border-gray-100">
+                    <span className="text-[0.68rem] font-medium uppercase tracking-wide text-gray-400">Moisture</span>
+                    <span className={`text-sm ${moistureIsBest ? "font-bold text-indigo-700" : "text-gray-700"}`}>
+                      {t ? t.moistureLevel : item.product.material?.moistureSuitability ?? "—"}
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-gray-500 italic mt-2 pt-2 border-t border-gray-100">
+                    {item.note ? `"${item.note}"` : "No note added"}
+                  </p>
+
+                  <div className="mt-2">
                     <LeadCaptureButton productId={item.product.id} />
-                  </td>
-                ))}
-              </tr>
-            </tbody>
-          </table>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

@@ -35,6 +35,7 @@ const PRODUCT_SELECT = {
     select: {
       name: true,
       category: true,
+      subtype: true,
       durability: true,
       maintenance: true,
       moistureSuitability: true,
