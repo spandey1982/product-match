@@ -97,7 +97,7 @@ export function ShortlistView() {
       {items?.length === 0 && (
         <div className="rounded-2xl border border-dashed border-gray-300 p-8 text-center space-y-2">
           <p className="text-sm text-gray-500">Nothing shortlisted yet.</p>
-          <Link href="/materials/upload" className="text-sm text-indigo-600 hover:text-indigo-800 underline">
+          <Link href="/materials?openUpload=1" className="text-sm text-indigo-600 hover:text-indigo-800 underline">
             Upload a room to start choosing materials
           </Link>
         </div>

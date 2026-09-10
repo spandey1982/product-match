@@ -12,7 +12,7 @@ type Step = "phone" | "otp";
 export function LoginView() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const returnTo = searchParams.get("returnTo") || "/materials/upload";
+  const returnTo = searchParams.get("returnTo") || "/materials?openUpload=1";
 
   const [step, setStep] = useState<Step>("phone");
   const [phone, setPhone] = useState("");

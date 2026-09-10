@@ -326,6 +326,34 @@ function SpatialCompare({ history, swatches }: { history: Visualization[]; swatc
   );
 }
 
+/**
+ * Persistent wall visual for a CONFIRMED surface, before any material has
+ * been generated on it yet (2026-09-10, Sage Studio layout) — the
+ * prototype's "wall-panel" always shows the wall, outlined; previously
+ * this domain only showed a photo/outline during active detection or
+ * editing, leaving nothing to look at while just picking a swatch.
+ * Points are the same fractional [0,1] polygon already stored in
+ * `HmSurface.geometryData` — a 0..100 viewBox lets the SVG overlay track
+ * the photo's actual aspect ratio without knowing its pixel dimensions.
+ */
+function ConfirmedWallOutline({ imageUrl, points }: { imageUrl: string; points: Point[] }) {
+  return (
+    <div className="relative rounded-xl overflow-hidden border border-gray-200">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={imageUrl} alt="This wall" className="w-full block" />
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 w-full h-full pointer-events-none">
+        <polygon
+          points={points.map((p) => `${p.x * 100},${p.y * 100}`).join(" ")}
+          fill="rgba(47,74,61,0.16)"
+          stroke="#2f4a3d"
+          strokeWidth="0.6"
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
+    </div>
+  );
+}
+
 const SCORE_BREAKDOWN_ROWS: { key: keyof NonNullable<Recommendation["components"]>; label: string; weightPct: number }[] = [
   { key: "moisture", label: "Moisture fit", weightPct: 35 },
   { key: "budget", label: "Budget fit", weightPct: 25 },
@@ -1419,7 +1447,7 @@ export function RoomView({ roomId }: { roomId: string }) {
   return (
     <div className="max-w-2xl mx-auto py-10 px-6 space-y-4">
       <div className="flex items-center justify-between">
-        <Link href="/materials/upload" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700">
+        <Link href="/materials" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700">
           <ArrowLeft className="h-4 w-4" /> Back
         </Link>
         <div className="flex items-center gap-3">
@@ -1659,8 +1687,8 @@ export function RoomView({ roomId }: { roomId: string }) {
             const vis = visualizations[s.id];
             const isBeingEdited = s.id === editingSurfaceId;
             return (
-              <div key={s.id} className={`rounded-2xl border p-4 space-y-3 ${isBeingEdited ? "border-indigo-300 bg-indigo-50/30" : "border-gray-200"}`}>
-                <div className="flex items-center justify-between">
+              <div key={s.id} className={`rounded-[20px] border p-5 ${isBeingEdited ? "border-indigo-300 bg-indigo-50/30" : "border-gray-200 bg-white"}`}>
+                <div className="flex items-center justify-between mb-4">
                   <p className="text-sm font-medium text-gray-700">{s.label || "Wall"}</p>
                   <button
                     type="button"
@@ -1670,137 +1698,153 @@ export function RoomView({ roomId }: { roomId: string }) {
                     <Pencil className="h-3 w-3" /> {isBeingEdited ? "Editing…" : "Edit shape"}
                   </button>
                 </div>
-                <WallDimensionsNotice
-                  roomId={room.id}
-                  surface={s}
-                  onSaved={(updated) =>
-                    setRoom((r) => (r ? { ...r, surfaces: r.surfaces.map((x) => (x.id === updated.id ? updated : x)) } : r))
-                  }
-                />
-                <SwatchCarousel
-                  swatches={swatches}
-                  selectedId={selectedSwatch[s.id]}
-                  onSelect={(id) => setSelectedSwatch((sel) => ({ ...sel, [s.id]: id }))}
-                  shortlisted={shortlisted}
-                  onToggleShortlist={handleToggleShortlist}
-                />
-                {(() => {
-                  const selected = swatches.find((sw) => sw.id === selectedSwatch[s.id]);
-                  if (!selected) return null;
-                  // Sheet-count-aware quote (2026-09-09) — only meaningful
-                  // for a real repeat-pattern sheet good once the wall's
-                  // real size is known; combines every OTHER confirmed
-                  // wall using this SAME product too (adjacency-aware —
-                  // see lib/home-material/sheet-calculation.ts).
-                  const sheetInfo =
-                    selected.patternType === "repeat_sheet" && selected.sheetWidthM && selected.sheetHeightM
-                      ? (() => {
-                          const wallsUsingThisProduct = room.surfaces
-                            .filter((sur) => selectedSwatch[sur.id] === selected.id && sur.widthMeters != null && sur.heightMeters != null)
-                            .map((sur) => ({
-                              id: sur.id,
-                              widthM: sur.widthMeters as number,
-                              heightM: sur.heightMeters as number,
-                              adjacencyGroupId: sur.adjacencyGroupId ?? null,
-                            }));
-                          if (wallsUsingThisProduct.length === 0) return null;
-                          return calculateSheetsNeeded(wallsUsingThisProduct, { widthM: selected.sheetWidthM as number, heightM: selected.sheetHeightM as number });
-                        })()
-                      : null;
-                  return (
-                    <>
-                      <CostEstimator
-                        minPerSqft={selected.costRangeMinInr}
-                        maxPerSqft={selected.costRangeMaxInr}
-                        exactPerSqft={selected.priceIsExact ? selected.priceInr : null}
-                        initialAreaSqft={s.areaSqm != null ? s.areaSqm / SQM_PER_SQFT : null}
-                      />
-                      {sheetInfo && (
-                        <p className="text-xs text-gray-500">
-                          Sheets needed: <span className="font-medium text-gray-700">{sheetInfo.totalSheets}</span>{" "}
-                          ({selected.sheetWidthM}m × {selected.sheetHeightM}m each
-                          {sheetInfo.groups.length > 1 || sheetInfo.groups.some((g) => g.wallIds.length > 1)
-                            ? `, across ${room.surfaces.filter((sur) => selectedSwatch[sur.id] === selected.id).length} walls using this pattern`
-                            : ""}
-                          )
-                        </p>
-                      )}
-                    </>
-                  );
-                })()}
-                {needsDimensionsFor[s.id] ? (
-                  <NeedsDimensionsPrompt
-                    roomId={room.id}
-                    surfaceId={s.id}
-                    message={needsDimensionsFor[s.id].message}
-                    continuing={generating[s.id] ?? false}
-                    onSaved={(updated) => {
-                      setRoom((r) => (r ? { ...r, surfaces: r.surfaces.map((x) => (x.id === updated.id ? updated : x)) } : r));
-                      handleGeneratePreview(s.id, needsDimensionsFor[s.id].productId);
-                    }}
-                    onContinueAnyway={() => handleGeneratePreview(s.id, needsDimensionsFor[s.id].productId, true)}
-                  />
-                ) : (
-                  <Button className="w-full" onClick={() => handleGeneratePreview(s.id)} loading={generating[s.id]}>
-                    Preview
-                  </Button>
-                )}
-                {previewError[s.id] && <p className="text-sm text-red-500">{previewError[s.id]}</p>}
-                {vis?.status === "completed" && vis.outputImageUrl && (
-                  <div className="space-y-1.5">
-                    <span
-                      className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full ${
-                        vis.mode === "product_accurate" ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-600"
-                      }`}
-                    >
-                      {vis.mode === "product_accurate" ? "Product-accurate — from your uploaded photo" : "Quick preview — AI interpretation"}
-                    </span>
-                    {vis.perspectiveCorrected && (
-                      <span
-                        className="inline-block text-xs font-medium px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 ml-1.5"
-                        title="This wall was viewed at an angle — the material was mapped onto its real perspective using its exact geometry, not an AI guess."
-                      >
-                        Perspective-corrected
-                      </span>
-                    )}
-                    {vis.trueScaleRendered && (
-                      <span
-                        className="inline-block text-xs font-medium px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 ml-1.5"
-                        title="This pattern was rendered at its real physical size and tiled across the wall, not stretched to fit."
-                      >
-                        True-scale pattern
-                      </span>
-                    )}
-                    {vis.adjacencyContinuityApplied && (
-                      <span
-                        className="inline-block text-xs font-medium px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 ml-1.5"
-                        title="This wall is marked adjacent to another wall using the same pattern — the tiling continues in phase from that wall instead of restarting."
-                      >
-                        Continues from adjacent wall
-                      </span>
-                    )}
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={vis.outputImageUrl} alt="Preview" className="w-full rounded-xl border border-gray-200" />
-                    <OverviewCard
-                      vis={vis}
-                      swatches={swatches}
-                      onPreviewAlternative={(productId) => {
-                        setSelectedSwatch((sel) => ({ ...sel, [s.id]: productId }));
-                        handleGeneratePreview(s.id, productId);
-                      }}
+                {/* Sage Studio layout (2026-09-10): the wall's own photo/
+                    swatch-picker/result lives on the left, same visual
+                    weight as the prototype's "wall-panel"; cost + "help me
+                    choose" decision-support panels sit on the right — a
+                    real layout change, not just the earlier color/font
+                    retheme on top of the old single-column stack. */}
+                <div className="grid lg:grid-cols-[1.15fr_1fr] gap-6 items-start">
+                  <div className="bg-gray-50 rounded-2xl p-4 space-y-3">
+                    {!(vis?.status === "completed" && vis.outputImageUrl) &&
+                      (() => {
+                        const points = parsePolygon(s.geometryData);
+                        return points ? <ConfirmedWallOutline imageUrl={room.imageUrl} points={points} /> : null;
+                      })()}
+                    <WallDimensionsNotice
+                      roomId={room.id}
+                      surface={s}
+                      onSaved={(updated) =>
+                        setRoom((r) => (r ? { ...r, surfaces: r.surfaces.map((x) => (x.id === updated.id ? updated : x)) } : r))
+                      }
                     />
-                    {vis.productId && <LeadCaptureButton productId={vis.productId} />}
+                    <SwatchCarousel
+                      swatches={swatches}
+                      selectedId={selectedSwatch[s.id]}
+                      onSelect={(id) => setSelectedSwatch((sel) => ({ ...sel, [s.id]: id }))}
+                      shortlisted={shortlisted}
+                      onToggleShortlist={handleToggleShortlist}
+                    />
+                    {needsDimensionsFor[s.id] ? (
+                      <NeedsDimensionsPrompt
+                        roomId={room.id}
+                        surfaceId={s.id}
+                        message={needsDimensionsFor[s.id].message}
+                        continuing={generating[s.id] ?? false}
+                        onSaved={(updated) => {
+                          setRoom((r) => (r ? { ...r, surfaces: r.surfaces.map((x) => (x.id === updated.id ? updated : x)) } : r));
+                          handleGeneratePreview(s.id, needsDimensionsFor[s.id].productId);
+                        }}
+                        onContinueAnyway={() => handleGeneratePreview(s.id, needsDimensionsFor[s.id].productId, true)}
+                      />
+                    ) : (
+                      <Button className="w-full" onClick={() => handleGeneratePreview(s.id)} loading={generating[s.id]}>
+                        Preview
+                      </Button>
+                    )}
+                    {previewError[s.id] && <p className="text-sm text-red-500">{previewError[s.id]}</p>}
+                    {vis?.status === "completed" && vis.outputImageUrl && (
+                      <div className="space-y-1.5">
+                        <span
+                          className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full ${
+                            vis.mode === "product_accurate" ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-600"
+                          }`}
+                        >
+                          {vis.mode === "product_accurate" ? "Product-accurate — from your uploaded photo" : "Quick preview — AI interpretation"}
+                        </span>
+                        {vis.perspectiveCorrected && (
+                          <span
+                            className="inline-block text-xs font-medium px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 ml-1.5"
+                            title="This wall was viewed at an angle — the material was mapped onto its real perspective using its exact geometry, not an AI guess."
+                          >
+                            Perspective-corrected
+                          </span>
+                        )}
+                        {vis.trueScaleRendered && (
+                          <span
+                            className="inline-block text-xs font-medium px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 ml-1.5"
+                            title="This pattern was rendered at its real physical size and tiled across the wall, not stretched to fit."
+                          >
+                            True-scale pattern
+                          </span>
+                        )}
+                        {vis.adjacencyContinuityApplied && (
+                          <span
+                            className="inline-block text-xs font-medium px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 ml-1.5"
+                            title="This wall is marked adjacent to another wall using the same pattern — the tiling continues in phase from that wall instead of restarting."
+                          >
+                            Continues from adjacent wall
+                          </span>
+                        )}
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={vis.outputImageUrl} alt="Preview" className="w-full rounded-xl border border-gray-200" />
+                        <OverviewCard
+                          vis={vis}
+                          swatches={swatches}
+                          onPreviewAlternative={(productId) => {
+                            setSelectedSwatch((sel) => ({ ...sel, [s.id]: productId }));
+                            handleGeneratePreview(s.id, productId);
+                          }}
+                        />
+                        {vis.productId && <LeadCaptureButton productId={vis.productId} />}
+                      </div>
+                    )}
+                    {vis?.status === "failed" && (
+                      <p className="text-xs text-red-500">{vis.errorMessage || "Preview generation failed."}</p>
+                    )}
+
+                    {(visualizationHistory[s.id]?.filter((v) => v.status === "completed" && v.outputImageUrl).length ?? 0) >= 2 && (
+                      <SpatialCompare history={visualizationHistory[s.id] ?? []} swatches={swatches} />
+                    )}
                   </div>
-                )}
-                {vis?.status === "failed" && (
-                  <p className="text-xs text-red-500">{vis.errorMessage || "Preview generation failed."}</p>
-                )}
 
-                {(visualizationHistory[s.id]?.filter((v) => v.status === "completed" && v.outputImageUrl).length ?? 0) >= 2 && (
-                  <SpatialCompare history={visualizationHistory[s.id] ?? []} swatches={swatches} />
-                )}
+                  <div className="space-y-4">
+                    {(() => {
+                      const selected = swatches.find((sw) => sw.id === selectedSwatch[s.id]);
+                      if (!selected) return null;
+                      // Sheet-count-aware quote (2026-09-09) — only meaningful
+                      // for a real repeat-pattern sheet good once the wall's
+                      // real size is known; combines every OTHER confirmed
+                      // wall using this SAME product too (adjacency-aware —
+                      // see lib/home-material/sheet-calculation.ts).
+                      const sheetInfo =
+                        selected.patternType === "repeat_sheet" && selected.sheetWidthM && selected.sheetHeightM
+                          ? (() => {
+                              const wallsUsingThisProduct = room.surfaces
+                                .filter((sur) => selectedSwatch[sur.id] === selected.id && sur.widthMeters != null && sur.heightMeters != null)
+                                .map((sur) => ({
+                                  id: sur.id,
+                                  widthM: sur.widthMeters as number,
+                                  heightM: sur.heightMeters as number,
+                                  adjacencyGroupId: sur.adjacencyGroupId ?? null,
+                                }));
+                              if (wallsUsingThisProduct.length === 0) return null;
+                              return calculateSheetsNeeded(wallsUsingThisProduct, { widthM: selected.sheetWidthM as number, heightM: selected.sheetHeightM as number });
+                            })()
+                          : null;
+                      return (
+                        <div className="rounded-2xl border border-gray-200 bg-white p-4 space-y-1.5">
+                          <CostEstimator
+                            minPerSqft={selected.costRangeMinInr}
+                            maxPerSqft={selected.costRangeMaxInr}
+                            exactPerSqft={selected.priceIsExact ? selected.priceInr : null}
+                            initialAreaSqft={s.areaSqm != null ? s.areaSqm / SQM_PER_SQFT : null}
+                          />
+                          {sheetInfo && (
+                            <p className="text-xs text-gray-500">
+                              Sheets needed: <span className="font-medium text-gray-700">{sheetInfo.totalSheets}</span>{" "}
+                              ({selected.sheetWidthM}m × {selected.sheetHeightM}m each
+                              {sheetInfo.groups.length > 1 || sheetInfo.groups.some((g) => g.wallIds.length > 1)
+                                ? `, across ${room.surfaces.filter((sur) => selectedSwatch[sur.id] === selected.id).length} walls using this pattern`
+                                : ""}
+                              )
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })()}
 
-                <div className="border-t border-gray-100 pt-3">
+                    <div className="rounded-2xl border border-gray-200 bg-white p-4">
                   <button
                     type="button"
                     onClick={() => setShowHelpMeChoose((prev) => ({ ...prev, [s.id]: !prev[s.id] }))}
@@ -1931,6 +1975,8 @@ export function RoomView({ roomId }: { roomId: string }) {
                       </div>
                     </div>
                   )}
+                    </div>
+                  </div>
                 </div>
               </div>
             );

@@ -268,3 +268,92 @@ browse), a room workspace (wall photo, swatch picker, illustrated
 budget/priority pickers, truncation warning banner), and `/materials/
 shortlist` — all correctly sage-green/Sora/Manrope; separately verified
 `/login` (fashion side) is completely unaffected.
+
+## Sage Studio layout restructuring + upload modal — 2026-09-10
+
+**User correction that motivated this pass:** the previous entry above
+only reskinned colors/type/component styles on the app's existing
+*structure* — the user checked the live `/materials` and room-workspace
+pages against the Sage Studio prototype and found the actual layout
+unchanged ("same old layout with new theme colours... In fact the Room
+Workspace page is nothing like the prototype"). Sage Studio's screens
+were meant to be the new structural base, not a palette reference.
+
+**Standing process rule going forward, stated explicitly by the user:**
+every future new screen in this domain is generated as progressive
+layout/design options (same propose -> pick -> implement workflow used
+for the two prototype directions), with Sage Studio's already-approved
+screens as the established base to extend consistently — not designed
+from scratch each time.
+
+What changed structurally this pass:
+
+- **`/materials` landing/browse page split into a server component +
+  client component**: `app/materials/page.tsx` now only fetches
+  `BrowseProduct[]` via Prisma and renders `MaterialsLandingClient`
+  (new file) inside `<Suspense fallback={null}>` (required because the
+  client component reads `useSearchParams()`). `MaterialsLandingClient`
+  rebuilds the page to match Sage Studio's actual layout: a split hero
+  (headline/CTA left, an SVG room illustration + floating swatch card
+  right) above a filter-chip category row and a 4-column product grid
+  with hover-reveal "See in my room ->" affordance — replacing the
+  previous single-column marketing-strip layout that only borrowed the
+  prototype's colors.
+- **`/materials/upload` removed as a standalone page**, per the user's
+  explicit instruction — a `File` object can't survive a page
+  navigation, so it wasn't serving a purpose distinct from a modal.
+  Replaced with `components/home-material/UploadRoomModal.tsx` (Radix
+  `Dialog`), opened from the hero CTA or from any product card's "See in
+  my room," which on confirm POSTs the photo and navigates straight to
+  `/materials/rooms/[id]` (with `?product=<id>` preserved when a card
+  triggered it) — collapsing upload-page -> redirect into one modal ->
+  room-workspace step, matching Sage Studio's single-flow feel. The old
+  401 -> login -> return-to-upload-page redirect chain is preserved in
+  spirit: an unauthenticated upload now redirects to
+  `/materials/login?returnTo=/materials?openUpload=1[&product=...]`, and
+  the landing client reads `openUpload`/`product` query params on mount
+  to reopen the modal automatically after login (same fundamental
+  limitation the old page had — a `File` still can't survive the login
+  redirect either way, so the user re-picks the photo post-login).
+- **Room workspace (`RoomView.tsx`) per-surface card restructured** from
+  a single stacked column into Sage Studio's two-column layout
+  (`grid lg:grid-cols-[1.15fr_1fr]`): left column holds the wall
+  photo/preview, swatch carousel, and generated-visualization result;
+  right column stacks the cost estimator and the "Help me choose a
+  material" panel as separate cards. All existing state/logic/props
+  (dimension prompts, preview errors, spatial compare, recommendations,
+  combinations) preserved exactly — only the JSX container structure
+  changed. Verified structurally sound via a clean `tsc --noEmit` (which
+  fails on unbalanced JSX) before any visual check.
+- **New `ConfirmedWallOutline` component**: closes a real gap versus the
+  prototype, which always shows the traced wall outline on the room
+  photo. Previously the app showed no wall visual at all until an AI
+  generation completed. Now, once a wall is confirmed but before any
+  completed visualization exists for it, an SVG polygon (using the same
+  fractional `[0,1]` coordinates already stored in `HmSurface
+  .geometryData`, scaled via `viewBox="0 0 100 100"` +
+  `preserveAspectRatio="none"`) is overlaid on the room photo in Sage
+  Studio's forest-green tint.
+- **New `app/materials/HmThemeRoot.tsx`** — fixes a real bug found while
+  live-testing the new modal: Radix's `Dialog` (used by
+  `UploadRoomModal`) portals its content straight to `document.body`, a
+  SIBLING of the `.hm-theme` wrapper div `app/materials/layout.tsx`
+  already rendered, not a descendant — so the scoped CSS-variable
+  overrides never reached the modal, and its "Continue" button rendered
+  in the fashion side's default indigo instead of forest-green. Fixed by
+  also applying the theme class to `document.documentElement` (a real
+  ancestor of body-portaled content) via a client-side effect, alongside
+  (not instead of) the existing wrapper div. Generalizes to any future
+  portaled component (`Popover`, future dialogs), not just this modal.
+
+Verified live end-to-end after the fix: opened the upload modal (Continue
+button correctly forest-green), uploaded a test photo, traced a wall
+manually, confirmed it, picked a swatch, generated an AI preview, and
+confirmed the full two-column surface card (wall image, swatch carousel,
+cost-estimator chip, AI overview-card feedback text, "Request a
+quote"/"Request a sample" actions, "Have your own wallpaper or paint
+photo?" upload panel) all render correctly in the Sage Studio theme with
+no visual regressions. `npx tsc --noEmit`, `eslint`, and a full
+production build all passed clean; test room deleted afterward via a
+throwaway Prisma script (`HmRoom` cascade-deletes its surfaces/
+visualizations).

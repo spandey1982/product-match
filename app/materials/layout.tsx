@@ -1,5 +1,6 @@
 import { Sora, Manrope } from "next/font/google";
 import "./materials-theme.css";
+import { HmThemeRoot } from "./HmThemeRoot";
 
 // "Sage Studio" visual direction (chosen 2026-09-10 from the two
 // prototypes built after the user's own reference-design upload — see
@@ -13,5 +14,14 @@ const sora = Sora({ variable: "--font-sora", subsets: ["latin"], weight: ["400",
 const manrope = Manrope({ variable: "--font-manrope", subsets: ["latin"], weight: ["400", "500", "600", "700"] });
 
 export default function MaterialsLayout({ children }: { children: React.ReactNode }) {
-  return <div className={`${sora.variable} ${manrope.variable} hm-theme`}>{children}</div>;
+  const themeClass = `${sora.variable} ${manrope.variable} hm-theme`;
+  return (
+    <>
+      {/* Also scopes the theme onto <html> so Radix portals (Dialog, etc.,
+          which render to document.body directly) pick it up too — see
+          HmThemeRoot's doc comment. */}
+      <HmThemeRoot className={themeClass} />
+      <div className={themeClass}>{children}</div>
+    </>
+  );
 }
