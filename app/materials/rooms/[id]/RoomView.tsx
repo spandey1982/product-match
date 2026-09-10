@@ -135,6 +135,57 @@ const DEFAULT_REQUIREMENTS: Requirements = {
   preferredCategory: "any",
 };
 
+// Concrete anchors for otherwise-abstract requirement dimensions
+// (2026-09-10, Discovery-layer vocabulary pass) — NN/g's customization-
+// features research found abstract attributes ("comfort," here "budget"/
+// "priority") perform worse than the same choice illustrated with a
+// concrete real-world scenario (their Joybird example: not "comfort" as a
+// bare slider, but seat height/posture illustrations). These hints don't
+// change the deterministic scorer in lib/home-material/recommendation.ts
+// at all — same four values, same weights — this is presentation only.
+const BUDGET_OPTIONS: { value: Requirements["budgetTier"]; label: string; hint: string }[] = [
+  { value: "any", label: "No strong preference", hint: "Show me everything" },
+  { value: "budget", label: "Budget", hint: "Lowest cost per sq.ft — good for a rental or a room you'll redo again soon" },
+  { value: "mid", label: "Mid-range", hint: "Balanced cost and durability — the common choice for a primary bedroom or living room" },
+  { value: "premium", label: "Premium", hint: "Higher cost, longer-lasting finish — for a feature wall or a room you want to get right once" },
+];
+
+const PRIORITY_OPTIONS: { value: Requirements["priority"]; label: string; hint: string }[] = [
+  { value: "any", label: "No strong priority", hint: "Balance everything evenly" },
+  { value: "durability", label: "Durability", hint: "Best for high-traffic walls — hallways, kids' rooms, rental properties" },
+  { value: "low_maintenance", label: "Low maintenance", hint: "Easiest to keep clean — kitchens, near doorways, homes with pets" },
+  { value: "premium_look", label: "Premium look", hint: "Prioritizes visual impact over cost or upkeep — feature walls, formal spaces" },
+];
+
+/** A single-select set of illustrated cards (label + concrete one-line scenario) — replaces a bare-word <select> for an otherwise-abstract requirement dimension. */
+function IllustratedPicker<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: { value: T; label: string; hint: string }[];
+  value: T;
+  onChange: (v: T) => void;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      {options.map((opt) => (
+        <button
+          key={opt.value}
+          type="button"
+          onClick={() => onChange(opt.value)}
+          className={`text-left rounded-xl border p-2.5 transition-colors ${
+            value === opt.value ? "border-indigo-500 bg-indigo-50" : "border-gray-200 hover:border-gray-300"
+          }`}
+        >
+          <p className="text-sm font-medium text-gray-900">{opt.label}</p>
+          <p className="text-xs text-gray-500 mt-0.5">{opt.hint}</p>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function parsePolygon(geometryData: string | null): Point[] | null {
   if (!geometryData) return null;
   try {
@@ -212,6 +263,54 @@ function SwatchCarousel({
       {custom.map((sw) => <Card key={sw.id} sw={sw} />)}
       {curated.map((sw) => <Card key={sw.id} sw={sw} />)}
       {swatches.length === 0 && <p className="text-xs text-gray-400 py-4">No swatches yet.</p>}
+    </div>
+  );
+}
+
+/**
+ * Spatial compare (2026-09-10, Discovery-layer vocabulary) — two of this
+ * wall's own past generations shown side by side, swappable via dropdown.
+ * Reuses generations already made this session (see
+ * RoomView's `visualizationHistory`) rather than generating new ones, so
+ * comparing costs nothing beyond what trying each material already cost.
+ * Complements, not replaces, /materials/shortlist's tabular spec compare.
+ */
+function SpatialCompare({ history, swatches }: { history: Visualization[]; swatches: Swatch[] }) {
+  const completed = history.filter((v) => v.status === "completed" && v.outputImageUrl);
+  const [idA, setIdA] = useState(() => completed[Math.max(0, completed.length - 2)]?.id ?? "");
+  const [idB, setIdB] = useState(() => completed[completed.length - 1]?.id ?? "");
+
+  if (completed.length < 2) return null;
+
+  const label = (v: Visualization) => swatches.find((sw) => sw.id === v.productId)?.name ?? "Preview";
+  const visA = completed.find((v) => v.id === idA) ?? completed[completed.length - 2];
+  const visB = completed.find((v) => v.id === idB) ?? completed[completed.length - 1];
+
+  return (
+    <div className="rounded-2xl border border-gray-200 p-3 space-y-2">
+      <p className="text-xs font-medium text-gray-700">Compare what you&apos;ve tried on this wall</p>
+      <div className="grid grid-cols-2 gap-3">
+        {[
+          { vis: visA, value: idA, onChange: setIdA },
+          { vis: visB, value: idB, onChange: setIdB },
+        ].map(({ vis, value, onChange }, i) => (
+          <div key={i} className="space-y-1.5">
+            <select
+              value={value}
+              onChange={(e) => onChange(e.target.value)}
+              className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              {completed.map((v) => (
+                <option key={v.id} value={v.id}>{label(v)}</option>
+              ))}
+            </select>
+            {vis?.outputImageUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={vis.outputImageUrl} alt={label(vis)} className="w-full rounded-lg border border-gray-200" />
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -884,6 +983,14 @@ export function RoomView({ roomId }: { roomId: string }) {
   const [selectedSwatch, setSelectedSwatch] = useState<Record<string, string>>({});
   const [generating, setGenerating] = useState<Record<string, boolean>>({});
   const [visualizations, setVisualizations] = useState<Record<string, Visualization>>({});
+  // Every completed generation for a surface this session, oldest first
+  // (2026-09-10, Discovery-layer "spatial compare" vocabulary) — the
+  // single `visualizations` map above still drives the main "latest
+  // preview" display unchanged; this is purely additive so a user who
+  // tries 2+ materials on the same wall can look at them side by side
+  // without re-generating anything (no new AI cost — these rows already
+  // existed server-side, this just stops discarding them client-side).
+  const [visualizationHistory, setVisualizationHistory] = useState<Record<string, Visualization[]>>({});
   const [previewError, setPreviewError] = useState<Record<string, string>>({});
   // Repeat-pattern sheet goods need the wall's real size to render at
   // true scale (2026-09-09) — set when the API blocks a preview for this
@@ -1175,6 +1282,7 @@ export function RoomView({ roomId }: { roomId: string }) {
       resetDraft();
       setWallCandidates([]);
       setVisualizations({});
+      setVisualizationHistory({});
       setSelectedSwatch({});
       setPreviewError({});
     } catch (err) {
@@ -1221,7 +1329,11 @@ export function RoomView({ roomId }: { roomId: string }) {
         if (data.visualization) setVisualizations((v) => ({ ...v, [surfaceId]: data.visualization as Visualization }));
         return;
       }
-      setVisualizations((v) => ({ ...v, [surfaceId]: data.visualization as Visualization }));
+      const completedVis = data.visualization as Visualization;
+      setVisualizations((v) => ({ ...v, [surfaceId]: completedVis }));
+      if (completedVis.status === "completed" && completedVis.outputImageUrl) {
+        setVisualizationHistory((h) => ({ ...h, [surfaceId]: [...(h[surfaceId] ?? []), completedVis] }));
+      }
     } catch (err) {
       setPreviewError((p) => ({ ...p, [surfaceId]: `Something went wrong: ${err instanceof Error ? err.message : String(err)}` }));
     } finally {
@@ -1747,6 +1859,10 @@ export function RoomView({ roomId }: { roomId: string }) {
                   <p className="text-xs text-red-500">{vis.errorMessage || "Preview generation failed."}</p>
                 )}
 
+                {(visualizationHistory[s.id]?.filter((v) => v.status === "completed" && v.outputImageUrl).length ?? 0) >= 2 && (
+                  <SpatialCompare history={visualizationHistory[s.id] ?? []} swatches={swatches} />
+                )}
+
                 <div className="border-t border-gray-100 pt-3">
                   <button
                     type="button"
@@ -1766,27 +1882,21 @@ export function RoomView({ roomId }: { roomId: string }) {
                         />
                         This wall is in a moisture-prone area (kitchen/bathroom)
                       </label>
-                      <div className="grid grid-cols-2 gap-2">
-                        <select
+                      <div className="space-y-1">
+                        <p className="text-xs font-medium text-gray-500">Budget</p>
+                        <IllustratedPicker
+                          options={BUDGET_OPTIONS}
                           value={getRequirements(s.id).budgetTier}
-                          onChange={(e) => updateRequirements(s.id, { budgetTier: e.target.value as Requirements["budgetTier"] })}
-                          className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        >
-                          <option value="any">Any budget</option>
-                          <option value="budget">Budget</option>
-                          <option value="mid">Mid-range</option>
-                          <option value="premium">Premium</option>
-                        </select>
-                        <select
+                          onChange={(v) => updateRequirements(s.id, { budgetTier: v })}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs font-medium text-gray-500">Priority</p>
+                        <IllustratedPicker
+                          options={PRIORITY_OPTIONS}
                           value={getRequirements(s.id).priority}
-                          onChange={(e) => updateRequirements(s.id, { priority: e.target.value as Requirements["priority"] })}
-                          className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        >
-                          <option value="any">No strong priority</option>
-                          <option value="durability">Durability matters most</option>
-                          <option value="low_maintenance">Low maintenance matters most</option>
-                          <option value="premium_look">Premium look matters most</option>
-                        </select>
+                          onChange={(v) => updateRequirements(s.id, { priority: v })}
+                        />
                       </div>
                       <select
                         value={getRequirements(s.id).preferredCategory}

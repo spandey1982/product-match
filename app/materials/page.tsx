@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { db } from "@/lib/db";
 import { Button } from "@/components/ui/button";
+import { MATERIAL_TAXONOMY } from "@/lib/home-material/material-taxonomy";
 
 // Home Material Intelligence Platform — landing + Mode A browse, merged
 // into one screen per the 2026-09-10 UI discovery decision (Q1/Q2 in
@@ -46,7 +47,14 @@ async function getBrowseProducts() {
       patternName: true,
       priceInr: true,
       priceUnit: true,
-      material: { select: { category: true, avgCostPerSqftMinInr: true, avgCostPerSqftMaxInr: true } },
+      material: {
+        select: {
+          category: true,
+          subtype: true,
+          avgCostPerSqftMinInr: true,
+          avgCostPerSqftMaxInr: true,
+        },
+      },
       retailerListings: {
         where: { priceInr: { not: null } },
         orderBy: { priceInr: "asc" },
@@ -58,6 +66,15 @@ async function getBrowseProducts() {
 
   return products.map((p) => {
     const realPrice = p.retailerListings[0]?.priceInr ?? null;
+    // Structured durability/maintenance figures live only in the typed
+    // MATERIAL_TAXONOMY source (lib/home-material/recommendation.ts's
+    // scorer already treats it as authoritative) — HmMaterial's DB row
+    // only carries prose (durability/maintenance as full sentences), not
+    // these derived fields, so look the taxonomy entry up by category+
+    // subtype rather than duplicating structured columns into the schema.
+    const taxonomyEntry = p.material
+      ? MATERIAL_TAXONOMY.find((t) => t.category === p.material!.category && t.subtype === p.material!.subtype)
+      : undefined;
     return {
       id: p.id,
       name: p.name,
@@ -65,12 +82,39 @@ async function getBrowseProducts() {
       finish: p.finish,
       patternName: p.patternName,
       category: p.material?.category ?? null,
+      durabilityYearsApprox: taxonomyEntry?.durabilityYearsApprox ?? null,
+      maintenanceLevel: taxonomyEntry?.maintenanceLevel ?? null,
       priceInr: realPrice,
       priceIsExact: realPrice != null,
       costRangeMinInr: realPrice == null ? p.material?.avgCostPerSqftMinInr ?? null : null,
       costRangeMaxInr: realPrice == null ? p.material?.avgCostPerSqftMaxInr ?? null : null,
     };
   });
+}
+
+const MAINTENANCE_LABELS: Record<string, string> = { low: "Low maintenance", medium: "Some maintenance", high: "High maintenance" };
+
+/**
+ * Compact suitability signal on an otherwise identity-only card (2026-09-10
+ * Discovery-layer vocabulary pass) — category-level facts from
+ * lib/home-material/material-taxonomy.ts, true for every product of this
+ * material regardless of which specific SKU, so safe to show without room
+ * context. Full material detail (moisture suitability, installation,
+ * pros/cons) stays on /materials/guide — this is a hint, not the whole
+ * picture.
+ */
+function SuitabilityChips({ p }: { p: Awaited<ReturnType<typeof getBrowseProducts>>[number] }) {
+  if (p.durabilityYearsApprox == null && !p.maintenanceLevel) return null;
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {p.durabilityYearsApprox != null && (
+        <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">~{p.durabilityYearsApprox}yr durability</span>
+      )}
+      {p.maintenanceLevel && (
+        <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{MAINTENANCE_LABELS[p.maintenanceLevel] ?? p.maintenanceLevel}</span>
+      )}
+    </div>
+  );
 }
 
 function PriceTag({ p }: { p: Awaited<ReturnType<typeof getBrowseProducts>>[number] }) {
@@ -150,6 +194,7 @@ export default async function MaterialsPage() {
                       </p>
                     </div>
                   </div>
+                  <SuitabilityChips p={p} />
                   <PriceTag p={p} />
                   <Link href={`/materials/upload?product=${p.id}`} className="block">
                     <Button size="sm" className="w-full">See in my room</Button>

@@ -60,3 +60,55 @@ The discovery document's §27 posed 5 questions for review. Outcomes:
   room" on a real seeded product from `/materials`, uploaded a test photo,
   detected + confirmed a wall, and confirmed the product was pre-selected
   in the swatch carousel on the resulting surface.
+
+## Discovery-layer vocabulary — shipped 2026-09-10
+
+First piece of the approved phase order's step 2 (§26 of the discovery
+document): concrete anchors, richer material cards, and spatial compare,
+all built on top of the existing engine — no new AI surface, no schema
+change.
+
+- **Concrete/illustrated requirement anchors** (`RoomView.tsx`'s
+  `IllustratedPicker`, `BUDGET_OPTIONS`/`PRIORITY_OPTIONS`): the "Help me
+  choose" panel's budget and priority pickers were plain `<select>`
+  dropdowns with bare abstract labels ("Durability matters most"). NN/g's
+  customization-features research (discovery doc §4) found abstract
+  attributes need a concrete real-world scenario to perform well — its
+  Joybird example illustrated "comfort" with seat-height/posture
+  pictures rather than a bare slider. Replaced both dropdowns with
+  illustrated card-choice UI (one concrete sentence per option, e.g.
+  "Best for high-traffic walls — hallways, kids' rooms, rental
+  properties"). Presentation only — `lib/home-material/recommendation.ts`'s
+  four-value scorer and weights are unchanged.
+- **Suitability chips on material cards** (`app/materials/page.tsx`):
+  browse-page cards now show durability (~Nyr) and maintenance level
+  alongside color/price. Sourced from `MATERIAL_TAXONOMY` (matched by
+  category+subtype), not a new `HmMaterial` DB column — the DB model only
+  stores prose durability/maintenance text; the structured
+  `durabilityYearsApprox`/`maintenanceLevel` fields the recommendation
+  engine already treats as authoritative live only in the typed taxonomy
+  source, reused here rather than duplicated into the schema.
+- **Spatial compare** (`RoomView.tsx`'s `SpatialCompare`): every completed
+  generation for a wall this session is now kept (`visualizationHistory`,
+  additive alongside the existing single-`visualizations` "latest
+  preview" state, session-only — not persisted, no schema change). Once
+  2+ generations exist for a wall, a "Compare what you've tried on this
+  wall" section shows two of them side by side, each swappable via a
+  dropdown, defaulting to the two most recent. Costs nothing beyond what
+  trying each material already cost — no new generation is triggered by
+  comparing.
+
+**Bug found and fixed while live-testing spatial compare:** the compare
+dropdowns both displayed the same (wrong) label even though the two
+images shown below them were correctly different. Root cause: React
+mounts a component's hooks on first render regardless of an early
+`return null`, so `SpatialCompare` was mounting (and its `useState`
+defaults locking in) the very first time a wall card rendered — while
+history was still empty — rather than when 2 real generations existed.
+Fixed by moving the "2+ completed generations" check to the call site so
+`SpatialCompare` only mounts once real data exists to default from.
+Confirmed the underlying bug (images correct, labels wrong) via a live
+two-generation test on the same wall (Charcoal Grey, then Soft Sage);
+the fix itself was verified via type-check and code review rather than a
+third live generation, to avoid unnecessary further AI cost for a
+narrowly-understood React lifecycle fix.
