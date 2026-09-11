@@ -1283,6 +1283,12 @@ model HmSurface {
   // CV-detected region (polygon/bbox) as JSON, null until analyzed.
   geometryData String?
 
+  // Real-world dimensions (meters, schema-literal unit — same convention
+  // as HmLead.estimatedAreaSqm; UI shows feet, India convention). Null
+  // means "unknown — estimate from the visible photo portion only."
+  // Previously-unused placeholder fields from the Phase 1 schema, now
+  // wired up (2026-09-09) by the wall-truncation honesty feature below —
+  // also feeds the future repeat-pattern sheet-count work.
   widthMeters  Float?
   heightMeters Float?
   areaSqm      Float?
@@ -1292,6 +1298,35 @@ model HmSurface {
   measurementSource     String @default("ai_estimated")
   measurementConfidence Float?
 
+  // True when wall-detection isn't confident the full physical wall was
+  // captured in the photo (its edge coincides with the image frame
+  // rather than a visible real corner/ceiling-floor convergence) —
+  // 2026-09-09, "never manufacture certainty" applied to wall length.
+  // Never blocks anything: triggers an honest warning + an optional
+  // widthMeters/heightMeters entry, nothing more. Always false for a
+  // manually-drawn shape (no AI judgment exists to set it true).
+  possiblyTruncated Boolean @default(false)
+
+  // User-confirmed adjacency for sheet-count math (2026-09-09). Only ever
+  // WRITTEN by the user's own confirm action (PATCH .../surfaces/adjacency)
+  // — a 2026-09-10 addition (sub-problem A) lets AI SUGGEST which walls
+  // look adjacent from the photo, but that's a suggestion returned to the
+  // client only, never saved directly (see lib/home-material/
+  // adjacency-detection.ts). Surfaces sharing the same non-null value are
+  // treated as one continuous run when the SAME repeat_sheet product is
+  // selected across them: their widths sum before the sheet-count ceiling
+  // formula applies once, instead of computing each wall independently —
+  // matching how wallpaper is actually hung continuously across a real
+  // corner. Null means "not marked adjacent to anything," the default/
+  // independent case.
+  adjacencyGroupId String?
+
+  // True when widthMeters/heightMeters came from AI reference-object
+  // estimation rather than the user typing them in (2026-09-09) — never
+  // blur estimate vs. confirmed (Constitution Principle 6, same rule
+  // measurementSource already follows). Meaningless while both are null.
+  dimensionsEstimated Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1299,6 +1334,7 @@ model HmSurface {
   recommendations HmRecommendation[]
 
   @@index([roomId])
+  @@index([adjacencyGroupId])
   @@map("hm_surfaces")
 }
 
@@ -1360,8 +1396,30 @@ model HmProduct {
 
   // Free-text dimensions (roll width/length, panel size, etc. — too varied
   // across paint/wallpaper/texture/panel to normalize into fixed columns
-  // for V1).
+  // for V1). Superseded for repeat-pattern sheet goods specifically by
+  // the structured fields below (2026-09-09) — kept for other/legacy use.
   dimensions String?
+
+  // Sheet-size-aware rendering + ordering (2026-09-09) — mandatory at the
+  // application layer (upload/seed forms must explicitly choose; the
+  // "customizable" DB default below exists only so existing rows and
+  // migrations don't break, never as a silent app-level default for a
+  // NEW product):
+  // - "customizable": one non-repeating design (e.g. a themed mural) that
+  //   scales up to the wall as a single image. minWidthM/minHeightM are
+  //   the smallest size it can be scaled down to without losing detail
+  //   (null = no known floor).
+  // - "repeat_sheet": real sheet goods (patterned wallpaper, veneer, wood
+  //   panels, and eventually tiles) with a fixed real-world sheet size
+  //   (sheetWidthM/sheetHeightM) — the pattern renders at TRUE physical
+  //   scale, tiled, not stretched, and sheet count is calculated from
+  //   sheet size vs. wall size. Required (validated at the API layer,
+  //   not the DB) whenever patternType is "repeat_sheet".
+  patternType  String @default("customizable")
+  sheetWidthM  Float?
+  sheetHeightM Float?
+  minWidthM    Float?
+  minHeightM   Float?
 
   priceInr  Float?
   priceUnit String? // "per_sqft" | "per_roll" | "per_panel" | "per_litre"
@@ -1496,11 +1554,50 @@ model HmVisualization {
   // queued | processing | completed | failed
   status String @default("queued")
 
-  provider String? // "gemini" | "vertex" | future
+  provider String? // "gemini" | "vertex" | "deterministic" | future
   model    String?
 
   generationMs Int?
   errorMessage String?
+
+  // True when the wall was detected at a significant angle (a confident
+  // 4-corner perspective quad, not just an outline) and the reference
+  // texture was warped onto it via a deterministic homography — not an
+  // AI-generated edit — before compositing (sub-problem B, 2026-09-09
+  // prototype). provider/model above read "deterministic" /
+  // "homography+shading-v1" for these rows, never a Gemini model id.
+  perspectiveCorrected Boolean @default(false)
+
+  // True when a repeat-pattern sheet good was rendered at its real
+  // physical scale (tiled, not stretched) — sub-problem "wallpaper
+  // sheet-size scaling", 2026-09-09. provider/model read "deterministic"
+  // / "tiled-true-scale-v1" for these rows.
+  trueScaleRendered Boolean @default(false)
+
+  // True when the tile grid was phase-shifted to continue an adjacent
+  // wall's pattern across a real corner (sub-problem C, 2026-09-10) —
+  // only meaningful when trueScaleRendered is also true. See
+  // lib/home-material/visualization.ts's adjacencyOffsetM doc comment.
+  adjacencyContinuityApplied Boolean @default(false)
+
+  // "Honest overview" — mandatory post-generation opinion pass over the
+  // FINAL composited image (see docs/home-material/README.md, "Honest
+  // overview"). Tracked separately from status/errorMessage above so a
+  // failed overview never hides an otherwise-successful preview. Never a
+  // bare numeric score shown to the customer — natural language only,
+  // tone-constrained (positive opening, hedged doubt, never negative).
+  overviewStatus String @default("pending") // pending | completed | failed | skipped
+
+  overviewOpening        String?
+  overviewHighlights     String  @default("[]") // JSON array (lib/serialize.ts)
+  overviewConsiderations String  @default("[]") // JSON array (lib/serialize.ts) — always softly hedged, never negative
+  overviewClosing        String?
+
+  // Deterministically chosen HmProduct ids (lib/serialize.ts JSON array) —
+  // never AI-invented, per Constitution Principle 7 ("product database
+  // defines the product"). Always populated alongside the overview,
+  // regardless of how well the primary result scored.
+  overviewAlternativeProductIds String @default("[]")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1581,6 +1678,20 @@ model HmLead {
 
   message          String?
   estimatedAreaSqm Float?
+
+  // "quote" | "sample" (2026-09-10, Validation-layer flows) — a sample
+  // request is a physically different fulfillment (ship a real swatch,
+  // brief §41's Visualize->Shortlist->Request sample->Receive sample
+  // loop) from a price quote, so it's tracked as its own intent rather
+  // than folded into a generic "message" — only ever set on a real
+  // productId (you can't physically sample a whole material category).
+  leadType String @default("quote")
+
+  // Only meaningful/required when leadType is "sample" — a single plain
+  // free-text field (deliberately not a structured address book; this
+  // domain has no address infrastructure yet and V1's demo-retailer
+  // flow doesn't need one) — see HmLead's Validation-layer doc note.
+  shippingAddress String?
 
   // new | contacted | quoted | closed
   status String @default("new")

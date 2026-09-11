@@ -15,6 +15,14 @@ function polygonArea(points: { x: number; y: number }[]): number {
   return Math.abs(area) / 2;
 }
 
+/** Optional 4-point perspective quad (sub-problem B, 2026-09-09) — validated the same way as the outline polygon; malformed input is dropped to null rather than rejecting the whole save (this is a bonus precision feature, not a required field). */
+function parseCorners(raw: unknown): { x: number; y: number }[] | null {
+  if (!Array.isArray(raw) || raw.length !== 4) return null;
+  if (!raw.every((p) => typeof p?.x === "number" && typeof p?.y === "number" && p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1)) return null;
+  const points = raw.map((p) => ({ x: p.x, y: p.y }));
+  return polygonArea(points) > 0.01 ? points : null;
+}
+
 /**
  * Single "confirm and save" path for a wall selection — whether the points
  * came from AI detection (POST .../detect-wall, then possibly dragged by
@@ -42,7 +50,7 @@ export async function POST(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const { points, label, measurementSource, measurementConfidence } = await req.json();
+  const { points, label, measurementSource, measurementConfidence, corners, possiblyTruncated } = await req.json();
 
   if (
     !Array.isArray(points) ||
@@ -60,14 +68,19 @@ export async function POST(
   }
 
   const source = measurementSource === "ai_estimated" ? "ai_estimated" : "user_confirmed";
+  const validCorners = parseCorners(corners);
 
   const surface = await db.hmSurface.create({
     data: {
       roomId,
       label: typeof label === "string" && label.trim() ? label.trim() : null,
-      geometryData: JSON.stringify({ points }),
+      geometryData: JSON.stringify(validCorners ? { points, corners: validCorners } : { points }),
       measurementSource: source,
       measurementConfidence: source === "ai_estimated" && typeof measurementConfidence === "number" ? measurementConfidence : null,
+      // Only trust the AI's own judgment — a manual/from-scratch trace
+      // has no such signal, so it defaults to false (schema default)
+      // rather than flagging something no model ever assessed.
+      possiblyTruncated: source === "ai_estimated" && possiblyTruncated === true,
     },
   });
 
