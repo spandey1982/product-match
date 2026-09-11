@@ -411,3 +411,40 @@ own card column with no overflow into neighboring cards. `npx tsc
 --noEmit`, `eslint`, and a full production build all passed clean; test
 shortlist rows deleted afterward via the same DELETE endpoint the UI
 uses.
+
+## Intent-first landing entry — reviewed, prototyped, shipped, 2026-09-11
+
+Following the strategic review in `research/home-material-intent-first-
+review.html` (see `product/roadmap.md` for the full outcome), built a
+3-option prototype set (`research/prototypes/ui-prototype-intent-entry-
+options.html`) for where the new intent input sits inside the
+already-locked Sage Studio hero: (A) replacing the primary CTA, (B) a
+spotlight bar above an unchanged hero, (C) reading as the headline's own
+sentence continuation. **User picked Option C.**
+
+Shipped in `MaterialsLandingClient.tsx`: the input sits directly under
+the sub-headline, styled as a natural continuation of "tell us what
+you're picturing"; "Upload a photo of your room" / "Browse the material
+guide" / "My shortlist" demote to small underlined text links beneath it.
+The product grid and category chips are untouched and remain visible
+regardless of whether a query is active — submitting a query swaps the
+grid's heading and content to ranked matches (or an honest "nothing
+close yet, here's the catalogue" fallback), never hides the grid itself.
+
+Matching is Tier-0 deterministic only, per the review's cost-tier
+architecture: keyword tokenization + category-keyword bonus + a
+"under/below ₹N" price-ceiling hard filter, scored against the exact
+same `BrowseProduct[]` array already fetched server-side for the grid —
+no new API route, no new database query, no AI/embedding call. Live-
+tested: "warm sage paint under 20" correctly returned only paints priced
+≤₹20 ranked with Soft Sage/Warm Beige tied at top (category + colour-word
+match) ahead of Terracotta (category match only), correctly excluding
+Charcoal Grey (₹22, over the ceiling); a nonsense query correctly fell
+back to the full grouped catalogue with an honest "nothing close yet"
+message rather than a fabricated match. `npx tsc --noEmit`, `eslint`,
+and a full production build all passed clean.
+
+Every prototype tour built for this domain from now on is archived
+locally at `research/prototypes/` (gitignored, never pushed) — a
+permanent progress record even after a decision ships. See
+`research/README.md`.

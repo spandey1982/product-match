@@ -73,12 +73,22 @@ Full reasoning for every row is in the review document. Condensed:
 - "Based on what you've explored" reversible framing + one-click reset,
   wherever behavioural personalization eventually surfaces.
 
-**Proposed — build next, needs scoping** (this is the active next phase):
-- An intent text input, added **above** the existing product grid on
-  `/materials` — never replacing it. Tier-0 deterministic parsing first
-  (category/colour/room/price extraction via keyword rules — no AI call);
-  embeddings reserved for vague queries only, once the catalogue justifies
-  the infrastructure (see deferred items below).
+**Shipped 2026-09-11:**
+- Intent text input on `/materials`, styled as "Option C" from
+  `research/prototypes/ui-prototype-intent-entry-options.html` (the
+  headline's own sentence continuation, not a separate search form) —
+  chosen from a 3-option prototype set specifically for balancing
+  "intriguing, not overpowering" against keeping the product grid
+  visible. Upload/browse/shortlist demoted to secondary text links.
+  Tier-0 deterministic matching only (`MaterialsLandingClient.tsx`'s
+  `scoreProduct`/`parsePriceMax`/`tokenize`): category+colour+price-
+  ceiling keyword extraction scored against the same product array
+  already fetched for the grid — zero new API calls, zero AI cost. Falls
+  back honestly to the full catalogue when nothing scores above zero,
+  rather than claiming a confident match. Tier 1 (embeddings) remains
+  deferred per the trigger below.
+
+**Proposed — needs scoping:**
 - Extending `lib/home-material/wall-detection.ts`'s existing single
   Gemini call's response schema to also return room-context fields
   (existing wall colour, dominant room colours, visual style,
@@ -131,14 +141,19 @@ separate from the rest of this roadmap:**
 
 ### Next concrete step
 
-A new round of landing-page layout prototypes — following the same
-propose-options → user-picks → implement workflow already established
-for this domain (Sage Studio itself was chosen this way) — showing the
-intent input integrated into the already-locked Sage Studio hero,
-balanced against continued visibility of the product grid/category chips
-per the owner's explicit brief: *"intriguing, not shocking; noticeable,
-not overpowering."* See the prototype artifact delivered alongside this
-roadmap update for the options themselves.
+With the intent-first entry shipped, the next items in sequence are the
+other "build now" proposals from the review that haven't shipped yet:
+server-side visualization caching, the "Room Trial" rename, the mobile
+precision loupe, and the room-analysis schema extension — see the
+Implementation Sequence section of
+`research/home-material-intent-first-review.html`.
+
+### Prototype archive
+
+Every UI layout prototype tour built for this domain (and going forward,
+any domain) is kept locally at **`research/prototypes/`** — gitignored,
+never pushed to origin, a permanent progress record even after a choice
+ships. See `research/README.md` for the index and convention.
 
 ## Open questions carried forward
 
