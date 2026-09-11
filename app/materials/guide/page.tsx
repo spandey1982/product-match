@@ -14,6 +14,12 @@ export const metadata: Metadata = {
   description: "Understand wall material types — paint, wallpaper, texture, and panels — before choosing a specific product.",
 };
 
+// Reads HmMaterial live via Prisma — must never be statically prerendered
+// at build time (same root cause already fixed for app/materials/page.tsx):
+// the build container can't reach postgres.railway.internal, so a static
+// prerender attempt here hard-fails the whole build.
+export const dynamic = "force-dynamic";
+
 const CATEGORY_LABELS: Record<string, string> = {
   paint: "Paint",
   wallpaper: "Wallpaper",
