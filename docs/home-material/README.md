@@ -23,6 +23,11 @@ infrastructure — see `domain/data-model.md`.
 - **[`product/overview.md`](product/overview.md)** — product thesis, V1
   scope, locked naming/scope decisions, current priorities, open/deferred
   items. **Start here for "what is this and what's the current state."**
+- **[`product/roadmap.md`](product/roadmap.md)** — the V1 → V2+ forward
+  plan: the intent-first entry evolution (reviewed and approved
+  2026-09-11), what's locked/proposed/deferred/rejected from that review,
+  and the differentiation thesis behind it. **Start here for "what's next
+  and why."**
 - **[`domain/data-model.md`](domain/data-model.md)** — entity
   relationships, what's shared vs. domain-specific vs. fashion-protected.
 - **[`ai/boundaries.md`](ai/boundaries.md)** — the locked AI-boundaries
@@ -54,7 +59,13 @@ Understand → Explore → Visualize → Compare → Validate → Decide → Sou
 - Multi-wall sub-problems B, E, G, A, C, F are all shipped; **D
   (panoramic/wide-angle) is permanently deferred** — do not build it
   without a new, explicit conversation reopening that decision.
-- **UI visual polish** (the broader visual-design-system work, not the
-  Mode A landing/browse merge, which is shipped) is next in the approved
-  phase order — see `ui/decisions.md` and
-  `research/home-material-ui-discovery.html`.
+- Full UI phase order (Mode A landing/browse → Discovery/Decision/
+  Validation vocabulary → Sage Studio visual system → layout
+  restructuring → Guide/Shortlist layout options) is shipped — see
+  `ui/decisions.md`.
+- **Active next phase: the intent-first entry evolution** — reviewed and
+  approved 2026-09-11. See **`product/roadmap.md`** for what's locked/
+  proposed/deferred and `research/home-material-intent-first-review.html`
+  for the full technical review. Next concrete step is a new round of
+  landing-page prototypes for the intent-input entry, on the already-
+  locked Sage Studio base.
