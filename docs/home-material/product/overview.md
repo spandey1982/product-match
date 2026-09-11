@@ -63,6 +63,20 @@ mechanism, schema location) and local-environment setup.
 3. Real-photo visualization quality is user-confirmed working (manually
    verified against an actual room wall) — no longer an open gap.
 
+## Product vision — the differentiation thesis (2026-09-11)
+
+The full V1 core journey above is deterministic, explainable, and
+taxonomy-driven — correct for a first version, but not yet what makes
+this product hard to copy. The owner's stated differentiation bet, in
+full, lives in `product/roadmap.md`'s "intent-first entry" section and
+the addendum of `research/home-material-intent-first-review.html`; in
+short: the application should feel like a customer-care agent attending
+the user through their decision, not a tool the user has to learn first —
+an explicitly accepted risk, since no historical precedent or
+platform-scale data exists yet to de-risk it. This does not relax the
+cost/complexity/performance discipline elsewhere in this document — see
+`product/roadmap.md` for what that discipline ruled in vs. out.
+
 ## Open / deferred (not yet frozen)
 
 - **Room-photo privacy policy** — flagged as a gap during discovery, not in
