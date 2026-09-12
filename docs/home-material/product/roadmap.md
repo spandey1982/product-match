@@ -56,17 +56,10 @@ endorsed keeping that discipline exactly as reviewed.
 Full reasoning for every row is in the review document. Condensed:
 
 **Locked now** (cheap, reversible, ship without further discussion):
-- Server-side visualization cache/dedupe — confirmed via code read that
-  `lib/home-material/visualization.ts` has **zero caching today**; every
-  Preview click regenerates from scratch even on an identical repeat.
-  This is the single biggest concrete cost win available, independent of
-  everything else here.
-- "Room Trial" as the user-facing name for a generated visualization
-  (mostly a rename — `HmVisualization` already carries most of the needed
-  data; a `cacheKey`/`savedAt`/`expiresAt`/`version` addition is the only
-  schema work).
+- ~~Server-side visualization cache/dedupe~~ — **shipped 2026-09-12**, see below.
+- ~~"Room Trial" as the user-facing name~~ — **shipped 2026-09-12**, see below.
 - OTP screen copy: "Create/save your room trial," never "enter your phone
-  number."
+  number." — **not yet done**, small follow-up left from the rename above.
 - Sponsored-placement governance (never enters the ranking math, always
   labelled) — write this rule down now even before sponsorship is on the
   roadmap.
@@ -81,7 +74,48 @@ Full reasoning for every row is in the review document. Condensed:
   confirmed-wall preview card's room photo could blow out past the card
   and the viewport on narrow screens (a `grid-template-columns: none`
   gap below the `lg` breakpoint let the image's intrinsic size set the
-  track width) — fixed with an explicit `grid-cols-1` base.
+  track width) — fixed with an explicit `grid-cols-1` base. A second
+  instance of the same root cause was later found on the `≥lg` desktop
+  track itself (`lg:grid-cols-[1.15fr_1fr]` has no `minmax(0,...)` floor)
+  — adding wallpapers/swatches grew the whole preview card horizontally
+  instead of scrolling inside the swatch carousel; fixed the same way.
+- **Server-side visualization cache/dedupe** — the single biggest locked
+  cost win from the review, now actually built. `lib/home-material/
+  visualization.ts`'s `computeVisualizationCacheKey` hashes every input
+  that determines the generated pixels (room photo, wall outline/corners,
+  product identity + its colour/finish/pattern/texture/sheet fields,
+  resolved wall dimensions, adjacency offset); `HmVisualization` gained
+  `cacheKey`/`version`/`savedAt`/`expiresAt` columns. `POST /api/
+  home-material/visualizations` looks up a matching `status:"completed"`
+  row for the same surface before calling Gemini at all — a hit returns
+  the prior row verbatim (`{cached:true}`), skipping both the image-edit
+  call(s) and the overview-QA call entirely. Verified via a zero-cost
+  method (seeding a fake completed row with a hand-computed matching
+  key, since the account's Gemini prepaid credits were depleted at the
+  time — see the open-question note below): the API returned the seeded
+  row's id/content and no new `AiUsageEvent` rows were created.
+- **"Room Trial" rename** — the user-facing noun for a generated
+  visualization is now "room trial" throughout `RoomView.tsx` (button:
+  "Generate room trial"; mode badges: "Quick room trial — AI
+  interpretation" / "Product-accurate room trial — from your uploaded
+  photo"; error/empty-state copy updated to match). Deliberately scoped
+  to user-facing strings only — `HmVisualization`, `handleGeneratePreview`,
+  the `/api/home-material/visualizations` route path, and other internal
+  identifiers are unchanged; renaming those would be a large, purely
+  cosmetic refactor with no user-facing benefit. OTP screen copy
+  ("create/save your room trial") is a separate small follow-up, not
+  done in this pass.
+- **Fullscreen zoomable room trial viewer** (`components/home-material/
+  ImageLightbox.tsx`, new) — clicking a generated room trial image (the
+  main result, or either thumbnail in Spatial Compare) opens it
+  fullscreen on a dark backdrop; wheel or pinch to zoom (up to 4x), drag
+  to pan once zoomed, double-click/double-tap to toggle a 2.5x zoom,
+  Escape/close-button/backdrop-click (only while at 1x) to close. Built
+  on the same Dialog primitive as `UploadRoomModal` rather than a new
+  dependency — plain pointer-event arithmetic, not library-sized.
+  Verified via a throwaway isolated test route (deleted after) since no
+  session-loaded visualization history exists to click on without a live
+  generation, which the depleted Gemini credits blocked at the time.
 
 **Shipped 2026-09-11:**
 - Intent text input on `/materials`, styled as "Option C" from

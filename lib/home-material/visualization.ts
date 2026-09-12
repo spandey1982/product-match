@@ -39,11 +39,67 @@
  * compatible with the common straight-on-wall, curated-swatch case.
  */
 import sharp from "sharp";
+import { createHash } from "crypto";
 import { uploadWithRetry } from "@/lib/cloudinary";
 import { recordAiUsage } from "@/lib/ai-usage/record";
 
 const MODEL_ID = "gemini-3.1-flash-image";
 const MAX_MODEL_EDGE = 1536;
+
+/**
+ * Bump whenever a field is added to/removed from computeVisualizationCacheKey's
+ * input — stored alongside every cacheKey on HmVisualization so a cache
+ * lookup can require an exact algorithm-version match, never comparing a
+ * hash computed one way against a differently-computed new one.
+ */
+export const VISUALIZATION_CACHE_KEY_VERSION = 1;
+
+/** Everything that actually determines the generated pixels — deliberately excludes hmUserId/visualizationId, which only affect logging. */
+export interface VisualizationCacheInput {
+  roomImageUrl: string;
+  points: Point[];
+  productId: string;
+  referenceImageUrl?: string | null;
+  colorHex?: string | null;
+  finish?: string | null;
+  patternName?: string | null;
+  corners?: Point[] | null;
+  patternType?: string | null;
+  sheetWidthM?: number | null;
+  sheetHeightM?: number | null;
+  wallWidthM?: number | null;
+  wallHeightM?: number | null;
+  adjacencyOffsetM?: number | null;
+}
+
+/**
+ * Server-side visualization cache/dedupe (2026-09-12, intent-first review's
+ * cheapest locked win) — confirmed via code read that this pipeline had
+ * ZERO caching before this: every Preview click re-ran 1-2 Gemini edit
+ * calls plus an overview-QA call, even on an identical repeat request.
+ * A stable hash over every input that actually affects the output pixels,
+ * with a fixed key order so object-construction order never changes the
+ * hash for logically identical input.
+ */
+export function computeVisualizationCacheKey(input: VisualizationCacheInput): string {
+  const normalized = {
+    roomImageUrl: input.roomImageUrl,
+    points: input.points,
+    productId: input.productId,
+    referenceImageUrl: input.referenceImageUrl ?? null,
+    colorHex: input.colorHex ?? null,
+    finish: input.finish ?? null,
+    patternName: input.patternName ?? null,
+    corners: input.corners ?? null,
+    patternType: input.patternType ?? null,
+    sheetWidthM: input.sheetWidthM ?? null,
+    sheetHeightM: input.sheetHeightM ?? null,
+    wallWidthM: input.wallWidthM ?? null,
+    wallHeightM: input.wallHeightM ?? null,
+    adjacencyOffsetM: input.adjacencyOffsetM ?? null,
+  };
+  return createHash("sha256").update(JSON.stringify(normalized)).digest("hex");
+}
 
 export interface Point {
   x: number;

@@ -53,6 +53,22 @@ product to the catalogue directly from the running app, without editing
 off-brand floating button, bottom-right) — never linked from any
 customer-facing navigation, not a retailer-facing flow.
 
+## Known environment issue — Gemini prepaid credits depleted (found 2026-09-12, unresolved)
+
+While testing the new visualization cache (below), a live generation call
+against the local `.env`'s `GEMINI_API_KEY` failed with `HTTP 429
+RESOURCE_EXHAUSTED: "Your prepayment credits are depleted."` — confirmed
+via the `AiUsageEvent` row (`estimatedCostUsd: 0`, so the failed attempt
+itself cost nothing). **This env var is shared across the whole app**
+(fashion-side model generation, catalogue motion, garment intelligence,
+and every Home Material AI call all read the same `GEMINI_API_KEY`) — if
+production's Railway environment points at the same AI Studio project,
+**all AI image generation across both domains would currently be failing
+for real users too**, not just this local test. Not yet confirmed against
+production; needs the account owner to check AI Studio billing
+(https://ai.studio/projects) and, separately, confirm whether Railway's
+production `GEMINI_API_KEY` is the same key or a different one.
+
 ## Known environment issue (pre-existing, not caused by this work — resolved)
 
 Local dev Postgres had migration-history drift from `prisma/schema.prisma`:

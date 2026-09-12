@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getOrCreateHmUserSession } from "@/lib/home-material/auth";
-import { runQuickPreviewVisualization } from "@/lib/home-material/visualization";
+import {
+  runQuickPreviewVisualization,
+  computeVisualizationCacheKey,
+  VISUALIZATION_CACHE_KEY_VERSION,
+} from "@/lib/home-material/visualization";
 import { generateVisualizationOverview, pickAlternativeProductIds } from "@/lib/home-material/overview";
 import { estimateWallDimensions } from "@/lib/home-material/scale-estimation";
 import { serializeArray } from "@/lib/serialize";
@@ -108,6 +112,37 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Server-side cache/dedupe (2026-09-12) — hash every input that actually
+  // determines the generated pixels; an identical repeat request against
+  // this exact surface reuses a prior COMPLETED row instead of spending
+  // another 1-2 Gemini edit calls + an overview-QA call. Computed AFTER
+  // dimension estimation/adjacency-offset resolution above so the key
+  // reflects the parameters actually used, not just what the client sent.
+  const cacheKey = computeVisualizationCacheKey({
+    roomImageUrl: surface.room.imageUrl,
+    points,
+    productId: product.id,
+    referenceImageUrl: product.textureAssetUrl,
+    colorHex: product.colorHex,
+    finish: product.finish,
+    patternName: product.patternName,
+    corners,
+    patternType: product.patternType,
+    sheetWidthM: product.sheetWidthM,
+    sheetHeightM: product.sheetHeightM,
+    wallWidthM,
+    wallHeightM,
+    adjacencyOffsetM,
+  });
+
+  const cached = await db.hmVisualization.findFirst({
+    where: { surfaceId, cacheKey, version: VISUALIZATION_CACHE_KEY_VERSION, status: "completed" },
+    orderBy: { createdAt: "desc" },
+  });
+  if (cached) {
+    return NextResponse.json({ visualization: cached, cached: true });
+  }
+
   const visualization = await db.hmVisualization.create({
     data: {
       surfaceId,
@@ -196,6 +231,9 @@ export async function POST(req: NextRequest) {
       overviewConsiderations: "error" in overview ? "[]" : serializeArray(overview.considerations),
       overviewClosing: "error" in overview ? null : overview.closing,
       overviewAlternativeProductIds: serializeArray(alternativeProductIds),
+      cacheKey,
+      version: VISUALIZATION_CACHE_KEY_VERSION,
+      savedAt: new Date(),
     },
   });
 
