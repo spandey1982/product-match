@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getHmUserSession } from "@/lib/home-material/auth";
+import { getOrCreateHmUserSession } from "@/lib/home-material/auth";
 import { detectAdjacentWalls, type WallForAdjacencyCheck } from "@/lib/home-material/adjacency-detection";
 
 /**
@@ -12,10 +12,7 @@ import { detectAdjacentWalls, type WallForAdjacencyCheck } from "@/lib/home-mate
  * pre-existing PATCH .../surfaces/adjacency endpoint unchanged.
  */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ roomId: string }> }) {
-  const session = await getHmUserSession();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const session = await getOrCreateHmUserSession();
 
   const { roomId } = await params;
   const { surfaceIds } = await req.json();

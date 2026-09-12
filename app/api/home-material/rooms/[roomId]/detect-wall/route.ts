@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getHmUserSession } from "@/lib/home-material/auth";
+import { getOrCreateHmUserSession } from "@/lib/home-material/auth";
 import { detectWallRegion } from "@/lib/home-material/wall-detection";
 
 /**
@@ -18,10 +18,7 @@ export async function POST(
   _req: Request,
   { params }: { params: Promise<{ roomId: string }> }
 ) {
-  const session = await getHmUserSession();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const session = await getOrCreateHmUserSession();
 
   const { roomId } = await params;
   const room = await db.hmRoom.findUnique({ where: { id: roomId }, include: { project: true } });

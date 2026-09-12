@@ -1,12 +1,9 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getHmUserSession } from "@/lib/home-material/auth";
+import { getOrCreateHmUserSession } from "@/lib/home-material/auth";
 
 export async function GET() {
-  const session = await getHmUserSession();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const session = await getOrCreateHmUserSession();
 
   const hmUser = await db.hmUser.findUnique({
     where: { id: session.id },

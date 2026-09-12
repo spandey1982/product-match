@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getHmUserSession } from "@/lib/home-material/auth";
+import { getOrCreateHmUserSession } from "@/lib/home-material/auth";
 import { generateRoomScheme } from "@/lib/home-material/combination-recommendation";
 import type { MaterialRequirements } from "@/lib/home-material/recommendation";
 
@@ -12,8 +12,7 @@ import type { MaterialRequirements } from "@/lib/home-material/recommendation";
  * Needs 2+ confirmed walls in the room to mean anything.
  */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ roomId: string }> }) {
-  const session = await getHmUserSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const session = await getOrCreateHmUserSession();
 
   const { roomId } = await params;
   const room = await db.hmRoom.findUnique({

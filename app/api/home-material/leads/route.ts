@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getHmUserSession } from "@/lib/home-material/auth";
+import { getOrCreateHmUserSession } from "@/lib/home-material/auth";
 
 /**
  * Lead capture — "Request a quote" or "Request a sample" (brief §17:
@@ -13,10 +13,7 @@ import { getHmUserSession } from "@/lib/home-material/auth";
  * honest about that, never silently implying a real business received it.
  */
 export async function POST(req: NextRequest) {
-  const session = await getHmUserSession();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const session = await getOrCreateHmUserSession();
 
   const { productId, materialCategory, contactName, contactPhone, contactEmail, message, areaSqft, leadType, shippingAddress } =
     await req.json();

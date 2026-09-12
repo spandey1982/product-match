@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getHmUserSession } from "@/lib/home-material/auth";
+import { getOrCreateHmUserSession } from "@/lib/home-material/auth";
 
 const MIN_POINTS = 3;
 const MAX_POINTS = 12;
@@ -27,10 +27,7 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ roomId: string; surfaceId: string }> }
 ) {
-  const session = await getHmUserSession();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const session = await getOrCreateHmUserSession();
 
   const { roomId, surfaceId } = await params;
   const surface = await db.hmSurface.findUnique({
