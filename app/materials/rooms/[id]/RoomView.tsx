@@ -1819,8 +1819,19 @@ export function RoomView({ roomId }: { roomId: string }) {
                     itself, requiring a pinch-zoom to see it framed.
                     `grid-cols-1` uses `minmax(0,1fr)`, which correctly
                     shrinks the track (and the photo inside it) to the
-                    actual available width first. */}
-                <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_1fr] gap-6 items-start">
+                    actual available width first.
+                    Same root cause, desktop track this time (2026-09-12
+                    fix #2): a bare `1.15fr`/`1fr` track (unlike Tailwind's
+                    generated `grid-cols-*` utilities) has no `minmax(0,...)`
+                    floor, so its default min-width is `auto` — the left
+                    column was free to grow past its fr share to fit
+                    SwatchCarousel's row of swatch cards instead of letting
+                    that row's own `overflow-x-auto` kick in, so adding more
+                    swatches expanded the whole preview card horizontally
+                    rather than scrolling within it. Wrapping both tracks in
+                    `minmax(0,...)` gives them the same `0`-floor as
+                    `grid-cols-1` does below `lg`. */}
+                <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] gap-6 items-start">
                   <div className="bg-gray-50 rounded-2xl p-4 space-y-3">
                     {!(vis?.status === "completed" && vis.outputImageUrl) &&
                       (() => {
