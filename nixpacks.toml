@@ -17,4 +17,12 @@ nixPkgs = ["ffmpeg"]
 cmds = ["npm run build"]
 
 [start]
-cmd = "npm run db:deploy && npm run db:seed && npm run start"
+# db:seed:hm (2026-09-13) — root-caused a real production bug: the
+# Home Material domain's HmMaterial/HmProduct/HmRetailer tables were
+# never seeded here, so every "select a material type" dropdown in that
+# domain (and the browse page, and lead capture) was silently empty in
+# production despite working locally. All three scripts it runs
+# (seed-material-knowledge.ts, seed-home-material.ts, seed-retailers.ts)
+# are upsert-on-deterministic-id, same as the existing db:seed step —
+# safe to run on every deploy, not just the first.
+cmd = "npm run db:deploy && npm run db:seed && npm run db:seed:hm && npm run start"
