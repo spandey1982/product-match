@@ -1,6 +1,7 @@
 import { Sora, Manrope } from "next/font/google";
 import "./materials-theme.css";
 import { HmThemeRoot } from "./HmThemeRoot";
+import { AddTestProductButton } from "@/components/home-material/AddTestProductButton";
 
 // "Sage Studio" visual direction (chosen 2026-09-10 from the two
 // prototypes built after the user's own reference-design upload — see
@@ -22,6 +23,9 @@ export default function MaterialsLayout({ children }: { children: React.ReactNod
           HmThemeRoot's doc comment. */}
       <HmThemeRoot className={themeClass} />
       <div className={themeClass}>{children}</div>
+      {/* Internal test-catalogue tool, deliberately discreet — see the
+          component's own doc comment. Never a customer-facing feature. */}
+      <AddTestProductButton />
     </>
   );
 }

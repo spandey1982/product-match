@@ -1,16 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getHmUserSession } from "@/lib/home-material/auth";
+import { getOrCreateHmUserSession } from "@/lib/home-material/auth";
 import { runQuickPreviewVisualization } from "@/lib/home-material/visualization";
 import { generateVisualizationOverview, pickAlternativeProductIds } from "@/lib/home-material/overview";
 import { estimateWallDimensions } from "@/lib/home-material/scale-estimation";
 import { serializeArray } from "@/lib/serialize";
 
 export async function POST(req: NextRequest) {
-  const session = await getHmUserSession();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const session = await getOrCreateHmUserSession();
 
   const { surfaceId, productId, skipDimensionCheck } = await req.json();
   if (typeof surfaceId !== "string" || typeof productId !== "string") {

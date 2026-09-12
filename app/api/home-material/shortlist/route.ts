@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getHmUserSession } from "@/lib/home-material/auth";
+import { getOrCreateHmUserSession } from "@/lib/home-material/auth";
 
 /**
  * Shortlist + Compare (brief §16 core journey: Visualize -> Understand ->
@@ -52,8 +52,7 @@ const PRODUCT_SELECT = {
 } as const;
 
 export async function GET() {
-  const session = await getHmUserSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const session = await getOrCreateHmUserSession();
 
   const items = await db.hmShortlistItem.findMany({
     where: { hmUserId: session.id },
@@ -76,8 +75,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await getHmUserSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const session = await getOrCreateHmUserSession();
 
   const { productId, note } = await req.json();
   if (typeof productId !== "string" || !productId) {

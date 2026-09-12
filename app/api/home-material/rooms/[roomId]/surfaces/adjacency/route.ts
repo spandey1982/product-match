@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { db } from "@/lib/db";
-import { getHmUserSession } from "@/lib/home-material/auth";
+import { getOrCreateHmUserSession } from "@/lib/home-material/auth";
 
 /**
  * Marks (or clears) walls as physically adjacent — the ONLY input the
@@ -20,10 +20,7 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ roomId: string }> }
 ) {
-  const session = await getHmUserSession();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const session = await getOrCreateHmUserSession();
 
   const { roomId } = await params;
   const { surfaceIds } = await req.json();

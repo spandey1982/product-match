@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getHmUserSession } from "@/lib/home-material/auth";
+import { getOrCreateHmUserSession } from "@/lib/home-material/auth";
 import { uploadWithRetry, isCloudinaryConnectivityError } from "@/lib/cloudinary";
 
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
@@ -15,10 +15,7 @@ async function getOrCreateDefaultProject(hmUserId: string) {
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await getHmUserSession();
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const session = await getOrCreateHmUserSession();
 
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
@@ -63,10 +60,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET() {
-  const session = await getHmUserSession();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const session = await getOrCreateHmUserSession();
 
   const rooms = await db.hmRoom.findMany({
     where: { project: { hmUserId: session.id } },

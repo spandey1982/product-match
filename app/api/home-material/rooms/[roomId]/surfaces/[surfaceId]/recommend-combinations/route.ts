@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getHmUserSession } from "@/lib/home-material/auth";
+import { getOrCreateHmUserSession } from "@/lib/home-material/auth";
 import { generateSameWallCombinations } from "@/lib/home-material/combination-recommendation";
 import type { MaterialRequirements } from "@/lib/home-material/recommendation";
 
@@ -11,8 +11,7 @@ import type { MaterialRequirements } from "@/lib/home-material/recommendation";
  * lib/home-material/combination-recommendation.ts's file header for why).
  */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ roomId: string; surfaceId: string }> }) {
-  const session = await getHmUserSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const session = await getOrCreateHmUserSession();
 
   const { roomId, surfaceId } = await params;
   const surface = await db.hmSurface.findUnique({

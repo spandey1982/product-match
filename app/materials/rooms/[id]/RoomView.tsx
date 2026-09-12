@@ -354,6 +354,72 @@ function ConfirmedWallOutline({ imageUrl, points }: { imageUrl: string; points: 
   );
 }
 
+const LOUPE_SIZE = 120; // px, on-screen diameter
+const LOUPE_ZOOM = 2.5;
+
+/**
+ * Mobile wall-vertex precision loupe (2026-09-12, following the
+ * intent-first entry review's recommendation — see
+ * docs/home-material/architecture/system.md and
+ * research/home-material-intent-first-review.html's §Mobile precision
+ * loupe). A finger dragging a corner handle covers the exact pixel being
+ * placed, making precise wall-outline correction hard on touch; this
+ * shows a magnified, offset-from-the-finger view of the same photo,
+ * centered on the point actually being placed, with a crosshair marking
+ * it. Only rendered while a touch/pen drag is active (see
+ * handleVertexPointerDown's pointerType check) — mouse dragging on
+ * desktop doesn't have the occlusion problem this solves, so it never
+ * shows one (this domain's motion-and-interaction principle: motion
+ * exists to serve a real interaction gap, not for its own sake).
+ *
+ * Pure CSS background-position magnifier against the SAME <img> element
+ * already on screen (rect = its live getBoundingClientRect(), not the
+ * source file's native pixel size) — no second image element, no canvas.
+ * Positioned with `fixed` above the finger by default, flipping below
+ * when too close to the top of the viewport, so the loupe itself is
+ * never the thing occluding what the user needs to see.
+ */
+function DragLoupe({ imageUrl, rect, point, clientX, clientY }: {
+  imageUrl: string;
+  rect: DOMRect;
+  point: Point;
+  clientX: number;
+  clientY: number;
+}) {
+  const bgWidth = rect.width * LOUPE_ZOOM;
+  const bgHeight = rect.height * LOUPE_ZOOM;
+  const bgX = -(point.x * bgWidth) + LOUPE_SIZE / 2;
+  const bgY = -(point.y * bgHeight) + LOUPE_SIZE / 2;
+
+  const gap = 24;
+  const showAbove = clientY - LOUPE_SIZE - gap > 8;
+  const top = showAbove ? clientY - LOUPE_SIZE - gap : clientY + gap;
+  const left = Math.min(Math.max(clientX - LOUPE_SIZE / 2, 8), window.innerWidth - LOUPE_SIZE - 8);
+
+  return (
+    <div
+      className="fixed z-50 rounded-full border-2 border-white shadow-xl pointer-events-none overflow-hidden"
+      style={{
+        top,
+        left,
+        width: LOUPE_SIZE,
+        height: LOUPE_SIZE,
+        backgroundImage: `url(${imageUrl})`,
+        backgroundSize: `${bgWidth}px ${bgHeight}px`,
+        backgroundPosition: `${bgX}px ${bgY}px`,
+        backgroundRepeat: "no-repeat",
+      }}
+    >
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div className="relative h-4 w-4">
+          <div className="absolute left-0 top-1/2 h-px w-full -translate-y-1/2 bg-indigo-600" />
+          <div className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-indigo-600" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const SCORE_BREAKDOWN_ROWS: { key: keyof NonNullable<Recommendation["components"]>; label: string; weightPct: number }[] = [
   { key: "moisture", label: "Moisture fit", weightPct: 35 },
   { key: "budget", label: "Budget fit", weightPct: 25 },
@@ -932,6 +998,9 @@ export function RoomView({ roomId }: { roomId: string }) {
   const [editingSurfaceId, setEditingSurfaceId] = useState<string | null>(null);
   const [manualDrawing, setManualDrawing] = useState(false);
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
+  // Only set while a touch/pen drag of a vertex is active — see DragLoupe's
+  // doc comment for why this never activates for a mouse drag.
+  const [loupe, setLoupe] = useState<{ clientX: number; clientY: number; point: Point; rect: DOMRect } | null>(null);
   const [label, setLabel] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -1166,16 +1235,24 @@ export function RoomView({ roomId }: { roomId: string }) {
     // now-stale quad. Falls back to the standard flat-mask/AI-generation
     // path, same as if no quad had ever been detected.
     setDraftCorners(null);
+
+    // Loupe only for touch/pen — a mouse drag has no finger-occlusion
+    // problem to solve (see DragLoupe's doc comment).
+    if (e.pointerType !== "mouse" && imageRef.current) {
+      setLoupe({ clientX: e.clientX, clientY: e.clientY, point: fractionalPoint(e), rect: imageRef.current.getBoundingClientRect() });
+    }
   }
 
   function handleContainerPointerMove(e: React.PointerEvent) {
     if (draggingIndex === null || !draftPoints) return;
     const p = fractionalPoint(e);
     setDraftPoints(draftPoints.map((pt, i) => (i === draggingIndex ? p : pt)));
+    setLoupe((prev) => (prev ? { ...prev, clientX: e.clientX, clientY: e.clientY, point: p } : prev));
   }
 
   function handleContainerPointerUp() {
     setDraggingIndex(null);
+    setLoupe(null);
   }
 
   async function handleConfirmSurface() {
@@ -1604,6 +1681,7 @@ export function RoomView({ roomId }: { roomId: string }) {
             ))}
         </svg>
       </div>
+      {loupe && <DragLoupe imageUrl={room.imageUrl} rect={loupe.rect} point={loupe.point} clientX={loupe.clientX} clientY={loupe.clientY} />}
 
       {!hasDraft && !manualDrawing && wallCandidates.length === 0 && (
         <Button className="w-full" size="lg" variant={hasSurfaces ? "secondary" : "default"} onClick={handleDetectWall} loading={detecting}>
@@ -1703,8 +1781,19 @@ export function RoomView({ roomId }: { roomId: string }) {
                     weight as the prototype's "wall-panel"; cost + "help me
                     choose" decision-support panels sit on the right — a
                     real layout change, not just the earlier color/font
-                    retheme on top of the old single-column stack. */}
-                <div className="grid lg:grid-cols-[1.15fr_1fr] gap-6 items-start">
+                    retheme on top of the old single-column stack.
+                    `grid-cols-1` (not just an unprefixed `grid`) is load-
+                    bearing on mobile (2026-09-12 fix): without an explicit
+                    single-column track, `grid-template-columns` is `none`
+                    below `lg`, which sizes the implicit column to its
+                    content's max-content width (default grid-item
+                    min-width is `auto`, not `0`) — the room photo's own
+                    intrinsic size then blew out the card and the viewport
+                    itself, requiring a pinch-zoom to see it framed.
+                    `grid-cols-1` uses `minmax(0,1fr)`, which correctly
+                    shrinks the track (and the photo inside it) to the
+                    actual available width first. */}
+                <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_1fr] gap-6 items-start">
                   <div className="bg-gray-50 rounded-2xl p-4 space-y-3">
                     {!(vis?.status === "completed" && vis.outputImageUrl) &&
                       (() => {

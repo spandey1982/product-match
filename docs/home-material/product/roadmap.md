@@ -73,6 +73,16 @@ Full reasoning for every row is in the review document. Condensed:
 - "Based on what you've explored" reversible framing + one-click reset,
   wherever behavioural personalization eventually surfaces.
 
+**Shipped 2026-09-12:**
+- Mobile wall-vertex precision loupe (`RoomView.tsx`'s `DragLoupe`) — a
+  2.5x magnified, finger-offset view of the room photo with a crosshair,
+  shown only for touch/pen drags of a wall-outline vertex, never for
+  mouse. Also fixed an unrelated mobile-only bug found alongside it: the
+  confirmed-wall preview card's room photo could blow out past the card
+  and the viewport on narrow screens (a `grid-template-columns: none`
+  gap below the `lg` breakpoint let the image's intrinsic size set the
+  track width) — fixed with an explicit `grid-cols-1` base.
+
 **Shipped 2026-09-11:**
 - Intent text input on `/materials`, styled as "Option C" from
   `research/prototypes/ui-prototype-intent-entry-options.html` (the

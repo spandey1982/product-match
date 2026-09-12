@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getHmUserSession } from "@/lib/home-material/auth";
+import { getOrCreateHmUserSession } from "@/lib/home-material/auth";
 
 export async function DELETE(
   _req: Request,
   { params }: { params: Promise<{ productId: string }> }
 ) {
-  const session = await getHmUserSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const session = await getOrCreateHmUserSession();
 
   const { productId } = await params;
 

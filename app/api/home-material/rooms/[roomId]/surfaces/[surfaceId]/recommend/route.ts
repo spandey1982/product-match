@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getHmUserSession } from "@/lib/home-material/auth";
+import { getOrCreateHmUserSession } from "@/lib/home-material/auth";
 import { generateMaterialRecommendations, type MaterialRequirements } from "@/lib/home-material/recommendation";
 import { parseArray, serializeArray } from "@/lib/serialize";
 
@@ -46,8 +46,7 @@ export async function GET(
   _req: Request,
   { params }: { params: Promise<{ roomId: string; surfaceId: string }> }
 ) {
-  const session = await getHmUserSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const session = await getOrCreateHmUserSession();
 
   const { roomId, surfaceId } = await params;
   const surface = await requireOwnedSurface(roomId, surfaceId, session.id);
@@ -71,8 +70,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ roomId: string; surfaceId: string }> }
 ) {
-  const session = await getHmUserSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const session = await getOrCreateHmUserSession();
 
   const { roomId, surfaceId } = await params;
   const surface = await requireOwnedSurface(roomId, surfaceId, session.id);

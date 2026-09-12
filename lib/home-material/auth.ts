@@ -159,3 +159,32 @@ export async function requireHmUser(): Promise<HmUserSession> {
   }
   return session;
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// OTP GATE REMOVED — TEMPORARY, 2026-09-12. Per the intent-first entry
+// review (research/home-material-intent-first-review.html §OTP gate),
+// the plan is to reopen this later with OTP required only immediately
+// before generation, not at room upload. That re-implementation is
+// explicitly deferred until asked for — this is the interim state only.
+//
+// Every route that used to require a real session now calls this instead
+// of getHmUserSession()+401. It transparently provisions a real HmUser
+// row with a synthetic, unique, never-dialled "phone" (`guest_<uuid>`,
+// impossible to collide with or be mistaken for a verified number) and a
+// normal session cookie, so every downstream model relation (HmProject,
+// HmRoom, HmShortlistItem, HmLead) keeps working unchanged against a real
+// HmUser id — no schema change needed. A returning visitor with an
+// existing session (guest or real) is left untouched.
+//
+// Known limitation, acceptable for a temporary state: near-simultaneous
+// first requests before any cookie exists can each provision their own
+// guest row (no request coalescing). Revert this function's use (put the
+// getHmUserSession()+401 checks back) when the real gate is reinstated.
+export async function getOrCreateHmUserSession(): Promise<HmUserSession> {
+  const existing = await getHmUserSession();
+  if (existing) return existing;
+
+  const guestUser = await db.hmUser.create({ data: { phone: `guest_${crypto.randomUUID()}` } });
+  await setHmUserSession(guestUser);
+  return { id: guestUser.id, phone: guestUser.phone, type: "hm_user" };
+}
