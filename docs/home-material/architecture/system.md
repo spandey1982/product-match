@@ -36,6 +36,12 @@ each call site from `getOrCreateHmUserSession()` back to
 `getHmUserSession()` + the 401 check — `lib/home-material/auth.ts`'s
 `getOrCreateHmUserSession` doc comment lists every affected file.
 
+## Temporary shared trial catalogue (2026-09-13)
+
+**"Upload your own wallpaper/paint photo" (`app/api/home-material/products/upload/route.ts`) creates a PUBLIC product for now, not a private one.** At the user's explicit request — before any real retailer-onboarding exists — anyone using the deployed app who uploads a trial wallpaper/veneer/paint photo through this existing customer-facing flow makes it visible to everyone (`uploadedByHmUserId: null`, same visibility as the curated demo catalogue), rather than private to just that uploader. `RoomView.tsx`'s upload panel discloses this plainly. This needed a real fix alongside it: the upload flow never linked an `HmMaterial`, so an uploaded product had no category and silently never appeared on the `/materials` browse grid (which only renders the 4 known categories) even though it worked fine in a room's own swatch carousel — a material-type dropdown is now required on upload, and the browse grid's card now shows the actual uploaded photo (`textureAssetUrl`) instead of a flat placeholder colour swatch.
+
+**Revert** by restoring `uploadedByHmUserId: session.id` in that route once a real retailer/admin-onboarding flow exists — the route's own doc comment says exactly what to change back. This is a different, additive mechanism from the internal test-catalogue tool below — that one stays as the discreet, always-public developer tool; this one is the ordinary, customer-facing upload path, temporarily made public too.
+
 ## Internal test-catalogue tool (2026-09-12)
 
 No retailer onboarding flow exists yet (see `../product/overview.md`'s
