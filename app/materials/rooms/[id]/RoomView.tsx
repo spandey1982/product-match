@@ -542,6 +542,13 @@ function CostEstimator({
 const FEET_PER_METER = 1 / 0.3048;
 const SQM_PER_SQFT = 0.092903; // same conversion factor used app-wide (e.g. HmLead.estimatedAreaSqm)
 
+const UPLOAD_CATEGORY_LABELS: Record<string, string> = {
+  paint: "Paint",
+  wallpaper: "Wallpaper",
+  wall_texture: "Wall Texture",
+  wall_panel: "Wall Panels",
+};
+
 /**
  * Wall-truncation honesty mitigation (2026-09-09, "never manufacture
  * certainty" applied to wall length, not just shape) — when detection
@@ -1042,6 +1049,15 @@ export function RoomView({ roomId }: { roomId: string }) {
   const [uploadPatternType, setUploadPatternType] = useState<"" | "customizable" | "repeat_sheet">("");
   const [uploadSheetWidthFt, setUploadSheetWidthFt] = useState("");
   const [uploadSheetHeightFt, setUploadSheetHeightFt] = useState("");
+  // Added 2026-09-13 alongside the temporary public-upload change (see
+  // app/api/home-material/products/upload/route.ts) — without a linked
+  // HmMaterial, an uploaded product has no category, so it silently fell
+  // through every group on the /materials browse grid (which only ever
+  // renders the 4 known categories) even though it showed up fine in
+  // this room's own swatch carousel. Requiring a material type here
+  // fixes that for good, not just for the temporary public-upload case.
+  const [uploadMaterials, setUploadMaterials] = useState<{ id: string; category: string; name: string }[]>([]);
+  const [uploadMaterialId, setUploadMaterialId] = useState("");
 
   const [showHelpMeChoose, setShowHelpMeChoose] = useState<Record<string, boolean>>({});
   const [requirements, setRequirements] = useState<Record<string, Requirements>>({});
@@ -1121,6 +1137,11 @@ export function RoomView({ roomId }: { roomId: string }) {
 
     loadSwatches();
     loadShortlist();
+
+    fetch("/api/home-material/materials")
+      .then((res) => parseJsonSafe(res))
+      .then((data) => setUploadMaterials((data.materials as { id: string; category: string; name: string }[] | undefined) ?? []))
+      .catch(() => {});
   }, [roomId, router]);
 
   function resetDraft() {
@@ -1468,6 +1489,10 @@ export function RoomView({ roomId }: { roomId: string }) {
       setUploadError("Choose a photo first.");
       return;
     }
+    if (!uploadMaterialId) {
+      setUploadError("Select a material type.");
+      return;
+    }
     if (!uploadPatternType) {
       setUploadError("Choose whether this is a customizable design or a repeating pattern.");
       return;
@@ -1490,6 +1515,7 @@ export function RoomView({ roomId }: { roomId: string }) {
       const formData = new FormData();
       formData.append("file", uploadFile);
       if (uploadName) formData.append("name", uploadName);
+      formData.append("materialId", uploadMaterialId);
       formData.append("patternType", uploadPatternType);
       if (sheetWidthM != null) formData.append("sheetWidthM", String(sheetWidthM));
       if (sheetHeightM != null) formData.append("sheetHeightM", String(sheetHeightM));
@@ -1501,6 +1527,7 @@ export function RoomView({ roomId }: { roomId: string }) {
       }
       setUploadFile(null);
       setUploadName("");
+      setUploadMaterialId("");
       setUploadPatternType("");
       setUploadSheetWidthFt("");
       setUploadSheetHeightFt("");
@@ -2126,6 +2153,21 @@ export function RoomView({ roomId }: { roomId: string }) {
           <div className="rounded-2xl border border-dashed border-gray-300 p-4 space-y-2">
             <p className="text-sm font-medium text-gray-700">Have your own wallpaper or paint photo?</p>
             <p className="text-xs text-gray-500">Upload a photo of it — we&apos;ll match its actual colour and pattern in the preview.</p>
+            {/* TEMPORARY disclosure (2026-09-13) — see app/api/home-material/products/upload/route.ts's
+                doc comment. Remove this line if/when uploads go back to being private. */}
+            <p className="text-xs text-amber-600">For now, this is visible to everyone using the app while we&apos;re testing — please don&apos;t upload anything private.</p>
+            <select
+              value={uploadMaterialId}
+              onChange={(e) => setUploadMaterialId(e.target.value)}
+              className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="">Select a material type…</option>
+              {uploadMaterials.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {(UPLOAD_CATEGORY_LABELS[m.category] ?? m.category) + " — " + m.name}
+                </option>
+              ))}
+            </select>
             <div className="flex flex-col sm:flex-row gap-2">
               <input
                 type="file"

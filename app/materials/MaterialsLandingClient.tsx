@@ -11,6 +11,7 @@ export type BrowseProduct = {
   colorHex: string | null;
   finish: string | null;
   patternName: string | null;
+  textureAssetUrl: string | null;
   category: string | null;
   durabilityYearsApprox: number | null;
   maintenanceLevel: string | null;
@@ -93,10 +94,19 @@ function ProductCard({ p, categoryLabel, onOpen }: { p: BrowseProduct; categoryL
       className="group text-left rounded-2xl border border-gray-200 bg-white overflow-hidden transition-all duration-200 hover:-translate-y-1 hover:shadow-xl hover:border-gray-300"
     >
       <div className="h-28 overflow-hidden">
-        <div
-          className="h-full w-full transition-transform duration-300 group-hover:scale-105"
-          style={{ backgroundColor: p.colorHex || "#e5e7eb" }}
-        />
+        {p.textureAssetUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={p.textureAssetUrl}
+            alt={p.name}
+            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+          />
+        ) : (
+          <div
+            className="h-full w-full transition-transform duration-300 group-hover:scale-105"
+            style={{ backgroundColor: p.colorHex || "#e5e7eb" }}
+          />
+        )}
       </div>
       <div className="p-4 space-y-2">
         <div>

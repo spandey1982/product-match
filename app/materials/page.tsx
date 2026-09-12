@@ -39,6 +39,7 @@ async function getBrowseProducts(): Promise<BrowseProduct[]> {
       colorHex: true,
       finish: true,
       patternName: true,
+      textureAssetUrl: true,
       priceInr: true,
       priceUnit: true,
       material: {
@@ -75,6 +76,7 @@ async function getBrowseProducts(): Promise<BrowseProduct[]> {
       colorHex: p.colorHex,
       finish: p.finish,
       patternName: p.patternName,
+      textureAssetUrl: p.textureAssetUrl,
       category: p.material?.category ?? null,
       durabilityYearsApprox: taxonomyEntry?.durabilityYearsApprox ?? null,
       maintenanceLevel: taxonomyEntry?.maintenanceLevel ?? null,

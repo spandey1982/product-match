@@ -17,8 +17,24 @@ function parsePositiveFloat(raw: FormDataEntryValue | null): number | null {
  * "Upload your own wallpaper/paint photo" — a real product photo the user
  * already has (e.g. a store sample, a listing screenshot), used directly as
  * a visual reference instead of picking from the curated demo swatches.
- * Private to the uploading HmUser (see uploadedByHmUserId on HmProduct) —
- * never shown in another user's swatch list.
+ *
+ * TEMPORARY, 2026-09-13: normally private to the uploading HmUser (via
+ * `uploadedByHmUserId`) — never shown in another user's swatch list. For
+ * now, deliberately created as a PUBLIC product (`uploadedByHmUserId:
+ * null`, same visibility as the curated demo catalogue) instead, at the
+ * user's explicit request: there's no real retailer-onboarding flow yet
+ * (see docs/home-material/product/overview.md's "Not in V1" list), and
+ * this is the cheapest way to get a small shared catalogue of trial
+ * wallpapers/veneers live for anyone using the deployed app to see and
+ * try on their own wall — using the existing customer-facing upload
+ * flow itself, not a separate admin tool or a direct DB seed. The
+ * RoomView.tsx upload panel's copy was updated to disclose this (never
+ * silently change a privacy boundary without telling the user).
+ *
+ * REVERT by restoring `uploadedByHmUserId: session.id` below once a real
+ * retailer/admin-onboarding flow exists — see
+ * components/home-material/AddTestProductButton.tsx for the discreet,
+ * always-public internal tool this doesn't replace.
  */
 export async function POST(req: NextRequest) {
   const session = await getOrCreateHmUserSession();
@@ -35,6 +51,21 @@ export async function POST(req: NextRequest) {
   }
   if (file.size > MAX_SIZE) {
     return NextResponse.json({ error: "File size must be under 5MB" }, { status: 400 });
+  }
+
+  // Mandatory material link (2026-09-13) — without one, the product has
+  // no category, so it silently failed to appear anywhere on the
+  // /materials browse grid (which only ever renders the 4 known
+  // categories) even though it worked fine in this room's own swatch
+  // carousel. Also gives a real material-suitability/cost basis instead
+  // of none at all.
+  const materialId = formData.get("materialId") as string | null;
+  if (!materialId) {
+    return NextResponse.json({ error: "Select a material type" }, { status: 400 });
+  }
+  const material = await db.hmMaterial.findUnique({ where: { id: materialId } });
+  if (!material) {
+    return NextResponse.json({ error: "Material not found" }, { status: 404 });
   }
 
   // Mandatory classification (2026-09-09) — every upload must explicitly
@@ -67,11 +98,13 @@ export async function POST(req: NextRequest) {
 
     const product = await db.hmProduct.create({
       data: {
+        materialId,
         name: name || "My uploaded material",
         imageUrls: JSON.stringify([result.secure_url]),
         textureAssetUrl: result.secure_url,
         availability: "unspecified",
-        uploadedByHmUserId: session.id,
+        // TEMPORARY: null (public), not session.id — see the doc comment above.
+        uploadedByHmUserId: null,
         patternType,
         sheetWidthM,
         sheetHeightM,
