@@ -1602,7 +1602,36 @@ model HmVisualization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // "Room Trial" caching (2026-09-12, intent-first review's cheapest locked
+  // win): a hash of everything that actually determines the generated
+  // pixels (room photo, wall outline/corners, product, wall/sheet
+  // dimensions, adjacency offset — see
+  // lib/home-material/visualization.ts's computeVisualizationCacheKey).
+  // An identical repeat request against the same surface reuses a prior
+  // COMPLETED row's result instead of re-running Gemini/overview calls —
+  // zero new AI cost, zero new Cloudinary upload. Null on rows created
+  // before this feature shipped.
+  cacheKey String?
+
+  // Cache-key ALGORITHM version, not a user-facing "trial version" —
+  // bump lib/home-material/visualization.ts's VISUALIZATION_CACHE_KEY_VERSION
+  // whenever the fields folded into the hash change, so old rows are never
+  // matched against a differently-computed new key.
+  version Int @default(1)
+
+  // When this room trial was saved. Every trial is implicitly "saved"
+  // today (nothing is ever auto-deleted), so this is set to createdAt at
+  // generation time — a real per-trial expiry/retention feature (see
+  // docs/home-material/product/roadmap.md's open retention-window
+  // question) can read/write this properly once that default is decided.
+  savedAt DateTime?
+
+  // Reserved for the same future retention feature above. Null = never
+  // expires (today's actual behavior for every existing trial).
+  expiresAt DateTime?
+
   @@index([surfaceId])
+  @@index([surfaceId, cacheKey])
   @@map("hm_visualizations")
 }
 

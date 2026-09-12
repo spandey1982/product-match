@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, RotateCcw, Pencil, Heart, Scale } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LeadCaptureButton } from "@/components/home-material/LeadCaptureButton";
+import { ImageLightbox } from "@/components/home-material/ImageLightbox";
 import { parseJsonSafe } from "@/lib/home-material/client";
 import { parseArray } from "@/lib/serialize";
 import { calculateSheetsNeeded } from "@/lib/home-material/sheet-calculation";
@@ -286,14 +287,22 @@ function SwatchCarousel({
  * comparing costs nothing beyond what trying each material already cost.
  * Complements, not replaces, /materials/shortlist's tabular spec compare.
  */
-function SpatialCompare({ history, swatches }: { history: Visualization[]; swatches: Swatch[] }) {
+function SpatialCompare({
+  history,
+  swatches,
+  onOpenLightbox,
+}: {
+  history: Visualization[];
+  swatches: Swatch[];
+  onOpenLightbox: (src: string, alt: string) => void;
+}) {
   const completed = history.filter((v) => v.status === "completed" && v.outputImageUrl);
   const [idA, setIdA] = useState(() => completed[Math.max(0, completed.length - 2)]?.id ?? "");
   const [idB, setIdB] = useState(() => completed[completed.length - 1]?.id ?? "");
 
   if (completed.length < 2) return null;
 
-  const label = (v: Visualization) => swatches.find((sw) => sw.id === v.productId)?.name ?? "Preview";
+  const label = (v: Visualization) => swatches.find((sw) => sw.id === v.productId)?.name ?? "Room Trial";
   const visA = completed.find((v) => v.id === idA) ?? completed[completed.length - 2];
   const visB = completed.find((v) => v.id === idB) ?? completed[completed.length - 1];
 
@@ -317,7 +326,12 @@ function SpatialCompare({ history, swatches }: { history: Visualization[]; swatc
             </select>
             {vis?.outputImageUrl && (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={vis.outputImageUrl} alt={label(vis)} className="w-full rounded-lg border border-gray-200" />
+              <img
+                src={vis.outputImageUrl}
+                alt={label(vis)}
+                onClick={() => onOpenLightbox(vis.outputImageUrl as string, label(vis))}
+                className="w-full rounded-lg border border-gray-200 cursor-zoom-in"
+              />
             )}
           </div>
         ))}
@@ -624,7 +638,7 @@ function WallDimensionsNotice({
   return (
     <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 space-y-2">
       <p className="text-xs text-amber-800">
-        ⚠ This wall may extend beyond what&apos;s captured in the photo — the preview and any area estimate reflect only the visible portion.
+        ⚠ This wall may extend beyond what&apos;s captured in the photo — the room trial and any area estimate reflect only the visible portion.
       </p>
       {editing ? (
         <>
@@ -736,7 +750,7 @@ function NeedsDimensionsPrompt({
           onChange={(e) => setHeightFt(e.target.value)}
           className="w-24 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
         />
-        <Button size="sm" onClick={handleSaveAndPreview} loading={saving}>Save &amp; preview</Button>
+        <Button size="sm" onClick={handleSaveAndPreview} loading={saving}>Save &amp; try it</Button>
         <Button size="sm" variant="secondary" onClick={onContinueAnyway} loading={continuing}>Continue anyway</Button>
       </div>
       {error && <p className="text-xs text-red-500">{error}</p>}
@@ -1032,6 +1046,10 @@ export function RoomView({ roomId }: { roomId: string }) {
   // without re-generating anything (no new AI cost — these rows already
   // existed server-side, this just stops discarding them client-side).
   const [visualizationHistory, setVisualizationHistory] = useState<Record<string, Visualization[]>>({});
+  // Fullscreen zoomable viewer (2026-09-12) — a single shared instance for
+  // the whole page; null means closed. Set from the main result image and
+  // from SpatialCompare's two thumbnails.
+  const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
   const [previewError, setPreviewError] = useState<Record<string, string>>({});
   // Repeat-pattern sheet goods need the wall's real size to render at
   // true scale (2026-09-09) — set when the API blocks a preview for this
@@ -1384,18 +1402,26 @@ export function RoomView({ roomId }: { roomId: string }) {
         if (data.needsDimensions) {
           setNeedsDimensionsFor((m) => ({
             ...m,
-            [surfaceId]: { productId, message: typeof data.error === "string" ? data.error : "Enter the wall's real size for an accurate preview." },
+            [surfaceId]: { productId, message: typeof data.error === "string" ? data.error : "Enter the wall's real size for an accurate room trial." },
           }));
           return;
         }
-        setPreviewError((p) => ({ ...p, [surfaceId]: typeof data.error === "string" ? data.error : "Preview failed" }));
+        setPreviewError((p) => ({ ...p, [surfaceId]: typeof data.error === "string" ? data.error : "Room trial failed" }));
         if (data.visualization) setVisualizations((v) => ({ ...v, [surfaceId]: data.visualization as Visualization }));
         return;
       }
       const completedVis = data.visualization as Visualization;
       setVisualizations((v) => ({ ...v, [surfaceId]: completedVis }));
       if (completedVis.status === "completed" && completedVis.outputImageUrl) {
-        setVisualizationHistory((h) => ({ ...h, [surfaceId]: [...(h[surfaceId] ?? []), completedVis] }));
+        // A cache hit (server-side dedupe, 2026-09-12) can return the SAME
+        // visualization id as an earlier entry already in history — drop
+        // any existing copy before appending so it moves to the end
+        // instead of appearing twice (which would break SpatialCompare's
+        // React keys).
+        setVisualizationHistory((h) => ({
+          ...h,
+          [surfaceId]: [...(h[surfaceId] ?? []).filter((v) => v.id !== completedVis.id), completedVis],
+        }));
       }
     } catch (err) {
       setPreviewError((p) => ({ ...p, [surfaceId]: `Something went wrong: ${err instanceof Error ? err.message : String(err)}` }));
@@ -1609,7 +1635,7 @@ export function RoomView({ roomId }: { roomId: string }) {
             : wallCandidates.length > 0
             ? "Tap a highlighted wall below to adjust and confirm it — you can come back for the others after."
             : hasSurfaces
-            ? "Pick a swatch below to preview it on this wall."
+            ? "Pick a swatch below to start a room trial for this wall."
             : "For best results, stand roughly facing the wall(s). We'll detect their outlines automatically."}
         </p>
       </div>
@@ -1787,7 +1813,7 @@ export function RoomView({ roomId }: { roomId: string }) {
 
       {room.surfaces.length > 0 && (
         <div className="space-y-4 pt-2">
-          <h2 className="text-sm font-semibold text-gray-900">Preview a material</h2>
+          <h2 className="text-sm font-semibold text-gray-900">Try a material</h2>
           {room.surfaces.map((s) => {
             const vis = visualizations[s.id];
             const isBeingEdited = s.id === editingSurfaceId;
@@ -1866,7 +1892,7 @@ export function RoomView({ roomId }: { roomId: string }) {
                       />
                     ) : (
                       <Button className="w-full" onClick={() => handleGeneratePreview(s.id)} loading={generating[s.id]}>
-                        Preview
+                        Generate room trial
                       </Button>
                     )}
                     {previewError[s.id] && <p className="text-sm text-red-500">{previewError[s.id]}</p>}
@@ -1877,7 +1903,7 @@ export function RoomView({ roomId }: { roomId: string }) {
                             vis.mode === "product_accurate" ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-600"
                           }`}
                         >
-                          {vis.mode === "product_accurate" ? "Product-accurate — from your uploaded photo" : "Quick preview — AI interpretation"}
+                          {vis.mode === "product_accurate" ? "Product-accurate room trial — from your uploaded photo" : "Quick room trial — AI interpretation"}
                         </span>
                         {vis.perspectiveCorrected && (
                           <span
@@ -1904,7 +1930,12 @@ export function RoomView({ roomId }: { roomId: string }) {
                           </span>
                         )}
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={vis.outputImageUrl} alt="Preview" className="w-full rounded-xl border border-gray-200" />
+                        <img
+                          src={vis.outputImageUrl}
+                          alt="Room trial"
+                          onClick={() => setLightbox({ src: vis.outputImageUrl as string, alt: "Room trial" })}
+                          className="w-full rounded-xl border border-gray-200 cursor-zoom-in"
+                        />
                         <OverviewCard
                           vis={vis}
                           swatches={swatches}
@@ -1917,11 +1948,15 @@ export function RoomView({ roomId }: { roomId: string }) {
                       </div>
                     )}
                     {vis?.status === "failed" && (
-                      <p className="text-xs text-red-500">{vis.errorMessage || "Preview generation failed."}</p>
+                      <p className="text-xs text-red-500">{vis.errorMessage || "Room trial generation failed."}</p>
                     )}
 
                     {(visualizationHistory[s.id]?.filter((v) => v.status === "completed" && v.outputImageUrl).length ?? 0) >= 2 && (
-                      <SpatialCompare history={visualizationHistory[s.id] ?? []} swatches={swatches} />
+                      <SpatialCompare
+                        history={visualizationHistory[s.id] ?? []}
+                        swatches={swatches}
+                        onOpenLightbox={(src, alt) => setLightbox({ src, alt })}
+                      />
                     )}
                   </div>
 
@@ -2057,7 +2092,7 @@ export function RoomView({ roomId }: { roomId: string }) {
                                       handleGeneratePreview(s.id, swatchMatch.id);
                                     }}
                                   >
-                                    Preview this
+                                    Try this
                                   </Button>
                                 ) : (
                                   <p className="text-xs text-gray-400 mt-2">No demo swatch for this material yet — browse the <Link href="/materials/guide" className="underline">material guide</Link> for details.</p>
@@ -2163,7 +2198,7 @@ export function RoomView({ roomId }: { roomId: string }) {
 
           <div className="rounded-2xl border border-dashed border-gray-300 p-4 space-y-2">
             <p className="text-sm font-medium text-gray-700">Have your own wallpaper or paint photo?</p>
-            <p className="text-xs text-gray-500">Upload a photo of it — we&apos;ll match its actual colour and pattern in the preview.</p>
+            <p className="text-xs text-gray-500">Upload a photo of it — we&apos;ll match its actual colour and pattern in your room trial.</p>
             {/* TEMPORARY disclosure (2026-09-13) — see app/api/home-material/products/upload/route.ts's
                 doc comment. Remove this line if/when uploads go back to being private. */}
             <p className="text-xs text-amber-600">For now, this is visible to everyone using the app while we&apos;re testing — please don&apos;t upload anything private.</p>
@@ -2240,6 +2275,7 @@ export function RoomView({ roomId }: { roomId: string }) {
           </div>
         </div>
       )}
+      <ImageLightbox src={lightbox?.src ?? null} alt={lightbox?.alt ?? "Room trial"} onClose={() => setLightbox(null)} />
     </div>
   );
 }
