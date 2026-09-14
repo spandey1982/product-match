@@ -39,10 +39,25 @@ export function PriceTag({ p }: { p: BrowseProduct }) {
 export function MaterialProductCard({ p, onOpen }: { p: BrowseProduct; onOpen: () => void }) {
   const categoryLabel = CATEGORY_LABELS[p.category ?? ""] ?? "Material";
   return (
-    <button
-      type="button"
+    // A <div role="button">, not a <button> — it wraps a real <Button>
+    // below ("See in my room"), and HTML forbids nesting <button> inside
+    // <button> (invalid markup the browser silently "fixes" by breaking
+    // out of the outer element, which is what was blowing up the card
+    // layout into oversized, mis-rendered blocks — confirmed via Next.js's
+    // own dev-mode error overlay, not just guessed). onKeyDown keeps it
+    // keyboard-activatable (Enter/Space) since a div has no built-in
+    // button semantics.
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onOpen}
-      className="group text-left rounded-2xl bg-white border border-gray-100 overflow-hidden shadow-sm hover:shadow-md transition-all duration-200 hover:-translate-y-0.5"
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+      className="group text-left rounded-2xl bg-white border border-gray-100 overflow-hidden shadow-sm hover:shadow-md transition-all duration-200 hover:-translate-y-0.5 cursor-pointer"
     >
       <div className="relative aspect-[3/4] bg-gray-50 overflow-hidden">
         {p.textureAssetUrl ? (
@@ -94,6 +109,6 @@ export function MaterialProductCard({ p, onOpen }: { p: BrowseProduct; onOpen: (
           See in my room
         </Button>
       </div>
-    </button>
+    </div>
   );
 }

@@ -575,3 +575,43 @@ confirmed via computed styles that `h-32` applies unconditionally and
 `md:h-auto` overrides it at desktop width (355px), matching the same
 verified pattern as every other responsive-breakpoint fix this session.
 `tsc`/`eslint`/full `npm run build` all clean.
+
+## Real bug found via Next.js's own dev-mode error overlay, 2026-09-14
+
+User reported "two humongous product cards at the bottom" persisting on
+every device after the mobile-hero fix above, plus "three issues" they
+could see on page load — asked me to check logs myself rather than
+re-guess. That red circular badge in every screenshot this whole
+session was WRONGLY assumed to be the Claude-in-Chrome extension's own
+overlay (recorded that way, incorrectly, in earlier notes) — it's
+actually **Next.js's own dev-mode error indicator** (the "N" is the
+Next.js logo). Opening it surfaced the real root cause directly instead
+of more guessing: `components/home-material/MaterialProductCard.tsx`'s
+outer element was a `<button>` wrapping a real `<Button>` ("See in my
+room") — HTML forbids nesting `<button>` inside `<button>`, and the
+browser's auto-correction for that invalid markup (breaking out of the
+outer element) is what was blowing individual cards up into oversized,
+mis-rendered blocks. Not a CSS/grid issue at all, despite two prior
+rounds of grid-column theorizing.
+
+**Fixed:** outer element changed from `<button type="button" onClick=.../>`
+to `<div role="button" tabIndex={0} onClick=... onKeyDown={...}>` —
+valid HTML that can contain a real nested button, with the `onKeyDown`
+handler preserving Enter/Space keyboard activation a plain div doesn't
+get for free. Grepped the rest of `components/home-material/` and
+`app/materials/` for the same `<button>`-wrapping-`<Button>` pattern —
+this was the only instance.
+
+The remaining, unfixable-in-code issue the overlay also reports is an
+`fdprocessedid` attribute hydration mismatch — Next.js's own error text
+explicitly names "a browser extension installed which messes with the
+HTML" as the cause, and it's confirmed to come from a form-autofill-
+detection extension in this specific testing browser, not from real
+end-user traffic.
+
+Live-tested: reloaded `/materials` repeatedly post-fix — the issue count
+dropped from 4 to 1 (just the extension artifact), and the last grid
+row's previously-fine-looking card plus every other card render at
+normal, uniform size with no layout breakage. Clicking a card still
+opens `UploadRoomModal` correctly through the new div's `onClick`.
+`tsc`/`eslint`/full `npm run build` all clean.
