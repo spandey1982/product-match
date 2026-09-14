@@ -1,5 +1,5 @@
 "use client";
-import { Button } from "@/components/ui/button";
+import { Eye } from "lucide-react";
 import type { BrowseProduct } from "@/lib/home-material/browse-product";
 
 export const CATEGORY_LABELS: Record<string, string> = {
@@ -27,14 +27,25 @@ export function PriceTag({ p }: { p: BrowseProduct }) {
  * Home Material's browse card, deliberately matching /shop's
  * ShopProductCard visual language (2026-09-14 browse-parity work): same
  * rounded-2xl/border/shadow/hover-lift card shell, image-on-top +
- * name/price/CTA-button layout, same grid this renders inside
- * (grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5). Content
- * differs because the domain differs — a colour/texture swatch instead
- * of a garment photo, a durability/maintenance chip instead of a size
- * badge, "See in my room" instead of "Try & Buy" (this domain has no
- * cart/checkout in V1). Deliberately does NOT add a wishlist heart like
- * ShopProductCard's — that would need session-aware shortlist state on
- * an otherwise-anonymous landing page, out of scope for this pass.
+ * name/price layout, same grid this renders inside (grid-cols-2
+ * sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5). Content differs because
+ * the domain differs — a colour/texture swatch instead of a garment
+ * photo, a durability/maintenance chip instead of a size badge.
+ *
+ * The action button (2026-09-15) mirrors components/catalog/ProductCard.tsx's
+ * TryOnCardButton placement exactly: a circular icon straddling the
+ * image/info boundary (`right-3 bottom-0 translate-y-1/2`), not a
+ * full-width text button — same "right edge, half in the photo, half in
+ * the info strip" convention used across /shop, /rent, and the retailer
+ * catalog. An eye icon since the actual action here is "see this on your
+ * wall," not "try on"/"buy" — there's no cart/checkout in this domain's
+ * V1, so borrowing that button's literal label would misdescribe what it
+ * does. Purely a presentational echo of the card's own onClick (tabIndex
+ * -1, not an independent tab stop) — clicking anywhere on the card does
+ * the same thing, same as the full-width button it replaces did.
+ * Deliberately does NOT add a wishlist heart like ShopProductCard's —
+ * that would need session-aware shortlist state on an otherwise-
+ * anonymous landing page, out of scope for this pass.
  */
 export function MaterialProductCard({ p, onOpen }: { p: BrowseProduct; onOpen: () => void }) {
   const categoryLabel = CATEGORY_LABELS[p.category ?? ""] ?? "Material";
@@ -59,23 +70,41 @@ export function MaterialProductCard({ p, onOpen }: { p: BrowseProduct; onOpen: (
       }}
       className="group text-left rounded-2xl bg-white border border-gray-100 overflow-hidden shadow-sm hover:shadow-md transition-all duration-200 hover:-translate-y-0.5 cursor-pointer"
     >
-      <div className="relative aspect-[3/4] bg-gray-50 overflow-hidden">
-        {p.textureAssetUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={p.textureAssetUrl}
-            alt={p.name}
-            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-          />
-        ) : (
-          <div
-            className="h-full w-full transition-transform duration-300 group-hover:scale-105"
-            style={{ backgroundColor: p.colorHex || "#e5e7eb" }}
-          />
-        )}
+      {/* No overflow-hidden here (unlike the outer card) — it would clip
+          the eye button below, which deliberately protrudes past the
+          image into the info strip. The outer card's own overflow-hidden
+          still keeps everything within the card's rounded corners. */}
+      <div className="relative aspect-[3/4]">
+        <div className="absolute inset-0 overflow-hidden bg-gray-50">
+          {p.textureAssetUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={p.textureAssetUrl}
+              alt={p.name}
+              className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+            />
+          ) : (
+            <div
+              className="h-full w-full transition-transform duration-300 group-hover:scale-105"
+              style={{ backgroundColor: p.colorHex || "#e5e7eb" }}
+            />
+          )}
+        </div>
+
+        <div className="absolute right-3 bottom-0 translate-y-1/2 z-20">
+          <span
+            tabIndex={-1}
+            title="See on your wall"
+            aria-hidden="true"
+            className="h-9 w-9 rounded-full flex items-center justify-center bg-gradient-to-br from-[var(--color-indigo-500)] to-[var(--color-indigo-700)] text-white shadow-md transition-transform group-hover:scale-105"
+          >
+            <Eye size={16} />
+          </span>
+        </div>
       </div>
 
-      <div className="px-4 pb-4 pt-4 space-y-2">
+      {/* pt-6, not pt-4 — gives the overlapping eye button room to breathe, matching components/catalog/ProductCard.tsx's identical convention. */}
+      <div className="px-4 pb-4 pt-6 space-y-2">
         <h3
           title={p.name}
           className="text-sm font-semibold text-gray-900 line-clamp-2 leading-tight min-h-[2.25rem] group-hover:text-[var(--color-indigo-600)] transition-colors"
@@ -104,10 +133,6 @@ export function MaterialProductCard({ p, onOpen }: { p: BrowseProduct; onOpen: (
           )}
           <PriceTag p={p} />
         </div>
-
-        <Button size="sm" className="w-full mt-1" tabIndex={-1}>
-          See in my room
-        </Button>
       </div>
     </div>
   );

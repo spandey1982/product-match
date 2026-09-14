@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { Palette, BookOpen, Heart } from "lucide-react";
+import { Palette, BookOpen, Heart, Home } from "lucide-react";
 import { getHmUserSession } from "@/lib/home-material/auth";
+import { HmAccountMenu } from "@/components/home-material/HmAccountMenu";
 import { db } from "@/lib/db";
 
 /**
@@ -17,13 +18,25 @@ import { db } from "@/lib/db";
  * HmUser row just to check a shortlist count nobody asked for would create
  * junk accounts for every visitor who never otherwise interacts. A visitor
  * with no session yet simply sees the heart with no count, same as a
- * signed-out ShopHeader.
+ * signed-out ShopHeader. Same reasoning gates the room icon (2026-09-15):
+ * it only appears once a session with at least one real room exists,
+ * linking straight to the most recent one — V1 has no room-list page
+ * (every HmUser gets one implicit project, per getOrCreateDefaultProject's
+ * own doc comment), so "most recent room" is the one sensible single
+ * target rather than inventing an index page nobody asked for.
  */
 export async function HmNavBar() {
   const session = await getHmUserSession();
-  const shortlistCount = session
-    ? await db.hmShortlistItem.count({ where: { hmUserId: session.id } })
-    : 0;
+  const [shortlistCount, mostRecentRoom] = session
+    ? await Promise.all([
+        db.hmShortlistItem.count({ where: { hmUserId: session.id } }),
+        db.hmRoom.findFirst({
+          where: { project: { hmUserId: session.id } },
+          orderBy: { createdAt: "desc" },
+          select: { id: true },
+        }),
+      ])
+    : [0, null];
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-[var(--color-gray-100)] bg-white/80 backdrop-blur-md">
@@ -36,6 +49,16 @@ export async function HmNavBar() {
         </Link>
 
         <nav className="flex items-center gap-1">
+          {mostRecentRoom && (
+            <Link
+              href={`/materials/rooms/${mostRecentRoom.id}`}
+              aria-label="My room"
+              title="My room"
+              className="h-9 w-9 rounded-full flex items-center justify-center text-gray-500 hover:text-[var(--color-indigo-600)] hover:bg-[var(--color-indigo-50)] transition-colors"
+            >
+              <Home className="h-4 w-4" strokeWidth={1.75} />
+            </Link>
+          )}
           <Link
             href="/materials/guide"
             aria-label="Material guide"
@@ -57,6 +80,7 @@ export async function HmNavBar() {
               </span>
             )}
           </Link>
+          <HmAccountMenu phone={session?.phone ?? null} />
         </nav>
       </div>
     </header>

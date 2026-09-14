@@ -182,7 +182,17 @@ export async function requireHmUser(): Promise<HmUserSession> {
 // getHmUserSession()+401 checks back) when the real gate is reinstated.
 export async function getOrCreateHmUserSession(): Promise<HmUserSession> {
   const existing = await getHmUserSession();
-  if (existing) return existing;
+  if (existing) {
+    // A valid JWT signature only proves the cookie wasn't tampered with —
+    // it doesn't prove the HmUser row it names still exists (a reset/
+    // restored/re-seeded database, or a manually deleted guest row, can
+    // leave a perfectly valid cookie pointing at nothing). Trusting it
+    // anyway surfaces as a confusing downstream foreign-key violation the
+    // first time something tries to create a row against that id (e.g.
+    // HmProject on room upload) — found exactly that way, 2026-09-15.
+    const stillExists = await db.hmUser.findUnique({ where: { id: existing.id }, select: { id: true } });
+    if (stillExists) return existing;
+  }
 
   const guestUser = await db.hmUser.create({ data: { phone: `guest_${crypto.randomUUID()}` } });
   await setHmUserSession(guestUser);

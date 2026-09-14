@@ -42,6 +42,7 @@ export function MaterialBrowseSection({
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategoryLabel, setSelectedCategoryLabel] = useState(ALL);
   const [selectedSubtypeLabel, setSelectedSubtypeLabel] = useState("");
+  const [selectedCollection, setSelectedCollection] = useState("");
   const [priceMin, setPriceMin] = useState(0);
   const [priceMax, setPriceMax] = useState(0);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -49,6 +50,21 @@ export function MaterialBrowseSection({
   const selectedCategoryKey = selectedCategoryLabel === ALL ? null : LABEL_TO_CATEGORY[selectedCategoryLabel] ?? null;
   const subtypeOptions = selectedCategoryKey ? subtypesByCategory[selectedCategoryKey] ?? [] : [];
   const selectedSubtype = subtypeOptions.find((s) => s.label === selectedSubtypeLabel)?.subtype ?? "";
+
+  // Collection chips (2026-09-15) — a real HmProduct.collection field
+  // (brand/line grouping) that no current seed product sets yet, so this
+  // renders nothing until a product actually has one, same "don't show a
+  // chip that leads to an empty grid" rule as subtypes. Scoped to
+  // category+subtype (not price/search) so switching material type
+  // doesn't show a collection with zero matches in it.
+  const collectionOptions = useMemo(() => {
+    const inScope = products.filter((p) => {
+      if (selectedCategoryKey && p.category !== selectedCategoryKey) return false;
+      if (selectedSubtype && p.subtype !== selectedSubtype) return false;
+      return true;
+    });
+    return Array.from(new Set(inScope.map((p) => p.collection).filter((c): c is string => !!c))).sort((a, b) => a.localeCompare(b));
+  }, [products, selectedCategoryKey, selectedSubtype]);
 
   function effectivePrice(p: BrowseProduct): number | null {
     return p.priceIsExact ? p.priceInr : p.costRangeMaxInr ?? p.priceInr;
@@ -59,6 +75,7 @@ export function MaterialBrowseSection({
     return products.filter((p) => {
       if (selectedCategoryKey && p.category !== selectedCategoryKey) return false;
       if (selectedSubtype && p.subtype !== selectedSubtype) return false;
+      if (selectedCollection && p.collection !== selectedCollection) return false;
       if (priceMin > 0 || priceMax > 0) {
         const price = effectivePrice(p);
         if (price == null) return false;
@@ -71,13 +88,15 @@ export function MaterialBrowseSection({
       }
       return true;
     });
-  }, [products, selectedCategoryKey, selectedSubtype, priceMin, priceMax, searchQuery]);
+  }, [products, selectedCategoryKey, selectedSubtype, selectedCollection, priceMin, priceMax, searchQuery]);
 
-  const hasFilters = selectedCategoryLabel !== ALL || !!selectedSubtype || priceMin > 0 || priceMax > 0 || searchQuery !== "";
+  const hasFilters =
+    selectedCategoryLabel !== ALL || !!selectedSubtype || !!selectedCollection || priceMin > 0 || priceMax > 0 || searchQuery !== "";
 
   function resetFilters() {
     setSelectedCategoryLabel(ALL);
     setSelectedSubtypeLabel("");
+    setSelectedCollection("");
     setPriceMin(0);
     setPriceMax(0);
     setSearchQuery("");
@@ -110,6 +129,25 @@ export function MaterialBrowseSection({
         hasFilters={hasFilters}
         onReset={resetFilters}
       />
+
+      {collectionOptions.length > 0 && (
+        <div className="flex gap-2 overflow-x-auto pb-1 -mt-4 mb-6 scrollbar-hide">
+          {collectionOptions.map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => setSelectedCollection(c === selectedCollection ? "" : c)}
+              className={`shrink-0 px-3 py-1.5 rounded-xl text-sm font-medium transition-all ${
+                selectedCollection === c
+                  ? "bg-[var(--color-indigo-600)] text-white shadow-sm"
+                  : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
+              }`}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
+      )}
 
       {filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">

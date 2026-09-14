@@ -615,3 +615,100 @@ row's previously-fine-looking card plus every other card render at
 normal, uniform size with no layout breakage. Clicking a card still
 opens `UploadRoomModal` correctly through the new div's `onClick`.
 `tsc`/`eslint`/full `npm run build` all clean.
+
+## Landing hero rewrite, nav bar profile/room icons, collection filter, a real auth bug, 2026-09-15
+
+A batch of user-requested changes plus one more real bug found while
+verifying live.
+
+**Hero copy and layout, `MaterialsLandingClient.tsx`:**
+- Headline → "Have a wall in mind?"; subhead → "Let's find out what
+  looks good on it." (both direct replacements the user specified).
+- The single "Upload your room" text link replaced with two buttons:
+  "See it on your wall" (primary, opens `UploadRoomModal` — same action
+  as before, just a real button and clearer label) and "Explore
+  materials" (outline, smooth-scrolls to `#browse-materials`).
+- Illustration height now matches the text column instead of following
+  its own SVG aspect ratio: grid `items-center` → `items-stretch`,
+  illustration wrapper `h-32 md:h-full` (was `md:h-auto`) with the SVG's
+  existing `preserveAspectRatio="xMidYMid slice"` crop now applying at
+  every breakpoint, not just mobile — since the text content got
+  shorter, letting the illustration keep its old natural aspect height
+  made it visibly taller than its paired column.
+- Removed the "Browse materials" subheading entirely (the search bar
+  now speaks for itself) and tightened the hero section's bottom
+  padding / the browse section's top padding so there's no dead band
+  between them — the section boundary is now just the natural gap
+  between elements, not deliberate whitespace.
+
+**Nav bar (`HmNavBar.tsx`), two new icons:**
+- **Room** (`Home` icon) — only rendered when the current session has
+  at least one real room, linking straight to the most recent one. No
+  rooms-list page exists in V1 (every `HmUser` gets one implicit
+  project, per `getOrCreateDefaultProject`'s own doc comment), so "most
+  recent room" is the single sensible target rather than building an
+  index page nobody asked for. Same "don't eagerly provision a guest
+  just to check" discipline as the existing shortlist count.
+- **Account** (new `HmAccountMenu.tsx`, mirroring `CustomerAuthStatus.tsx`'s
+  icon+dropdown shape) — since the OTP gate is temporarily bypassed and
+  every visitor already has SOME session, "signed in" here specifically
+  means a real verified phone, distinguished from a guest by the
+  synthetic `guest_<uuid>` phone pattern only guest rows get. A guest
+  sees "Sign in" (linking to `/materials/login`), never a fake "Hello,
+  guest_xxxxx"; a real user sees their phone + "Sign out" (posts to the
+  already-existing `/api/home-material/auth/logout`).
+- Both new icons only take effect on a real page load, not after a
+  client-side `router.push()` within the same layout — Next.js doesn't
+  re-run a layout's server-component data fetch on a soft navigation
+  inside the same segment. Verified this is exactly what was happening
+  (room icon absent right after upload, present after a manual reload)
+  rather than a bug in the new code.
+
+**Collection filter** — `HmProduct.collection` (an existing schema
+field, unused by any current seed product) is now wired into
+`MaterialBrowseSection` as its own chip row, scoped to the current
+category+subtype selection so switching material type never shows a
+collection with zero matches in it — same "no chip that leads to an
+empty grid" rule subtypes already follow. Renders nothing until a real
+product actually has a collection value. `BrowseProduct`'s shared type
+and `app/materials/page.tsx`'s Prisma select both gained the field.
+
+**"See in my room" → an eye icon**, `MaterialProductCard.tsx` — the
+full-width text button replaced with a circular icon straddling the
+image/info boundary (`right-3 bottom-0 translate-y-1/2`), copying
+`components/catalog/ProductCard.tsx`'s `TryOnCardButton` placement
+convention exactly (the same pattern `/shop`, `/rent`, and the retailer
+catalog all use). An eye icon, not the fashion side's hanger/try-on
+icon — the actual action here is "see this on your wall," and this
+domain has no cart/checkout in V1 to borrow "try & buy"-style language
+from. Purely presentational (`tabIndex={-1}`), not an independent tab
+stop — the whole card's own `onClick` already does the same thing.
+
+**Real bug found and fixed: `getOrCreateHmUserSession()` trusted a
+cookie's referenced user without checking it still exists.** Found
+live-testing the "Continue" button after a room-photo upload — it
+silently failed with `Foreign key constraint violated on
+hm_projects_hmUserId_fkey`. Root cause: a valid JWT signature only
+proves the cookie wasn't tampered with, not that the `HmUser` row it
+names still exists — a reset/restored/re-seeded database (exactly
+what this local environment had been through this session, switching
+between an isolated and the shared dev database) leaves a perfectly
+valid cookie pointing at nothing. `getOrCreateHmUserSession()` now
+verifies the referenced user actually exists via `db.hmUser.findUnique`
+before trusting the existing session, falling through to provisioning
+a fresh guest (and a fresh cookie) exactly like the "no cookie at all"
+case already did. This is a real robustness fix, not just a local-dev
+workaround — the same failure mode could in principle hit production
+after any operation that removes a guest row a live cookie still
+references.
+
+Live-tested every change in the browser: hero copy/buttons/illustration
+render correctly at desktop width; collection filter narrows correctly
+(set two demo products to a temporary "Studio Neutrals" collection,
+confirmed the chip appears and filters to exactly those two, reverted
+after); the account menu shows "Sign in" for the current guest session;
+the room icon appears after a real reload following a fresh upload;
+the eye icon renders at the image/info boundary on every card; the
+room-workspace bug is confirmed fixed — Continue now correctly
+navigates to `/materials/rooms/[id]` instead of silently failing.
+`tsc`/`eslint`/full `npm run build` all clean.

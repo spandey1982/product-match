@@ -11,6 +11,7 @@ export type BrowseProduct = {
   textureAssetUrl: string | null;
   category: string | null;
   subtype: string | null;
+  collection: string | null;
   durabilityYearsApprox: number | null;
   maintenanceLevel: string | null;
   priceInr: number | null;

@@ -53,6 +53,7 @@ async function getBrowseProducts(): Promise<BrowseProduct[]> {
       finish: true,
       patternName: true,
       textureAssetUrl: true,
+      collection: true,
       priceInr: true,
       priceUnit: true,
       material: {
@@ -90,6 +91,7 @@ async function getBrowseProducts(): Promise<BrowseProduct[]> {
       finish: p.finish,
       patternName: p.patternName,
       textureAssetUrl: p.textureAssetUrl,
+      collection: p.collection,
       category: p.material?.category ?? null,
       subtype: p.material?.subtype ?? null,
       durabilityYearsApprox: taxonomyEntry?.durabilityYearsApprox ?? null,

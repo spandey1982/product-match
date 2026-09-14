@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ArrowRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { UploadRoomModal } from "@/components/home-material/UploadRoomModal";
 import { MaterialBrowseSection } from "@/components/home-material/MaterialBrowseSection";
 import { MaterialProductCard } from "@/components/home-material/MaterialProductCard";
@@ -121,14 +122,14 @@ export function MaterialsLandingClient({
     <div className="min-h-screen">
       <UploadRoomModal open={modalOpen} onOpenChange={setModalOpen} productId={modalProductId} />
 
-      <section className="px-6 py-8 sm:py-14 md:py-20 bg-gradient-to-b from-[var(--color-indigo-50)]/60 to-transparent">
-        <div className="max-w-5xl mx-auto grid md:grid-cols-2 gap-6 md:gap-10 lg:gap-14 items-center">
+      <section className="px-6 pt-8 sm:pt-14 md:pt-20 pb-4 bg-gradient-to-b from-[var(--color-indigo-50)]/60 to-transparent">
+        <div className="max-w-5xl mx-auto grid md:grid-cols-2 gap-6 md:gap-10 lg:gap-14 items-stretch">
           <div>
             <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 text-balance leading-tight">
-              See it on your wall before you buy.
+              Have a wall in mind?
             </h1>
             <p className="text-gray-600 text-base sm:text-lg mt-3 max-w-md">
-              Tell us what you&apos;re picturing, or browse below.
+              Let&apos;s find out what looks good on it.
             </p>
 
             <form onSubmit={handleIntentSubmit} className="mt-6 flex items-center gap-2 rounded-2xl border border-gray-200 bg-white pl-4 pr-1.5 py-1.5 max-w-md shadow-sm focus-within:ring-2 focus-within:ring-indigo-500/40 focus-within:border-indigo-400">
@@ -148,12 +149,22 @@ export function MaterialsLandingClient({
               </button>
             </form>
 
-            <button type="button" onClick={() => openUpload()} className="mt-3 text-sm text-gray-500 hover:text-gray-700 underline underline-offset-2">
-              Upload your room
-            </button>
+            <div className="mt-3 flex items-center gap-2 max-w-md">
+              <Button size="sm" className="flex-1" onClick={() => openUpload()}>
+                See it on your wall
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="flex-1"
+                onClick={() => document.getElementById("browse-materials")?.scrollIntoView({ behavior: "smooth" })}
+              >
+                Explore materials
+              </Button>
+            </div>
           </div>
-          <div className="relative rounded-[20px] bg-white/60 border border-gray-200 p-3 md:p-4 h-32 md:h-auto overflow-hidden">
-            <svg preserveAspectRatio="xMidYMid slice" viewBox="0 0 420 300" xmlns="http://www.w3.org/2000/svg" className="w-full h-full md:h-auto rounded-2xl">
+          <div className="relative rounded-[20px] bg-white/60 border border-gray-200 p-3 md:p-4 h-32 md:h-full overflow-hidden">
+            <svg preserveAspectRatio="xMidYMid slice" viewBox="0 0 420 300" xmlns="http://www.w3.org/2000/svg" className="w-full h-full rounded-2xl">
               <rect width="420" height="300" fill="#f6f1e6" />
               <rect width="420" height="46" fill="#fbf8f1" />
               <polygon points="0,46 250,46 220,260 0,260" fill="#c9d6c0" />
@@ -170,8 +181,8 @@ export function MaterialsLandingClient({
         </div>
       </section>
 
-      <section className="max-w-5xl mx-auto px-6 py-12 space-y-8">
-        {activeQuery ? (
+      <section id="browse-materials" className="max-w-5xl mx-auto px-6 pb-12 space-y-8">
+        {activeQuery && (
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div>
               <h2 className="text-xl font-semibold text-gray-900">
@@ -185,8 +196,6 @@ export function MaterialsLandingClient({
               Clear search
             </button>
           </div>
-        ) : (
-          <h2 className="text-lg font-semibold text-gray-900 text-center">Browse materials</h2>
         )}
 
         {hasConfidentMatches ? (
