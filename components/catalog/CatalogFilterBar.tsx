@@ -24,6 +24,8 @@ interface CatalogFilterBarProps {
 
   selectedOccasion: string;
   onOccasionChange: (value: string) => void;
+  /** Hides the Occasion block in the filters popover entirely — e.g. Home Material, which has no occasion concept. */
+  hideOccasion?: boolean;
 
   /** Subcategory is free text (no fixed taxonomy) — omit all three to hide this filter entirely (e.g. the retailer catalog, which doesn't use it yet). */
   subcategories?: string[];
@@ -85,6 +87,7 @@ export function CatalogFilterBar({
   hideCategoryTabs,
   selectedOccasion,
   onOccasionChange,
+  hideOccasion,
   subcategories,
   selectedSubcategory,
   onSubcategoryChange,
@@ -180,31 +183,33 @@ export function CatalogFilterBar({
 
           {filtersOpen && (
             <div className="absolute right-0 top-full mt-1 w-80 bg-white border border-gray-100 rounded-2xl p-4 shadow-lg z-50 space-y-4">
-              <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-sm font-medium text-gray-700">Occasion</span>
-                  {selectedOccasion && (
-                    <button onClick={() => onOccasionChange("")} className="text-xs text-gray-400 hover:text-gray-600">
-                      Clear
-                    </button>
-                  )}
+              {!hideOccasion && (
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="text-sm font-medium text-gray-700">Occasion</span>
+                    {selectedOccasion && (
+                      <button onClick={() => onOccasionChange("")} className="text-xs text-gray-400 hover:text-gray-600">
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {occasions.map((occ) => (
+                      <button
+                        key={occ}
+                        onClick={() => onOccasionChange(occ === selectedOccasion ? "" : occ)}
+                        className={`px-3 py-1 rounded-full text-sm border transition-all ${
+                          selectedOccasion === occ
+                            ? "bg-indigo-600 text-white border-indigo-600"
+                            : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                        }`}
+                      >
+                        {occ}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {occasions.map((occ) => (
-                    <button
-                      key={occ}
-                      onClick={() => onOccasionChange(occ === selectedOccasion ? "" : occ)}
-                      className={`px-3 py-1 rounded-full text-sm border transition-all ${
-                        selectedOccasion === occ
-                          ? "bg-indigo-600 text-white border-indigo-600"
-                          : "border-gray-200 text-gray-600 hover:bg-gray-50"
-                      }`}
-                    >
-                      {occ}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              )}
 
               {onPriceMinChange && (
                 <div>

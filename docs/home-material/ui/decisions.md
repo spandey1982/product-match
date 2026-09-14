@@ -448,3 +448,65 @@ Every prototype tour built for this domain from now on is archived
 locally at `research/prototypes/` (gitignored, never pushed) — a
 permanent progress record even after a decision ships. See
 `research/README.md`.
+
+## Browse section rebuilt to match /shop, 2026-09-14
+
+User's explicit ask: the "already know what you want?" browse section
+underneath the intent hero should reuse the same components /shop uses —
+search bar, price + material-type filters, subtype chips ordered by
+popularity, the same responsive grid (2 cols on mobile up to 5 on wide
+screens), and a product card matching `ShopProductCard`'s visual
+language. Done via direct reuse rather than a parallel re-implementation:
+
+- New `components/home-material/MaterialBrowseSection.tsx` wraps the
+  actual shared `components/catalog/CatalogFilterBar` — the identical
+  component /shop's `ShopView` uses — passing material category
+  (paint/wallpaper/wall_texture/wall_panel) as the tab row and price as
+  the only Filters-popover control. `CatalogFilterBar` gained one small,
+  precedented addition (`hideOccasion?: boolean`, matching its existing
+  `hideCategoryTabs`/`hideSubcategoryTabs` pattern) since Home Material
+  has no occasion concept.
+- Subtype chips (e.g. "Interior Emulsion — Matte") reuse
+  `CatalogFilterBar`'s existing subcategory-chip row, populated per
+  category from `app/materials/page.tsx`'s new `getSubtypesByCategory` —
+  only subtypes with an actual listed product appear (same rule /shop's
+  own subcategories already follow), ordered by a deterministic
+  popularity score (`HmLead`×3 + `HmVisualization`×2 +
+  `HmShortlistItem`×1 per product, summed per subtype), falling back to
+  `MATERIAL_TAXONOMY`'s declared order when scores tie (expected
+  pre-launch, when every count is 0) — explainable, not a black box,
+  matching this domain's recommendation-engine philosophy.
+- New `components/home-material/MaterialProductCard.tsx` mirrors
+  `ShopProductCard`'s shell (rounded-2xl/border/shadow/hover-lift,
+  image-on-top, name/price/CTA-button) with Home Material's own content
+  (swatch/texture image, durability/maintenance chips, exact-vs-range
+  price, "See in my room" instead of "Try & Buy" — no cart/checkout in
+  V1). Deliberately did not add a wishlist-style heart toggle — that
+  would need session-aware shortlist state on an otherwise-anonymous
+  landing page, out of scope for this pass.
+- Filtering runs entirely client-side over the already-fetched product
+  array — the catalogue is pre-launch scale (single digits to low tens
+  of products), so a new paginated API endpoint like /shop's
+  `/api/public/products` isn't justified yet (CLAUDE.md §17). Revisit if
+  the catalogue grows enough that shipping the full array becomes
+  wasteful.
+- The intent hero's own natural-language "tell us what you're picturing"
+  hero and its Tier-0 keyword-matched results are untouched and take
+  priority when a query is active (same mutual-exclusivity as before);
+  the new browse section is strictly the "underneath" default view, now
+  reusing `MaterialProductCard` too for one consistent card style across
+  both paths.
+- `BrowseProduct`'s type definition moved to `lib/home-material/
+  browse-product.ts` (previously declared inline in
+  `MaterialsLandingClient.tsx`) since it's now shared by the page, the
+  landing client, the browse section, and the card — one home instead of
+  drifting copies.
+
+Live-tested in the browser: category tabs + subtype chips + price range
++ text search all compose correctly (AND filtering, verified with
+Paint + ₹17–₹20 + "sage" narrowing to exactly Soft Sage), Reset all
+correctly clears every filter, the grid renders 5 columns at desktop
+width (`xl:grid-cols-5`, verified via computed styles) and the base
+`.grid-cols-2` rule is confirmed present for mobile, and clicking a card
+still opens the existing `UploadRoomModal` with the correct product
+carried through, unchanged from before this pass.

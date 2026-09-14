@@ -4,31 +4,12 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { UploadRoomModal } from "@/components/home-material/UploadRoomModal";
+import { MaterialBrowseSection } from "@/components/home-material/MaterialBrowseSection";
+import { MaterialProductCard } from "@/components/home-material/MaterialProductCard";
+import type { BrowseProduct } from "@/lib/home-material/browse-product";
+import type { SubtypeOption } from "./page";
 
-export type BrowseProduct = {
-  id: string;
-  name: string;
-  colorHex: string | null;
-  finish: string | null;
-  patternName: string | null;
-  textureAssetUrl: string | null;
-  category: string | null;
-  durabilityYearsApprox: number | null;
-  maintenanceLevel: string | null;
-  priceInr: number | null;
-  priceIsExact: boolean;
-  costRangeMinInr: number | null;
-  costRangeMaxInr: number | null;
-};
-
-const CATEGORY_LABELS: Record<string, string> = {
-  paint: "Paint",
-  wallpaper: "Wallpaper",
-  wall_texture: "Wall Texture",
-  wall_panel: "Wall Panels",
-};
-const CATEGORY_ORDER = ["paint", "wallpaper", "wall_texture", "wall_panel"];
-const MAINTENANCE_LABELS: Record<string, string> = { low: "Low maintenance", medium: "Some maintenance", high: "High maintenance" };
+export type { BrowseProduct };
 
 // Tier-0 deterministic intent matching (2026-09-11, intent-first entry —
 // see docs/home-material/product/roadmap.md and
@@ -78,62 +59,6 @@ function scoreProduct(p: BrowseProduct, tokens: string[], rawQueryLower: string,
   return score;
 }
 
-function PriceTag({ p }: { p: BrowseProduct }) {
-  if (p.priceIsExact) return <span className="text-sm font-semibold text-gray-900">₹{p.priceInr} / sq.ft</span>;
-  if (p.costRangeMinInr != null && p.costRangeMaxInr != null) {
-    return <span className="text-sm text-gray-500">₹{p.costRangeMinInr}–₹{p.costRangeMaxInr} / sq.ft</span>;
-  }
-  return <span className="text-sm text-gray-400">Price on request</span>;
-}
-
-function ProductCard({ p, categoryLabel, onOpen }: { p: BrowseProduct; categoryLabel: string; onOpen: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="group text-left rounded-2xl border border-gray-200 bg-white overflow-hidden transition-all duration-200 hover:-translate-y-1 hover:shadow-xl hover:border-gray-300"
-    >
-      <div className="h-28 overflow-hidden">
-        {p.textureAssetUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={p.textureAssetUrl}
-            alt={p.name}
-            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-          />
-        ) : (
-          <div
-            className="h-full w-full transition-transform duration-300 group-hover:scale-105"
-            style={{ backgroundColor: p.colorHex || "#e5e7eb" }}
-          />
-        )}
-      </div>
-      <div className="p-4 space-y-2">
-        <div>
-          <p className="font-medium text-gray-900 truncate">{p.name}</p>
-          <p className="text-xs text-gray-400">{[p.patternName, p.finish].filter(Boolean).join(" · ") || categoryLabel}</p>
-        </div>
-        {(p.durabilityYearsApprox != null || p.maintenanceLevel) && (
-          <div className="flex flex-wrap gap-1.5">
-            {p.durabilityYearsApprox != null && (
-              <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">~{p.durabilityYearsApprox}yr durability</span>
-            )}
-            {p.maintenanceLevel && (
-              <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{MAINTENANCE_LABELS[p.maintenanceLevel] ?? p.maintenanceLevel}</span>
-            )}
-          </div>
-        )}
-        <div className="flex items-center justify-between pt-1">
-          <PriceTag p={p} />
-          <span className="text-xs font-semibold text-indigo-700 opacity-0 -translate-x-1 transition-all duration-150 group-hover:opacity-100 group-hover:translate-x-0">
-            See in my room →
-          </span>
-        </div>
-      </div>
-    </button>
-  );
-}
-
 /**
  * Landing + Mode A browse client wiring. Sage Studio layout (2026-09-10)
  * plus the intent-first entry (2026-09-11, "Option C — sentence
@@ -152,11 +77,16 @@ function ProductCard({ p, categoryLabel, onOpen }: { p: BrowseProduct; categoryL
  * mid-upload 401 can't survive with the file object intact) re-opens it
  * automatically on load.
  */
-export function MaterialsLandingClient({ products }: { products: BrowseProduct[] }) {
+export function MaterialsLandingClient({
+  products,
+  subtypesByCategory,
+}: {
+  products: BrowseProduct[];
+  subtypesByCategory: Record<string, SubtypeOption[]>;
+}) {
   const searchParams = useSearchParams();
   const [modalOpen, setModalOpen] = useState(searchParams.get("openUpload") === "1");
   const [modalProductId, setModalProductId] = useState<string | null>(searchParams.get("product"));
-  const [activeCategory, setActiveCategory] = useState<string>("all");
   const [query, setQuery] = useState("");
   const [activeQuery, setActiveQuery] = useState<string | null>(null);
 
@@ -169,18 +99,12 @@ export function MaterialsLandingClient({ products }: { products: BrowseProduct[]
     e.preventDefault();
     const trimmed = query.trim();
     if (!trimmed) return;
-    setActiveCategory("all");
     setActiveQuery(trimmed);
   }
 
   function clearSearch() {
     setActiveQuery(null);
     setQuery("");
-  }
-
-  function selectCategory(cat: string) {
-    setActiveQuery(null);
-    setActiveCategory(cat);
   }
 
   const priceMax = activeQuery ? parsePriceMax(activeQuery) : null;
@@ -193,12 +117,6 @@ export function MaterialsLandingClient({ products }: { products: BrowseProduct[]
     : [];
   const matched = scored.filter((x) => x.score > 0).sort((a, b) => b.score - a.score).map((x) => x.p);
   const hasConfidentMatches = activeQuery != null && matched.length > 0;
-
-  const byCategory = CATEGORY_ORDER.map((cat) => ({
-    category: cat,
-    items: products.filter((p) => p.category === cat),
-  })).filter((g) => g.items.length > 0);
-  const visibleCategories = activeCategory === "all" ? byCategory : byCategory.filter((g) => g.category === activeCategory);
 
   return (
     <div className="min-h-screen">
@@ -292,54 +210,13 @@ export function MaterialsLandingClient({ products }: { products: BrowseProduct[]
         )}
 
         {hasConfidentMatches ? (
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
             {matched.map((p) => (
-              <ProductCard key={p.id} p={p} categoryLabel={CATEGORY_LABELS[p.category ?? ""] ?? "Material"} onOpen={() => openUpload(p.id)} />
+              <MaterialProductCard key={p.id} p={p} onOpen={() => openUpload(p.id)} />
             ))}
           </div>
         ) : (
-          <>
-            <div className="flex flex-wrap justify-center gap-2">
-              <button
-                type="button"
-                onClick={() => selectCategory("all")}
-                className={`text-sm px-4 py-1.5 rounded-full border transition-colors ${
-                  activeCategory === "all" ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
-                }`}
-              >
-                All
-              </button>
-              {CATEGORY_ORDER.map((cat) => (
-                <button
-                  key={cat}
-                  type="button"
-                  onClick={() => selectCategory(cat)}
-                  className={`text-sm px-4 py-1.5 rounded-full border transition-colors ${
-                    activeCategory === cat ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
-                  }`}
-                >
-                  {CATEGORY_LABELS[cat]}
-                </button>
-              ))}
-            </div>
-
-            {visibleCategories.length === 0 && (
-              <p className="text-sm text-gray-400 text-center">No materials available yet — check back soon.</p>
-            )}
-
-            {visibleCategories.map((g) => (
-              <div key={g.category} className="space-y-4">
-                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-100 pb-2">
-                  {CATEGORY_LABELS[g.category] ?? g.category}
-                </h3>
-                <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {g.items.map((p) => (
-                    <ProductCard key={p.id} p={p} categoryLabel={CATEGORY_LABELS[g.category] ?? g.category} onOpen={() => openUpload(p.id)} />
-                  ))}
-                </div>
-              </div>
-            ))}
-          </>
+          <MaterialBrowseSection products={products} subtypesByCategory={subtypesByCategory} onOpenProduct={openUpload} />
         )}
       </section>
     </div>
