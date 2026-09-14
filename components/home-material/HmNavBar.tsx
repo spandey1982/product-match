@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Palette, BookOpen, Heart, Home } from "lucide-react";
+import { Palette, BookOpen, Heart, Home, DoorOpen } from "lucide-react";
 import { getHmUserSession } from "@/lib/home-material/auth";
 import { HmAccountMenu } from "@/components/home-material/HmAccountMenu";
 import { db } from "@/lib/db";
@@ -18,12 +18,15 @@ import { db } from "@/lib/db";
  * HmUser row just to check a shortlist count nobody asked for would create
  * junk accounts for every visitor who never otherwise interacts. A visitor
  * with no session yet simply sees the heart with no count, same as a
- * signed-out ShopHeader. Same reasoning gates the room icon (2026-09-15):
- * it only appears once a session with at least one real room exists,
- * linking straight to the most recent one — V1 has no room-list page
- * (every HmUser gets one implicit project, per getOrCreateDefaultProject's
- * own doc comment), so "most recent room" is the one sensible single
- * target rather than inventing an index page nobody asked for.
+ * signed-out ShopHeader. Same reasoning gates the room-workspace icon
+ * (2026-09-15): it only appears once a session with at least one real
+ * room exists, linking straight to the most recent one — V1 has no
+ * room-list page (every HmUser gets one implicit project, per
+ * getOrCreateDefaultProject's own doc comment), so "most recent room" is
+ * the one sensible single target rather than inventing an index page
+ * nobody asked for. Deliberately a door icon, not another house icon —
+ * an explicit Home link (this page, "/materials") already uses the house
+ * shape, and reusing it for "my room" read as two home buttons.
  */
 export async function HmNavBar() {
   const session = await getHmUserSession();
@@ -49,6 +52,14 @@ export async function HmNavBar() {
         </Link>
 
         <nav className="flex items-center gap-1">
+          <Link
+            href="/materials"
+            aria-label="Home"
+            title="Home"
+            className="h-9 w-9 rounded-full flex items-center justify-center text-gray-500 hover:text-[var(--color-indigo-600)] hover:bg-[var(--color-indigo-50)] transition-colors"
+          >
+            <Home className="h-4 w-4" strokeWidth={1.75} />
+          </Link>
           {mostRecentRoom && (
             <Link
               href={`/materials/rooms/${mostRecentRoom.id}`}
@@ -56,7 +67,7 @@ export async function HmNavBar() {
               title="My room"
               className="h-9 w-9 rounded-full flex items-center justify-center text-gray-500 hover:text-[var(--color-indigo-600)] hover:bg-[var(--color-indigo-50)] transition-colors"
             >
-              <Home className="h-4 w-4" strokeWidth={1.75} />
+              <DoorOpen className="h-4 w-4" strokeWidth={1.75} />
             </Link>
           )}
           <Link

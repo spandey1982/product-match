@@ -712,3 +712,54 @@ the eye icon renders at the image/info boundary on every card; the
 room-workspace bug is confirmed fixed — Continue now correctly
 navigates to `/materials/rooms/[id]` instead of silently failing.
 `tsc`/`eslint`/full `npm run build` all clean.
+
+## Four visual-polish fixes on the same pass, 2026-09-15
+
+- **Text/illustration vertical alignment** — the previous pass's
+  `items-stretch` matched the illustration's height to the text
+  column correctly, but a plain `<div>` doesn't center its own content
+  within extra stretched space, so once the illustration ended up
+  taller than the text's own natural height, the text sat stuck to the
+  top instead of centered against the card like the original design.
+  Fixed by making the text column itself `flex flex-col justify-center`
+  — whichever side ends up taller still sets the row height (unchanged
+  from before), but the shorter side's content now centers within it.
+  Verified via exact pixel measurement: 78.35px above the heading,
+  78.36px below the last button — centered to sub-pixel precision.
+- **Hero section padding restored to symmetric** (`py-8 sm:py-14
+  md:py-20` on both edges, was `pt-*`/`pb-4`) — the earlier "remove the
+  empty space" fix over-corrected once the "Browse materials" heading
+  (a second, redundant source of the same gap) was separately removed;
+  with only one spacing source left, symmetric top/bottom reads as
+  intentional framing, not dead space.
+- **"Explore materials" button given real affordance** — the shared
+  `outline` Button variant (`border-gray-200`, no shadow) blended into
+  the near-white hero background. Kept the `outline` variant (still
+  visually secondary to "See it on your wall") but added `shadow-sm` +
+  a theme-tinted border/text color via className overrides, scoped to
+  this one instance rather than changing the shared variant used
+  elsewhere in the app.
+- **Card image aspect ratio**, `MaterialProductCard.tsx`: `aspect-[3/4]`
+  → `aspect-square` — a wallpaper/paint swatch reads better without the
+  portrait crop `/shop`'s garment-photo ratio forces on it.
+
+## Nav bar: separate Home icon, room icon no longer double-coded, 2026-09-15
+
+The room-workspace icon added in the previous pass used the `Home`
+(house) icon — but there was no *actual* Home-page icon at all (only
+the brand logo, which isn't universally read as a nav "home" button),
+so the house icon read as pointing at the wrong destination. Fixed:
+added an explicit `Home` icon linking to `/materials` as the nav's
+first icon, and changed the room-workspace link (still conditional on
+having a real room, still targeting the most recent one) to a
+`DoorOpen` icon instead — visually distinct from Home, reads as
+"enter your room."
+
+Live-tested the full set of fixes together: pixel-verified centering,
+confirmed the outline button's computed style now includes a visible
+sage-tinted border + shadow, confirmed all four nav icons (Home, my
+room when applicable, guide, shortlist) plus the account menu render
+correctly, confirmed cards render as squares. Re-checked the dev
+overlay throughout — stayed at the same single known extension
+artifact, no new issues introduced. `tsc`/`eslint`/full `npm run build`
+all clean.

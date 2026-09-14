@@ -74,7 +74,10 @@ export function MaterialProductCard({ p, onOpen }: { p: BrowseProduct; onOpen: (
           the eye button below, which deliberately protrudes past the
           image into the info strip. The outer card's own overflow-hidden
           still keeps everything within the card's rounded corners. */}
-      <div className="relative aspect-[3/4]">
+      {/* Square, not 3:4 like ShopProductCard's garment photos — a wallpaper/
+          texture swatch reads better without the extra vertical crop a
+          portrait ratio forces on it. */}
+      <div className="relative aspect-square">
         <div className="absolute inset-0 overflow-hidden bg-gray-50">
           {p.textureAssetUrl ? (
             // eslint-disable-next-line @next/next/no-img-element

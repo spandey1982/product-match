@@ -122,9 +122,15 @@ export function MaterialsLandingClient({
     <div className="min-h-screen">
       <UploadRoomModal open={modalOpen} onOpenChange={setModalOpen} productId={modalProductId} />
 
-      <section className="px-6 pt-8 sm:pt-14 md:pt-20 pb-4 bg-gradient-to-b from-[var(--color-indigo-50)]/60 to-transparent">
+      <section className="px-6 py-8 sm:py-14 md:py-20 bg-gradient-to-b from-[var(--color-indigo-50)]/60 to-transparent">
         <div className="max-w-5xl mx-auto grid md:grid-cols-2 gap-6 md:gap-10 lg:gap-14 items-stretch">
-          <div>
+          {/* flex+justify-center: on the (common) case where the illustration
+              column ends up taller than this one's own content, this centers
+              the text vertically against it instead of leaving it stuck to
+              the top — matching the original items-center look, but without
+              giving up the "illustration height follows content" behavior
+              the grid's own items-stretch provides when THIS side is taller. */}
+          <div className="flex flex-col justify-center">
             <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 text-balance leading-tight">
               Have a wall in mind?
             </h1>
@@ -153,10 +159,14 @@ export function MaterialsLandingClient({
               <Button size="sm" className="flex-1" onClick={() => openUpload()}>
                 See it on your wall
               </Button>
+              {/* Not the shared `outline` variant as-is — plain gray-200 on
+                  a near-white background read as unclickable. A tinted
+                  border/text + shadow gives it a real, if secondary,
+                  affordance without competing with the primary button. */}
               <Button
                 size="sm"
                 variant="outline"
-                className="flex-1"
+                className="flex-1 shadow-sm border-[var(--color-indigo-200)] text-[var(--color-indigo-700)] bg-white hover:bg-[var(--color-indigo-50)] hover:border-[var(--color-indigo-300)]"
                 onClick={() => document.getElementById("browse-materials")?.scrollIntoView({ behavior: "smooth" })}
               >
                 Explore materials
