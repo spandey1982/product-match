@@ -16,6 +16,7 @@ import { useTrialRoom } from "@/components/trial-room/TrialRoomProvider";
 import { TrialRoomSetupContent } from "@/components/trial-room/TrialRoomSetupContent";
 import { CameraCapture } from "@/components/trial-room/CameraCapture";
 import { TryOnViewer } from "@/components/trial-room/TryOnViewer";
+import { TryOnStyleControl } from "@/components/trial-room/TryOnStyleControl";
 import { HangerPlusIcon } from "@/components/icons/HangerPlusIcon";
 import { displayUrl } from "@/lib/images/variants";
 import { cn } from "@/lib/utils";
@@ -209,16 +210,19 @@ export function QuickCaptureTrialRoomView() {
   if (!photo) {
     return (
       <div className="max-w-2xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <Sparkles className="h-6 w-6 text-indigo-500" />
-            Virtual Trial Room
-          </h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Set up the customer&apos;s photo, then capture garments with the camera to try them on.
-          </p>
+        <div className="mb-6 flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+              <Sparkles className="h-6 w-6 text-indigo-500" />
+              Virtual Trial Room
+            </h1>
+            <p className="text-sm text-gray-500 mt-1">
+              Set up the customer&apos;s photo, then capture garments with the camera to try them on.
+            </p>
+          </div>
+          <TryOnStyleControl />
         </div>
-        <TrialRoomSetupContent completeLabel="Start Capturing" />
+        <TrialRoomSetupContent completeLabel="Start Capturing" hideHeader />
       </div>
     );
   }
@@ -251,13 +255,16 @@ export function QuickCaptureTrialRoomView() {
                 : "Capture a garment to try it on"}
             </p>
           </div>
-          <button
-            onClick={handleClearProfile}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-xs font-medium text-gray-600 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors shrink-0"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-            Clear Profile
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <TryOnStyleControl />
+            <button
+              onClick={handleClearProfile}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-xs font-medium text-gray-600 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors shrink-0"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Clear Profile
+            </button>
+          </div>
         </div>
 
         {/* Customer profile strip */}
