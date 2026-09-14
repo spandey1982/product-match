@@ -1,13 +1,19 @@
 import { db } from "@/lib/db";
 import { parseArray } from "@/lib/serialize";
 import { requireAuth, type SessionUser } from "@/lib/auth";
-import { ALL_MODULES, type ModuleKey } from "@/lib/client-modules";
+import { ALL_MODULES, resolveLandingPath, type ModuleKey } from "@/lib/client-modules";
 
 /** Returns a user's enabled modules — every module when they have no ClientProfile row. */
 export async function getEnabledModules(userId: string): Promise<ModuleKey[]> {
   const profile = await db.clientProfile.findUnique({ where: { userId } });
   if (!profile) return [...ALL_MODULES];
   return parseArray(profile.enabledModules) as ModuleKey[];
+}
+
+/** Where a signed-in user should land — "/catalog" for an unrestricted
+ * account, or the first module a restricted client can actually see. */
+export async function getLandingPath(userId: string): Promise<string> {
+  return resolveLandingPath(await getEnabledModules(userId));
 }
 
 /** Throws "Forbidden" (same string requireAdmin() uses) if the module isn't enabled for this user. */

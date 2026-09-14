@@ -24,6 +24,7 @@ export async function PUT(
     );
 
     const primaryModule = typeof body.primaryModule === "string" ? body.primaryModule : "catalog";
+    const trialRoomLayout = body.trialRoomLayout === "quick-capture" ? "quick-capture" : "catalog";
     const brandName = typeof body.brandName === "string" && body.brandName.trim() ? body.brandName.trim() : null;
     const themePreset = typeof body.themePreset === "string" && isThemePresetKey(body.themePreset)
       ? body.themePreset
@@ -38,6 +39,7 @@ export async function PUT(
         userId,
         enabledModules: serializeArray(enabledModules),
         primaryModule,
+        trialRoomLayout,
         brandName,
         themePreset,
         accentColor,
@@ -45,6 +47,7 @@ export async function PUT(
       update: {
         enabledModules: serializeArray(enabledModules),
         primaryModule,
+        trialRoomLayout,
         brandName,
         themePreset,
         accentColor,

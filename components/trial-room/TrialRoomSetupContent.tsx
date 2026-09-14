@@ -34,9 +34,11 @@ interface Props {
   onComplete?: () => void;
   /** Called when the user actively cancels (e.g. clicks a cancel button). */
   onCancel?: () => void;
+  /** Label for the "photo already active" continue button. Defaults to the catalog-flow copy. */
+  completeLabel?: string;
 }
 
-export function TrialRoomSetupContent({ onComplete, onCancel }: Props) {
+export function TrialRoomSetupContent({ onComplete, onCancel, completeLabel = "Browse Catalog" }: Props) {
   const { photo, photoPreviewUrl, setPhoto, clearPhoto, tryOns, isPhotoLocked, tryOnLimit, setTryOnLimit } =
     useTrialRoom();
 
@@ -239,7 +241,7 @@ export function TrialRoomSetupContent({ onComplete, onCancel }: Props) {
                 "shadow-md shadow-indigo-200/50 hover:opacity-90 active:scale-[0.98] transition-all"
               )}
             >
-              Browse Catalog
+              {completeLabel}
               <ArrowRight className="h-4 w-4" />
             </button>
           )}

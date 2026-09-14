@@ -46,6 +46,7 @@ export default async function AdminClientDetailPage({
             ? {
                 enabledModules: parseArray(profile.enabledModules) as ModuleKey[],
                 primaryModule: profile.primaryModule as ModuleKey,
+                trialRoomLayout: profile.trialRoomLayout,
                 brandName: profile.brandName,
                 themePreset: profile.themePreset,
                 accentColor: profile.accentColor,

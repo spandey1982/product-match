@@ -1,4 +1,5 @@
 import { getSession } from "@/lib/auth";
+import { getLandingPath } from "@/lib/client-modules-server";
 import { redirect } from "next/navigation";
 import { Sparkles } from "lucide-react";
 import Link from "next/link";
@@ -10,7 +11,7 @@ export default async function AuthLayout({
 }) {
   const session = await getSession();
   if (session) {
-    redirect("/catalog");
+    redirect(await getLandingPath(session.id));
   }
 
   return (

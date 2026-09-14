@@ -11,7 +11,13 @@ import React, {
   useEffect,
 } from "react";
 import { Product } from "@/types";
-import { TryOnEntry, TryOnStatus, WishlistEntry } from "@/lib/trial-room-types";
+import {
+  TryOnEntry,
+  TryOnStatus,
+  WishlistEntry,
+  createCapturedGarmentProduct,
+  generateClientId,
+} from "@/lib/trial-room-types";
 
 // ─── Limit ────────────────────────────────────────────────────────────────────
 
@@ -60,6 +66,12 @@ export interface TrialRoomContextValue extends Omit<TrialRoomState, "photoDataUr
    * generation. No-op if the product is already queued or generating.
    */
   addToQueue: (product: Product) => void;
+  /**
+   * Quick-capture trial room layout only — add a garment photographed live
+   * via the camera and immediately begin background generation. No catalog
+   * Product is involved; see lib/trial-room-types.ts's createCapturedGarmentProduct.
+   */
+  addCapturedGarment: (file: File) => void;
   /** Retry a failed try-on entry. */
   retryTryOn: (tryOnId: string) => void;
   /** Remove a try-on entry (and any linked wishlist entry). */
@@ -325,13 +337,11 @@ export function TrialRoomProvider({
 
   // ── Generation engine ──────────────────────────────────────────────────────
 
-  // Runs a try-on API call in the background and updates the entry in context
-  // when it settles — regardless of which page the user is currently on.
-  const runGeneration = useCallback((entryId: string, productId: string, photo: File) => {
-    const formData = new FormData();
-    formData.append("photo", photo);
-
-    fetch(tryOnEndpoint(productId), { method: "POST", body: formData })
+  // Awaits a try-on API response and updates the entry in context when it
+  // settles — regardless of which page the user is currently on. Shared by
+  // both generation paths below; only the fetch call differs between them.
+  const settleGeneration = useCallback((entryId: string, response: Promise<Response>) => {
+    response
       .then((res) => res.json())
       .then((data: { tryOnUrl?: string; error?: string }) => {
         if (data.tryOnUrl) {
@@ -372,7 +382,23 @@ export function TrialRoomProvider({
           ),
         }));
       });
-  }, [tryOnEndpoint]);
+  }, []);
+
+  // Runs a catalog try-on API call in the background.
+  const runGeneration = useCallback((entryId: string, productId: string, photo: File) => {
+    const formData = new FormData();
+    formData.append("photo", photo);
+    settleGeneration(entryId, fetch(tryOnEndpoint(productId), { method: "POST", body: formData }));
+  }, [tryOnEndpoint, settleGeneration]);
+
+  // Runs a quick-capture try-on API call in the background — sends the
+  // garment bytes directly, no catalog Product involved.
+  const runCapturedGeneration = useCallback((entryId: string, garment: File, photo: File) => {
+    const formData = new FormData();
+    formData.append("photo", photo);
+    formData.append("garment", garment);
+    settleGeneration(entryId, fetch("/api/trial-room/capture-tryon", { method: "POST", body: formData }));
+  }, [settleGeneration]);
 
   // ── Try-on queue ───────────────────────────────────────────────────────────
 
@@ -392,7 +418,7 @@ export function TrialRoomProvider({
     if (activeCount >= stateRef.current.tryOnLimit) return;
 
     const entry: TryOnEntry = {
-      id: crypto.randomUUID(),
+      id: generateClientId(),
       productId: product.id,
       product,
       status: "generating",
@@ -402,6 +428,44 @@ export function TrialRoomProvider({
     setState((prev) => ({ ...prev, tryOns: [entry, ...prev.tryOns] }));
     runGeneration(entry.id, product.id, photo);
   }, [runGeneration]);
+
+  // Quick-capture trial room layout only — see addCapturedGarment's doc comment.
+  const addCapturedGarment = useCallback((file: File) => {
+    const photo = photoRef.current;
+    if (!photo) return;
+
+    // Same active-try-on limit as the catalog flow.
+    const current = stateRef.current.tryOns;
+    const activeCount = current.filter((t) => t.status !== "failed").length;
+    if (activeCount >= stateRef.current.tryOnLimit) return;
+
+    const sequence = current.length + 1;
+    const product = createCapturedGarmentProduct(sequence);
+    const entryId = generateClientId();
+
+    const entry: TryOnEntry = {
+      id: entryId,
+      productId: product.id,
+      product,
+      status: "generating",
+      createdAt: Date.now(),
+    };
+
+    setState((prev) => ({ ...prev, tryOns: [entry, ...prev.tryOns] }));
+    runCapturedGeneration(entryId, file, photo);
+
+    // Persist the captured garment as a data URL asynchronously (mirrors
+    // setPhoto below) so a page reload can still retry this entry.
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = (e.target?.result as string) ?? undefined;
+      setState((prev) => ({
+        ...prev,
+        tryOns: prev.tryOns.map((t) => (t.id === entryId ? { ...t, garmentDataUrl: dataUrl } : t)),
+      }));
+    };
+    reader.readAsDataURL(file);
+  }, [runCapturedGeneration]);
 
   const retryTryOn = useCallback((tryOnId: string) => {
     const photo = photoRef.current;
@@ -419,8 +483,12 @@ export function TrialRoomProvider({
       ),
     }));
 
-    runGeneration(tryOnId, entry.productId, photo);
-  }, [runGeneration]);
+    if (entry.garmentDataUrl) {
+      runCapturedGeneration(tryOnId, dataUrlToFile(entry.garmentDataUrl, "garment.jpg"), photo);
+    } else {
+      runGeneration(tryOnId, entry.productId, photo);
+    }
+  }, [runGeneration, runCapturedGeneration]);
 
   const removeFromTryOns = useCallback((tryOnId: string) => {
     setState((prev) => ({
@@ -442,7 +510,7 @@ export function TrialRoomProvider({
       if (prev.wishlist.some((w) => w.tryOnId === tryOnId)) return prev;
 
       const entry: WishlistEntry = {
-        id: crypto.randomUUID(),
+        id: generateClientId(),
         tryOnId,
         product: tryOn.product,
         resultUrl: tryOn.resultUrl,
@@ -521,6 +589,7 @@ export function TrialRoomProvider({
       setPhoto,
       clearPhoto,
       addToQueue,
+      addCapturedGarment,
       retryTryOn,
       removeFromTryOns,
       addToWishlist,
@@ -542,6 +611,7 @@ export function TrialRoomProvider({
       setPhoto,
       clearPhoto,
       addToQueue,
+      addCapturedGarment,
       retryTryOn,
       removeFromTryOns,
       addToWishlist,
