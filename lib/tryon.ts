@@ -3,6 +3,7 @@ import { join } from "path";
 import { cloudinary } from "@/lib/cloudinary";
 import { getImageDimensions, fmtBytes } from "@/lib/image-utils";
 import { recordAiUsage, type AiUsageContext } from "@/lib/ai-usage/record";
+import { CAPTURED_GARMENT_CATEGORY } from "@/lib/trial-room-types";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -71,6 +72,17 @@ export function createRateLimiter(maxRequests: number, windowMs: number) {
 function buildTryOnPrompt(category: string, color: string): string {
   const cat = category.toLowerCase();
 
+  if (cat === CAPTURED_GARMENT_CATEGORY) {
+    return (
+      `Full body fashion photograph of the person shown in the first image ` +
+      `wearing the clothing item shown in the second image. ` +
+      `The garment should be shown draped or fitted naturally on the person's body. ` +
+      `Preserve the person's face, skin tone, hair, body proportions, and pose as closely as possible. ` +
+      `The result should look like a realistic fashion editorial photograph. ` +
+      `Professional studio lighting, clean background, high resolution, photorealistic.`
+    );
+  }
+
   if (["jewellery"].includes(cat)) {
     return (
       `Fashion photograph of the person shown in the first image, ` +
@@ -115,8 +127,20 @@ function buildTryOnPrompt(category: string, color: string): string {
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface TryOnInput {
-  /** Cloudinary or other external URL of the product image. */
-  productImageUrl: string;
+  /**
+   * Cloudinary or other external URL of the product image. Required unless
+   * garmentImageBuffer is provided (quick-capture layout — a garment
+   * photographed on the spot, with no catalog record to fetch a URL from).
+   */
+  productImageUrl?: string;
+  /**
+   * Raw bytes of a garment photographed live via the camera. Takes priority
+   * over productImageUrl when both are set — skips the fetch/local-read step
+   * entirely since the bytes are already in hand.
+   */
+  garmentImageBuffer?: Buffer;
+  /** MIME type of garmentImageBuffer, validated from magic bytes by the caller. */
+  garmentImageMimeType?: TryOnMimeType;
   /** Raw bytes of the user-uploaded photo. Never persisted. */
   userPhotoBuffer: Buffer;
   /** Validated MIME type of the user photo derived from magic bytes. */
@@ -168,6 +192,8 @@ export async function generateTryOn(input: TryOnInput): Promise<TryOnResult> {
 
   const {
     productImageUrl,
+    garmentImageBuffer,
+    garmentImageMimeType,
     userPhotoBuffer,
     userPhotoMimeType,
     productCategory,
@@ -177,38 +203,48 @@ export async function generateTryOn(input: TryOnInput): Promise<TryOnResult> {
     userId = "unknown",
   } = input;
 
-  // ── Fetch product image — mirrors generate-model-image.ts strategy ──────
+  // ── Resolve product image — either bytes already in hand (a garment
+  // captured live via the camera) or fetched from the catalog product's URL.
   let productBuffer: Buffer;
-  let productMimeHint = "image/jpeg";
+  let productMime: string;
 
-  if (productImageUrl.startsWith("http")) {
-    const productRes = await fetch(productImageUrl);
-    if (!productRes.ok) {
-      throw new Error(
-        `Failed to fetch product image (HTTP ${productRes.status})`
-      );
+  if (garmentImageBuffer) {
+    productBuffer = garmentImageBuffer;
+    productMime = garmentImageMimeType ?? "image/jpeg";
+  } else if (productImageUrl) {
+    let productMimeHint = "image/jpeg";
+
+    if (productImageUrl.startsWith("http")) {
+      const productRes = await fetch(productImageUrl);
+      if (!productRes.ok) {
+        throw new Error(
+          `Failed to fetch product image (HTTP ${productRes.status})`
+        );
+      }
+      productMimeHint = productRes.headers.get("content-type") ?? "image/jpeg";
+      productBuffer = Buffer.from(await productRes.arrayBuffer());
+    } else if (productImageUrl.startsWith("/uploads/")) {
+      const localPath = join(process.cwd(), "public", productImageUrl);
+      try {
+        productBuffer = await readFile(localPath);
+      } catch {
+        throw new Error(`Product image file not found: ${localPath}`);
+      }
+    } else {
+      throw new Error(`Unsupported product image URL format: ${productImageUrl}`);
     }
-    productMimeHint = productRes.headers.get("content-type") ?? "image/jpeg";
-    productBuffer = Buffer.from(await productRes.arrayBuffer());
-  } else if (productImageUrl.startsWith("/uploads/")) {
-    const localPath = join(process.cwd(), "public", productImageUrl);
-    try {
-      productBuffer = await readFile(localPath);
-    } catch {
-      throw new Error(`Product image file not found: ${localPath}`);
-    }
+
+    const ext = productImageUrl.split("?")[0].split(".").pop()?.toLowerCase() ?? "jpg";
+    const mimeMap: Record<string, string> = {
+      jpg: "image/jpeg",
+      jpeg: "image/jpeg",
+      png: "image/png",
+      webp: "image/webp",
+    };
+    productMime = mimeMap[ext] ?? productMimeHint;
   } else {
-    throw new Error(`Unsupported product image URL format: ${productImageUrl}`);
+    throw new Error("Either productImageUrl or garmentImageBuffer must be provided");
   }
-
-  const ext = productImageUrl.split("?")[0].split(".").pop()?.toLowerCase() ?? "jpg";
-  const mimeMap: Record<string, string> = {
-    jpg: "image/jpeg",
-    jpeg: "image/jpeg",
-    png: "image/png",
-    webp: "image/webp",
-  };
-  const productMime = mimeMap[ext] ?? productMimeHint;
 
   // ── Log input image metadata ─────────────────────────────────────────────
   const userDims = getImageDimensions(userPhotoBuffer, userPhotoMimeType);

@@ -124,6 +124,8 @@ export async function generateTryOnVertex(input: TryOnInput): Promise<TryOnResul
 
   const {
     productImageUrl,
+    garmentImageBuffer,
+    garmentImageMimeType,
     userPhotoBuffer,
     userPhotoMimeType,
     productCategory,
@@ -133,38 +135,47 @@ export async function generateTryOnVertex(input: TryOnInput): Promise<TryOnResul
     userId = "unknown",
   } = input;
 
-  // ── Fetch product image — mirrors lib/tryon.ts strategy ─────────────────
+  // ── Resolve product image — mirrors lib/tryon.ts strategy ───────────────
   let productBuffer: Buffer;
-  let productMimeHint = "image/jpeg";
+  let productMime: string;
 
-  if (productImageUrl.startsWith("http")) {
-    const productRes = await fetch(productImageUrl);
-    if (!productRes.ok) {
-      throw new Error(
-        `Failed to fetch product image (HTTP ${productRes.status})`
-      );
+  if (garmentImageBuffer) {
+    productBuffer = garmentImageBuffer;
+    productMime = garmentImageMimeType ?? "image/jpeg";
+  } else if (productImageUrl) {
+    let productMimeHint = "image/jpeg";
+
+    if (productImageUrl.startsWith("http")) {
+      const productRes = await fetch(productImageUrl);
+      if (!productRes.ok) {
+        throw new Error(
+          `Failed to fetch product image (HTTP ${productRes.status})`
+        );
+      }
+      productMimeHint = productRes.headers.get("content-type") ?? "image/jpeg";
+      productBuffer = Buffer.from(await productRes.arrayBuffer());
+    } else if (productImageUrl.startsWith("/uploads/")) {
+      const localPath = join(process.cwd(), "public", productImageUrl);
+      try {
+        productBuffer = await readFile(localPath);
+      } catch {
+        throw new Error(`Product image file not found: ${localPath}`);
+      }
+    } else {
+      throw new Error(`Unsupported product image URL format: ${productImageUrl}`);
     }
-    productMimeHint = productRes.headers.get("content-type") ?? "image/jpeg";
-    productBuffer = Buffer.from(await productRes.arrayBuffer());
-  } else if (productImageUrl.startsWith("/uploads/")) {
-    const localPath = join(process.cwd(), "public", productImageUrl);
-    try {
-      productBuffer = await readFile(localPath);
-    } catch {
-      throw new Error(`Product image file not found: ${localPath}`);
-    }
+
+    const ext = productImageUrl.split("?")[0].split(".").pop()?.toLowerCase() ?? "jpg";
+    const mimeMap: Record<string, string> = {
+      jpg: "image/jpeg",
+      jpeg: "image/jpeg",
+      png: "image/png",
+      webp: "image/webp",
+    };
+    productMime = mimeMap[ext] ?? productMimeHint;
   } else {
-    throw new Error(`Unsupported product image URL format: ${productImageUrl}`);
+    throw new Error("Either productImageUrl or garmentImageBuffer must be provided");
   }
-
-  const ext = productImageUrl.split("?")[0].split(".").pop()?.toLowerCase() ?? "jpg";
-  const mimeMap: Record<string, string> = {
-    jpg: "image/jpeg",
-    jpeg: "image/jpeg",
-    png: "image/png",
-    webp: "image/webp",
-  };
-  const productMime = mimeMap[ext] ?? productMimeHint;
 
   // ── Log input image metadata ─────────────────────────────────────────────
   const userDims = getImageDimensions(userPhotoBuffer, userPhotoMimeType);

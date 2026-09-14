@@ -20,6 +20,9 @@ model User {
   /** Retailer's own verified phone — distinct from storePhone (public/unverified storefront contact). Used for security actions (e.g. password change via OTP). Null until verified once via lib/retailer-otp.ts. */
   phone           String?   @unique
   phoneVerifiedAt DateTime?
+  /** SHA-256 hex hash of the current forgot-password token — never the raw token (lib/password-reset.ts). Null when no reset is pending. */
+  passwordResetTokenHash String?   @unique
+  passwordResetExpiresAt DateTime?
   storeAddress String?
   /**
    * Fixed-list city (lib/geo/city-coordinates.ts) used for /shop's location-radius filter — city-grained, not a geocoded address.
@@ -78,6 +81,9 @@ model ClientProfile {
   enabledModules String
   /** Module key promoted to the primary/hero nav slot, e.g. "design-studio". */
   primaryModule  String
+
+  /** "catalog" (browse products, tap to try on) | "quick-capture" (camera-first, no catalog). Only meaningful when "trial-room" is enabled. */
+  trialRoomLayout String @default("catalog")
 
   /** Overrides the "Mentis" wordmark in the shell when set. */
   brandName   String?

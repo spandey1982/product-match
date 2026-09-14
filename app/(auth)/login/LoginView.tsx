@@ -34,12 +34,13 @@ export function LoginView() {
         setError(data.error || "Login failed");
         return;
       }
+      const redirectTo = data.redirectTo || "/catalog";
       if (data.recovered) {
         setRecoveredMessage(true);
-        setTimeout(() => router.push("/catalog"), 1500);
+        setTimeout(() => router.push(redirectTo), 1500);
         return;
       }
-      router.push("/catalog");
+      router.push(redirectTo);
     } catch {
       setError("Something went wrong. Please try again.");
     } finally {
@@ -122,6 +123,12 @@ export function LoginView() {
               </button>
             }
           />
+
+          <div className="text-right -mt-2">
+            <Link href="/forgot-password" className="text-xs text-indigo-600 font-medium hover:text-indigo-800">
+              Forgot password?
+            </Link>
+          </div>
 
           {error && (
             <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-sm text-red-600">
