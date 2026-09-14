@@ -106,11 +106,20 @@ export function MaterialProductCard({ p, onOpen }: { p: BrowseProduct; onOpen: (
         </div>
       </div>
 
-      {/* pt-6, not pt-4 — gives the overlapping eye button room to breathe, matching components/catalog/ProductCard.tsx's identical convention. */}
-      <div className="px-4 pb-4 pt-6 space-y-2">
+      {/* pt-6 (not pt-4) still clears the overlapping eye button — that's
+          real, load-bearing space, not the excess this trims. Everything
+          else here is deliberately tight: no forced min-height on the
+          title (most names are one line; let two-line ones be the only
+          taller cards, not every card), space-y-1 instead of -2 between
+          blocks, and no extra pt-1 before the price row on top of that
+          gap. This block's height now follows its own content, not the
+          image's — a square image is shorter than the 3:4 crop this used
+          to pair with, and stretching the info block to match it just to
+          look "even" was the actual source of the leftover white space. */}
+      <div className="px-4 pb-3 pt-6 space-y-1">
         <h3
           title={p.name}
-          className="text-sm font-semibold text-gray-900 line-clamp-2 leading-tight min-h-[2.25rem] group-hover:text-[var(--color-indigo-600)] transition-colors"
+          className="text-sm font-semibold text-gray-900 line-clamp-2 leading-tight group-hover:text-[var(--color-indigo-600)] transition-colors"
         >
           {p.name}
         </h3>
@@ -130,7 +139,7 @@ export function MaterialProductCard({ p, onOpen }: { p: BrowseProduct; onOpen: (
           </div>
         )}
 
-        <div className="flex items-center gap-1.5 pt-1">
+        <div className="flex items-center gap-1.5">
           {p.colorHex && (
             <span className="h-3.5 w-3.5 rounded-full ring-1 ring-gray-200 shrink-0" style={{ backgroundColor: p.colorHex }} />
           )}

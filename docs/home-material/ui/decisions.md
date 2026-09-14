@@ -763,3 +763,28 @@ correctly, confirmed cards render as squares. Re-checked the dev
 overlay throughout — stayed at the same single known extension
 artifact, no new issues introduced. `tsc`/`eslint`/full `npm run build`
 all clean.
+
+## Card info block compacted, 2026-09-15
+
+Follow-up to the square-image change: the info block below the image
+kept its previous height (sized to pair with the taller 3:4 image), so
+once the image itself got shorter, that block started reading as
+oversized relative to it. Trimmed three real sources of reserved-but-
+often-unused space in `MaterialProductCard.tsx`, not just tightened
+numbers arbitrarily:
+- `min-h-[2.25rem]` removed from the title — it reserved 2-line height
+  on every card even when a name fits on one line (most of the seed
+  catalogue). A 2-line name is still exactly as tall as it needs to be;
+  a 1-line one no longer carries dead space under it.
+- `space-y-2` → `space-y-1` between the title/subtitle/chips/price
+  blocks, and dropped a redundant `pt-1` on the price row that was
+  adding extra space on top of the gap `space-y` already provided.
+- `pb-4` → `pb-3`. `pt-6` (not `pt-4`) is untouched — that one is real,
+  load-bearing space clearing the eye button that overlaps down from
+  the image, not the excess being trimmed here.
+
+Live-tested: the "Lime Plaster Texture" card (a one-line name, alone in
+its own grid row) is now visibly shorter than the row above it
+("Botanical Leaf Wallpaper" still wraps to two lines and still gets
+that height) — confirms the block now follows its own content instead
+of a fixed reservation. `tsc`/`eslint`/full `npm run build` all clean.
