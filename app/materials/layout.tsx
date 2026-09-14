@@ -1,6 +1,7 @@
 import { Sora, Manrope } from "next/font/google";
 import "./materials-theme.css";
 import { HmThemeRoot } from "./HmThemeRoot";
+import { HmNavBar } from "@/components/home-material/HmNavBar";
 import { AddTestProductButton } from "@/components/home-material/AddTestProductButton";
 
 // "Sage Studio" visual direction (chosen 2026-09-10 from the two
@@ -14,7 +15,7 @@ import { AddTestProductButton } from "@/components/home-material/AddTestProductB
 const sora = Sora({ variable: "--font-sora", subsets: ["latin"], weight: ["400", "500", "600", "700"] });
 const manrope = Manrope({ variable: "--font-manrope", subsets: ["latin"], weight: ["400", "500", "600", "700"] });
 
-export default function MaterialsLayout({ children }: { children: React.ReactNode }) {
+export default async function MaterialsLayout({ children }: { children: React.ReactNode }) {
   const themeClass = `${sora.variable} ${manrope.variable} hm-theme`;
   return (
     <>
@@ -22,7 +23,10 @@ export default function MaterialsLayout({ children }: { children: React.ReactNod
           which render to document.body directly) pick it up too — see
           HmThemeRoot's doc comment. */}
       <HmThemeRoot className={themeClass} />
-      <div className={themeClass}>{children}</div>
+      <div className={themeClass}>
+        <HmNavBar />
+        {children}
+      </div>
       {/* Internal test-catalogue tool, deliberately discreet — see the
           component's own doc comment. Never a customer-facing feature. */}
       <AddTestProductButton />

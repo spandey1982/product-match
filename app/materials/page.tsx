@@ -16,9 +16,21 @@ import { MaterialsLandingClient } from "./MaterialsLandingClient";
 // docs/home-material/ui/decisions.md. See docs/home-material/README.md
 // for the domain brief.
 
+const TITLE = "Home Material Intelligence";
+const DESCRIPTION = "See real paint, wallpaper, texture, and wall panels on your own wall before you buy — browse materials or start with your room.";
+
 export const metadata: Metadata = {
-  title: "Home Material Intelligence",
-  description: "See real paint, wallpaper, texture, and wall panels on your own wall before you buy — browse materials or start with your room.",
+  title: TITLE,
+  description: DESCRIPTION,
+  alternates: { canonical: "/materials" },
+  openGraph: { url: "/materials", title: TITLE, description: DESCRIPTION },
+};
+
+const CATEGORY_DISPLAY_LABELS: Record<string, string> = {
+  paint: "Paint",
+  wallpaper: "Wallpaper",
+  wall_texture: "Wall Texture",
+  wall_panel: "Wall Panels",
 };
 
 // Prices and the product list itself change independently of a deploy
@@ -157,12 +169,54 @@ async function getSubtypesByCategory(products: BrowseProduct[]): Promise<Record<
   return result;
 }
 
+/**
+ * Structured data for search/AI answer engines (2026-09-14 — this domain
+ * had none of the sitewide GEO/AEO work from feature/geo-aeo-seo, which
+ * merged separately and never touched app/materials since this domain
+ * was still on its own unmerged branch at the time). Mirrors app/shop/
+ * page.tsx's ItemList pattern, adapted since Home Material has no
+ * per-product detail page (products open in an in-page modal, not a
+ * standalone URL) — each ListItem embeds a full Product node instead of
+ * linking one, which is valid schema.org for a listing with no separate
+ * detail page.
+ */
+function buildProductListJsonLd(products: BrowseProduct[]) {
+  if (products.length === 0) return undefined;
+  return {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    name: "Home Material Products — Mentis",
+    itemListElement: products.map((p, i) => ({
+      "@type": "ListItem",
+      position: i + 1,
+      item: {
+        "@type": "Product",
+        name: p.name,
+        category: p.category ? CATEGORY_DISPLAY_LABELS[p.category] ?? p.category : undefined,
+        image: p.textureAssetUrl ?? undefined,
+        ...(p.priceIsExact && p.priceInr != null
+          ? { offers: { "@type": "Offer", price: p.priceInr, priceCurrency: "INR", availability: "https://schema.org/InStock" } }
+          : {}),
+      },
+    })),
+  };
+}
+
 export default async function MaterialsPage() {
   const products = await getBrowseProducts();
   const subtypesByCategory = await getSubtypesByCategory(products);
+  const productListJsonLd = buildProductListJsonLd(products);
   return (
-    <Suspense fallback={null}>
-      <MaterialsLandingClient products={products} subtypesByCategory={subtypesByCategory} />
-    </Suspense>
+    <>
+      {productListJsonLd && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(productListJsonLd) }}
+        />
+      )}
+      <Suspense fallback={null}>
+        <MaterialsLandingClient products={products} subtypesByCategory={subtypesByCategory} />
+      </Suspense>
+    </>
   );
 }

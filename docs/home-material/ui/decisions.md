@@ -510,3 +510,68 @@ width (`xl:grid-cols-5`, verified via computed styles) and the base
 `.grid-cols-2` rule is confirmed present for mobile, and clicking a card
 still opens the existing `UploadRoomModal` with the correct product
 carried through, unchanged from before this pass.
+
+## Persistent nav bar, copy trim, hero mobile fix, GEO/AEO gap closed, 2026-09-14
+
+Four user-requested changes in one pass, on `feature/home-material-browse-parity`:
+
+- **Persistent top nav** (`components/home-material/HmNavBar.tsx`, new,
+  mounted in `app/materials/layout.tsx`) — the "not yet built" gap flagged
+  since 2026-09-10. Mirrors `components/layout/ShopHeader.tsx`'s exact
+  shape (brand mark left, icon links right, sticky/blurred) restyled to
+  Sage Studio. Deliberately calls `getHmUserSession()` (read-only), never
+  `getOrCreateHmUserSession()` — this bar renders on every page view
+  including anonymous/crawler traffic, and provisioning a real guest
+  `HmUser` row just to show a shortlist count nobody asked for would
+  create a junk account per visitor. No existing session → the heart
+  renders with no count, same as `ShopHeader` signed-out.
+- **Copy trimmed throughout the landing page** — headline, subheadline,
+  input placeholder, and the two link rows under it (now just "Upload
+  your room" — the guide/shortlist text links were redundant with the
+  new nav icons and dropped), plus the "Already know what you want?"
+  section collapsed from a heading+paragraph to a two-word label
+  ("Browse materials") since the search/filter UI beneath it now speaks
+  for itself.
+- **Hero illustration fixed for mobile** — user's own diagnosis: the
+  decorative room-mockup block (which sits beside the headline on
+  desktop, "no issues") stacks BELOW it on mobile at its full natural
+  height (~355px, an SVG with a ~1.4:1 aspect ratio at full viewport
+  width), pushing the real product grid well past the fold before any
+  scrolling. Capped to `h-32` (128px) below the `md` breakpoint with
+  `overflow-hidden` + `preserveAspectRatio="xMidYMid slice"` so it crops
+  rather than squishes; `md:h-auto` restores the original unconstrained
+  desktop behaviour exactly. The floating "Botanical Leaf" card shrank
+  proportionally (smaller padding/swatch/text, subtype line dropped) so
+  it still reads at the smaller size. Likely the same root cause behind
+  a separately-reported "two product cards taking the full screen" —
+  the shrunk-illustration's floating card and the first real grid card
+  are much less likely to be mistaken for each other now; flagged to
+  the user to confirm with a screenshot if it persists.
+- **GEO/AEO parity gap identified and partly closed.** Confirmed via
+  code read: the 2026-09-04 sitewide GEO/AEO initiative
+  (`feature/geo-aeo-seo`) never touched `/materials` — Home Material was
+  still on its own unmerged branch at the time, and nothing under
+  `app/materials/**` appeared in any grep for the JSON-LD/canonical/
+  sitemap patterns that pattern exists everywhere else in the app. Fixed
+  this pass: `/materials` and `/materials/guide` added to
+  `app/sitemap.ts`; canonical + OpenGraph tags added to both pages'
+  metadata; a new `ItemList`/`Product` JSON-LD block on `/materials`
+  (mirroring `app/shop/page.tsx`'s pattern, adapted since this domain has
+  no per-product detail page — each `ListItem` embeds a full `Product`
+  node rather than linking one); `robots.ts` now disallows
+  `/materials/rooms/` and `/materials/shortlist` (real uploaded room
+  photos and a per-user saved list, same class as the existing
+  `/deliver/` and `/shop/wishlist` exclusions), with matching page-level
+  `robots: {index:false}` on both. Deeper parity (material-guide FAQ/
+  HowTo structured data, `lib/seo/health-score.ts` inclusion,
+  Organization/BreadcrumbList schema) logged as a `TaskItem`
+  (`ai_future`) rather than built in this pass — see `/admin/tasks`.
+
+Live-tested: nav bar renders and links correctly on `/materials`,
+`/materials/guide`, and `/materials/shortlist` (heart shows the active-page
+tint on the shortlist page, matching `ShopHeader`'s pattern); confirmed
+the new `ItemList` JSON-LD parses correctly with all 6 seed products;
+confirmed via computed styles that `h-32` applies unconditionally and
+`md:h-auto` overrides it at desktop width (355px), matching the same
+verified pattern as every other responsive-breakpoint fix this session.
+`tsc`/`eslint`/full `npm run build` all clean.
