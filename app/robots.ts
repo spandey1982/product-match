@@ -29,6 +29,8 @@ const DISALLOW = [
   "/fashion-designer",
   "/auto-catalog",
   "/wishlist",
+  "/materials/rooms/", // per-user room workspace — real uploaded room photos, never crawlable
+  "/materials/shortlist", // per-user saved list, same class as /shop/wishlist above
 ];
 
 export default function robots(): MetadataRoute.Robots {

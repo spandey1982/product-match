@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { db } from "@/lib/db";
 import { MATERIAL_TAXONOMY } from "@/lib/home-material/material-taxonomy";
-import { MaterialsLandingClient, type BrowseProduct } from "./MaterialsLandingClient";
+import type { BrowseProduct } from "@/lib/home-material/browse-product";
+import { MaterialsLandingClient } from "./MaterialsLandingClient";
 
 // Home Material Intelligence Platform — landing + Mode A browse, merged
 // into one screen per the 2026-09-10 UI discovery decision (Q1/Q2 in
@@ -15,9 +16,21 @@ import { MaterialsLandingClient, type BrowseProduct } from "./MaterialsLandingCl
 // docs/home-material/ui/decisions.md. See docs/home-material/README.md
 // for the domain brief.
 
+const TITLE = "Home Material Intelligence";
+const DESCRIPTION = "See real paint, wallpaper, texture, and wall panels on your own wall before you buy — browse materials or start with your room.";
+
 export const metadata: Metadata = {
-  title: "Home Material Intelligence",
-  description: "See real paint, wallpaper, texture, and wall panels on your own wall before you buy — browse materials or start with your room.",
+  title: TITLE,
+  description: DESCRIPTION,
+  alternates: { canonical: "/materials" },
+  openGraph: { url: "/materials", title: TITLE, description: DESCRIPTION },
+};
+
+const CATEGORY_DISPLAY_LABELS: Record<string, string> = {
+  paint: "Paint",
+  wallpaper: "Wallpaper",
+  wall_texture: "Wall Texture",
+  wall_panel: "Wall Panels",
 };
 
 // Prices and the product list itself change independently of a deploy
@@ -40,6 +53,7 @@ async function getBrowseProducts(): Promise<BrowseProduct[]> {
       finish: true,
       patternName: true,
       textureAssetUrl: true,
+      collection: true,
       priceInr: true,
       priceUnit: true,
       material: {
@@ -77,7 +91,9 @@ async function getBrowseProducts(): Promise<BrowseProduct[]> {
       finish: p.finish,
       patternName: p.patternName,
       textureAssetUrl: p.textureAssetUrl,
+      collection: p.collection,
       category: p.material?.category ?? null,
+      subtype: p.material?.subtype ?? null,
       durabilityYearsApprox: taxonomyEntry?.durabilityYearsApprox ?? null,
       maintenanceLevel: taxonomyEntry?.maintenanceLevel ?? null,
       priceInr: realPrice,
@@ -88,11 +104,121 @@ async function getBrowseProducts(): Promise<BrowseProduct[]> {
   });
 }
 
+export interface SubtypeOption {
+  subtype: string;
+  label: string;
+}
+
+const CATEGORY_ORDER = ["paint", "wallpaper", "wall_texture", "wall_panel"];
+
+/**
+ * Subtype chip order per category, "most bought/trending/popular" first
+ * (2026-09-14 browse-parity work) — a deterministic, explainable
+ * popularity signal rather than a black-box ranking, matching this
+ * domain's recommendation-engine philosophy. Weighted sum of three real
+ * signals per product (HmLead — closest thing to "bought" this domain
+ * has, no checkout yet; HmVisualization — "tried in a room"; HmShortlist
+ * Item — "saved for later"), weighted toward stronger intent:
+ * leads×3 + visualizations×2 + shortlists×1. Ties (expected pre-launch,
+ * when every count is 0) fall back to MATERIAL_TAXONOMY's own declared
+ * order rather than an arbitrary DB order, so the row is never visibly
+ * random. Only subtypes with at least one real listed product appear —
+ * same "don't offer a chip that leads to an empty grid" rule /shop's own
+ * subcategories already follow (app/api/public/products/route.ts).
+ */
+async function getSubtypesByCategory(products: BrowseProduct[]): Promise<Record<string, SubtypeOption[]>> {
+  const [leadCounts, visualizationCounts, shortlistCounts] = await Promise.all([
+    db.hmLead.groupBy({ by: ["productId"], where: { productId: { not: null } }, _count: { _all: true } }),
+    db.hmVisualization.groupBy({ by: ["productId"], where: { productId: { not: null } }, _count: { _all: true } }),
+    db.hmShortlistItem.groupBy({ by: ["productId"], _count: { _all: true } }),
+  ]);
+
+  const scoreByProductId = new Map<string, number>();
+  function addScore(rows: { productId: string | null; _count: { _all: number } }[], weight: number) {
+    for (const row of rows) {
+      if (!row.productId) continue;
+      scoreByProductId.set(row.productId, (scoreByProductId.get(row.productId) ?? 0) + row._count._all * weight);
+    }
+  }
+  addScore(leadCounts, 3);
+  addScore(visualizationCounts, 2);
+  addScore(shortlistCounts, 1);
+
+  const scoreBySubtypeKey = new Map<string, number>();
+  for (const p of products) {
+    if (!p.category || !p.subtype) continue;
+    const key = `${p.category}:${p.subtype}`;
+    scoreBySubtypeKey.set(key, (scoreBySubtypeKey.get(key) ?? 0) + (scoreByProductId.get(p.id) ?? 0));
+  }
+
+  const result: Record<string, SubtypeOption[]> = {};
+  for (const category of CATEGORY_ORDER) {
+    const presentSubtypes = Array.from(new Set(products.filter((p) => p.category === category && p.subtype).map((p) => p.subtype as string)));
+    result[category] = presentSubtypes
+      .map((subtype) => {
+        const taxonomyIndex = MATERIAL_TAXONOMY.findIndex((t) => t.category === category && t.subtype === subtype);
+        const label = taxonomyIndex >= 0 ? MATERIAL_TAXONOMY[taxonomyIndex].name : subtype;
+        return {
+          subtype,
+          label,
+          score: scoreBySubtypeKey.get(`${category}:${subtype}`) ?? 0,
+          taxonomyIndex: taxonomyIndex >= 0 ? taxonomyIndex : Number.MAX_SAFE_INTEGER,
+        };
+      })
+      .sort((a, b) => b.score - a.score || a.taxonomyIndex - b.taxonomyIndex)
+      .map(({ subtype, label }) => ({ subtype, label }));
+  }
+  return result;
+}
+
+/**
+ * Structured data for search/AI answer engines (2026-09-14 — this domain
+ * had none of the sitewide GEO/AEO work from feature/geo-aeo-seo, which
+ * merged separately and never touched app/materials since this domain
+ * was still on its own unmerged branch at the time). Mirrors app/shop/
+ * page.tsx's ItemList pattern, adapted since Home Material has no
+ * per-product detail page (products open in an in-page modal, not a
+ * standalone URL) — each ListItem embeds a full Product node instead of
+ * linking one, which is valid schema.org for a listing with no separate
+ * detail page.
+ */
+function buildProductListJsonLd(products: BrowseProduct[]) {
+  if (products.length === 0) return undefined;
+  return {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    name: "Home Material Products — Mentis",
+    itemListElement: products.map((p, i) => ({
+      "@type": "ListItem",
+      position: i + 1,
+      item: {
+        "@type": "Product",
+        name: p.name,
+        category: p.category ? CATEGORY_DISPLAY_LABELS[p.category] ?? p.category : undefined,
+        image: p.textureAssetUrl ?? undefined,
+        ...(p.priceIsExact && p.priceInr != null
+          ? { offers: { "@type": "Offer", price: p.priceInr, priceCurrency: "INR", availability: "https://schema.org/InStock" } }
+          : {}),
+      },
+    })),
+  };
+}
+
 export default async function MaterialsPage() {
   const products = await getBrowseProducts();
+  const subtypesByCategory = await getSubtypesByCategory(products);
+  const productListJsonLd = buildProductListJsonLd(products);
   return (
-    <Suspense fallback={null}>
-      <MaterialsLandingClient products={products} />
-    </Suspense>
+    <>
+      {productListJsonLd && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(productListJsonLd) }}
+        />
+      )}
+      <Suspense fallback={null}>
+        <MaterialsLandingClient products={products} subtypesByCategory={subtypesByCategory} />
+      </Suspense>
+    </>
   );
 }

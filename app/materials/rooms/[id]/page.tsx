@@ -1,6 +1,9 @@
 import { RoomView } from "./RoomView";
 
-export const metadata = { title: "Room — Home Material Intelligence" };
+// Private per-user room workspace (real uploaded room photos) — same
+// double-protection (robots.ts disallow + page-level noindex) as
+// app/deliver/[id]/page.tsx.
+export const metadata = { title: "Room — Home Material Intelligence", robots: { index: false, follow: false } };
 
 export default async function MaterialsRoomPage({
   params,

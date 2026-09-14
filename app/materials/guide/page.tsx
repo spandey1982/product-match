@@ -9,9 +9,14 @@ import {
   type MoistureLevel,
 } from "@/lib/home-material/material-taxonomy";
 
+const GUIDE_TITLE = "Material Guide — Home Material Intelligence";
+const GUIDE_DESCRIPTION = "Understand wall material types — paint, wallpaper, texture, and panels — before choosing a specific product.";
+
 export const metadata: Metadata = {
-  title: "Material Guide — Home Material Intelligence",
-  description: "Understand wall material types — paint, wallpaper, texture, and panels — before choosing a specific product.",
+  title: GUIDE_TITLE,
+  description: GUIDE_DESCRIPTION,
+  alternates: { canonical: "/materials/guide" },
+  openGraph: { url: "/materials/guide", title: GUIDE_TITLE, description: GUIDE_DESCRIPTION },
 };
 
 // Reads HmMaterial live via Prisma — must never be statically prerendered

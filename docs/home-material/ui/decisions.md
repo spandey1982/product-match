@@ -448,3 +448,343 @@ Every prototype tour built for this domain from now on is archived
 locally at `research/prototypes/` (gitignored, never pushed) — a
 permanent progress record even after a decision ships. See
 `research/README.md`.
+
+## Browse section rebuilt to match /shop, 2026-09-14
+
+User's explicit ask: the "already know what you want?" browse section
+underneath the intent hero should reuse the same components /shop uses —
+search bar, price + material-type filters, subtype chips ordered by
+popularity, the same responsive grid (2 cols on mobile up to 5 on wide
+screens), and a product card matching `ShopProductCard`'s visual
+language. Done via direct reuse rather than a parallel re-implementation:
+
+- New `components/home-material/MaterialBrowseSection.tsx` wraps the
+  actual shared `components/catalog/CatalogFilterBar` — the identical
+  component /shop's `ShopView` uses — passing material category
+  (paint/wallpaper/wall_texture/wall_panel) as the tab row and price as
+  the only Filters-popover control. `CatalogFilterBar` gained one small,
+  precedented addition (`hideOccasion?: boolean`, matching its existing
+  `hideCategoryTabs`/`hideSubcategoryTabs` pattern) since Home Material
+  has no occasion concept.
+- Subtype chips (e.g. "Interior Emulsion — Matte") reuse
+  `CatalogFilterBar`'s existing subcategory-chip row, populated per
+  category from `app/materials/page.tsx`'s new `getSubtypesByCategory` —
+  only subtypes with an actual listed product appear (same rule /shop's
+  own subcategories already follow), ordered by a deterministic
+  popularity score (`HmLead`×3 + `HmVisualization`×2 +
+  `HmShortlistItem`×1 per product, summed per subtype), falling back to
+  `MATERIAL_TAXONOMY`'s declared order when scores tie (expected
+  pre-launch, when every count is 0) — explainable, not a black box,
+  matching this domain's recommendation-engine philosophy.
+- New `components/home-material/MaterialProductCard.tsx` mirrors
+  `ShopProductCard`'s shell (rounded-2xl/border/shadow/hover-lift,
+  image-on-top, name/price/CTA-button) with Home Material's own content
+  (swatch/texture image, durability/maintenance chips, exact-vs-range
+  price, "See in my room" instead of "Try & Buy" — no cart/checkout in
+  V1). Deliberately did not add a wishlist-style heart toggle — that
+  would need session-aware shortlist state on an otherwise-anonymous
+  landing page, out of scope for this pass.
+- Filtering runs entirely client-side over the already-fetched product
+  array — the catalogue is pre-launch scale (single digits to low tens
+  of products), so a new paginated API endpoint like /shop's
+  `/api/public/products` isn't justified yet (CLAUDE.md §17). Revisit if
+  the catalogue grows enough that shipping the full array becomes
+  wasteful.
+- The intent hero's own natural-language "tell us what you're picturing"
+  hero and its Tier-0 keyword-matched results are untouched and take
+  priority when a query is active (same mutual-exclusivity as before);
+  the new browse section is strictly the "underneath" default view, now
+  reusing `MaterialProductCard` too for one consistent card style across
+  both paths.
+- `BrowseProduct`'s type definition moved to `lib/home-material/
+  browse-product.ts` (previously declared inline in
+  `MaterialsLandingClient.tsx`) since it's now shared by the page, the
+  landing client, the browse section, and the card — one home instead of
+  drifting copies.
+
+Live-tested in the browser: category tabs + subtype chips + price range
++ text search all compose correctly (AND filtering, verified with
+Paint + ₹17–₹20 + "sage" narrowing to exactly Soft Sage), Reset all
+correctly clears every filter, the grid renders 5 columns at desktop
+width (`xl:grid-cols-5`, verified via computed styles) and the base
+`.grid-cols-2` rule is confirmed present for mobile, and clicking a card
+still opens the existing `UploadRoomModal` with the correct product
+carried through, unchanged from before this pass.
+
+## Persistent nav bar, copy trim, hero mobile fix, GEO/AEO gap closed, 2026-09-14
+
+Four user-requested changes in one pass, on `feature/home-material-browse-parity`:
+
+- **Persistent top nav** (`components/home-material/HmNavBar.tsx`, new,
+  mounted in `app/materials/layout.tsx`) — the "not yet built" gap flagged
+  since 2026-09-10. Mirrors `components/layout/ShopHeader.tsx`'s exact
+  shape (brand mark left, icon links right, sticky/blurred) restyled to
+  Sage Studio. Deliberately calls `getHmUserSession()` (read-only), never
+  `getOrCreateHmUserSession()` — this bar renders on every page view
+  including anonymous/crawler traffic, and provisioning a real guest
+  `HmUser` row just to show a shortlist count nobody asked for would
+  create a junk account per visitor. No existing session → the heart
+  renders with no count, same as `ShopHeader` signed-out.
+- **Copy trimmed throughout the landing page** — headline, subheadline,
+  input placeholder, and the two link rows under it (now just "Upload
+  your room" — the guide/shortlist text links were redundant with the
+  new nav icons and dropped), plus the "Already know what you want?"
+  section collapsed from a heading+paragraph to a two-word label
+  ("Browse materials") since the search/filter UI beneath it now speaks
+  for itself.
+- **Hero illustration fixed for mobile** — user's own diagnosis: the
+  decorative room-mockup block (which sits beside the headline on
+  desktop, "no issues") stacks BELOW it on mobile at its full natural
+  height (~355px, an SVG with a ~1.4:1 aspect ratio at full viewport
+  width), pushing the real product grid well past the fold before any
+  scrolling. Capped to `h-32` (128px) below the `md` breakpoint with
+  `overflow-hidden` + `preserveAspectRatio="xMidYMid slice"` so it crops
+  rather than squishes; `md:h-auto` restores the original unconstrained
+  desktop behaviour exactly. The floating "Botanical Leaf" card shrank
+  proportionally (smaller padding/swatch/text, subtype line dropped) so
+  it still reads at the smaller size. Likely the same root cause behind
+  a separately-reported "two product cards taking the full screen" —
+  the shrunk-illustration's floating card and the first real grid card
+  are much less likely to be mistaken for each other now; flagged to
+  the user to confirm with a screenshot if it persists.
+- **GEO/AEO parity gap identified and partly closed.** Confirmed via
+  code read: the 2026-09-04 sitewide GEO/AEO initiative
+  (`feature/geo-aeo-seo`) never touched `/materials` — Home Material was
+  still on its own unmerged branch at the time, and nothing under
+  `app/materials/**` appeared in any grep for the JSON-LD/canonical/
+  sitemap patterns that pattern exists everywhere else in the app. Fixed
+  this pass: `/materials` and `/materials/guide` added to
+  `app/sitemap.ts`; canonical + OpenGraph tags added to both pages'
+  metadata; a new `ItemList`/`Product` JSON-LD block on `/materials`
+  (mirroring `app/shop/page.tsx`'s pattern, adapted since this domain has
+  no per-product detail page — each `ListItem` embeds a full `Product`
+  node rather than linking one); `robots.ts` now disallows
+  `/materials/rooms/` and `/materials/shortlist` (real uploaded room
+  photos and a per-user saved list, same class as the existing
+  `/deliver/` and `/shop/wishlist` exclusions), with matching page-level
+  `robots: {index:false}` on both. Deeper parity (material-guide FAQ/
+  HowTo structured data, `lib/seo/health-score.ts` inclusion,
+  Organization/BreadcrumbList schema) logged as a `TaskItem`
+  (`ai_future`) rather than built in this pass — see `/admin/tasks`.
+
+Live-tested: nav bar renders and links correctly on `/materials`,
+`/materials/guide`, and `/materials/shortlist` (heart shows the active-page
+tint on the shortlist page, matching `ShopHeader`'s pattern); confirmed
+the new `ItemList` JSON-LD parses correctly with all 6 seed products;
+confirmed via computed styles that `h-32` applies unconditionally and
+`md:h-auto` overrides it at desktop width (355px), matching the same
+verified pattern as every other responsive-breakpoint fix this session.
+`tsc`/`eslint`/full `npm run build` all clean.
+
+## Real bug found via Next.js's own dev-mode error overlay, 2026-09-14
+
+User reported "two humongous product cards at the bottom" persisting on
+every device after the mobile-hero fix above, plus "three issues" they
+could see on page load — asked me to check logs myself rather than
+re-guess. That red circular badge in every screenshot this whole
+session was WRONGLY assumed to be the Claude-in-Chrome extension's own
+overlay (recorded that way, incorrectly, in earlier notes) — it's
+actually **Next.js's own dev-mode error indicator** (the "N" is the
+Next.js logo). Opening it surfaced the real root cause directly instead
+of more guessing: `components/home-material/MaterialProductCard.tsx`'s
+outer element was a `<button>` wrapping a real `<Button>` ("See in my
+room") — HTML forbids nesting `<button>` inside `<button>`, and the
+browser's auto-correction for that invalid markup (breaking out of the
+outer element) is what was blowing individual cards up into oversized,
+mis-rendered blocks. Not a CSS/grid issue at all, despite two prior
+rounds of grid-column theorizing.
+
+**Fixed:** outer element changed from `<button type="button" onClick=.../>`
+to `<div role="button" tabIndex={0} onClick=... onKeyDown={...}>` —
+valid HTML that can contain a real nested button, with the `onKeyDown`
+handler preserving Enter/Space keyboard activation a plain div doesn't
+get for free. Grepped the rest of `components/home-material/` and
+`app/materials/` for the same `<button>`-wrapping-`<Button>` pattern —
+this was the only instance.
+
+The remaining, unfixable-in-code issue the overlay also reports is an
+`fdprocessedid` attribute hydration mismatch — Next.js's own error text
+explicitly names "a browser extension installed which messes with the
+HTML" as the cause, and it's confirmed to come from a form-autofill-
+detection extension in this specific testing browser, not from real
+end-user traffic.
+
+Live-tested: reloaded `/materials` repeatedly post-fix — the issue count
+dropped from 4 to 1 (just the extension artifact), and the last grid
+row's previously-fine-looking card plus every other card render at
+normal, uniform size with no layout breakage. Clicking a card still
+opens `UploadRoomModal` correctly through the new div's `onClick`.
+`tsc`/`eslint`/full `npm run build` all clean.
+
+## Landing hero rewrite, nav bar profile/room icons, collection filter, a real auth bug, 2026-09-15
+
+A batch of user-requested changes plus one more real bug found while
+verifying live.
+
+**Hero copy and layout, `MaterialsLandingClient.tsx`:**
+- Headline → "Have a wall in mind?"; subhead → "Let's find out what
+  looks good on it." (both direct replacements the user specified).
+- The single "Upload your room" text link replaced with two buttons:
+  "See it on your wall" (primary, opens `UploadRoomModal` — same action
+  as before, just a real button and clearer label) and "Explore
+  materials" (outline, smooth-scrolls to `#browse-materials`).
+- Illustration height now matches the text column instead of following
+  its own SVG aspect ratio: grid `items-center` → `items-stretch`,
+  illustration wrapper `h-32 md:h-full` (was `md:h-auto`) with the SVG's
+  existing `preserveAspectRatio="xMidYMid slice"` crop now applying at
+  every breakpoint, not just mobile — since the text content got
+  shorter, letting the illustration keep its old natural aspect height
+  made it visibly taller than its paired column.
+- Removed the "Browse materials" subheading entirely (the search bar
+  now speaks for itself) and tightened the hero section's bottom
+  padding / the browse section's top padding so there's no dead band
+  between them — the section boundary is now just the natural gap
+  between elements, not deliberate whitespace.
+
+**Nav bar (`HmNavBar.tsx`), two new icons:**
+- **Room** (`Home` icon) — only rendered when the current session has
+  at least one real room, linking straight to the most recent one. No
+  rooms-list page exists in V1 (every `HmUser` gets one implicit
+  project, per `getOrCreateDefaultProject`'s own doc comment), so "most
+  recent room" is the single sensible target rather than building an
+  index page nobody asked for. Same "don't eagerly provision a guest
+  just to check" discipline as the existing shortlist count.
+- **Account** (new `HmAccountMenu.tsx`, mirroring `CustomerAuthStatus.tsx`'s
+  icon+dropdown shape) — since the OTP gate is temporarily bypassed and
+  every visitor already has SOME session, "signed in" here specifically
+  means a real verified phone, distinguished from a guest by the
+  synthetic `guest_<uuid>` phone pattern only guest rows get. A guest
+  sees "Sign in" (linking to `/materials/login`), never a fake "Hello,
+  guest_xxxxx"; a real user sees their phone + "Sign out" (posts to the
+  already-existing `/api/home-material/auth/logout`).
+- Both new icons only take effect on a real page load, not after a
+  client-side `router.push()` within the same layout — Next.js doesn't
+  re-run a layout's server-component data fetch on a soft navigation
+  inside the same segment. Verified this is exactly what was happening
+  (room icon absent right after upload, present after a manual reload)
+  rather than a bug in the new code.
+
+**Collection filter** — `HmProduct.collection` (an existing schema
+field, unused by any current seed product) is now wired into
+`MaterialBrowseSection` as its own chip row, scoped to the current
+category+subtype selection so switching material type never shows a
+collection with zero matches in it — same "no chip that leads to an
+empty grid" rule subtypes already follow. Renders nothing until a real
+product actually has a collection value. `BrowseProduct`'s shared type
+and `app/materials/page.tsx`'s Prisma select both gained the field.
+
+**"See in my room" → an eye icon**, `MaterialProductCard.tsx` — the
+full-width text button replaced with a circular icon straddling the
+image/info boundary (`right-3 bottom-0 translate-y-1/2`), copying
+`components/catalog/ProductCard.tsx`'s `TryOnCardButton` placement
+convention exactly (the same pattern `/shop`, `/rent`, and the retailer
+catalog all use). An eye icon, not the fashion side's hanger/try-on
+icon — the actual action here is "see this on your wall," and this
+domain has no cart/checkout in V1 to borrow "try & buy"-style language
+from. Purely presentational (`tabIndex={-1}`), not an independent tab
+stop — the whole card's own `onClick` already does the same thing.
+
+**Real bug found and fixed: `getOrCreateHmUserSession()` trusted a
+cookie's referenced user without checking it still exists.** Found
+live-testing the "Continue" button after a room-photo upload — it
+silently failed with `Foreign key constraint violated on
+hm_projects_hmUserId_fkey`. Root cause: a valid JWT signature only
+proves the cookie wasn't tampered with, not that the `HmUser` row it
+names still exists — a reset/restored/re-seeded database (exactly
+what this local environment had been through this session, switching
+between an isolated and the shared dev database) leaves a perfectly
+valid cookie pointing at nothing. `getOrCreateHmUserSession()` now
+verifies the referenced user actually exists via `db.hmUser.findUnique`
+before trusting the existing session, falling through to provisioning
+a fresh guest (and a fresh cookie) exactly like the "no cookie at all"
+case already did. This is a real robustness fix, not just a local-dev
+workaround — the same failure mode could in principle hit production
+after any operation that removes a guest row a live cookie still
+references.
+
+Live-tested every change in the browser: hero copy/buttons/illustration
+render correctly at desktop width; collection filter narrows correctly
+(set two demo products to a temporary "Studio Neutrals" collection,
+confirmed the chip appears and filters to exactly those two, reverted
+after); the account menu shows "Sign in" for the current guest session;
+the room icon appears after a real reload following a fresh upload;
+the eye icon renders at the image/info boundary on every card; the
+room-workspace bug is confirmed fixed — Continue now correctly
+navigates to `/materials/rooms/[id]` instead of silently failing.
+`tsc`/`eslint`/full `npm run build` all clean.
+
+## Four visual-polish fixes on the same pass, 2026-09-15
+
+- **Text/illustration vertical alignment** — the previous pass's
+  `items-stretch` matched the illustration's height to the text
+  column correctly, but a plain `<div>` doesn't center its own content
+  within extra stretched space, so once the illustration ended up
+  taller than the text's own natural height, the text sat stuck to the
+  top instead of centered against the card like the original design.
+  Fixed by making the text column itself `flex flex-col justify-center`
+  — whichever side ends up taller still sets the row height (unchanged
+  from before), but the shorter side's content now centers within it.
+  Verified via exact pixel measurement: 78.35px above the heading,
+  78.36px below the last button — centered to sub-pixel precision.
+- **Hero section padding restored to symmetric** (`py-8 sm:py-14
+  md:py-20` on both edges, was `pt-*`/`pb-4`) — the earlier "remove the
+  empty space" fix over-corrected once the "Browse materials" heading
+  (a second, redundant source of the same gap) was separately removed;
+  with only one spacing source left, symmetric top/bottom reads as
+  intentional framing, not dead space.
+- **"Explore materials" button given real affordance** — the shared
+  `outline` Button variant (`border-gray-200`, no shadow) blended into
+  the near-white hero background. Kept the `outline` variant (still
+  visually secondary to "See it on your wall") but added `shadow-sm` +
+  a theme-tinted border/text color via className overrides, scoped to
+  this one instance rather than changing the shared variant used
+  elsewhere in the app.
+- **Card image aspect ratio**, `MaterialProductCard.tsx`: `aspect-[3/4]`
+  → `aspect-square` — a wallpaper/paint swatch reads better without the
+  portrait crop `/shop`'s garment-photo ratio forces on it.
+
+## Nav bar: separate Home icon, room icon no longer double-coded, 2026-09-15
+
+The room-workspace icon added in the previous pass used the `Home`
+(house) icon — but there was no *actual* Home-page icon at all (only
+the brand logo, which isn't universally read as a nav "home" button),
+so the house icon read as pointing at the wrong destination. Fixed:
+added an explicit `Home` icon linking to `/materials` as the nav's
+first icon, and changed the room-workspace link (still conditional on
+having a real room, still targeting the most recent one) to a
+`DoorOpen` icon instead — visually distinct from Home, reads as
+"enter your room."
+
+Live-tested the full set of fixes together: pixel-verified centering,
+confirmed the outline button's computed style now includes a visible
+sage-tinted border + shadow, confirmed all four nav icons (Home, my
+room when applicable, guide, shortlist) plus the account menu render
+correctly, confirmed cards render as squares. Re-checked the dev
+overlay throughout — stayed at the same single known extension
+artifact, no new issues introduced. `tsc`/`eslint`/full `npm run build`
+all clean.
+
+## Card info block compacted, 2026-09-15
+
+Follow-up to the square-image change: the info block below the image
+kept its previous height (sized to pair with the taller 3:4 image), so
+once the image itself got shorter, that block started reading as
+oversized relative to it. Trimmed three real sources of reserved-but-
+often-unused space in `MaterialProductCard.tsx`, not just tightened
+numbers arbitrarily:
+- `min-h-[2.25rem]` removed from the title — it reserved 2-line height
+  on every card even when a name fits on one line (most of the seed
+  catalogue). A 2-line name is still exactly as tall as it needs to be;
+  a 1-line one no longer carries dead space under it.
+- `space-y-2` → `space-y-1` between the title/subtitle/chips/price
+  blocks, and dropped a redundant `pt-1` on the price row that was
+  adding extra space on top of the gap `space-y` already provided.
+- `pb-4` → `pb-3`. `pt-6` (not `pt-4`) is untouched — that one is real,
+  load-bearing space clearing the eye button that overlaps down from
+  the image, not the excess being trimmed here.
+
+Live-tested: the "Lime Plaster Texture" card (a one-line name, alone in
+its own grid row) is now visibly shorter than the row above it
+("Botanical Leaf Wallpaper" still wraps to two lines and still gets
+that height) — confirms the block now follows its own content instead
+of a fixed reservation. `tsc`/`eslint`/full `npm run build` all clean.
