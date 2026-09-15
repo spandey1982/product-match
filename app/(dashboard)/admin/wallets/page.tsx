@@ -4,6 +4,7 @@ import { getSession, isAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { UsageAnalyticsCard } from "./UsageAnalyticsCard";
 import { ShopVisibilityToggle } from "./ShopVisibilityToggle";
+import { formatCredits } from "@/lib/utils";
 
 export const metadata = { title: "Wallet Management — Admin" };
 
@@ -18,11 +19,10 @@ async function loadWallets() {
       showOnShop: true,
       wallet: {
         select: {
-          balanceUsd: true,
-          totalCreditsUsd: true,
+          balanceCredits: true,
+          totalCredits: true,
           status: true,
           updatedAt: true,
-          lastExchangeRate: true,
         },
       },
     },
@@ -31,8 +31,8 @@ async function loadWallets() {
 
   return users.map((u) => {
     const w = u.wallet;
-    const remaining = w && w.totalCreditsUsd > 0
-      ? Math.round((w.balanceUsd / w.totalCreditsUsd) * 100)
+    const remaining = w && w.totalCredits > 0
+      ? Math.round((w.balanceCredits / w.totalCredits) * 100)
       : 0;
     return { ...u, remainingPct: remaining };
   });
@@ -103,11 +103,7 @@ export default async function WalletsPage() {
                   </td>
                   <td className="px-4 py-3 text-gray-600">{u.storeName || "—"}</td>
                   <td className="px-4 py-3 tabular-nums text-gray-700">
-                    {u.wallet
-                      ? u.wallet.lastExchangeRate
-                        ? `₹${(u.wallet.balanceUsd * u.wallet.lastExchangeRate).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                        : `$${u.wallet.balanceUsd.toFixed(4)}`
-                      : "No wallet"}
+                    {u.wallet ? `${formatCredits(u.wallet.balanceCredits)} credits` : "No wallet"}
                   </td>
                   <td className="px-4 py-3">
                     {u.wallet ? <BalanceBar pct={u.remainingPct} /> : "—"}

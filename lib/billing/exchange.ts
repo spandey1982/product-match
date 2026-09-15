@@ -1,40 +1,16 @@
-let cachedRate: { rate: number; fetchedAt: number } | null = null;
-const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+/**
+ * Rs → credits conversion for retailer wallet top-ups.
+ *
+ * Deliberately flat — 1 credit = Rs 10, no live exchange rate lookup. Replaces
+ * the earlier USD-ledger design (lib/billing/wallet.ts previously called a
+ * live forex API on every top-up); the credits system doesn't touch USD at
+ * all, so there is nothing to convert a rate for. See the 2026-09-16 pricing
+ * redesign for the full rationale.
+ */
 
-const EXCHANGE_API_URL =
-  "https://open.er-api.com/v6/latest/USD";
+const RUPEES_PER_CREDIT = 10;
 
-export async function fetchExchangeRate(): Promise<number> {
-  if (cachedRate && Date.now() - cachedRate.fetchedAt < CACHE_TTL_MS) {
-    return cachedRate.rate;
-  }
-
-  try {
-    const res = await fetch(EXCHANGE_API_URL, { signal: AbortSignal.timeout(10_000) });
-    if (!res.ok) throw new Error(`Exchange API returned ${res.status}`);
-
-    const data = (await res.json()) as {
-      result: string;
-      rates?: Record<string, number>;
-    };
-
-    if (data.result !== "success" || !data.rates?.INR) {
-      throw new Error("Unexpected exchange API response shape");
-    }
-
-    const inrPerUsd = data.rates.INR;
-    cachedRate = { rate: inrPerUsd, fetchedAt: Date.now() };
-    return inrPerUsd;
-  } catch (err) {
-    if (cachedRate) return cachedRate.rate;
-    console.error("[exchange] Failed to fetch rate:", err);
-    throw new Error(
-      "Could not fetch exchange rate and no cached rate available"
-    );
-  }
-}
-
-export function convertInrToUsd(amountInr: number, inrPerUsd: number): number {
-  if (inrPerUsd <= 0) throw new Error("Invalid exchange rate");
-  return amountInr / inrPerUsd;
+/** Rounds to 1 decimal place — the wallet's fixed credit precision. */
+export function convertInrToCredits(amountInr: number): number {
+  return Math.round((amountInr / RUPEES_PER_CREDIT) * 10) / 10;
 }

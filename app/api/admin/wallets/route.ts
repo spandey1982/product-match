@@ -17,10 +17,9 @@ export async function GET() {
         wallet: {
           select: {
             id: true,
-            balanceUsd: true,
-            totalCreditsUsd: true,
+            balanceCredits: true,
+            totalCredits: true,
             status: true,
-            lastExchangeRate: true,
             updatedAt: true,
           },
         },
@@ -30,9 +29,9 @@ export async function GET() {
 
     const wallets = users.map((u) => {
       const w = u.wallet;
-      const usedUsd = w ? w.totalCreditsUsd - w.balanceUsd : 0;
-      const remainingPct = w && w.totalCreditsUsd > 0
-        ? Math.round((w.balanceUsd / w.totalCreditsUsd) * 100)
+      const usedCredits = w ? w.totalCredits - w.balanceCredits : 0;
+      const remainingPct = w && w.totalCredits > 0
+        ? Math.round((w.balanceCredits / w.totalCredits) * 100)
         : 0;
 
       return {
@@ -44,12 +43,11 @@ export async function GET() {
         wallet: w
           ? {
               id: w.id,
-              balanceUsd: w.balanceUsd,
-              totalCreditsUsd: w.totalCreditsUsd,
-              usedUsd,
+              balanceCredits: w.balanceCredits,
+              totalCredits: w.totalCredits,
+              usedCredits,
               remainingPercentage: remainingPct,
               status: w.status,
-              lastExchangeRate: w.lastExchangeRate,
               lastUpdated: w.updatedAt,
             }
           : null,

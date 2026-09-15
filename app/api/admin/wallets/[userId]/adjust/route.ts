@@ -11,19 +11,19 @@ export async function POST(
     const { userId } = await params;
 
     const body = await req.json();
-    const amountUsd = Number(body.amountUsd);
+    const amountCredits = Number(body.amountCredits);
     const description = String(body.description || "Manual adjustment");
 
-    if (!amountUsd || amountUsd === 0) {
+    if (!amountCredits || amountCredits === 0) {
       return NextResponse.json(
-        { error: "amountUsd must be a non-zero number" },
+        { error: "amountCredits must be a non-zero number" },
         { status: 400 }
       );
     }
 
-    const result = await adjustBalance(userId, amountUsd, description, admin.id);
+    const result = await adjustBalance(userId, amountCredits, description, admin.id);
 
-    return NextResponse.json({ success: true, balanceUsd: result.balanceUsd });
+    return NextResponse.json({ success: true, balanceCredits: result.balanceCredits });
   } catch (err) {
     const msg = (err as Error).message;
     if (msg === "Unauthorized") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

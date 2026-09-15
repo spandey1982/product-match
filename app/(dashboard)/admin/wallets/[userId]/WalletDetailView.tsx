@@ -2,31 +2,28 @@
 
 import { useMemo, useState } from "react";
 import { Plus, Minus, RotateCcw, Lock, Unlock, Filter } from "lucide-react";
+import { formatCredits as formatCreditsRaw } from "@/lib/utils";
 
-function formatInr(usd: number, rate: number | null): string {
-  if (!rate) return `$${usd.toFixed(4)}`;
-  const inr = usd * rate;
-  return `₹${inr.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+function formatCredits(credits: number): string {
+  return `${formatCreditsRaw(credits)} cr`;
 }
 
 interface WalletData {
   id: string;
-  balanceUsd: number;
-  totalCreditsUsd: number;
+  balanceCredits: number;
+  totalCredits: number;
   remainingPercentage: number;
   status: string;
-  lastExchangeRate: number | null;
 }
 
 interface Transaction {
   id: string;
   type: string;
-  amountUsd: number;
+  amountCredits: number;
   balanceAfter: number;
   description: string;
   initiatedBy: string;
   originalAmountInr: number | null;
-  exchangeRate: number | null;
   createdAt: string;
 }
 
@@ -130,7 +127,7 @@ export function WalletDetailView({ userId, userName, storeName, wallet, transact
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      setSuccess(`Credited $${data.creditedUsd.toFixed(4)} (₹${amount} @ ₹${data.exchangeRate.toFixed(2)}/USD)`);
+      setSuccess(`Credited ${data.creditedCredits.toFixed(1)} credits (₹${amount})`);
       setCreditAmount("");
       await refreshWallet();
     } catch (e) { setError((e as Error).message); }
@@ -139,17 +136,17 @@ export function WalletDetailView({ userId, userName, storeName, wallet, transact
 
   async function handleAdjust() {
     const amount = parseFloat(adjustAmount);
-    if (!amount) { setError("Enter a valid USD amount"); return; }
+    if (!amount) { setError("Enter a valid credits amount"); return; }
     setLoading("adjust"); setError(""); setSuccess("");
     try {
       const res = await fetch(`/api/admin/wallets/${userId}/adjust`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amountUsd: amount, description: adjustDesc || "Manual adjustment" }),
+        body: JSON.stringify({ amountCredits: amount, description: adjustDesc || "Manual adjustment" }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      setSuccess(`Adjusted by $${amount > 0 ? "+" : ""}${amount.toFixed(4)}`);
+      setSuccess(`Adjusted by ${amount > 0 ? "+" : ""}${amount.toFixed(1)} credits`);
       setAdjustAmount(""); setAdjustDesc("");
       await refreshWallet();
     } catch (e) { setError((e as Error).message); }
@@ -220,11 +217,11 @@ export function WalletDetailView({ userId, userName, storeName, wallet, transact
             <div className="grid grid-cols-3 gap-4 mb-4">
               <div>
                 <p className="text-xs text-gray-500">Balance</p>
-                <p className="text-lg font-bold tabular-nums">{formatInr(walletState.balanceUsd, walletState.lastExchangeRate)}</p>
+                <p className="text-lg font-bold tabular-nums">{formatCredits(walletState.balanceCredits)}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-500">Total Credited</p>
-                <p className="text-lg font-bold tabular-nums">{formatInr(walletState.totalCreditsUsd, walletState.lastExchangeRate)}</p>
+                <p className="text-lg font-bold tabular-nums">{formatCredits(walletState.totalCredits)}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-500">Remaining</p>
@@ -265,7 +262,7 @@ export function WalletDetailView({ userId, userName, storeName, wallet, transact
               {loading === "credit" ? "Adding..." : "Add"}
             </button>
           </div>
-          <p className="text-[10px] text-gray-400 mt-1.5">Exchange rate fetched automatically</p>
+          <p className="text-[10px] text-gray-400 mt-1.5">1 credit = ₹10, flat</p>
         </div>
 
         <div className="bg-white border border-gray-200 rounded-2xl p-4">
@@ -274,14 +271,13 @@ export function WalletDetailView({ userId, userName, storeName, wallet, transact
           </h3>
           <div className="flex gap-2 mb-2">
             <div className="relative flex-1">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
               <input
                 type="number"
-                step="0.0001"
+                step="0.5"
                 value={adjustAmount}
                 onChange={(e) => setAdjustAmount(e.target.value)}
-                placeholder="+0.50 or -0.50"
-                className="w-full pl-7 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                placeholder="+1.5 or -1.5 credits"
+                className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
             <button
@@ -422,11 +418,11 @@ export function WalletDetailView({ userId, userName, storeName, wallet, transact
                       {tx.type}
                     </span>
                   </td>
-                  <td className={`px-4 py-2 text-right tabular-nums text-xs font-medium ${tx.amountUsd >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-                    {(tx.amountUsd >= 0 ? "+" : "-") + formatInr(Math.abs(tx.amountUsd), walletState?.lastExchangeRate ?? null)}
+                  <td className={`px-4 py-2 text-right tabular-nums text-xs font-medium ${tx.amountCredits >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                    {(tx.amountCredits >= 0 ? "+" : "-") + formatCredits(Math.abs(tx.amountCredits))}
                   </td>
                   <td className="px-4 py-2 text-right tabular-nums text-xs text-gray-600">
-                    {formatInr(tx.balanceAfter, walletState?.lastExchangeRate ?? null)}
+                    {formatCredits(tx.balanceAfter)}
                   </td>
                   <td className="px-4 py-2 text-xs text-gray-600 max-w-xs">
                     <span className="block truncate cursor-default group relative" title={tx.description}>

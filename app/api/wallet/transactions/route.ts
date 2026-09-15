@@ -33,9 +33,8 @@ export async function GET() {
 
         return {
           id: tx.id,
-          amountUsd: tx.amountUsd,
+          amountCredits: tx.amountCredits,
           originalAmountInr: tx.originalAmountInr,
-          exchangeRate: tx.exchangeRate,
           paymentStatus,
           description: tx.description,
           createdAt: tx.createdAt.toISOString(),

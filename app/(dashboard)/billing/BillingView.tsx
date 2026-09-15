@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { creditAlertLevel } from "@/components/billing/CreditBalance";
 import { loadRazorpayScript, type RazorpayPaymentResponse } from "@/lib/razorpay-client";
+import { formatCredits as formatCreditsRaw } from "@/lib/utils";
 
 interface BillingConfig {
   enabled: boolean;
@@ -30,21 +31,19 @@ interface BillingConfig {
 
 interface WalletData {
   hasWallet: boolean;
-  balanceUsd: number;
-  totalCreditsUsd: number;
+  balanceCredits: number;
+  totalCredits: number;
   remainingPercentage: number;
   usedPercentage: number;
   status: string;
-  exchangeRate: number | null;
 }
 
 type PaymentStatus = "paid" | "failed" | "due" | "pending" | "refunded" | "trial" | "promo";
 
 interface CreditTransaction {
   id: string;
-  amountUsd: number;
+  amountCredits: number;
   originalAmountInr: number | null;
-  exchangeRate: number | null;
   paymentStatus: PaymentStatus;
   description: string;
   createdAt: string;
@@ -82,10 +81,8 @@ const PIE_COLORS = [
   "#22c55e", "#14b8a6", "#06b6d4", "#3b82f6",
 ];
 
-function formatInr(usd: number, rate: number | null): string {
-  if (!rate) return `$${usd.toFixed(4)}`;
-  const inr = usd * rate;
-  return `₹${inr.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+function formatCredits(credits: number): string {
+  return `${formatCreditsRaw(credits)} credits`;
 }
 
 function formatDateInput(d: Date): string {
@@ -102,7 +99,6 @@ function defaultDateRange(): { from: string; to: string } {
 function BalanceCard({ wallet }: { wallet: WalletData }) {
   const pct = wallet.remainingPercentage;
   const level = creditAlertLevel(pct);
-  const rate = wallet.exchangeRate;
 
   const barGradient =
     level === "critical"
@@ -172,13 +168,13 @@ function BalanceCard({ wallet }: { wallet: WalletData }) {
         <div>
           <p className="text-xs text-gray-500">Available</p>
           <p className="text-lg font-bold tabular-nums">
-            {formatInr(wallet.balanceUsd, rate)}
+            {formatCredits(wallet.balanceCredits)}
           </p>
         </div>
         <div>
           <p className="text-xs text-gray-500">Total Credited</p>
           <p className="text-lg font-bold tabular-nums">
-            {formatInr(wallet.totalCreditsUsd, rate)}
+            {formatCredits(wallet.totalCredits)}
           </p>
         </div>
         <div>
@@ -204,11 +200,7 @@ function BalanceCard({ wallet }: { wallet: WalletData }) {
         />
       </div>
 
-      {rate && (
-        <p className="mt-3 text-[10px] text-gray-400">
-          Exchange rate: ₹{rate.toFixed(2)}/USD (at last credit top-up)
-        </p>
-      )}
+      <p className="mt-3 text-[10px] text-gray-400">1 credit = ₹10</p>
 
       {wallet.status === "frozen" && (
         <p className="mt-3 text-xs text-red-600 flex items-center gap-1">
@@ -448,8 +440,8 @@ function CreditHistoryCard({
                 </td>
                 <td className="px-4 py-2.5 text-right tabular-nums text-xs font-medium text-gray-900">
                   {tx.originalAmountInr != null
-                    ? `₹${tx.originalAmountInr.toLocaleString("en-IN")}`
-                    : "—"}
+                    ? `₹${tx.originalAmountInr.toLocaleString("en-IN")} → ${formatCredits(tx.amountCredits)}`
+                    : formatCredits(tx.amountCredits)}
                 </td>
                 <td className="px-4 py-2.5 text-center">
                   <span
@@ -585,7 +577,7 @@ function AddCreditsCard({ onSuccess }: { onSuccess: () => void }) {
           <CheckCircle2 className="h-10 w-10 text-emerald-500 mb-3" />
           <h3 className="font-semibold text-gray-900">Payment Successful</h3>
           <p className="text-sm text-gray-500 mt-1">
-            ₹{successAmount.toLocaleString("en-IN")} has been added to your credit balance.
+            {formatCredits(successAmount / 10)} has been added to your credit balance (₹{successAmount.toLocaleString("en-IN")}).
           </p>
           <button
             onClick={() => setSuccessAmount(null)}

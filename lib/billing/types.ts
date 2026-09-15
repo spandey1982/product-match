@@ -26,8 +26,8 @@ export type TransactionType =
 export type WalletStatus = "active" | "frozen";
 
 export interface WalletBalance {
-  balanceUsd: number;
-  totalCreditsUsd: number;
+  balanceCredits: number;
+  totalCredits: number;
   usedPercentage: number;
   remainingPercentage: number;
   status: WalletStatus;

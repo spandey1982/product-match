@@ -35,11 +35,13 @@ export async function handleMotionRender(payload: MotionRenderPayload): Promise<
   }
 
   // Pre-flight credit gate, same shape as every other paid AI call in this
-  // app (see lib/model-gen/engine.ts). Retail pricing for "motion_clip" is
-  // still unset (a deferred business decision) — chargeForCall degrades to a
-  // no-op $0 charge in that case, so this is safe to wire in now rather than
-  // leaving Veo spend completely ungated until pricing is decided later.
-  const charge = await chargeForCall(job.userId, "motion_clip");
+  // app (see lib/model-gen/engine.ts). "motion_clip" is priced per second
+  // (2026-09-16 credits redesign) — count is the planned clip duration,
+  // rounded to the nearest 0.5s/credit. Charged up front against the
+  // requested duration, not Veo's snapped duration, since that isn't known
+  // until the provider branch below runs.
+  const clipSeconds = Math.round(payload.durationSec * 2) / 2;
+  const charge = await chargeForCall(job.userId, "motion_clip", clipSeconds);
   if ("insufficientCredits" in charge) {
     await failClip(payload.clipId, "insufficient_credits");
     return;
@@ -119,8 +121,8 @@ export async function handleMotionRender(payload: MotionRenderPayload): Promise<
     // Every failed attempt refunds its own charge — a retried job re-runs
     // chargeForCall from the top on redelivery, so each attempt is charged
     // and (on failure) refunded independently, never left double-charged.
-    if (charge.priceUsd > 0) {
-      await refundCharge(job.userId, charge.priceUsd, `Refund: motion_clip render failed (clip ${payload.clipId})`);
+    if (charge.priceCredits > 0) {
+      await refundCharge(job.userId, charge.priceCredits, `Refund: motion_clip render failed (clip ${payload.clipId})`);
     }
     await failOrRetry(payload, err);
   }
