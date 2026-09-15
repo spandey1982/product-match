@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
-import { getWalletBalance, getWalletByUserId } from "@/lib/billing/wallet";
+import { getWalletBalance } from "@/lib/billing/wallet";
 
 export async function GET() {
   try {
@@ -10,25 +10,21 @@ export async function GET() {
     if (!balance) {
       return NextResponse.json({
         hasWallet: false,
-        balanceUsd: 0,
-        totalCreditsUsd: 0,
+        balanceCredits: 0,
+        totalCredits: 0,
         remainingPercentage: 0,
         usedPercentage: 0,
         status: "active",
-        exchangeRate: null,
       });
     }
 
-    const wallet = await getWalletByUserId(session.id);
-
     return NextResponse.json({
       hasWallet: true,
-      balanceUsd: balance.balanceUsd,
-      totalCreditsUsd: balance.totalCreditsUsd,
+      balanceCredits: balance.balanceCredits,
+      totalCredits: balance.totalCredits,
       remainingPercentage: balance.remainingPercentage,
       usedPercentage: balance.usedPercentage,
       status: balance.status,
-      exchangeRate: wallet?.lastExchangeRate ?? null,
     });
   } catch (err) {
     if ((err as Error).message === "Unauthorized") {

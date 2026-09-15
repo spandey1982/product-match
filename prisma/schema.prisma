@@ -940,12 +940,12 @@ model Wallet {
   userId String @unique
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  balanceUsd      Float @default(0)
-  totalCreditsUsd Float @default(0)
+  /** Retailer wallet balance in credits — 1 decimal place, 1 credit = ₹10 flat (no live exchange rate). See lib/billing/exchange.ts. */
+  balanceCredits Float @default(0)
+  /** Lifetime credits ever added (used for remainingPercentage). */
+  totalCredits   Float @default(0)
 
   status String @default("active")
-
-  lastExchangeRate Float?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -961,7 +961,7 @@ model WalletTransaction {
   wallet   Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
 
   type         String
-  amountUsd    Float
+  amountCredits Float
   balanceAfter Float
 
   description String
@@ -972,8 +972,8 @@ model WalletTransaction {
 
   initiatedBy String
 
+  /** ₹ amount that produced this credit, when initiated by a top-up. Provenance only — the flat ₹10/credit rate makes it derivable, kept for the receipt trail. */
   originalAmountInr Float?
-  exchangeRate      Float?
 
   createdAt DateTime @default(now())
 
@@ -994,9 +994,8 @@ model PaymentOrder {
   razorpayPaymentId String?
   razorpaySignature String?
 
-  amountInr    Int
-  amountUsd    Float?
-  exchangeRate Float?
+  amountInr      Int
+  amountCredits  Float?
 
   currency String @default("INR")
 

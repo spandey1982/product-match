@@ -24,17 +24,13 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      creditedUsd: result.creditedUsd,
-      exchangeRate: result.exchangeRate,
+      creditedCredits: result.creditedCredits,
       walletId: result.walletId,
     });
   } catch (err) {
     const msg = (err as Error).message;
     if (msg === "Unauthorized") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     if (msg === "Forbidden") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    if (msg.includes("exchange rate")) {
-      return NextResponse.json({ error: msg }, { status: 503 });
-    }
     console.error(err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }

@@ -26,10 +26,9 @@ export default async function WalletDetailPage({ params }: Props) {
       wallet: {
         select: {
           id: true,
-          balanceUsd: true,
-          totalCreditsUsd: true,
+          balanceCredits: true,
+          totalCredits: true,
           status: true,
-          lastExchangeRate: true,
         },
       },
     },
@@ -47,30 +46,28 @@ export default async function WalletDetailPage({ params }: Props) {
 
   const w = user.wallet;
   const remainingPct =
-    w && w.totalCreditsUsd > 0
-      ? Math.round((w.balanceUsd / w.totalCreditsUsd) * 100)
+    w && w.totalCredits > 0
+      ? Math.round((w.balanceCredits / w.totalCredits) * 100)
       : 0;
 
   const walletData = w
     ? {
         id: w.id,
-        balanceUsd: w.balanceUsd,
-        totalCreditsUsd: w.totalCreditsUsd,
+        balanceCredits: w.balanceCredits,
+        totalCredits: w.totalCredits,
         remainingPercentage: remainingPct,
         status: w.status,
-        lastExchangeRate: w.lastExchangeRate,
       }
     : null;
 
   const serializedTxns = transactions.map((t) => ({
     id: t.id,
     type: t.type,
-    amountUsd: t.amountUsd,
+    amountCredits: t.amountCredits,
     balanceAfter: t.balanceAfter,
     description: t.description,
     initiatedBy: t.initiatedBy,
     originalAmountInr: t.originalAmountInr,
-    exchangeRate: t.exchangeRate,
     createdAt: t.createdAt.toISOString(),
   }));
 

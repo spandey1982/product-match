@@ -17,6 +17,17 @@ export function formatPercent(value: number): string {
   return `${Math.round(value * 100)}%`;
 }
 
+/**
+ * Retailer wallet credits — 1 decimal place for the normal 0.5-increment
+ * major-operation prices (1.5, 2.0, ...), but 2 decimals when the value
+ * genuinely needs it (garment_intelligence prices at 0.25 so 4 calls sum to
+ * exactly 1 credit — naive toFixed(1) would round it to a lying "0.3").
+ */
+export function formatCredits(credits: number): string {
+  const s = credits.toFixed(2);
+  return s.endsWith("0") ? s.slice(0, -1) : s;
+}
+
 export function slugify(text: string): string {
   return text
     .toLowerCase()

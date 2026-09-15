@@ -1,13 +1,13 @@
 import { db } from "@/lib/db";
 import type { WalletBalance, WalletStatus, TransactionType } from "./types";
-import { fetchExchangeRate, convertInrToUsd } from "./exchange";
+import { convertInrToCredits } from "./exchange";
 
 export async function getOrCreateWallet(userId: string) {
   const existing = await db.wallet.findUnique({ where: { userId } });
   if (existing) return existing;
 
   return db.wallet.create({
-    data: { userId, balanceUsd: 0, totalCreditsUsd: 0, status: "active" },
+    data: { userId, balanceCredits: 0, totalCredits: 0, status: "active" },
   });
 }
 
@@ -20,13 +20,13 @@ export async function getWalletBalance(userId: string): Promise<WalletBalance | 
   if (!wallet) return null;
 
   const remainingPercentage =
-    wallet.totalCreditsUsd > 0
-      ? Math.round((wallet.balanceUsd / wallet.totalCreditsUsd) * 100)
+    wallet.totalCredits > 0
+      ? Math.round((wallet.balanceCredits / wallet.totalCredits) * 100)
       : 0;
 
   return {
-    balanceUsd: wallet.balanceUsd,
-    totalCreditsUsd: wallet.totalCreditsUsd,
+    balanceCredits: wallet.balanceCredits,
+    totalCredits: wallet.totalCredits,
     usedPercentage: 100 - remainingPercentage,
     remainingPercentage,
     status: wallet.status as WalletStatus,
@@ -44,24 +44,21 @@ export async function addCredits(
   amountInr: number,
   adminUserId: string,
   overrides?: { initiatedBy?: string; description?: string }
-): Promise<{ walletId: string; creditedUsd: number; exchangeRate: number; walletTransactionId: string }> {
-  const rate = await fetchExchangeRate();
-  const creditUsd = convertInrToUsd(amountInr, rate);
+): Promise<{ walletId: string; creditedCredits: number; walletTransactionId: string }> {
+  const creditedCredits = convertInrToCredits(amountInr);
 
   return db.$transaction(async (tx) => {
     const wallet = await tx.wallet.upsert({
       where: { userId },
       create: {
         userId,
-        balanceUsd: creditUsd,
-        totalCreditsUsd: creditUsd,
+        balanceCredits: creditedCredits,
+        totalCredits: creditedCredits,
         status: "active",
-        lastExchangeRate: rate,
       },
       update: {
-        balanceUsd: { increment: creditUsd },
-        totalCreditsUsd: { increment: creditUsd },
-        lastExchangeRate: rate,
+        balanceCredits: { increment: creditedCredits },
+        totalCredits: { increment: creditedCredits },
       },
     });
 
@@ -69,18 +66,17 @@ export async function addCredits(
       data: {
         walletId: wallet.id,
         type: "CREDIT" satisfies TransactionType,
-        amountUsd: creditUsd,
-        balanceAfter: wallet.balanceUsd,
+        amountCredits: creditedCredits,
+        balanceAfter: wallet.balanceCredits,
         description:
           overrides?.description ??
-          `Top-up: ₹${amountInr.toLocaleString("en-IN")} @ ₹${rate.toFixed(2)}/USD`,
+          `Top-up: Rs ${amountInr.toLocaleString("en-IN")} → ${creditedCredits} credits`,
         initiatedBy: overrides?.initiatedBy ?? `admin:${adminUserId}`,
         originalAmountInr: amountInr,
-        exchangeRate: rate,
       },
     });
 
-    return { walletId: wallet.id, creditedUsd: creditUsd, exchangeRate: rate, walletTransactionId: walletTx.id };
+    return { walletId: wallet.id, creditedCredits, walletTransactionId: walletTx.id };
   });
 }
 
@@ -95,25 +91,23 @@ export async function addCredits(
 export async function creditWalletForPaymentOrder(
   paymentOrderId: string,
   razorpayPaymentId: string
-): Promise<{ creditedUsd: number; exchangeRate: number; alreadyProcessed: boolean }> {
+): Promise<{ creditedCredits: number; alreadyProcessed: boolean }> {
   const paymentOrder = await db.paymentOrder.findUnique({ where: { id: paymentOrderId } });
   if (!paymentOrder) throw new Error("Payment order not found");
 
   if (paymentOrder.status === "paid") {
     return {
-      creditedUsd: paymentOrder.amountUsd ?? 0,
-      exchangeRate: paymentOrder.exchangeRate ?? 0,
+      creditedCredits: paymentOrder.amountCredits ?? 0,
       alreadyProcessed: true,
     };
   }
 
-  const rate = await fetchExchangeRate();
-  const creditUsd = convertInrToUsd(paymentOrder.amountInr, rate);
+  const creditedCredits = convertInrToCredits(paymentOrder.amountInr);
 
   const result = await db.$transaction(async (tx) => {
     const claimed = await tx.paymentOrder.updateMany({
       where: { id: paymentOrder.id, status: { not: "paid" } },
-      data: { status: "paid", razorpayPaymentId, amountUsd: creditUsd, exchangeRate: rate },
+      data: { status: "paid", razorpayPaymentId, amountCredits: creditedCredits },
     });
     if (claimed.count === 0) return null; // lost the race — the other caller already processed this order
 
@@ -121,15 +115,13 @@ export async function creditWalletForPaymentOrder(
       where: { userId: paymentOrder.userId },
       create: {
         userId: paymentOrder.userId,
-        balanceUsd: creditUsd,
-        totalCreditsUsd: creditUsd,
+        balanceCredits: creditedCredits,
+        totalCredits: creditedCredits,
         status: "active",
-        lastExchangeRate: rate,
       },
       update: {
-        balanceUsd: { increment: creditUsd },
-        totalCreditsUsd: { increment: creditUsd },
-        lastExchangeRate: rate,
+        balanceCredits: { increment: creditedCredits },
+        totalCredits: { increment: creditedCredits },
       },
     });
 
@@ -137,12 +129,11 @@ export async function creditWalletForPaymentOrder(
       data: {
         walletId: wallet.id,
         type: "CREDIT" satisfies TransactionType,
-        amountUsd: creditUsd,
-        balanceAfter: wallet.balanceUsd,
+        amountCredits: creditedCredits,
+        balanceAfter: wallet.balanceCredits,
         description: paymentOrder.description ?? `Credit top-up: ${paymentOrder.packLabel ?? "custom"}`,
         initiatedBy: `razorpay:${razorpayPaymentId}`,
         originalAmountInr: paymentOrder.amountInr,
-        exchangeRate: rate,
       },
     });
 
@@ -151,18 +142,18 @@ export async function creditWalletForPaymentOrder(
       data: { walletTransactionId: walletTx.id },
     });
 
-    return { creditedUsd: creditUsd, exchangeRate: rate };
+    return { creditedCredits };
   });
 
   if (!result) {
-    return { creditedUsd: creditUsd, exchangeRate: rate, alreadyProcessed: true };
+    return { creditedCredits, alreadyProcessed: true };
   }
   return { ...result, alreadyProcessed: false };
 }
 
 export async function adjustBalance(
   userId: string,
-  amountUsd: number,
+  amountCredits: number,
   description: string,
   adminUserId: string
 ) {
@@ -170,14 +161,14 @@ export async function adjustBalance(
     const wallet = await tx.wallet.findUnique({ where: { userId } });
     if (!wallet) throw new Error("Wallet not found");
 
-    const newBalance = wallet.balanceUsd + amountUsd;
+    const newBalance = wallet.balanceCredits + amountCredits;
     if (newBalance < 0) throw new Error("Adjustment would result in negative balance");
 
     await tx.wallet.update({
       where: { id: wallet.id },
       data: {
-        balanceUsd: newBalance,
-        ...(amountUsd > 0 ? { totalCreditsUsd: { increment: amountUsd } } : {}),
+        balanceCredits: newBalance,
+        ...(amountCredits > 0 ? { totalCredits: { increment: amountCredits } } : {}),
       },
     });
 
@@ -185,14 +176,14 @@ export async function adjustBalance(
       data: {
         walletId: wallet.id,
         type: "ADJUSTMENT" satisfies TransactionType,
-        amountUsd,
+        amountCredits,
         balanceAfter: newBalance,
         description,
         initiatedBy: `admin:${adminUserId}`,
       },
     });
 
-    return { balanceUsd: newBalance };
+    return { balanceCredits: newBalance };
   });
 }
 
@@ -201,18 +192,18 @@ export async function resetWallet(userId: string, adminUserId: string) {
     const wallet = await tx.wallet.findUnique({ where: { userId } });
     if (!wallet) throw new Error("Wallet not found");
 
-    const previousBalance = wallet.balanceUsd;
+    const previousBalance = wallet.balanceCredits;
 
     await tx.wallet.update({
       where: { id: wallet.id },
-      data: { balanceUsd: 0, totalCreditsUsd: 0 },
+      data: { balanceCredits: 0, totalCredits: 0 },
     });
 
     await tx.walletTransaction.create({
       data: {
         walletId: wallet.id,
         type: "RESET" satisfies TransactionType,
-        amountUsd: -previousBalance,
+        amountCredits: -previousBalance,
         balanceAfter: 0,
         description: "Wallet reset by admin",
         initiatedBy: `admin:${adminUserId}`,
