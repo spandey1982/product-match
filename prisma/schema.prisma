@@ -57,11 +57,12 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  products      Product[]
-  modelProfiles ModelProfile[]
-  wallet        Wallet?
-  motionJobs    MotionJob[]
-  clientProfile ClientProfile?
+  products              Product[]
+  modelProfiles         ModelProfile[]
+  wallet                Wallet?
+  motionJobs            MotionJob[]
+  clientProfile         ClientProfile?
+  hmCatalogueImports    HmCatalogueImport[]
 
   @@index([deletedAt])
   @@map("users")
@@ -1502,6 +1503,17 @@ model HmProduct {
   warrantyInfo String?
   availability String  @default("unspecified") // "in_stock" | "order" | "discontinued" | "unspecified"
 
+  // "draft" | "published" — gates visibility on the customer-facing
+  // catalogue (GET /api/home-material/products and its "other products"
+  // recommendation query), NOT stock/availability above. Every pre-existing
+  // row (seed data, the retired admin-add tool, real customer uploads)
+  // defaults to "published" so this is purely additive — nothing that was
+  // visible before this field existed stops being visible. New rows coming
+  // out of the internal catalogue tool (single-entry or PDF bulk import,
+  // 2026-09-16+) default to "draft" at the application layer until an
+  // admin/catalogue-manager explicitly publishes them.
+  reviewStatus String @default("published")
+
   imageUrls       String  @default("[]") // JSON array (lib/serialize.ts)
   // Reference texture asset for product-accurate visualization (pattern/
   // colour source, not a room photo). For a custom upload (see
@@ -1522,17 +1534,19 @@ model HmProduct {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  evidence         HmProductEvidence[]
-  retailerListings HmRetailerProduct[]
-  visualizations   HmVisualization[]
-  recommendations  HmRecommendation[]
-  shortlistedBy    HmShortlistItem[]
-  leads            HmLead[]
-  events           HmProductEvent[]
+  evidence            HmProductEvidence[]
+  retailerListings    HmRetailerProduct[]
+  visualizations      HmVisualization[]
+  recommendations     HmRecommendation[]
+  shortlistedBy       HmShortlistItem[]
+  leads               HmLead[]
+  events              HmProductEvent[]
+  fromImportPages     HmCatalogueImportPage[]
 
   @@index([materialId])
   @@index([uploadedByHmUserId])
   @@index([familyId])
+  @@index([reviewStatus])
   @@map("hm_products")
 }
 
@@ -1547,6 +1561,96 @@ model HmProductFamily {
   products HmProduct[]
 
   @@map("hm_product_families")
+}
+
+// One row per PDF catalogue uploaded through the internal bulk-import tool
+// (2026-09-16+, see docs/home-material/architecture/system.md). Extraction
+// is structured-only — pulled from the PDF's own text/image objects
+// (lib/home-material/pdf-import.ts), never OCR or AI vision — so this is
+// deterministic and free to run. Processed ONE PAGE AT A TIME (not the
+// whole file synchronously) so the admin sees live progress and can stop
+// early — pageCount/pagesProcessed below track that. The uploaded PDF
+// itself is NOT persisted (tried storing it in Cloudinary for cross-
+// request resumability, but real supplier PDFs routinely exceed this
+// account's 10MB raw-upload cap — Cloudinary's chunked upload_large only
+// chunks the transport, not the account's max-asset-size limit). Kept
+// entirely in an in-memory session instead
+// (lib/home-material/pdf-import-sessions.ts) for the lifetime of one
+// processing run; if the server restarts mid-import the admin re-uploads
+// — the pages already extracted before that stay valid.
+model HmCatalogueImport {
+  id         String  @id @default(cuid())
+  collection String // set once for the whole batch — a catalogue PDF is typically one collection
+  brand      String?
+
+  sourceFileName String // audit label only — the PDF bytes are not stored
+
+  uploadedByUserId String
+  uploadedByUser   User   @relation(fields: [uploadedByUserId], references: [id])
+
+  // "processing" | "needs_review" | "cancelled" | "completed" | "failed".
+  // "cancelled" means the admin stopped it early via POST .../cancel —
+  // whatever pages were already extracted stay real, reviewable
+  // candidates, same as "needs_review". "completed" means every page has
+  // left "pending" review (approved or rejected), not that every page
+  // became a product.
+  status       String  @default("processing")
+  errorMessage String?
+
+  // Total pages in the PDF (set once the file is opened) vs. how many have
+  // actually been run through extractPage so far — the live progress bar.
+  pageCount      Int @default(0)
+  pagesProcessed Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  pages HmCatalogueImportPage[]
+
+  @@index([status])
+  @@map("hm_catalogue_imports")
+}
+
+// One row per PDF page examined during a bulk import — the review-queue
+// unit. Nothing here becomes a real HmProduct until an admin/catalogue
+// manager explicitly approves it (reviewStatus "approved"); rejecting or
+// leaving a page pending never creates one. Mirrors HmProductEvidence's
+// "don't retrofit provenance later" discipline — every resulting product
+// also gets an HmProductEvidence row pointing back to this import.
+model HmCatalogueImportPage {
+  id       String            @id @default(cuid())
+  importId String
+  import   HmCatalogueImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+
+  pageNumber Int
+
+  // "product" | "info" | "noise" | "ambiguous" — a heuristic guess from
+  // lib/home-material/pdf-import.ts, always overridable by the reviewing
+  // admin. "ambiguous" means the page had an image but the extractor
+  // couldn't confidently isolate one candidate (e.g. multiple images, or an
+  // image plus a long text block) — never guessed, always surfaced for a
+  // human to resolve instead of silently dropped or silently imported.
+  pageType String
+
+  extractedImageUrl String? // Cloudinary upload of the embedded product photo, when one was found
+
+  // Candidate field guesses — a flat JSON OBJECT (name/sku/colorName/
+  // patternName/...), not an array, so lib/serialize.ts's array helpers
+  // don't apply here; parsed with plain JSON.parse. Always editable in the
+  // review UI, never written to HmProduct until approved.
+  extractedFields String @default("{}")
+
+  // "pending" | "approved" | "rejected"
+  reviewStatus String    @default("pending")
+  reviewedAt   DateTime?
+
+  resultingProductId String?
+  resultingProduct   HmProduct? @relation(fields: [resultingProductId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([importId, reviewStatus])
+  @@map("hm_catalogue_import_pages")
 }
 
 // Per-field provenance — first-class from day one, not retrofitted later

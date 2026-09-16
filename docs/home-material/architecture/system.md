@@ -42,16 +42,167 @@ each call site from `getOrCreateHmUserSession()` back to
 
 **Revert** by restoring `uploadedByHmUserId: session.id` in that route once a real retailer/admin-onboarding flow exists — the route's own doc comment says exactly what to change back. This is a different, additive mechanism from the internal test-catalogue tool below — that one stays as the discreet, always-public developer tool; this one is the ordinary, customer-facing upload path, temporarily made public too.
 
-## Internal test-catalogue tool (2026-09-12)
+## Internal catalogue tool (2026-09-12, superseded 2026-09-16)
 
 No retailer onboarding flow exists yet (see `../product/overview.md`'s
-"Not in V1" list), so `POST /api/home-material/products/admin-add` +
-`components/home-material/AddTestProductButton.tsx` (mounted once in
-`app/materials/layout.tsx`) let a developer add a real, PUBLIC demo
-product to the catalogue directly from the running app, without editing
-`scripts/seed-home-material.ts`. Deliberately discreet (a small, muted,
-off-brand floating button, bottom-right) — never linked from any
-customer-facing navigation, not a retailer-facing flow.
+"Not in V1" list) — the account owner curates the catalogue directly.
+The original discreet `POST /api/home-material/products/admin-add` +
+`components/home-material/AddTestProductButton.tsx` (a muted floating
+button on `/materials`, added 2026-09-12) was **deleted 2026-09-16** and
+replaced by a real internal admin section:
+
+- **`/admin/home-material/products`** — list/add/edit/delete `HmProduct`
+  rows covering the full field set (not just the handful the old test
+  button had), gated by `canManageHmCatalogue` (`lib/auth.ts`).
+- **`/admin/home-material/import`** — PDF bulk catalogue import. One PDF
+  is expected to be one collection (matches how these arrive from
+  suppliers). Extraction is structured, not OCR/AI vision:
+  `lib/home-material/pdf-import.ts` reads the PDF's own text and embedded
+  image objects via `pdfjs-dist` — in a typical catalogue PDF the brand
+  logo/SKU/collection caption is a separate text layer drawn over the
+  photo, not baked into its pixels, so this yields a clean product image
+  and reliable caption text for free, deterministically, at zero AI cost.
+  Each page is heuristically classified product/info/noise/ambiguous
+  (never guessed when unsure — "ambiguous" is a first-class outcome) and
+  staged as an `HmCatalogueImportPage` row; nothing becomes a real
+  `HmProduct` until a human reviews and approves it at
+  `/admin/home-material/import/[id]`.
+- **`/admin/home-material/staff`** — ADMIN-only page to grant/revoke the
+  new `HM_CATALOGUE_MANAGER` role (a `User.role` value alongside the
+  existing `ADMIN`/`RETAILER`), so catalogue upkeep can be handed to
+  someone else without giving them full admin access (wallets, pricing,
+  orders, etc. stay ADMIN-only). A catalogue manager can never reach this
+  page themselves — `canManageHmCatalogue` gates the other two pages,
+  plain `isAdmin` gates this one.
+
+Both single-entry and PDF-approved products always start as
+`HmProduct.reviewStatus: "draft"` (invisible on `/materials`) until
+explicitly published — a schema field added the same day, default
+`"published"` so every pre-existing row keeps its current visibility
+unchanged.
+
+## PDF worker path under Turbopack (found + fixed 2026-09-16)
+
+`pdfjs-dist`'s Node fallback ("fake worker", since there's no real
+`Worker` thread server-side) dynamically `import()`s its own worker
+bundle relative to itself. Under Next's Turbopack (dev and build),
+`pdf.mjs` gets relocated into a chunk directory that relative lookup
+can't resolve (`Cannot find module '.../pdf.worker.mjs'`) — reproduced
+live, not just a theoretical concern. `require.resolve()`/
+`createRequire()` don't work around it either: Turbopack rewrites even
+those calls to a synthetic virtual-module path instead of a real
+filesystem one. The fix in `lib/home-material/pdf-import.ts`: set
+`pdfjsLib.GlobalWorkerOptions.workerSrc` to a plain string path built
+from `process.cwd()` — never analyzed as a module specifier, so
+Turbopack leaves it alone. Verified against a live Turbopack dev server
+end to end (upload → extract → review → approve → real product with a
+correctly-uploaded Cloudinary image). Worth remembering if any other
+future feature reaches for `pdfjs-dist` or a similar package with its
+own internal dynamic worker/asset loading.
+
+## PDF extraction rework — real supplier PDF exposed 3 real bugs (2026-09-16, same day as the tool's first ship)
+
+The tool's first version was validated only against a hand-built synthetic
+test PDF (one image per page, plain JPEG). The very first real supplier
+file tried against it — a genuine wallpaper catalogue PDF — surfaced
+problems the synthetic test couldn't: a 29-minute run that finished with
+**zero usable product photos** (10 pages, all landed as "ambiguous", none
+had an image). Root-caused by opening the same file directly against
+`lib/home-material/pdf-import.ts` outside the app (fast to iterate, no
+server needed):
+
+1. **JPEG2000 (JPX) images failed to decode.** Real catalogue PDFs
+   commonly use JPX compression; `pdfjs-dist` needs an OpenJPEG wasm/JS
+   decoder to read it, and without an explicit `wasmUrl` this fails
+   outright in Node (`"Cannot find package
+   'nullopenjpeg_nowasm_fallback.js'"` — a null-concatenation bug upstream
+   when the option isn't set) — every JPX image on the page silently
+   failed. **Fix:** `wasmUrl` set to the real on-disk `pdfjs-dist/wasm/`
+   directory (same `process.cwd()`-based, Turbopack-safe pattern as the
+   worker-path fix above). Verified: 0 decode failures across a real
+   53-image JPX-heavy page, vs. every JPX image failing before.
+2. **"One page = one product" was the wrong shape for a real catalogue.**
+   The same real page had **14 real product photos** on it alongside ~40
+   tiny logo/icon/bullet images (also JPX-encoded, which is why bug 1
+   masked this one too). The original "exactly one image on the page"
+   classifier would have misclassified this page as "ambiguous" even with
+   JPX fixed. **Fix:** classification granularity moved from "one page,
+   one candidate" to "one candidate per qualifying image" — every
+   embedded image at least `MIN_PRODUCT_IMAGE_DIM` (150px) on a side
+   becomes its own product candidate, all tagged with their source page;
+   smaller images are silently treated as decorative, not lost data. A
+   page can now yield zero (info/noise), one, or dozens of candidates.
+   `guessName`/`guessSku` still run once per page (from the page's full
+   text) and the same guess seeds every candidate from that page — a
+   starting hint only, not a precision claim, since a busy multi-product
+   page can't be reliably auto-captioned per-image without real layout/
+   position matching (not built — see "Not built" below).
+3. **Resolving many images in parallel made real, decodable images time
+   out.** First fix attempt resolved every image on a page concurrently
+   (`Promise.all`) to avoid the old sequential-timeout pile-up. This
+   actually made things worse: `pdfjs-dist`'s Node "fake worker" isn't
+   real parallelism (same single-threaded decode queue either way), so
+   firing 50+ requests at once made genuinely-decodable images spuriously
+   time out waiting their turn behind everything else queued at the same
+   moment — confirmed on the same real page (parallel: ~45 false
+   "ambiguous" results; sequential: the correct handful, 0 false
+   failures). **Fix:** reverted to resolving one image at a time with a
+   generous 8s-per-image timeout — correct AND fast in the common case
+   (each image decodes in well under a second once JPX/wasmUrl is fixed),
+   and a slow/failing page only costs that page's own processing time,
+   not the whole import, because of the next change:
+
+**Processing moved from one blocking call to page-by-page with live
+progress + abort** (direct user feedback: a real file made the whole
+"Upload & Extract" button sit with zero feedback for many minutes, with
+no way to tell if it was working or stuck, and no way to stop it). `POST
+/api/admin/home-material/catalogue-imports` now only opens the PDF (fast —
+parses structure, decodes nothing) and returns immediately with the page
+count; the client (`ImportView.tsx`) then calls `POST .../[id]/
+process-next` in a loop, one PDF page per call, showing "page X of Y" and
+a progress bar between each. `POST .../[id]/cancel` stops the loop (with
+a confirmation dialog on real page counts already scanned) — everything
+extracted before the stop stays as real, reviewable
+`HmCatalogueImportPage` rows; `HmCatalogueImport.status` gains a
+`"cancelled"` value alongside processing/needs_review/completed/failed.
+
+**Tried and reverted: persisting the raw PDF for cross-request resume.**
+The chunked design first stored the uploaded PDF in Cloudinary
+(`sourceFileUrl`) so a `process-next` call could re-open extraction from
+scratch if the in-memory session was evicted or the server restarted.
+This failed immediately on the very same real test file: Cloudinary's
+account plan caps raw uploads at 10MB, and the file is 19.4MB —
+`uploader.upload_large`'s chunking only chunks the HTTP transport, not
+the account's asset-size limit, so it hit the identical cap. Reverted:
+the raw PDF is never persisted; `lib/home-material/pdf-import-sessions.ts`
+holds the open session in memory only for the lifetime of one processing
+run. If the server restarts mid-import, `process-next` fails with a clear
+"re-upload" message (410) instead of silently reprocessing — pages
+already extracted stay valid. Acceptable for a single-sitting internal
+tool; revisit only if imports start regularly spanning a server restart.
+
+**Products can no longer publish without a photo** (direct user question:
+"do you think it's advisable to release the product without a product
+image?" — no). `lib/home-material/product-form.ts`'s
+`requiresImageBeforePublish` blocks `reviewStatus: "published"` at both
+product routes (POST create, PATCH edit) unless a real image exists or is
+being uploaded in the same request. A draft with no photo is still
+allowed — a legitimate "still need this photo" placeholder — and is
+visually flagged in the product list (`ImageOff` icon + "No photo" label)
+so it isn't forgotten. Bulk-import approval already forced `"draft"`
+regardless of form input, so this mainly matters for the single-entry
+form and for actually publishing an approved draft later.
+
+**Not built** (real gaps, not attempted this pass): per-image caption/
+position matching for a multi-product page (would need tracking each
+image's page-space bounding box through the operator list's transform/
+save/restore stack and pairing it with nearby text runs by proximity —
+real, achievable, but risky to get subtly wrong without a way to visually
+verify the geometry, so deferred rather than shipped unvalidated); a
+review-queue bulk action ("approve all", "reject all remaining on this
+page") — with a real PDF now capable of producing 100+ candidates in one
+import, an admin working through them one at a time is a real, known
+friction point, just not what this pass's feedback was about.
 
 ## Known environment issue — Gemini prepaid credits depleted (found 2026-09-12, unresolved)
 

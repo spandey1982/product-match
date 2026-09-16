@@ -16,7 +16,11 @@ not removed — schema-compatible, zero migration needed to resume; see
 `product/roadmap.md`'s "Material & surface expansion register"). The
 wallpaper product schema v1 (description/materialComposition/colorFamily/
 patternCategory/visualStyle/installationMethod/sampleAvailable,
-`HmProductFamily`, `HmProductEvent`) shipped the same day. Sub-problems
+`HmProductFamily`, `HmProductEvent`) shipped the same day, and the same
+day the **internal wallpaper catalogue tool** shipped too (single-entry
+add/edit/delete, PDF bulk import with a structured-extraction + human
+review pipeline, a new below-admin `HM_CATALOGUE_MANAGER` role) — see
+`architecture/system.md`'s "Internal catalogue tool" section. Sub-problems
 B/E/G/A/C/F shipped, D permanently deferred. Mode A landing/browse
 shipped 2026-09-10; rebuilt to match `/shop`'s browse UX ("browse-parity")
 2026-09-14/15.
@@ -92,10 +96,13 @@ Understand → Explore → Visualize → Compare → Validate → Decide → Sou
   Validation vocabulary → Sage Studio visual system → layout
   restructuring → Guide/Shortlist layout options → browse-parity rebuild)
   is shipped — see `ui/decisions.md`.
-- **Active next task: building the wallpaper catalogue** on the new V1
-  wallpaper product schema (`product/roadmap.md`'s "Wallpaper product
-  schema v1" section) — real seeded/curated wallpaper `HmProduct` rows
-  using the new fields, superseding today's single demo wallpaper row.
+- **The internal wallpaper catalogue tool is shipped** (2026-09-16) — see
+  `architecture/system.md`'s "Internal catalogue tool" section. Real
+  curated `HmProduct` rows (single-entry or PDF bulk import) now go
+  through it instead of editing `scripts/seed-home-material.ts` or using
+  the old discreet test button (deleted). Next: actually use it to build
+  out a real catalogue beyond the demo seed rows, and revisit the
+  intent-first entry evolution below.
 - The intent-first entry evolution (reviewed/approved 2026-09-11) remains
   the next strategic phase after the catalogue work — see
   `product/roadmap.md` for what's locked/proposed/deferred and

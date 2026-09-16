@@ -1031,3 +1031,39 @@ full account of each. Summary, in order:
   schema v1" and "Material & surface expansion register" sections
   (including its "Code/UI gap" subsection); `product/overview.md`'s V1
   scope note; `ui/decisions.md`'s "Wallpaper-only V1 narrowing" entry.
+- **2026-09-16** — the internal wallpaper catalogue tool shipped (the
+  "active next task" the previous entry pointed at): single-product
+  add/edit/delete at `/admin/home-material/products`, PDF bulk import
+  at `/admin/home-material/import` (structured pdfjs-dist extraction —
+  reads the PDF's own text/image objects, never OCR/AI vision — with a
+  mandatory human review queue before anything is created), and a new
+  below-admin `HM_CATALOGUE_MANAGER` role (`/admin/home-material/staff`,
+  ADMIN-only to grant/revoke) so catalogue upkeep doesn't require full
+  admin access. `HmProduct` gained `reviewStatus` ("draft" | "published",
+  default "published" for backward compatibility) gating the
+  customer-facing `/materials` feed and recommendation "other products"
+  query; new `HmCatalogueImport`/`HmCatalogueImportPage` staging tables.
+  The old discreet `AddTestProductButton`/`admin-add` tool this replaces
+  was deleted. New dependency: `pdfjs-dist` (approved). Full detail:
+  `architecture/system.md`'s "Internal catalogue tool" and "PDF worker
+  path under Turbopack" sections; `domain/data-model.md`'s updated
+  entity list.
+- **2026-09-16, later the same day** — the very first real supplier PDF
+  tried against the tool above (a genuine wallpaper catalogue, not the
+  synthetic test file) surfaced three real bugs at once: JPEG2000 images
+  failing to decode (`wasmUrl` fix), a real catalogue page holding a
+  dozen-plus product photos rather than the assumed one (extraction
+  redesigned to one candidate per qualifying image, not per page), and a
+  29-minute single blocking request with zero feedback that finished with
+  every candidate landing as unusable "ambiguous" — nothing crashed, it
+  just silently produced nothing. Reworked to page-by-page processing
+  with live progress and a Stop-importing control (confirmation +
+  partial results kept), and products can no longer be published without
+  a photo (draft-with-no-photo is still allowed, flagged in the list).
+  Live-verified end to end against the real file: correct decode (0
+  failures on a 53-image JPX-heavy page), real product photos extracted
+  correctly (verified by eye — a rose-pattern swatch close-up and a full
+  room lifestyle shot both came through clean), full cancel-mid-import
+  flow (partial pages kept, resume correctly refused), and the publish-
+  without-photo block (both the negative and positive case). Full detail:
+  `architecture/system.md`'s "PDF extraction rework" section.

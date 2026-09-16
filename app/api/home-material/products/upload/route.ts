@@ -32,9 +32,10 @@ function parsePositiveFloat(raw: FormDataEntryValue | null): number | null {
  * silently change a privacy boundary without telling the user).
  *
  * REVERT by restoring `uploadedByHmUserId: session.id` below once a real
- * retailer/admin-onboarding flow exists — see
- * components/home-material/AddTestProductButton.tsx for the discreet,
- * always-public internal tool this doesn't replace.
+ * retailer/admin-onboarding flow exists — see /admin/home-material/products
+ * (app/(dashboard)/admin/home-material/products/) for the real internal
+ * catalogue tool this doesn't replace (that one's always public too, but
+ * is a deliberate curated-catalogue entry, not a customer trial upload).
  */
 export async function POST(req: NextRequest) {
   const session = await getOrCreateHmUserSession();

@@ -11,7 +11,12 @@ export async function GET() {
   const session = await getOrCreateHmUserSession();
 
   const products = await db.hmProduct.findMany({
-    where: { OR: [{ uploadedByHmUserId: null }, { uploadedByHmUserId: session.id }] },
+    where: {
+      OR: [
+        { uploadedByHmUserId: null, reviewStatus: "published" },
+        { uploadedByHmUserId: session.id },
+      ],
+    },
     orderBy: { createdAt: "asc" },
     select: {
       id: true,

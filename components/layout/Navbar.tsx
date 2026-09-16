@@ -29,11 +29,14 @@ import {
   CreditBalanceDropdown,
 } from "@/components/billing/CreditBalance";
 import { AdminMenu } from "@/components/layout/AdminMenu";
+import { HmCatalogueMenu } from "@/components/layout/HmCatalogueMenu";
 import { ALL_MODULES, resolveLandingPath, type ModuleKey } from "@/lib/client-modules";
 
 interface NavbarProps {
   user: { name: string; email: string; storeName?: string | null; businessType?: string };
   isAdmin?: boolean;
+  /** True for a full admin OR the narrower HM_CATALOGUE_MANAGER role. */
+  canManageHmCatalogue?: boolean;
   /** Modules this account can see — every module for a default (unrestricted) account. */
   enabledModules?: ModuleKey[];
   /** Module promoted to a top-level nav slot when it isn't one of the base four already. */
@@ -76,6 +79,7 @@ function NavBadge({ count }: { count: number }) {
 export function Navbar({
   user,
   isAdmin,
+  canManageHmCatalogue,
   enabledModules,
   primaryModule,
   brandName,
@@ -204,6 +208,7 @@ export function Navbar({
           )}
 
           {isAdmin && <AdminMenu />}
+          {!isAdmin && canManageHmCatalogue && <HmCatalogueMenu />}
 
           {/* User menu */}
           <div className="relative" ref={menuRef}>

@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getSession, isAdmin } from "@/lib/auth";
+import { getSession, isAdmin, canManageHmCatalogue } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Navbar } from "@/components/layout/Navbar";
 import { TrialRoomProvider } from "@/components/trial-room/TrialRoomProvider";
@@ -54,6 +54,7 @@ export default async function DashboardLayout({
                 businessType: session.businessType,
               }}
               isAdmin={isAdmin(session)}
+              canManageHmCatalogue={canManageHmCatalogue(session)}
               enabledModules={enabledModules}
               primaryModule={primaryModule}
               brandName={theme.brandName}

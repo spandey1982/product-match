@@ -155,6 +155,25 @@ needed here (unlike the embeddings/tagging 150-200 SKU trigger below) —
 the event log itself costs nothing to have running quietly with low
 volume.
 
+## Internal wallpaper catalogue tool — shipped 2026-09-16
+
+The item this section used to point at as "active next task" — see
+`architecture/system.md`'s "Internal catalogue tool" section for the full
+shape (single-entry add/edit/delete, PDF bulk import with a mandatory
+review queue, the new below-admin `HM_CATALOGUE_MANAGER` role) and "PDF
+worker path under Turbopack" for a real bundler gotcha hit and fixed
+along the way. `domain/data-model.md` has the schema-level summary
+(`HmProduct.reviewStatus`, `HmCatalogueImport`/`HmCatalogueImportPage`).
+
+**Not built (deliberately deferred, no real need yet):** background-job
+processing for very large PDFs (current synchronous-within-the-request
+extraction is fine for an internal staff tool's occasional per-collection
+batches); OCR/AI-vision fallback for a PDF whose product captions are
+flattened into the image rather than real text objects (no real catalogue
+PDF has hit this yet — revisit if one does); a self-service way for a
+catalogue manager to request their own access (grants are ADMIN-only by
+design, see the role's own doc comment in `lib/auth.ts`).
+
 ## The V2 direction — intent-first entry (proposed 2026-09-11, reviewed and approved 2026-09-11)
 
 On 2026-09-11 a large strategic proposal was brought for review: evolve
