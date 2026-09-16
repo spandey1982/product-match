@@ -7,32 +7,36 @@ datasource db {
 }
 
 model User {
-  id           String  @id @default(cuid())
-  email        String  @unique
-  name         String
-  password     String
-  role         String  @default("RETAILER")
-  storeName    String?
+  id                     String    @id @default(cuid())
+  email                  String    @unique
+  name                   String
+  password               String
+  role                   String    @default("RETAILER")
+  storeName              String?
   /**
    * Shown to shoppers on the public rental listing (contact card + map link).
    */
-  storePhone   String?
-  /** Retailer's own verified phone — distinct from storePhone (public/unverified storefront contact). Used for security actions (e.g. password change via OTP). Null until verified once via lib/retailer-otp.ts. */
-  phone           String?   @unique
-  phoneVerifiedAt DateTime?
-  /** SHA-256 hex hash of the current forgot-password token — never the raw token (lib/password-reset.ts). Null when no reset is pending. */
+  storePhone             String?
+  /**
+   * Retailer's own verified phone — distinct from storePhone (public/unverified storefront contact). Used for security actions (e.g. password change via OTP). Null until verified once via lib/retailer-otp.ts.
+   */
+  phone                  String?   @unique
+  phoneVerifiedAt        DateTime?
+  /**
+   * SHA-256 hex hash of the current forgot-password token — never the raw token (lib/password-reset.ts). Null when no reset is pending.
+   */
   passwordResetTokenHash String?   @unique
   passwordResetExpiresAt DateTime?
-  storeAddress String?
+  storeAddress           String?
   /**
    * Fixed-list city (lib/geo/city-coordinates.ts) used for /shop's location-radius filter — city-grained, not a geocoded address.
    */
-  storeCity    String?
+  storeCity              String?
   // Business classification picked at signup — purely descriptive, distinct
   // from `role` (which gates ADMIN vs RETAILER access). "RETAILER" |
   // "MANUFACTURER" | "RENTAL_STORE", plain string per this schema's
   // stage-field convention, not a Prisma enum.
-  businessType String  @default("RETAILER")
+  businessType           String    @default("RETAILER")
 
   tryOnProvider String  @default("gemini")
   aiGenSettings String?
@@ -77,19 +81,31 @@ model ClientProfile {
   userId String @unique
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  /** JSON array of module keys (lib/client-modules.ts ModuleKey), via serializeArray. */
+  /**
+   * JSON array of module keys (lib/client-modules.ts ModuleKey), via serializeArray.
+   */
   enabledModules String
-  /** Module key promoted to the primary/hero nav slot, e.g. "design-studio". */
+  /**
+   * Module key promoted to the primary/hero nav slot, e.g. "design-studio".
+   */
   primaryModule  String
 
-  /** "catalog" (browse products, tap to try on) | "quick-capture" (camera-first, no catalog). Only meaningful when "trial-room" is enabled. */
+  /**
+   * "catalog" (browse products, tap to try on) | "quick-capture" (camera-first, no catalog). Only meaningful when "trial-room" is enabled.
+   */
   trialRoomLayout String @default("catalog")
 
-  /** Overrides the "Mentis" wordmark in the shell when set. */
+  /**
+   * Overrides the "Mentis" wordmark in the shell when set.
+   */
   brandName   String?
-  /** Mentis-curated, closed set — see lib/branding/presets.ts. Never freeform CSS. */
+  /**
+   * Mentis-curated, closed set — see lib/branding/presets.ts. Never freeform CSS.
+   */
   themePreset String  @default("default")
-  /** Optional single hex; only overrides the preset's primary-hue slot, never its structure. */
+  /**
+   * Optional single hex; only overrides the preset's primary-hue slot, never its structure.
+   */
   accentColor String?
 
   createdAt DateTime @default(now())
@@ -710,13 +726,13 @@ model SeoHealthSnapshot {
 // pattern; one-off additions can also be inserted directly (Prisma Studio
 // or a small script) without re-running the whole seed.
 model TaskItem {
-  id           String   @id @default(cuid())
+  id           String  @id @default(cuid())
   title        String
   description  String
   category     String
   dependencies String?
   sourceRef    String?
-  status       String   @default("open") // "open" | "done" | "dismissed"
+  status       String  @default("open") // "open" | "done" | "dismissed"
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -940,9 +956,13 @@ model Wallet {
   userId String @unique
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  /** Retailer wallet balance in credits — 1 decimal place, 1 credit = ₹10 flat (no live exchange rate). See lib/billing/exchange.ts. */
+  /**
+   * Retailer wallet balance in credits — 1 decimal place, 1 credit = ₹10 flat (no live exchange rate). See lib/billing/exchange.ts.
+   */
   balanceCredits Float @default(0)
-  /** Lifetime credits ever added (used for remainingPercentage). */
+  /**
+   * Lifetime credits ever added (used for remainingPercentage).
+   */
   totalCredits   Float @default(0)
 
   status String @default("active")
@@ -960,9 +980,9 @@ model WalletTransaction {
   walletId String
   wallet   Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
 
-  type         String
+  type          String
   amountCredits Float
-  balanceAfter Float
+  balanceAfter  Float
 
   description String
 
@@ -972,7 +992,9 @@ model WalletTransaction {
 
   initiatedBy String
 
-  /** ₹ amount that produced this credit, when initiated by a top-up. Provenance only — the flat ₹10/credit rate makes it derivable, kept for the receipt trail. */
+  /**
+   * ₹ amount that produced this credit, when initiated by a top-up. Provenance only — the flat ₹10/credit rate makes it derivable, kept for the receipt trail.
+   */
   originalAmountInr Float?
 
   createdAt DateTime @default(now())
@@ -994,8 +1016,8 @@ model PaymentOrder {
   razorpayPaymentId String?
   razorpaySignature String?
 
-  amountInr      Int
-  amountCredits  Float?
+  amountInr     Int
+  amountCredits Float?
 
   currency String @default("INR")
 
@@ -1225,6 +1247,7 @@ model HmUser {
   shortlist      HmShortlistItem[]
   leads          HmLead[]
   customSwatches HmProduct[]
+  events         HmProductEvent[]
 
   @@map("hm_users")
 }
@@ -1386,14 +1409,61 @@ model HmProduct {
   materialId String?
   material   HmMaterial? @relation(fields: [materialId], references: [id])
 
+  // Groups colourway siblings of the same design (e.g. "Meadow Bloom" in
+  // Cream/Sage/Blue) for display ("also available in 3 colours") — never
+  // merges purchasing identity. Each colourway stays its own fully
+  // independent purchasable HmProduct (own SKU/price/image). Set only by
+  // MANUAL admin/seed grouping — never AI-inferred (a wrong "these are the
+  // same design" grouping is a real, confusing customer-facing error).
+  familyId String?
+  family   HmProductFamily? @relation(fields: [familyId], references: [id])
+
   sku        String?
   brand      String?
   collection String?
   name       String
 
+  // Customer-friendly explanation. Generated only from already-verified
+  // fields on this product (name/brand/materialComposition/colorName/
+  // finish/patternCategory) — never invents a spec not present elsewhere
+  // on the record. Optional human review before publish.
+  description String?
+
   colorName String?
   colorHex  String?
   finish    String?
+
+  // What it's physically made of — "Non-woven", "Vinyl/PVC", "Fabric-backed".
+  // Source-authoritative only (AI may extract from a real manufacturer/
+  // retailer document, never infer from a photo's appearance) — see
+  // HmProductEvidence for the provenance trail backing this value.
+  materialComposition String?
+
+  // Controlled bucket (warm_neutral | cool | pastel | earth | jewel |
+  // monochrome) — SYSTEM_CALCULATE, deterministically derived from colorHex
+  // (HSL bucketing) whenever colorHex is set/changes. Deliberately not
+  // AI-classified: this is pure colour math, cheaper and more reliable
+  // than a model call for zero accuracy gain.
+  colorFamily String?
+
+  // Platform-derived visual classification (CV over textureAssetUrl), not a
+  // manufacturer claim. patternCategory: floral | geometric | stripe |
+  // abstract | solid | textured | mural | other. visualStyle: a single
+  // dominant tag (modern, traditional, botanical, minimal, ...). Both
+  // logged with confidence via HmProductEvidence when AI-populated.
+  patternCategory String?
+  visualStyle     String?
+
+  // "peel_and_stick" | "paste_the_wall" | "paste_the_paper" | "professional"
+  // — a genuine per-SKU fact (not just category boilerplate), since
+  // peel-and-stick vs. pasted changes DIY-ability. Source-authoritative
+  // only, never inferred from appearance.
+  installationMethod String?
+
+  // Whether a retailer can actually ship a physical sample for this SKU.
+  // Nullable tri-state — null means unknown/unconfirmed, never defaulted
+  // to true or false. MANUAL / retailer-confirmed only.
+  sampleAvailable Boolean?
 
   patternName     String?
   patternRepeatCm Float?
@@ -1458,10 +1528,25 @@ model HmProduct {
   recommendations  HmRecommendation[]
   shortlistedBy    HmShortlistItem[]
   leads            HmLead[]
+  events           HmProductEvent[]
 
   @@index([materialId])
   @@index([uploadedByHmUserId])
+  @@index([familyId])
   @@map("hm_products")
+}
+
+// One row per shared design — an optional parent grouping colourway
+// variants of the same wallpaper for display only (see HmProduct.familyId).
+model HmProductFamily {
+  id   String @id @default(cuid())
+  name String // shared design name, e.g. "Meadow Bloom"
+
+  createdAt DateTime @default(now())
+
+  products HmProduct[]
+
+  @@map("hm_product_families")
 }
 
 // Per-field provenance — first-class from day one, not retrofitted later
@@ -1480,10 +1565,64 @@ model HmProductEvidence {
   sourceDetail String? // free text — retailer name, URL, etc.
   confidence   Float?
 
+  // How trustworthy the SOURCE ITSELF is — "authoritative" | "retailer_stated"
+  // | "estimated" | "unverified" — deliberately separate from `confidence`
+  // above, which stays AI-extraction-confidence only. A manufacturer PDF
+  // isn't "97% confident," it's authoritative; a plausible AI guess isn't
+  // authoritative however confident the model sounds.
+  sourceAuthority String?
+
   createdAt DateTime @default(now())
 
   @@index([productId, field])
   @@map("hm_product_evidence")
+}
+
+// Append-only interaction ledger — same "durable log, don't just mutate a
+// counter" convention as AiUsageEvent elsewhere in this schema. One row per
+// real customer interaction (impression/hover/click/detail view/visualize/
+// compare/shortlist/sample_request/quote_request/purchase). This is the
+// SINGLE source of truth for two intentionally separate downstream uses —
+// never conflate them:
+//   1. Analytics & badges (what this table was added for, 2026-09-16) —
+//      "bestseller"/"trending" are computed on demand from real aggregated
+//      counts over a time window, never stored as a static field on
+//      HmProduct (would go stale) and never an AI opinion.
+//   2. Session-scoped behavioural personalization (proposed, not yet
+//      built — see docs/home-material/product/roadmap.md) — narrowing
+//      recommendations within one session. Governance: a single event
+//      never updates a persisted preference; only a converging pattern
+//      does, always reversible, always framed as "based on what you've
+//      explored."
+// GOVERNANCE (both uses): this data must never silently affect search/
+// recommendation ranking or hide non-badge products — badges surface as
+// clearly-labelled additional info only. Any future sponsored placement
+// must stay structurally separate and always labelled — it never earns
+// its way into this table's organic counts.
+model HmProductEvent {
+  id String @id @default(cuid())
+
+  productId String
+  product   HmProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  // impression | hover | click | detail_view | visualize | compare |
+  // shortlist | sample_request | quote_request | purchase
+  eventType String
+
+  // Null for an anonymous visitor (this domain's browse/landing pages are
+  // intentionally unauthenticated — OTP only gates room upload). sessionId
+  // identifies an anonymous browsing session when hmUserId is null; at
+  // least one of the two should be present in practice, not enforced at
+  // the schema level.
+  hmUserId  String?
+  hmUser    HmUser? @relation(fields: [hmUserId], references: [id], onDelete: SetNull)
+  sessionId String?
+
+  createdAt DateTime @default(now())
+
+  @@index([productId, eventType, createdAt])
+  @@index([sessionId])
+  @@map("hm_product_events")
 }
 
 // Admin-seeded for V1 — no self-serve retailer onboarding yet (locked
