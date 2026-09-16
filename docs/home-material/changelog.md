@@ -980,3 +980,54 @@ requirement scenarios (a wet-area/budget/durability case correctly
 re-ranked `wall_texture+wall_panel` above `paint+wallpaper`, versus the
 "any" case's default ordering), and confirmed a 1-wall room correctly
 returns `null` (no scheme) while a 3-wall room returns a real one.
+
+## 2026-09-11 through 2026-09-16 — intent-first entry, Room Trial, browse-parity rebuild, wallpaper schema v1, scope narrowing
+
+This range isn't reproduced blow-by-blow here to avoid duplicating detail
+that already lives in its natural home — see the pointers below for the
+full account of each. Summary, in order:
+
+- **2026-09-11** — intent-first entry strategic review (approved) and
+  Tier-0 keyword-matched intent input shipped on `/materials`. Full
+  detail: `product/roadmap.md`'s "V2 direction — intent-first entry"
+  section; `ui/decisions.md`'s "Intent-first landing entry" entry.
+- **2026-09-12** — server-side visualization cache/dedupe shipped;
+  "Room Trial" user-facing rename shipped; fullscreen zoomable
+  `ImageLightbox` shipped; mobile wall-vertex precision loupe shipped;
+  OTP gate temporarily removed (`getOrCreateHmUserSession`, guest
+  auto-provisioning). Full detail: `product/roadmap.md`'s "Shipped
+  2026-09-12" list; `architecture/system.md`'s "OTP gate temporarily
+  removed" section.
+- **2026-09-13** — the customer-facing "upload your own wallpaper/paint
+  photo" flow made temporarily public (no retailer-onboarding exists
+  yet). Full detail: `architecture/system.md`'s "Temporary shared trial
+  catalogue" section.
+- **2026-09-14/15** — `/materials` browse rebuilt to reuse `/shop`'s
+  actual shared components (`CatalogFilterBar`, matching card/grid
+  language) on new branch `feature/home-material-browse-parity`
+  (`lib/home-material/browse-product.ts`, `MaterialBrowseSection.tsx`,
+  `MaterialProductCard.tsx`); persistent nav bar added; landing hero
+  copy/layout rewritten twice in response to user feedback; a real
+  `<button>`-nested-in-`<button>` HTML-validity bug found and fixed via
+  Next.js's own dev-mode error overlay (previously misattributed to a
+  browser extension); a real auth bug fixed
+  (`getOrCreateHmUserSession()` now verifies the referenced `HmUser` row
+  still exists before trusting a session cookie); GEO/AEO sitemap/
+  canonical/JSON-LD parity gap partly closed for `/materials`. Full
+  detail: `ui/decisions.md`'s entries from "Browse section rebuilt to
+  match /shop" through "Card info block compacted."
+- **2026-09-16** — wallpaper product schema v1 shipped (additive Prisma
+  migration: `HmProduct` gains description/materialComposition/
+  colorFamily/patternCategory/visualStyle/installationMethod/
+  sampleAvailable/familyId; new `HmProductFamily` and `HmProductEvent`
+  tables; `HmProductEvidence` gains `sourceAuthority`), and V1 scope
+  narrowed from "paint + wallpaper + wall texture + wall panels" to
+  **wallpaper only** (sequencing decision, not an architecture change —
+  schema stays category-agnostic, zero migration needed to resume the
+  others). Same day, this narrowing's docs were audited across the whole
+  domain and a real gap was found and recorded (not yet fixed): the demo
+  seed catalogue and the browse UI's category tabs still expose all 4
+  categories. Full detail: `product/roadmap.md`'s "Wallpaper product
+  schema v1" and "Material & surface expansion register" sections
+  (including its "Code/UI gap" subsection); `product/overview.md`'s V1
+  scope note; `ui/decisions.md`'s "Wallpaper-only V1 narrowing" entry.

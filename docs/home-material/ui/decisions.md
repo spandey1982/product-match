@@ -788,3 +788,19 @@ its own grid row) is now visibly shorter than the row above it
 ("Botanical Leaf Wallpaper" still wraps to two lines and still gets
 that height) — confirms the block now follows its own content instead
 of a fixed reservation. `tsc`/`eslint`/full `npm run build` all clean.
+
+## Wallpaper-only V1 narrowing — UI not yet updated to match, 2026-09-16
+
+V1 scope was narrowed to wallpaper-only this day (see
+`product/overview.md` and `product/roadmap.md`'s "Material & surface
+expansion register"), but that was a docs+schema-level decision only —
+no UI or seed-data change was made alongside it. As a result, everything
+built in this file's "Browse section rebuilt to match /shop" entry above
+still renders exactly as shipped 2026-09-14: `MaterialProductCard.tsx`'s
+`CATEGORY_ORDER`/`CATEGORY_LABELS` still list Paint/Wallpaper/Wall
+Texture/Wall Panels, so `MaterialBrowseSection.tsx`'s category tab row
+still offers all 4, and `scripts/seed-home-material.ts` still seeds demo
+products in 3 of the 4. This is recorded here as a known, deliberate gap
+(not a regression) — see `product/roadmap.md`'s "Code/UI gap" note for
+the resolution options to pick from when the wallpaper-catalogue work
+starts.

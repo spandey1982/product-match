@@ -68,6 +68,30 @@ broaden category coverage. Until then, treat any paint/texture/panel/
 non-wall work as out of scope, same as this file already treats
 sub-problem D and the embeddings/taste-graph deferrals below.
 
+### Code/UI gap left by the narrowing — not yet resolved (found 2026-09-16)
+
+The 2026-09-16 scope narrowing was a docs+schema decision; it did **not**
+touch the running demo catalogue or the browse UI, so today's app is
+still wider than the documented scope:
+
+- `scripts/seed-home-material.ts` seeds 4 paint demo products + 1 texture
+  demo product alongside the 1 wallpaper demo product — all 6 still show
+  up in `/materials`.
+- `components/home-material/MaterialProductCard.tsx`'s exported
+  `CATEGORY_ORDER`/`CATEGORY_LABELS` (consumed by
+  `MaterialBrowseSection.tsx`'s category tab row) still hardcode all 4
+  categories, so the browse page's filter tabs still offer Paint/Wall
+  Texture/Wall Panels even though none of them are in scope.
+
+Not a bug — nothing crashes or misbehaves — just an inconsistency between
+"documented scope" and "what a visitor actually sees today." Resolve this
+before or as part of the wallpaper-catalogue build (the active next task,
+see `README.md`'s current-direction section): decide whether to hide the
+other 3 tabs outright, mark them "coming soon," or leave them until real
+paint/texture data exists, and decide whether to keep the 5 non-wallpaper
+seed rows around as demo content or delete them now that the real
+wallpaper schema (below) supersedes the seed script's simple shape.
+
 ## Wallpaper product schema v1 — shipped 2026-09-16
 
 Full proposal published as a Claude Artifact ("Wallpaper Product Schema")

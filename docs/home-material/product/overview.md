@@ -30,7 +30,9 @@ model — architecture should treat AI providers as replaceable.
   panels (and eventually non-wall surfaces) drop in later as data +
   taxonomy entries, not a schema migration. See `product/roadmap.md`'s
   "Material & surface expansion register" for what's deferred and how to
-  pick each one back up.
+  pick each one back up — **including a real, unresolved gap**: the demo
+  seed catalogue and the browse UI's category tabs still expose all 4
+  categories, not just wallpaper (see that section's "Code/UI gap" note).
 - **Geography**: India-first; currency/units/terminology/retailer-discovery
   are config, not hardcoded into core domain logic.
 - **Two customer modes**: "I know what I want" (product-accurate path) vs.
