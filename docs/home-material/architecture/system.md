@@ -204,6 +204,103 @@ page") — with a real PDF now capable of producing 100+ candidates in one
 import, an admin working through them one at a time is a real, known
 friction point, just not what this pass's feedback was about.
 
+## AI classification + enrichment pass (2026-09-17, the "hybrid" follow-up)
+
+After the extraction rework above, the owner reviewed real pages from 4
+different real supplier PDFs (Palm Island, Feather Touch, Wall Craft,
+Signature Walls — sampled by rendering pages with `@napi-rs/canvas`, not
+just reading text) and laid out five recurring image roles a catalogue
+page mixes together: a clean flat tile (the one that matters), a
+lifestyle/room photo, a texture/surface close-up, a multi-product group
+shot (folded rolls, or a small colourway-swatch grid), and outright noise
+(cover art, decorative graphics). Pure size/position heuristics can't
+tell these apart — approved building a Gemini vision pass on top of the
+existing deterministic extraction, never replacing it, same "propose,
+never decide" boundary as `wall-detection.ts`.
+
+**Shipped:**
+- `lib/home-material/pdf-classification.ts` — one Gemini vision call per
+  PDF page (batched across all of that page's candidate images, up to 8
+  per call — NOT one call per image, which would multiply an already-slow
+  import), classifying each into clean_tile/lifestyle/texture_closeup/
+  group_shot/noise plus a finish guess and colour hint when confident.
+  Result stored on `HmCatalogueImportPage.aiClassification`, purely
+  additive to the deterministic `pageType` — a "noise"-classified
+  candidate stays fully visible and reachable in review, never hidden
+  (explicit instruction: never miss a real product). The review queue
+  (`ReviewQueueView.tsx`) shows a role badge, sorts clean_tile candidates
+  to the top, and pre-fills the form's colour/finish fields from the
+  hints.
+- `lib/home-material/collection-info-extraction.ts` +
+  `collection-info-runner.ts` — a second, TEXT-ONLY Gemini call, run once
+  per import (not per page) over every page whose text reads like
+  collection-level reference material (material composition, install
+  method, warranty, eco claims) rather than one specific product —
+  gathers `pageType: "info"` pages AND any page the vision pass called
+  "noise" (a real find: a genuine material/tech page can carry a small
+  diagram that makes the deterministic classifier tag the whole page
+  "product," even though it's not one). Result on `HmCatalogueImport.
+  collectionFields`, surfaced as a panel in the review queue with a
+  per-card "Fill from collection info" button — never auto-applied.
+- A "copy shared fields from last approved" button per card, tracking
+  which `ProductFormValues` fields genuinely tend to be shared across
+  colourway siblings (finish, material composition, pattern
+  category/name, installation method, sheet dimensions, price — never
+  name/SKU/colour, which are exactly what's supposed to differ) —
+  directly the "shiny/matte/glossy applies to all of that kind" workflow
+  described in the request. A code-prefix badge (`101` from `101/2`) is
+  shown as an informational grouping hint alongside it; `HmProductFamily`
+  itself stays MANUAL-only per its existing doc comment, untouched by
+  this.
+- Expanded the product-code regex: sampling the 4 real files found NONE
+  of them use a leading-letter code like the original synthetic test's
+  "WP-1234" — real codes were bare `NNN/N` or `NNN-N` (`101/2`, `203-3`)
+  or labelled "Pattern No.:850/1" rather than "SKU:". The bare-numeric
+  pattern is now tried before the alphanumeric one, not after.
+- Raised `MAX_PDF_SIZE` from 30MB to 150MB — one real sample file (Wall
+  Craft, 71 pages of full-bleed art) is 84MB, already over the original
+  cap. Safe to raise freely now that the raw PDF is never persisted (see
+  above), so this only bounds one in-memory `Buffer`.
+
+**A real, separate bug found and fixed via this live testing (not new
+this session, pre-existing in the chunked-processing work above):**
+`lib/home-material/pdf-import-sessions.ts`'s in-memory session cache used
+a plain top-level `const sessions = new Map()`. It worked the first time,
+then started failing every lookup ("session no longer available") after
+this file and its two importing routes were edited across several rounds
+within the same running `next dev` process — Turbopack's incremental dev
+compilation can hand two route files that both `import` the same module
+two genuinely different instances of it, if they were compiled at
+different points in the session. Fixed with the exact same `globalThis`
+caching pattern `lib/db.ts` already uses for the Prisma client, for the
+same reason. Worth remembering for any future module-level singleton
+introduced in this app: use the `globalThis` pattern from the start,
+don't wait to hit this.
+
+**Cost, for real visibility:** both new calls log to `AiUsageEvent` under
+`hm_catalogue_pdf_classify` / `hm_catalogue_collection_info` (no billing/
+wallet interaction — internal tool, cost-tracking only, same posture as
+`hm_wall_detection`/`hm_overview`). Observed per-page classification cost
+on real pages: roughly $0.0003–$0.0017 (gemini-2.5-flash, batched).
+
+**Live-tested against real files, not just the synthetic one:** page 1 of
+Palm Island (14 real candidates) classified sensibly by eye — texture
+close-ups, clean tiles, a group shot, lifestyle photos, and two "noise"
+graphics all matched what the page actually shows; finish/colour hints
+("embossed", "gold and beige") correctly pre-filled the review form.
+Collection-info extraction verified correct end-to-end on the synthetic
+PDF's real warranty text. **Real, disclosed limitation found on Wall
+Craft's actual "Green Technology" page:** its explanatory paragraph text
+isn't real PDF text at all (`getTextContent()` returns empty for that
+page) — it's flattened into the page's artwork, so no amount of text
+extraction can reach it; would need a page-level vision-transcription
+fallback to capture, not built this pass.
+
+**Not built** (flagged, not attempted): per-image bounding-box/caption
+matching remains deferred (same reason as the extraction rework above);
+page-level vision transcription for info pages whose text is rasterized
+rather than real PDF text objects (the Wall Craft finding just above).
+
 ## Known environment issue — Gemini prepaid credits depleted (found 2026-09-12, unresolved)
 
 While testing the new visualization cache (below), a live generation call

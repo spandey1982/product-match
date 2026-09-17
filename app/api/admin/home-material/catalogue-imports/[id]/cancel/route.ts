@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getSession, canManageHmCatalogue } from "@/lib/auth";
 import { closeSession } from "@/lib/home-material/pdf-import-sessions";
+import { runCollectionInfoExtraction } from "@/lib/home-material/collection-info-runner";
 
 /**
  * Stops an in-progress import early (real user request, 2026-09-16): if
@@ -25,6 +26,11 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     await db.hmCatalogueImport.update({ where: { id }, data: { status: "cancelled" } });
   }
   await closeSession(id);
+
+  // Fire-and-forget: whatever "info" pages were found before stopping are
+  // still worth extracting from, but the admin clicked Stop to get an
+  // immediate response, not to wait on one more AI call.
+  void runCollectionInfoExtraction(id, session!.id);
 
   return NextResponse.json({ ok: true });
 }

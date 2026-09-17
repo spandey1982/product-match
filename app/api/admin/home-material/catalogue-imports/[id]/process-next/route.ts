@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getSession, canManageHmCatalogue } from "@/lib/auth";
 import { closeSession, getActiveSession } from "@/lib/home-material/pdf-import-sessions";
 import { processImportPage } from "@/lib/home-material/process-import-page";
+import { runCollectionInfoExtraction } from "@/lib/home-material/collection-info-runner";
 
 /**
  * Processes exactly ONE page of an in-progress PDF import and reports
@@ -50,7 +51,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
 
   try {
     const nextPage = catalogueImport.pagesProcessed + 1;
-    const { candidateCount } = await processImportPage(id, pdfSession, nextPage, catalogueImport.brand);
+    const { candidateCount } = await processImportPage(id, pdfSession, nextPage, catalogueImport.brand, session!.id);
 
     const pagesProcessed = nextPage;
     const isDone = pagesProcessed >= catalogueImport.pageCount;
@@ -63,7 +64,10 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       },
     });
 
-    if (isDone) await closeSession(id);
+    if (isDone) {
+      await closeSession(id);
+      await runCollectionInfoExtraction(id, session!.id);
+    }
 
     return NextResponse.json({
       done: isDone,

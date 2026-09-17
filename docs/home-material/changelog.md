@@ -1133,3 +1133,28 @@ full account of each. Summary, in order:
   (traced the same trapezoid wall twice, once in-order and once in a
   deliberately scrambled click sequence — both produced the identical,
   correctly-ordered `corners` array in the saved `geometryData`).
+- **2026-09-17** — AI classification + enrichment pass added to the PDF
+  import tool, after the owner sampled real pages from 4 different
+  supplier catalogues and laid out five recurring image roles a page
+  mixes together (clean tile, lifestyle, texture close-up, group shot,
+  noise) that pure size/position heuristics can't tell apart. Shipped: a
+  batched-per-page Gemini vision classification pass
+  (`lib/home-material/pdf-classification.ts`, purely additive — a
+  "noise" verdict never hides a candidate from review), a collection-
+  level text extraction pass for genuine material/tech reference pages
+  (`collection-info-extraction.ts` + `-runner.ts`, surfaced as a "fill
+  from collection info" button, never auto-applied), a "copy shared
+  fields from last approved" review-queue action for colourway siblings,
+  an expanded product-code regex (real files use bare `NNN/N`-style
+  codes, not the synthetic test's letter-prefixed one), and a raised PDF
+  size cap (30MB → 150MB; one real sample file is 84MB). Also found and
+  fixed a real pre-existing bug in the chunked-processing session cache
+  (a plain module-level `Map` doesn't reliably survive Turbopack's
+  incremental dev recompilation across multiple route files — same
+  `globalThis` fix `lib/db.ts` already needed for Prisma). Live-tested
+  against real supplier PDFs end to end, including visually confirming
+  extracted images and AI hints by eye. Full detail, including a real
+  disclosed limitation (a genuine info page whose text is rasterized
+  into the artwork rather than real PDF text, so no text extraction can
+  reach it): `architecture/system.md`'s "AI classification + enrichment
+  pass" section.

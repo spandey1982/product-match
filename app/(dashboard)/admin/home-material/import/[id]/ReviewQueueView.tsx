@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { ChevronDown, ChevronUp, Check, X, Undo2, RotateCcw, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Check, X, Undo2, RotateCcw, Trash2, Sparkles, Copy, FileText } from "lucide-react";
 import {
   ProductFormFields,
   EMPTY_PRODUCT_FORM_VALUES,
@@ -28,6 +28,7 @@ interface ImportPage {
   pageType: string;
   extractedImageUrl: string | null;
   extractedFields: string;
+  aiClassification: string | null;
   reviewStatus: string;
   resultingProductId: string | null;
 }
@@ -38,6 +39,7 @@ interface CatalogueImportFull {
   sourceFileName: string;
   status: string;
   errorMessage: string | null;
+  collectionFields: string | null;
   pages: ImportPage[];
 }
 
@@ -48,11 +50,101 @@ const PAGE_TYPE_LABEL: Record<string, string> = {
   ambiguous: "Ambiguous — needs a human call",
 };
 
-// How long the "Undo" toast stays up after a reject (single or bulk)
-// before the rejection is left to stand — matches item 2's "immediate
-// undo" ask: long enough to catch a slip of the mouse, not a general
-// substitute for the Reviewed list's own untimed Restore action (item 3).
-const UNDO_WINDOW_MS = 8000;
+// AI role display metadata + queue ordering priority (lower sorts first).
+// This is a TRIAGE aid only — every candidate stays visible and reachable
+// regardless of role, including "noise" and unclassified (null); never a
+// filter that can hide a real product from review (explicit instruction).
+const AI_ROLE_META: Record<string, { label: string; className: string; priority: number }> = {
+  clean_tile: { label: "AI: looks like a clean tile", className: "bg-emerald-50 text-emerald-700", priority: 0 },
+  texture_closeup: { label: "AI: texture close-up", className: "bg-amber-50 text-amber-700", priority: 2 },
+  lifestyle: { label: "AI: lifestyle photo", className: "bg-sky-50 text-sky-700", priority: 3 },
+  group_shot: { label: "AI: multiple products together", className: "bg-orange-50 text-orange-700", priority: 4 },
+  noise: { label: "AI: probably not a product", className: "bg-gray-100 text-gray-500", priority: 5 },
+};
+const UNCLASSIFIED_PRIORITY = 1; // between clean_tile and everything AI thinks is probably not the main event
+
+// Fields that genuinely tend to be shared across colourway siblings of the
+// same design (per user's own example: finish/material/etc. apply to
+// "all of that kind") — deliberately excludes name/sku/colorName/colorHex/
+// familyId, which are exactly what's SUPPOSED to differ between siblings.
+const SHAREABLE_FIELD_KEYS: (keyof ProductFormValues)[] = [
+  "materialId",
+  "finish",
+  "materialComposition",
+  "patternCategory",
+  "visualStyle",
+  "installationMethod",
+  "sampleAvailable",
+  "patternName",
+  "patternRepeatCm",
+  "orientation",
+  "dimensions",
+  "patternType",
+  "sheetWidthM",
+  "sheetHeightM",
+  "minWidthM",
+  "minHeightM",
+  "priceInr",
+  "priceUnit",
+  "warrantyInfo",
+];
+
+function pickShareable(values: ProductFormValues): Partial<ProductFormValues> {
+  const out: Partial<ProductFormValues> = {};
+  for (const key of SHAREABLE_FIELD_KEYS) {
+    if (values[key]) out[key] = values[key];
+  }
+  return out;
+}
+
+// Groups codes like "101/1"/"101/2" or "850-3" as family "101"/"850" —
+// informational only (shown as a badge); doesn't drive any automatic
+// behaviour, since HmProduct.familyId stays MANUAL-only per its own
+// doc comment in prisma/schema.prisma.
+function codePrefix(sku: string | null): string | null {
+  if (!sku) return null;
+  const m = /^(\d{2,5})[\/\-]\d+/.exec(sku.trim());
+  return m ? m[1] : null;
+}
+
+interface CollectionFields {
+  materialComposition: string | null;
+  installationMethod: string | null;
+  warrantyInfo: string | null;
+  description: string | null;
+  claims: string[];
+}
+function parseCollectionFields(raw: string | null): CollectionFields | null {
+  if (!raw) return null;
+  try {
+    const p = JSON.parse(raw);
+    return {
+      materialComposition: p.materialComposition ?? null,
+      installationMethod: p.installationMethod ?? null,
+      warrantyInfo: p.warrantyInfo ?? null,
+      description: p.description ?? null,
+      claims: Array.isArray(p.claims) ? p.claims : [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+interface AiClassification {
+  role: string;
+  confidence: number | null;
+  finishGuess: string | null;
+  colorHint: string | null;
+}
+function parseAiClassification(raw: string | null): AiClassification | null {
+  if (!raw) return null;
+  try {
+    const p = JSON.parse(raw);
+    return { role: p.role ?? null, confidence: p.confidence ?? null, finishGuess: p.finishGuess ?? null, colorHint: p.colorHint ?? null };
+  } catch {
+    return null;
+  }
+}
 
 function parseExtracted(raw: string): { name: string | null; sku: string | null; rawText: string } {
   try {
@@ -83,6 +175,8 @@ function PageCard({
   selected,
   onToggleSelect,
   bulkBusy,
+  lastSharedFields,
+  collectionFields,
   onApproved,
   onRejected,
 }: {
@@ -95,10 +189,14 @@ function PageCard({
   selected: boolean;
   onToggleSelect: () => void;
   bulkBusy: boolean;
-  onApproved: () => void;
+  lastSharedFields: Partial<ProductFormValues> | null;
+  collectionFields: CollectionFields | null;
+  onApproved: (shared: Partial<ProductFormValues>) => void;
   onRejected: (pageId: string, pageNumber: number) => void;
 }) {
   const extracted = parseExtracted(page.extractedFields);
+  const ai = parseAiClassification(page.aiClassification);
+  const family = codePrefix(extracted.sku);
   // Collapsed by default regardless of pageType: a real catalogue PDF can
   // yield well over 100 product candidates (every qualifying photo on
   // every page), so defaulting every card open would make the queue
@@ -111,6 +209,8 @@ function PageCard({
     sku: extracted.sku ?? "",
     collection: importCollection,
     brand: importBrand ?? "",
+    finish: ai?.finishGuess ?? "",
+    colorName: ai?.colorHint ?? "",
   });
   const [loading, setLoading] = useState<"approve" | "reject" | null>(null);
   const [error, setError] = useState("");
@@ -122,7 +222,7 @@ function PageCard({
       const fd = action === "approve" ? productValuesToFormData(values) : new FormData();
       fd.set("action", action);
       await reviewPage(importId, page.id, fd);
-      if (action === "approve") onApproved();
+      if (action === "approve") onApproved(pickShareable(values));
       else onRejected(page.id, page.pageNumber);
     } catch (err) {
       setError(err instanceof Error ? err.message : `Could not ${action}`);
@@ -132,6 +232,7 @@ function PageCard({
   }
 
   const disabled = loading !== null || bulkBusy;
+  const roleMeta = ai?.role ? AI_ROLE_META[ai.role] : null;
 
   return (
     <div className={`bg-white border rounded-2xl p-4 ${selected ? "border-indigo-300 ring-1 ring-indigo-200" : "border-gray-200"}`}>
@@ -152,12 +253,29 @@ function PageCard({
           </div>
         )}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
             <p className="text-xs font-semibold text-gray-900">Page {page.pageNumber}</p>
-            <span className="text-[10px] text-gray-400">{PAGE_TYPE_LABEL[page.pageType] ?? page.pageType}</span>
+            <div className="flex items-center gap-1.5 flex-wrap justify-end">
+              {family && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-mono">
+                  family {family}
+                </span>
+              )}
+              {roleMeta && (
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${roleMeta.className}`}>
+                  {roleMeta.label}
+                </span>
+              )}
+              <span className="text-[10px] text-gray-400">{PAGE_TYPE_LABEL[page.pageType] ?? page.pageType}</span>
+            </div>
           </div>
           {extracted.name && <p className="text-xs text-gray-600 mt-0.5">Guessed name: {extracted.name}</p>}
           {extracted.sku && <p className="text-[11px] text-gray-400">Guessed SKU: {extracted.sku}</p>}
+          {(ai?.finishGuess || ai?.colorHint) && (
+            <p className="text-[11px] text-gray-400">
+              AI hints: {[ai.finishGuess, ai.colorHint].filter(Boolean).join(" · ")}
+            </p>
+          )}
           <button
             onClick={() => setShowText((v) => !v)}
             className="text-[11px] text-indigo-600 hover:underline mt-1"
@@ -180,6 +298,36 @@ function PageCard({
 
       {expanded && (
         <div className="mt-4 pt-4 border-t border-gray-100">
+          <div className="flex items-center gap-2 mb-3">
+            {lastSharedFields && Object.keys(lastSharedFields).length > 0 && (
+              <button
+                type="button"
+                onClick={() => setValues((v) => ({ ...v, ...lastSharedFields }))}
+                className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
+              >
+                <Copy size={11} />
+                Copy shared fields from last approved
+              </button>
+            )}
+            {collectionFields && (
+              <button
+                type="button"
+                onClick={() =>
+                  setValues((v) => ({
+                    ...v,
+                    materialComposition: collectionFields.materialComposition || v.materialComposition,
+                    installationMethod: collectionFields.installationMethod || v.installationMethod,
+                    warrantyInfo: collectionFields.warrantyInfo || v.warrantyInfo,
+                    description: collectionFields.description || v.description,
+                  }))
+                }
+                className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-sky-700 bg-sky-50 hover:bg-sky-100 rounded-lg transition-colors"
+              >
+                <FileText size={11} />
+                Fill from collection info
+              </button>
+            )}
+          </div>
           <ProductFormFields
             values={values}
             onChange={(patch) => setValues((v) => ({ ...v, ...patch }))}
@@ -223,8 +371,16 @@ export function ReviewQueueView({
   families: FamilyOption[];
 }) {
   const router = useRouter();
-  const pending = catalogueImport.pages.filter((p) => p.reviewStatus === "pending");
+  const pending = [...catalogueImport.pages.filter((p) => p.reviewStatus === "pending")].sort((a, b) => {
+    const roleA = parseAiClassification(a.aiClassification)?.role;
+    const roleB = parseAiClassification(b.aiClassification)?.role;
+    const pA = roleA ? AI_ROLE_META[roleA]?.priority ?? UNCLASSIFIED_PRIORITY : UNCLASSIFIED_PRIORITY;
+    const pB = roleB ? AI_ROLE_META[roleB]?.priority ?? UNCLASSIFIED_PRIORITY : UNCLASSIFIED_PRIORITY;
+    if (pA !== pB) return pA - pB;
+    return a.pageNumber - b.pageNumber;
+  });
   const resolved = catalogueImport.pages.filter((p) => p.reviewStatus !== "pending");
+  const collectionFields = parseCollectionFields(catalogueImport.collectionFields);
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkRejecting, setBulkRejecting] = useState(false);
@@ -238,6 +394,13 @@ export function ReviewQueueView({
   const [deletingAll, setDeletingAll] = useState(false);
   const [restoringId, setRestoringId] = useState<string | null>(null);
   const [rowError, setRowError] = useState<Record<string, string>>({});
+  // The last approved candidate's shareable fields — offered as a
+  // one-click fill for the next card, matching how a reviewer actually
+  // works through a colourway family (fill one in fully, reuse for the
+  // rest, tweak only what differs). See SHAREABLE_FIELD_KEYS.
+  const [lastSharedFields, setLastSharedFields] = useState<Partial<ProductFormValues> | null>(null);
+
+  const UNDO_WINDOW_MS = 8000;
 
   useEffect(() => {
     if (!recentlyRejected) return;
@@ -249,8 +412,9 @@ export function ReviewQueueView({
     setSelected(new Set());
   }
 
-  function handleApproved() {
+  function handleApproved(shared: Partial<ProductFormValues>) {
     resetSelection();
+    if (Object.keys(shared).length > 0) setLastSharedFields(shared);
     router.refresh();
   }
 
@@ -372,6 +536,27 @@ export function ReviewQueueView({
         <p className="text-xs text-red-600 mt-2 bg-red-50 rounded-lg p-2">{catalogueImport.errorMessage}</p>
       )}
 
+      {collectionFields && (
+        <div className="mt-4 bg-sky-50 border border-sky-100 rounded-xl p-3">
+          <p className="text-[11px] font-semibold text-sky-800 flex items-center gap-1.5">
+            <Sparkles size={12} />
+            Collection info found in this PDF&apos;s reference pages
+          </p>
+          <div className="mt-1.5 space-y-0.5 text-xs text-sky-900">
+            {collectionFields.materialComposition && <p>Material: {collectionFields.materialComposition}</p>}
+            {collectionFields.installationMethod && <p>Installation: {collectionFields.installationMethod}</p>}
+            {collectionFields.warrantyInfo && <p>Warranty: {collectionFields.warrantyInfo}</p>}
+            {collectionFields.description && <p className="text-sky-700">{collectionFields.description}</p>}
+            {collectionFields.claims.length > 0 && (
+              <p className="text-sky-700">Claims: {collectionFields.claims.join(", ")}</p>
+            )}
+          </div>
+          <p className="text-[10px] text-sky-600 mt-1.5">
+            Use each card&apos;s &quot;Fill from collection info&quot; button to apply this — nothing is filled in automatically.
+          </p>
+        </div>
+      )}
+
       {recentlyRejected && (
         <div className="mt-4 flex items-center justify-between gap-3 bg-gray-800 text-white rounded-xl px-4 py-2.5">
           <p className="text-xs">
@@ -426,6 +611,8 @@ export function ReviewQueueView({
             selected={selected.has(page.id)}
             onToggleSelect={() => toggleSelect(page.id)}
             bulkBusy={bulkRejecting}
+            lastSharedFields={lastSharedFields}
+            collectionFields={collectionFields}
             onApproved={handleApproved}
             onRejected={handleRejected}
           />

@@ -80,14 +80,25 @@ const MIN_PRODUCT_IMAGE_DIM = 150;
 // "info" (real reference content like terms/warranty/contact).
 const NOISE_WORD_THRESHOLD = 8;
 
-const SKU_LABELLED = /\bSKU\s*[:#-]?\s*([A-Za-z0-9][A-Za-z0-9/-]{2,})/i;
-const SKU_BARE = /\b([A-Z]{1,4}-?\d{2,6}[A-Z0-9-]{0,6})\b/;
+// Real supplier catalogues label the product code very differently —
+// "SKU:", "Pattern No.:850/1", "Design No. 12", or (most commonly seen
+// across sampled files) no label at all, just a bare number-slash-number
+// or number-dash-number sitting near the tile ("101/1", "203-3"). Tried
+// against 4 real catalogue PDFs during the follow-up that added this —
+// none of them use a leading-letter code like "WP-1234" (the original
+// synthetic test file's format), so SKU_BARE_NUMERIC is tried before the
+// alphanumeric fallback, not after.
+const SKU_LABELLED = /\b(?:SKU|Pattern\s*No\.?|Design\s*No\.?|Item\s*No\.?|Code)\s*[:#-]?\s*([A-Za-z0-9][A-Za-z0-9/-]{1,})/i;
+const SKU_BARE_NUMERIC = /\b(\d{2,5}[/-]\d{1,3})\b/;
+const SKU_BARE_ALPHANUMERIC = /\b([A-Z]{1,4}-?\d{2,6}[A-Z0-9-]{0,6})\b/;
 
 function guessSku(text: string): string | null {
   const labelled = SKU_LABELLED.exec(text);
   if (labelled) return labelled[1];
-  const bare = SKU_BARE.exec(text);
-  return bare ? bare[1] : null;
+  const numeric = SKU_BARE_NUMERIC.exec(text);
+  if (numeric) return numeric[1];
+  const alphanumeric = SKU_BARE_ALPHANUMERIC.exec(text);
+  return alphanumeric ? alphanumeric[1] : null;
 }
 
 interface TextRun {

@@ -3,7 +3,13 @@ import { db } from "@/lib/db";
 import { getSession, canManageHmCatalogue } from "@/lib/auth";
 import { openPdfImportSession, cacheSession } from "@/lib/home-material/pdf-import-sessions";
 
-const MAX_PDF_SIZE = 30 * 1024 * 1024;
+// Raised from 30MB to 150MB (2026-09-17) after real supplier files came in
+// well over the original cap (one sample catalogue is 84MB, 71 pages of
+// full-bleed print-resolution artwork) — the cap only needs to protect
+// against an absurd upload now that the raw PDF is never persisted to
+// Cloudinary (see pdf-import-sessions.ts), just held as one in-memory
+// Buffer for the session's lifetime.
+const MAX_PDF_SIZE = 150 * 1024 * 1024;
 
 /**
  * Bulk PDF catalogue import (2026-09-16, reworked same day after a real
@@ -73,7 +79,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Only PDF files are accepted" }, { status: 400 });
   }
   if (file.size > MAX_PDF_SIZE) {
-    return NextResponse.json({ error: "PDF must be under 30MB" }, { status: 400 });
+    return NextResponse.json({ error: "PDF must be under 150MB" }, { status: 400 });
   }
 
   const pdfBuffer = Buffer.from(await file.arrayBuffer());

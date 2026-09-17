@@ -4,21 +4,34 @@
  * imports/[id]/process-next. Shared so the initial-page-1 processing done
  * inline at upload time and every subsequent process-next call use the
  * identical logic.
+ *
+ * Also runs the AI classification pass (2026-09-17, lib/home-material/
+ * pdf-classification.ts) over the page's image-bearing candidates before
+ * persisting them, batched in one call per page rather than one call per
+ * candidate — see that module's own doc comment for why.
  */
 import { db } from "@/lib/db";
 import { uploadWithRetry } from "@/lib/cloudinary";
 import type { PdfImportSession } from "@/lib/home-material/pdf-import";
+import { classifyPageImages } from "@/lib/home-material/pdf-classification";
 
 export async function processImportPage(
   importId: string,
   session: PdfImportSession,
   pageNumber: number,
-  brand: string | null
+  brand: string | null,
+  classifyAsUserId: string
 ): Promise<{ candidateCount: number }> {
   const candidates = await session.extractPage(pageNumber, brand);
 
+  const pngs = candidates.map((c) => c.imagePng).filter((p): p is Buffer => p !== null);
+  const classifications = pngs.length > 0 ? await classifyPageImages(pngs, classifyAsUserId) : [];
+  let classificationIdx = 0;
+
   for (const candidate of candidates) {
     let extractedImageUrl: string | null = null;
+    const classification = candidate.imagePng ? classifications[classificationIdx++] : null;
+
     if (candidate.imagePng) {
       try {
         const b64 = candidate.imagePng.toString("base64");
@@ -45,6 +58,7 @@ export async function processImportPage(
           sku: candidate.candidateSku,
           rawText: candidate.rawText,
         }),
+        aiClassification: classification ? JSON.stringify(classification) : null,
       },
     });
   }

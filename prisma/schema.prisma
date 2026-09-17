@@ -1602,6 +1602,18 @@ model HmCatalogueImport {
   pageCount      Int @default(0)
   pagesProcessed Int @default(0)
 
+  // AI-extracted collection-level facts (2026-09-17) — from
+  // lib/home-material/collection-info-extraction.ts, run once at the end
+  // of processing over every "info"-type page's text (a genuine
+  // material/technology reference page some suppliers include, distinct
+  // from any one product's own listing). JSON shape: CollectionInfoFields
+  // (materialComposition/installationMethod/warrantyInfo/description/
+  // claims). Null when no info pages were found, the API wasn't
+  // configured, or nothing could be confidently extracted — a suggestion
+  // surfaced in the review queue for the admin to apply to some or all
+  // pending candidates, never written to a product automatically.
+  collectionFields String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1639,6 +1651,19 @@ model HmCatalogueImportPage {
   // don't apply here; parsed with plain JSON.parse. Always editable in the
   // review UI, never written to HmProduct until approved.
   extractedFields String @default("{}")
+
+  // AI classification suggestion (2026-09-17) — from lib/home-material/
+  // pdf-classification.ts, a Gemini vision pass over the extracted image
+  // (deterministic pageType above stays untouched by this; this is a
+  // SEPARATE, purely additive signal). JSON shape: {role, confidence,
+  // finishGuess, colorHint} — role is one of clean_tile/lifestyle/
+  // texture_closeup/group_shot/noise. Null means unclassified (not
+  // attempted, API unavailable, or the response couldn't be trusted) —
+  // the review queue must treat null the same as any other pending
+  // candidate, never hide it. A "noise"-classified candidate still stays
+  // fully visible and reachable — this is a sort/triage aid only, never a
+  // filter that can hide a real product from review.
+  aiClassification String?
 
   // "pending" | "approved" | "rejected"
   reviewStatus String    @default("pending")

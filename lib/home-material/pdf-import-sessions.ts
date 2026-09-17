@@ -6,10 +6,23 @@
  * stop early instead of sitting on an unknown-length wait, per real user
  * feedback after a genuine multi-minute blind hang on a real supplier PDF.
  *
- * A plain module-level Map, not a queue/worker service: this app runs as
- * one long-lived Node process (not serverless), so state here survives
- * across the sequence of requests one import's processing makes — same
- * "module-level singleton" convention as lib/db.ts's Prisma client.
+ * Cached on `globalThis`, not a plain module-level `const`, using the exact
+ * same pattern as lib/db.ts's Prisma client — found necessary the hard way
+ * (2026-09-17): a plain top-level `Map` here worked fine right after this
+ * was first written, then started failing every session lookup ("session
+ * no longer available") as soon as this file and its importers (the two
+ * route handlers) were edited independently across several rounds in the
+ * same running `next dev` process. Turbopack's incremental dev
+ * compilation can give two route files that both `import` this module
+ * two DIFFERENT instances of it if they were compiled at different
+ * points in the session — a real HMR footgun, not a one-off. `globalThis`
+ * caching sidesteps it the same way lib/db.ts already had to for the
+ * Prisma client, guaranteeing one true singleton Map for the life of the
+ * Node process regardless of which route last got recompiled.
+ *
+ * This app runs as one long-lived Node process (not serverless), so state
+ * here survives across the sequence of requests one import's processing
+ * makes.
  *
  * The raw PDF is deliberately NOT persisted anywhere (tried Cloudinary
  * first — real supplier PDFs routinely exceed this account's 10MB
@@ -26,7 +39,12 @@ interface CacheEntry {
   lastUsedAt: number;
 }
 
-const sessions = new Map<string, CacheEntry>();
+const globalForHmPdfSessions = globalThis as unknown as {
+  hmPdfImportSessions: Map<string, CacheEntry> | undefined;
+};
+
+const sessions = globalForHmPdfSessions.hmPdfImportSessions ?? new Map<string, CacheEntry>();
+if (process.env.NODE_ENV !== "production") globalForHmPdfSessions.hmPdfImportSessions = sessions;
 
 const IDLE_EVICT_MS = 30 * 60 * 1000; // an abandoned import's session is worth little after 30 idle minutes
 const SWEEP_INTERVAL_MS = 5 * 60 * 1000;
