@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getOrCreateHmUserSession } from "@/lib/home-material/auth";
+import { deriveQuadFromTrace } from "@/lib/home-material/quad-corners";
 
 const MIN_POINTS = 3;
 const MAX_POINTS = 12;
@@ -65,7 +66,11 @@ export async function POST(
   }
 
   const source = measurementSource === "ai_estimated" ? "ai_estimated" : "user_confirmed";
-  const validCorners = parseCorners(corners);
+  // An AI-supplied quad (sub-problem B) wins when present; otherwise a
+  // manually-traced 4-point outline that's genuinely angled is treated
+  // as a quad too (2026-09-17) — see quad-corners.ts's doc comment for
+  // why a hand-traced quad is at least as trustworthy as an AI guess.
+  const validCorners = parseCorners(corners) ?? deriveQuadFromTrace(points);
 
   const surface = await db.hmSurface.create({
     data: {

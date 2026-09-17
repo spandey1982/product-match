@@ -1108,3 +1108,28 @@ full account of each. Summary, in order:
   re-verified unchanged. The FIRST cause (raw lifestyle photos as tiling
   references) is a product-data problem, not a code one — still open,
   see `product/roadmap.md`.
+- **2026-09-17, later still** — closed the gap the perspective-tiling fix
+  above left open: it only ever engaged for an AI-detected quad
+  (`corners`), and both of that day's own test rooms used manual
+  tracing, which never produced one. New `lib/home-material/
+  quad-corners.ts`: `orderQuadCorners` re-orders an arbitrary 4-point
+  outline into canonical TL/TR/BR/BL regardless of the order a user
+  clicked in (the standard "sum/diff" corner-ordering trick — AI
+  detection's own output is contractually already in this order, but a
+  hand click sequence has no such guarantee); `isMeaningfullyAngled`
+  skips promoting a plain rectangle (normal click imprecision included)
+  to a quad, since a rectangle-to-rectangle homography would look
+  identical to the cheaper flat-tiling path anyway while costing a
+  resampling pass. Wired into both `POST .../surfaces` (new wall) and
+  `PATCH .../surfaces/[surfaceId]` (re-shaping an existing one, which
+  previously discarded any quad unconditionally on every save) — a
+  manually-traced or manually-adjusted 4-point wall that's genuinely
+  angled now gets the same perspective-aware tiling an AI-detected quad
+  already does. No client changes needed; the API already accepted a
+  `corners` field, this just derives one when the client doesn't supply
+  it. Verified with pure-function tests (rectangle correctly NOT
+  promoted; real trapezoid correctly reordered from multiple scrambled
+  click sequences) and live end-to-end through the actual save API
+  (traced the same trapezoid wall twice, once in-order and once in a
+  deliberately scrambled click sequence — both produced the identical,
+  correctly-ordered `corners` array in the saved `geometryData`).
