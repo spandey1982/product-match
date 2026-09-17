@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, RotateCcw, Pencil, Heart, Scale } from "lucide-react";
+import { ArrowLeft, RotateCcw, Pencil, Heart, Scale, Maximize2, Minimize2, X, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LeadCaptureButton } from "@/components/home-material/LeadCaptureButton";
 import { ImageLightbox } from "@/components/home-material/ImageLightbox";
@@ -990,6 +990,21 @@ export function RoomView({ roomId }: { roomId: string }) {
   // at once they confirm their first wall, so browsing before uploading
   // (Mode A) doesn't dead-end into re-picking the same material again.
   const preselectedProductId = searchParams.get("product");
+  // "Preview on an already-confirmed wall" (2026-09-17 bug fix) — the
+  // browse page's eye icon sends a returning visitor with an existing
+  // confirmed wall straight here with `surface` + `autoPreview=1` (see
+  // MaterialsLandingClient.tsx's handlePreviewProduct and
+  // /api/home-material/rooms/active-surface), instead of the "pre-select
+  // for whichever wall gets confirmed next" flow above, which only ever
+  // fires for a BRAND NEW wall. autoPreviewTriggeredRef guards against
+  // firing twice (e.g. React Strict Mode's double-invoke) — a genuine
+  // page reload re-running this is harmless anyway, since the server-side
+  // visualization cache (lib/home-material/visualization.ts) turns a
+  // repeat of the exact same wall+product into a free cache hit, not a
+  // second AI call.
+  const autoPreviewSurfaceId = searchParams.get("surface");
+  const autoPreview = searchParams.get("autoPreview") === "1";
+  const autoPreviewTriggeredRef = useRef(false);
   const imageRef = useRef<HTMLDivElement>(null);
   const reuploadInputRef = useRef<HTMLInputElement>(null);
 
@@ -1024,6 +1039,11 @@ export function RoomView({ roomId }: { roomId: string }) {
   const [loupe, setLoupe] = useState<{ clientX: number; clientY: number; point: Point; rect: DOMRect } | null>(null);
   const [label, setLabel] = useState("");
   const [saving, setSaving] = useState(false);
+  // Fullscreen wall-selector mode (2026-09-17, user-requested) — precise
+  // vertex dragging is hard on a small embedded card, especially on
+  // mobile. Purely a presentation toggle around the SAME wall-tracing
+  // JSX/state below, not a separate flow.
+  const [wallCardFullscreen, setWallCardFullscreen] = useState(false);
 
   const [detecting, setDetecting] = useState(false);
   const [detectError, setDetectError] = useState("");
@@ -1161,6 +1181,35 @@ export function RoomView({ roomId }: { roomId: string }) {
       .then((data) => setUploadMaterials((data.materials as { id: string; category: string; name: string }[] | undefined) ?? []))
       .catch(() => {});
   }, [roomId, router]);
+
+  // See autoPreviewSurfaceId's doc comment above — once the room has
+  // loaded, if this navigation came from the browse page's "preview on my
+  // existing wall" action, select the product on that wall and kick off
+  // generation immediately, without waiting for the customer to pick the
+  // swatch and press "Generate room trial" themselves.
+  useEffect(() => {
+    if (!autoPreview || autoPreviewTriggeredRef.current) return;
+    if (!room || !preselectedProductId || !autoPreviewSurfaceId) return;
+    const surface = room.surfaces.find((s) => s.id === autoPreviewSurfaceId && s.geometryData);
+    if (!surface) return;
+    autoPreviewTriggeredRef.current = true;
+    setSelectedSwatch((sel) => ({ ...sel, [surface.id]: preselectedProductId }));
+    handleGeneratePreview(surface.id, preselectedProductId);
+    // Strip the one-shot params so a later reload/share of this URL
+    // doesn't repeat the auto-trigger (a repeat itself would be a free
+    // cache hit, not a cost concern — this is purely about not surprising
+    // someone who bookmarks or reloads mid-session).
+    router.replace(`/materials/rooms/${roomId}`, { scroll: false });
+  }, [room, autoPreview, preselectedProductId, autoPreviewSurfaceId, roomId, router]);
+
+  useEffect(() => {
+    if (!wallCardFullscreen) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setWallCardFullscreen(false);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [wallCardFullscreen]);
 
   function resetDraft() {
     setDraftPoints(null);
@@ -1613,6 +1662,27 @@ export function RoomView({ roomId }: { roomId: string }) {
       </div>
       {reuploadError && <p className="text-sm text-red-500">{reuploadError}</p>}
 
+      {/* Fullscreen wall-selector mode (2026-09-17) — everything from the
+          heading through the trace/adjust confirm buttons renders inside
+          this same wrapper either way; only the container's own styling
+          changes. Precise vertex dragging is genuinely hard on a small
+          embedded card, especially on mobile. */}
+      <div className={wallCardFullscreen ? "fixed inset-0 z-50 bg-white overflow-y-auto p-4 sm:p-8 space-y-4" : "space-y-4"}>
+        <div className="flex items-center justify-between gap-2">
+          {wallCardFullscreen && (
+            <p className="hidden sm:block text-xs text-gray-400">Press Esc to exit full screen</p>
+          )}
+          <button
+            type="button"
+            onClick={() => setWallCardFullscreen((v) => !v)}
+            aria-label={wallCardFullscreen ? "Exit full screen" : "Full screen"}
+            title={wallCardFullscreen ? "Exit full screen" : "Full screen"}
+            className="ml-auto inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600"
+          >
+            {wallCardFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+          </button>
+        </div>
+
       <div>
         <h1 className="text-xl font-bold text-gray-900">
           {isAdjustingDraft && editingSurfaceId
@@ -1736,10 +1806,27 @@ export function RoomView({ roomId }: { roomId: string }) {
       </div>
       {loupe && <DragLoupe imageUrl={room.imageUrl} rect={loupe.rect} point={loupe.point} clientX={loupe.clientX} clientY={loupe.clientY} />}
 
+      {/* Manual tracing is the primary option (2026-09-17, user-requested) —
+          it always works regardless of photo angle/lighting and needs no AI
+          call, where automatic detection is a convenience that can fail on
+          an imperfect photo. Kept as a real Button (was a small underlined
+          text link) so it reads as the expected first action, not a
+          fallback. */}
       {!hasDraft && !manualDrawing && wallCandidates.length === 0 && (
-        <Button className="w-full" size="lg" variant={hasSurfaces ? "secondary" : "default"} onClick={handleDetectWall} loading={detecting}>
-          {hasSurfaces ? "Detect another wall" : "Detect wall automatically"}
+        <Button className="w-full" size="lg" onClick={startManualDrawing}>
+          {hasSurfaces ? "Add another wall manually" : "Select wall manually"}
         </Button>
+      )}
+
+      {!hasDraft && !manualDrawing && wallCandidates.length === 0 && (
+        <button
+          type="button"
+          onClick={handleDetectWall}
+          disabled={detecting}
+          className="text-xs text-gray-400 hover:text-gray-600 underline w-full text-center disabled:opacity-50"
+        >
+          {detecting ? "Detecting…" : hasSurfaces ? "Or detect another wall automatically" : "Or detect automatically"}
+        </button>
       )}
       {detectError && <p className="text-sm text-red-500">{detectError}</p>}
 
@@ -1766,16 +1853,6 @@ export function RoomView({ roomId }: { roomId: string }) {
             Dismiss
           </button>
         </div>
-      )}
-
-      {!hasDraft && !manualDrawing && (
-        <button
-          type="button"
-          onClick={startManualDrawing}
-          className="text-xs text-gray-400 hover:text-gray-600 underline w-full text-center"
-        >
-          {hasSurfaces ? "Add another wall manually" : "Or trace the wall manually"}
-        </button>
       )}
 
       {manualDrawing && (
@@ -1810,6 +1887,42 @@ export function RoomView({ roomId }: { roomId: string }) {
       )}
 
       {error && <p className="text-sm text-red-500">{error}</p>}
+
+      {/* Mobile fullscreen exit band — a fixed bottom strip instead of the
+          desktop's "press Esc" text, since there's no keyboard to hint at.
+          Tick performs whichever confirm action the current stage has
+          (finish the traced shape, or confirm/save the adjusted outline)
+          and exits full screen; cross just exits without acting, same as
+          Escape on desktop. Neither is meaningful before any points are
+          placed, so the band only shows once there's a draft to act on. */}
+      {wallCardFullscreen && hasDraft && (
+        <div className="sm:hidden fixed bottom-0 inset-x-0 z-50 flex items-center justify-center gap-8 bg-white border-t border-gray-200 py-3">
+          <button
+            type="button"
+            onClick={() => setWallCardFullscreen(false)}
+            aria-label="Exit full screen"
+            className="flex h-11 w-11 items-center justify-center rounded-full bg-gray-100 text-gray-600"
+          >
+            <X className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (manualDrawing) {
+                if ((draftPoints?.length ?? 0) >= 3) finishManualShape();
+              } else if (isAdjustingDraft) {
+                handleConfirmSurface();
+              }
+              setWallCardFullscreen(false);
+            }}
+            aria-label="Finalize and exit full screen"
+            className="flex h-11 w-11 items-center justify-center rounded-full bg-indigo-600 text-white"
+          >
+            <Check className="h-5 w-5" />
+          </button>
+        </div>
+      )}
+      </div>
 
       {room.surfaces.length > 0 && (
         <div className="space-y-4 pt-2">

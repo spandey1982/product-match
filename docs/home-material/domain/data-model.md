@@ -10,10 +10,30 @@ Part of the domain-scoped docs split approved 2026-09-10 — see
 `HmRetailer`/`HmRetailerProduct` → `HmLead`. Provenance is first-class via
 `HmProductEvidence` (one row per fact per product, with `sourceType` —
 manufacturer/retailer/user/platform/ai_inferred/external_verified/
-unspecified) — not retrofitted later. `HmSurface` carries an explicit
+unspecified, and, since 2026-09-16, `sourceAuthority` — authoritative/
+retailer_stated/estimated/unverified, kept separate from AI extraction
+`confidence`) — not retrofitted later. `HmSurface` carries an explicit
 `measurementSource` (`ai_estimated` | `user_confirmed` | `professional`) so
 a convincing estimate is never silently treated as a measurement (§11,
 Constitution Principle 6).
+
+`HmProduct` optionally belongs to an `HmProductFamily` (colourway grouping
+— "also available in 3 colours" — display only, never merges purchasing
+identity; MANUAL-only, never AI-inferred) and emits `HmProductEvent` rows
+(impression/hover/click/detail_view/visualize/compare/shortlist/
+sample_request/quote_request/purchase — append-only, same convention as
+`AiUsageEvent`). See `product/roadmap.md`'s "Analytics & badges" note for
+what this ledger is for and the governance rule attached to it.
+
+`HmProduct.reviewStatus` (2026-09-16, "draft" | "published", default
+"published") gates the customer-facing catalogue — both single-entry and
+PDF-bulk-imported products default to "draft" at the application layer
+until explicitly published (`architecture/system.md`'s "Internal
+catalogue tool" section). PDF bulk import stages candidates in
+`HmCatalogueImport` (one row per uploaded PDF, one collection per PDF) →
+`HmCatalogueImportPage` (one row per PDF page, structured-extracted via
+`lib/home-material/pdf-import.ts`, never a real `HmProduct` until an
+admin/`HM_CATALOGUE_MANAGER` reviews and approves it).
 
 Comparison and Shortlist are collapsed into one `HmShortlist` table for V1
 (simplification proposed during discovery, not yet contradicted by real

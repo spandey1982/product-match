@@ -2,7 +2,6 @@ import { Sora, Manrope } from "next/font/google";
 import "./materials-theme.css";
 import { HmThemeRoot } from "./HmThemeRoot";
 import { HmNavBar } from "@/components/home-material/HmNavBar";
-import { AddTestProductButton } from "@/components/home-material/AddTestProductButton";
 
 // "Sage Studio" visual direction (chosen 2026-09-10 from the two
 // prototypes built after the user's own reference-design upload — see
@@ -27,9 +26,6 @@ export default async function MaterialsLayout({ children }: { children: React.Re
         <HmNavBar />
         {children}
       </div>
-      {/* Internal test-catalogue tool, deliberately discreet — see the
-          component's own doc comment. Never a customer-facing feature. */}
-      <AddTestProductButton />
     </>
   );
 }

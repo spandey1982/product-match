@@ -18,10 +18,21 @@ Visualization is one capability, not the product. The long-term moat is
 accumulated structured material/product/decision data, not any one AI
 model — architecture should treat AI providers as replaceable.
 
-## V1 scope (locked)
+## V1 scope (locked, narrowed 2026-09-16)
 
 - **Surface**: walls only.
-- **Materials**: paint, wallpaper, wall texture, wall panels.
+- **Materials**: **wallpaper only.** Originally scoped as paint + wallpaper
+  + wall texture + wall panels; narrowed 2026-09-16 to build and ship one
+  material category correctly before adding the others, rather than
+  spreading V1 across four thin catalogues. This is a scope narrowing, not
+  an architecture change — `HmMaterial.category`/`HmProduct` and the
+  product schema stay category-agnostic free strings, so paint/texture/
+  panels (and eventually non-wall surfaces) drop in later as data +
+  taxonomy entries, not a schema migration. See `product/roadmap.md`'s
+  "Material & surface expansion register" for what's deferred and how to
+  pick each one back up — **including a real, unresolved gap**: the demo
+  seed catalogue and the browse UI's category tabs still expose all 4
+  categories, not just wallpaper (see that section's "Code/UI gap" note).
 - **Geography**: India-first; currency/units/terminology/retailer-discovery
   are config, not hardcoded into core domain logic.
 - **Two customer modes**: "I know what I want" (product-accurate path) vs.
@@ -31,7 +42,9 @@ model — architecture should treat AI providers as replaceable.
   product colour/pattern/scale/repeat + everything else in the room).
 - **Commerce model**: consumer-first experience + retailer catalogue/lead
   backend. Not a marketplace — no checkout/payment/logistics in V1.
-- Not in V1: floors, tiles, kitchens, bathrooms, countertops, furniture,
+- Not in V1: paint, wall texture, wall panels (deferred, see expansion
+  register below — schema-compatible, just not built/seeded/shown yet),
+  floors, tiles, kitchens, bathrooms, countertops, furniture,
   contractor/installer tooling, self-serve retailer onboarding.
 
 ## Locked product/naming decisions (2026-09-07)

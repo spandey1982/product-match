@@ -788,3 +788,162 @@ its own grid row) is now visibly shorter than the row above it
 ("Botanical Leaf Wallpaper" still wraps to two lines and still gets
 that height) — confirms the block now follows its own content instead
 of a fixed reservation. `tsc`/`eslint`/full `npm run build` all clean.
+
+## Wallpaper-only V1 narrowing — UI not yet updated to match, 2026-09-16
+
+V1 scope was narrowed to wallpaper-only this day (see
+`product/overview.md` and `product/roadmap.md`'s "Material & surface
+expansion register"), but that was a docs+schema-level decision only —
+no UI or seed-data change was made alongside it. As a result, everything
+built in this file's "Browse section rebuilt to match /shop" entry above
+still renders exactly as shipped 2026-09-14: `MaterialProductCard.tsx`'s
+`CATEGORY_ORDER`/`CATEGORY_LABELS` still list Paint/Wallpaper/Wall
+Texture/Wall Panels, so `MaterialBrowseSection.tsx`'s category tab row
+still offers all 4, and `scripts/seed-home-material.ts` still seeds demo
+products in 3 of the 4. This is recorded here as a known, deliberate gap
+(not a regression) — see `product/roadmap.md`'s "Code/UI gap" note for
+the resolution options to pick from when the wallpaper-catalogue work
+starts.
+
+## Two real bugs: missing draft-gate filter, and eye icon ignoring an existing room, 2026-09-17
+
+User report: newly-added wallpapers (via the internal catalogue tool
+shipped 2026-09-16) weren't appearing as options in the room workspace,
+and separately, the product card's eye icon should jump straight into an
+already-set-up room and preview there instead of re-prompting for a room
+photo.
+
+**Bug 1 — draft products invisible everywhere they should be, visible
+where they shouldn't be.** Investigation found the 4 real wallpaper
+products added via PDF import (`100/1`–`100/4`, real photos, correctly
+categorized) were stuck in `reviewStatus: "draft"` — by design, PDF
+import approval always lands as draft (see
+`architecture/system.md`), and nobody had gone back to explicitly
+publish them. That alone explained the room-workspace symptom
+(`app/api/home-material/products/route.ts` correctly excludes drafts).
+But a second, real bug compounded it: `app/materials/page.tsx`'s browse
+query had **no `reviewStatus` filter at all**, so those same draft
+products (and any future photo-less placeholder draft) were actually
+visible on the public `/materials` grid the whole time — exactly
+backwards from the intended gate, and the inconsistency that made the
+symptom confusing rather than simply "products aren't published yet."
+Fixed both: added `reviewStatus: "published"` to the `/materials` query,
+and published the 4 real wallpapers (verified live: all 4 now return
+from `/api/home-material/products` with their real Cloudinary photos,
+and render correctly on `/materials`'s Wallpaper tab).
+
+Also added a one-click Publish/Unpublish toggle (an eye/eye-off icon) to
+`/admin/home-material/products` (`ProductsView.tsx`) — previously the
+only way to flip `reviewStatus` was opening the full Edit dialog and
+changing a dropdown, which is exactly the step that got missed here.
+Resubmits the row's own current values (via the existing
+`productToFormValues` shape) with just `reviewStatus` flipped, so the
+PATCH endpoint's existing "needs a photo to publish" rule still applies
+unchanged — disabled with a tooltip on a draft row with no photo.
+
+**Bug 2 — the eye icon always opened the "upload your room" modal, even
+for a returning visitor who already has a confirmed wall.** Added a
+read-only lookup, `GET /api/home-material/rooms/active-surface`
+(`getHmUserSession()`, not `getOrCreateHmUserSession()` — same "don't
+provision a guest just to learn 'no room yet'" discipline as
+`HmNavBar.tsx`), returning the most recently confirmed
+(`geometryData` set) wall across the visitor's rooms. `handlePreviewProduct`
+in `MaterialsLandingClient.tsx` now calls this before deciding what a
+product click should do: a hit navigates straight to
+`/materials/rooms/[roomId]?product=&surface=&autoPreview=1`; a miss
+falls back to the existing upload-modal flow unchanged. `RoomView.tsx`
+reads those three params in a new effect (guarded by a ref so it only
+fires once) and, once the room has loaded and the named surface is
+confirmed, selects the product on it and calls the existing
+`handleGeneratePreview` immediately — no extra click required — then
+strips the params via `router.replace` so a reload doesn't repeat it (a
+repeat would be a free cache hit anyway, per the existing visualization
+cache, so this is about tidiness, not cost).
+
+Live-tested end to end with a synthetic test room (manually traced wall,
+no AI detection call): confirmed `active-surface` correctly returns
+`{roomId:null,surfaceId:null}` before any room exists and the real
+room+surface ids after one is confirmed; confirmed clicking a product's
+eye icon from `/materials` navigated straight into the existing room
+(not the upload modal) and auto-triggered generation for that product on
+that wall — verified by the app correctly landing on the existing
+"wall size needed for an accurate repeat-pattern preview" prompt
+(the same flow a manual click already goes through for a `repeat_sheet`
+product), proving the swatch was auto-selected and generation was
+auto-triggered without a manual pick. `npx tsc --noEmit` clean; lint
+clean except one pre-existing-pattern `react-hooks/exhaustive-deps`
+warning (a handler function omitted from a `useEffect` dependency array,
+consistent with this file's other effects).
+
+**Incidental cost note:** the live test above caused one real Gemini
+vision call (the wall-dimension-estimation step that already runs for
+any `repeat_sheet` product without a stated size) — not anticipated when
+starting the test, since the flow was expected to stop at "swatch
+selected," not reach an actual generation attempt. Disclosed to the user
+per [[ask-before-paid-model-tests]]; cost was minimal (a single vision
+call, not full image generation, which was never reached).
+
+## PDF import review-queue UX + wall-selector fullscreen/ordering, 2026-09-17
+
+Five user-requested items, all shipped:
+
+- **Multi-select reject** — a checkbox per pending page card plus a
+  "select all" toolbar, batch-rejecting via `Promise.allSettled` over the
+  existing single-page PATCH endpoint rather than a new bulk route.
+- **Immediate undo** — a dismissable toast ("Rejected page N — Undo")
+  after any reject (single or bulk), live for 8 seconds. Required a real
+  API change: the PDF-import PATCH route's own doc comment previously
+  called reject "terminal" — added a new `action: "restore"` branch
+  (rejected → pending only; approved stays terminal, since undoing that
+  would also mean deleting the resulting product, out of scope here).
+- **Restore + thumbnails + delete-all in the "Already reviewed" list** —
+  the table gained a thumbnail column (previously page number + status
+  only, making it impossible to tell candidates apart at a glance), a
+  per-row "Restore" action for rejected rows (same `action: "restore"`
+  endpoint), and a confirmed "Delete all" bulk-clear
+  (`DELETE /api/admin/home-material/catalogue-imports/[id]`, scoped to
+  non-pending rows only — approved rows' resulting products are
+  untouched, the FK points from page to product, not the reverse).
+- **Fullscreen wall selector** — an expand icon above the wall-tracing
+  card toggles a fixed full-viewport overlay around the exact same
+  JSX/state (no separate fullscreen-specific logic to drift out of sync).
+  Desktop shows "Press Esc to exit"; mobile gets a fixed bottom band
+  (cross = exit only, check = run whichever confirm action the current
+  stage has — finish the traced shape or confirm/save the adjusted
+  outline — then exit).
+- **Manual tracing promoted to the primary option**, automatic detection
+  demoted to a secondary text link (previously the reverse) — manual
+  always works regardless of photo angle/lighting and costs no AI call,
+  where detection is a convenience that can fail.
+
+**A real, reproducible-looking "bug" during live-testing turned out to be
+a test-methodology artifact, not an app bug** — worth recording since it
+cost real debugging time: clicking Reject via automated coordinate/ref
+clicks sometimes silently missed the actual button (viewport size
+changed between screenshots, shifting coordinates; a stale accessibility-
+tree ref pointing at an already-reconciled DOM node), making it look like
+the reject succeeded (pending count did drop, from an EARLIER click that
+DID land) while a same-moment "check for the undo toast" call found
+nothing. Separately, the toast's own 8-second window is short enough
+that the real wall-clock time between two separate tool calls (this
+session's own reasoning/latency between "click" and "check") could
+exceed it, making a perfectly-working toast look like it never rendered.
+Confirmed both explanations directly: a single script that clicked AND
+polled `recentlyRejected` state in one execution (no inter-call latency)
+showed the value set correctly and persisting past 2 seconds; a clean
+click-then-screenshot pair completed within the window shows the toast
+rendering exactly as designed, and a same-window Undo click correctly
+restored the page (verified via a direct, unrefreshed fetch to the
+review-page GET showing `reviewStatus` flip back to `"pending"`). No code
+fix was needed — an initial "fix" (deferring `router.refresh()` a tick)
+was tried, found unnecessary once the real cause was understood, and
+reverted rather than left in as unexplained defensive code.
+
+Live-tested against a real in-progress import ("Palm Island," a genuine
+supplier PDF, not a synthetic test file): multi-select and single reject,
+undo, restore (both toast and Reviewed-list paths), and the reviewed
+table's thumbnails all confirmed working against real pending pages.
+"Delete all" was deliberately NOT executed against this real import (it's
+irreversible and this data belongs to the user's actual in-progress
+work) — confirmed only by inspection that the button and confirm dialog
+render correctly. `npx tsc --noEmit` and `eslint` both clean.

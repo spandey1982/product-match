@@ -37,6 +37,14 @@
  * Gemini-based path on any failure (degenerate quad, fetch error, etc.)
  * or whenever a quad/reference image isn't available — fully backward
  * compatible with the common straight-on-wall, curated-swatch case.
+ *
+ * Combined with true-scale tiling, 2026-09-17: a repeat-pattern sheet
+ * good (patternType "repeat_sheet") with known real dimensions is tiled
+ * at true physical scale BEFORE this homography warp, instead of
+ * warping one stretched instance of the reference image across the
+ * whole quad — see renderPerspectiveTiledPattern. A one-off
+ * "customizable" design (no repeat) still gets the plain single-warp
+ * behavior described above, unchanged.
  */
 import sharp from "sharp";
 import { createHash } from "crypto";
@@ -131,18 +139,23 @@ export interface QuickPreviewInput {
   /** 4-point perspective quad (TL, TR, BR, BL) from wall-detection.ts — null unless the wall is confidently angled. See file header. */
   corners?: Point[] | null;
   /**
-   * Sheet-size-aware true-scale rendering (2026-09-09) — only takes effect
-   * when ALL of: patternType is "repeat_sheet", sheetWidthM/sheetHeightM
-   * (the product's real sheet size) AND wallWidthM/wallHeightM (the
-   * wall's real size — user-entered or reference-object-estimated) are
-   * known, corners is absent (straight-on walls only for this pass —
-   * combining true-scale tiling with perspective correction is deferred),
-   * and a real referenceImageUrl exists. The reference image is assumed
-   * to depict exactly one full sheet (sheetWidthM x sheetHeightM) — a
-   * deliberate, documented simplification rather than tracking a
-   * separate "what area does this specific photo show" dimension.
-   * Missing any of these silently falls back to today's behavior
-   * (Gemini full-image edit, stretched to fit) — never blocks anything.
+   * Sheet-size-aware true-scale rendering (2026-09-09; combined with
+   * perspective correction 2026-09-17) — only takes effect when ALL of:
+   * patternType is "repeat_sheet", sheetWidthM/sheetHeightM (the
+   * product's real sheet size) AND wallWidthM/wallHeightM (the wall's
+   * real size — user-entered or reference-object-estimated) are known,
+   * and a real referenceImageUrl exists. Works whether or not `corners`
+   * is present: an angled wall (a confident quad) gets the tiled pattern
+   * projected onto its real perspective (renderPerspectiveTiledPattern);
+   * a straight-on wall with no quad gets the same tiling pasted as a
+   * flat axis-aligned rectangle (renderTiledPattern directly) — see
+   * runQuickPreviewVisualization's two deterministic branches. The
+   * reference image is assumed to depict exactly one full sheet
+   * (sheetWidthM x sheetHeightM) — a deliberate, documented
+   * simplification rather than tracking a separate "what area does this
+   * specific photo show" dimension. Missing any of these silently falls
+   * back to today's behavior (Gemini full-image edit, stretched to fit,
+   * or a plain homography warp if a quad exists) — never blocks anything.
    */
   patternType?: string | null;
   sheetWidthM?: number | null;
@@ -522,6 +535,97 @@ async function intersectAlphaWithMask(rgba: Buffer, canvasW: number, canvasH: nu
   return sharp(out, { raw: { width: canvasW, height: canvasH, channels: 4 } }).png().toBuffer();
 }
 
+/**
+ * Shared tail for every deterministic (non-Gemini) path below: shade
+ * against the room's own lighting, intersect with the outline mask
+ * (protects routed-around obstructions), feather the edge, and composite
+ * onto the untouched original. Factored out 2026-09-17 when a third
+ * deterministic path (perspective-aware tiling) was added — three
+ * near-identical copies of this tail was the point at which they'd have
+ * started silently drifting apart.
+ */
+async function finishDeterministicComposite(
+  overlayRgba: Buffer,
+  originalRotated: Buffer,
+  origWidth: number,
+  origHeight: number,
+  maskNative: Buffer,
+  shadingSourceNative: Buffer,
+  shadingQuad: Point[]
+): Promise<Buffer> {
+  const shaded = await applyShadingMap(overlayRgba, origWidth, origHeight, shadingSourceNative, shadingQuad);
+  const masked = await intersectAlphaWithMask(shaded, origWidth, origHeight, maskNative);
+
+  // .ensureAlpha() before .joinChannel() is required here, not
+  // .removeAlpha() — sharp silently fails to attach the joined channel
+  // (stays at 3 channels, alpha effectively lost) when the base has no
+  // alpha channel going in.
+  const featherPx = featherPxFor(origWidth, origHeight);
+  const alphaOnly = await sharp(masked).extractChannel(3).blur(featherPx).raw().toBuffer();
+  const featheredOverlay = await sharp(masked)
+    .ensureAlpha()
+    .joinChannel(alphaOnly, { raw: { width: origWidth, height: origHeight, channels: 1 } })
+    .png()
+    .toBuffer();
+
+  return sharp(originalRotated)
+    .resize(origWidth, origHeight, { fit: "fill" })
+    .composite([{ input: featheredOverlay, blend: "over" }])
+    .jpeg({ quality: 90, mozjpeg: true })
+    .toBuffer();
+}
+
+/**
+ * Combines true-scale tiling with perspective correction (2026-09-17) —
+ * previously mutually exclusive (see QuickPreviewInput's doc comment,
+ * now out of date): a confident AI-detected quad meant the WHOLE
+ * reference image got warped once across the entire wall (correct for a
+ * one-off "customizable" design, wrong for a repeat-pattern sheet good —
+ * it appeared as a single stretched instance instead of a real repeat at
+ * physical scale); a repeat_sheet product with no quad got true-scale
+ * tiling but pasted as a flat axis-aligned rectangle with no perspective
+ * warp at all, looking pasted-on rather than projected onto the wall.
+ *
+ * The fix: build the tiled pattern in the wall's own FLAT coordinate
+ * space first — a canvas whose width:height ratio matches
+ * wallWidthM:wallHeightM, tiled at the product's real physical repeat
+ * size within it — then feed that flat canvas into warpTextureOntoQuad
+ * exactly like any other texture. The canvas's own pixel resolution is
+ * arbitrary (chosen from the quad's onscreen size, not the source
+ * texture's), since warpTextureOntoQuad always maps a texture's [0,1]
+ * unit square onto the real quad regardless of the texture's own pixel
+ * dimensions — no new geometry code needed, this is pure reuse of the
+ * homography already validated for sub-problem B.
+ */
+async function renderPerspectiveTiledPattern(
+  referenceImage: Buffer,
+  sheetWidthM: number,
+  sheetHeightM: number,
+  wallWidthM: number,
+  wallHeightM: number,
+  quadPx: Point[],
+  canvasW: number,
+  canvasH: number,
+  offsetM: number
+): Promise<Buffer> {
+  const xs = quadPx.map((p) => p.x);
+  const quadSpanX = Math.max(...xs) - Math.min(...xs);
+  // Bounded so an extreme quad (near-full-frame wall) doesn't force an
+  // excessive tile-grid render; floored so a tiny/degenerate quad still
+  // gets a workable canvas rather than a near-zero one.
+  const flatWidthPx = Math.max(64, Math.min(2048, Math.round(quadSpanX)));
+  const flatHeightPx = Math.max(64, Math.round(flatWidthPx * (wallHeightM / wallWidthM)));
+
+  const pxPerMeterX = flatWidthPx / wallWidthM;
+  const pxPerMeterY = flatHeightPx / wallHeightM;
+  const tileWidthPx = Math.max(1, Math.round(sheetWidthM * pxPerMeterX));
+  const tileHeightPx = Math.max(1, Math.round(sheetHeightM * pxPerMeterY));
+  const offsetXPx = offsetM > 0 ? offsetM * pxPerMeterX : 0;
+
+  const flatTiled = await renderTiledPattern(referenceImage, tileWidthPx, tileHeightPx, flatWidthPx, flatHeightPx, offsetXPx);
+  return warpTextureOntoQuad(flatTiled, canvasW, canvasH, quadPx);
+}
+
 // ---------- true-scale tiled rendering (2026-09-09) ----------
 // Straight-on walls only for this pass — see QuickPreviewInput's doc
 // comment for why perspective+tiling isn't combined yet.
@@ -623,38 +727,46 @@ export async function runQuickPreviewVisualization(
     }
   }
 
-  // Sub-problem B: a confident angled-wall quad + a real reference texture
-  // means we can skip the AI entirely for this one and warp the real
-  // pixels in ourselves — deterministic, exact geometry, no hallucination
-  // risk. Any failure here (degenerate quad, bad texture, etc.) falls
-  // through to the normal Gemini path below rather than erroring out.
+  // Sub-problem B / true-scale tiling, now combined (2026-09-17): a
+  // confident angled-wall quad + a real reference texture means we can
+  // skip the AI entirely and warp the real pixels in ourselves —
+  // deterministic, exact geometry, no hallucination risk. A repeat_sheet
+  // product with known real dimensions gets tiled at true physical scale
+  // BEFORE the perspective warp (renderPerspectiveTiledPattern); anything
+  // else (a one-off "customizable" design, or a repeat_sheet product
+  // missing a dimension) still gets the original single-image warp,
+  // stretched to fill the quad. Any failure here (degenerate quad, bad
+  // texture, etc.) falls through to the normal Gemini path below rather
+  // than erroring out.
   if (isValidQuad(input.corners) && referenceImage) {
     try {
       const quadPx = input.corners.map((p) => ({ x: p.x * origWidth, y: p.y * origHeight }));
       const originalRotated = await sharp(original).rotate().toBuffer();
 
-      const warped = await warpTextureOntoQuad(referenceImage, origWidth, origHeight, quadPx);
-      const shaded = await applyShadingMap(warped, origWidth, origHeight, originalRotated, quadPx);
-      const masked = await intersectAlphaWithMask(shaded, origWidth, origHeight, maskNative);
+      const canTileWithPerspective =
+        input.patternType === "repeat_sheet" &&
+        isPositiveFiniteNum(input.sheetWidthM) &&
+        isPositiveFiniteNum(input.sheetHeightM) &&
+        isPositiveFiniteNum(input.wallWidthM) &&
+        isPositiveFiniteNum(input.wallHeightM);
 
-      // NOTE: .ensureAlpha() before .joinChannel() is required here, not
-      // .removeAlpha() — sharp silently fails to attach the joined channel
-      // (stays at 3 channels, alpha effectively lost) when the base has no
-      // alpha channel going in. .ensureAlpha() matches the pattern the
-      // existing Gemini-path compositing below already relies on.
-      const featherPx = featherPxFor(origWidth, origHeight);
-      const alphaOnly = await sharp(masked).extractChannel(3).blur(featherPx).raw().toBuffer();
-      const featheredOverlay = await sharp(masked)
-        .ensureAlpha()
-        .joinChannel(alphaOnly, { raw: { width: origWidth, height: origHeight, channels: 1 } })
-        .png()
-        .toBuffer();
+      const hasAdjacencyOffset = canTileWithPerspective && typeof input.adjacencyOffsetM === "number" && Number.isFinite(input.adjacencyOffsetM) && input.adjacencyOffsetM > 0;
 
-      const composited = await sharp(originalRotated)
-        .resize(origWidth, origHeight, { fit: "fill" })
-        .composite([{ input: featheredOverlay, blend: "over" }])
-        .jpeg({ quality: 90, mozjpeg: true })
-        .toBuffer();
+      const warped = canTileWithPerspective
+        ? await renderPerspectiveTiledPattern(
+            referenceImage,
+            input.sheetWidthM!,
+            input.sheetHeightM!,
+            input.wallWidthM!,
+            input.wallHeightM!,
+            quadPx,
+            origWidth,
+            origHeight,
+            hasAdjacencyOffset ? input.adjacencyOffsetM! : 0
+          )
+        : await warpTextureOntoQuad(referenceImage, origWidth, origHeight, quadPx);
+
+      const composited = await finishDeterministicComposite(warped, originalRotated, origWidth, origHeight, maskNative, originalRotated, quadPx);
 
       const dataUri = `data:image/jpeg;base64,${composited.toString("base64")}`;
       const uploaded = await uploadWithRetry(dataUri, { folder: "product-match/home-material/visualizations" });
@@ -664,23 +776,25 @@ export async function runQuickPreviewVisualization(
         width: origWidth,
         height: origHeight,
         bytes: composited.length,
-        model: "homography+shading-v1",
+        model: canTileWithPerspective ? "tiled-perspective-v1" : "homography+shading-v1",
         mode: "product_accurate",
         perspectiveCorrected: true,
-        trueScaleRendered: false,
-        adjacencyContinuityApplied: false,
+        trueScaleRendered: canTileWithPerspective,
+        adjacencyContinuityApplied: hasAdjacencyOffset,
       };
     } catch (err) {
       console.error("[home-material/visualization] perspective-correct path failed, falling back to AI generation:", err);
     }
   }
 
-  // True-scale tiled rendering (2026-09-09) — repeat_sheet materials
-  // only, straight-on walls only (no corners — see QuickPreviewInput's
-  // doc comment on why tiling isn't combined with perspective correction
-  // yet), and only when both the wall's and the product's real
-  // dimensions are known. Falls through to the Gemini path otherwise —
-  // never blocks a preview for lack of this data.
+  // True-scale tiled rendering, flat/no-perspective (2026-09-09) —
+  // repeat_sheet materials only, for a wall with no AI-detected quad
+  // (e.g. manually traced — see QuickPreviewInput's doc comment), and
+  // only when both the wall's and the product's real dimensions are
+  // known. Falls through to the Gemini path otherwise — never blocks a
+  // preview for lack of this data. The quad case above now handles its
+  // own tiling (with perspective); this branch is specifically the
+  // no-quad fallback.
   if (
     !isValidQuad(input.corners) &&
     input.patternType === "repeat_sheet" &&
@@ -723,22 +837,7 @@ export async function runQuickPreviewVisualization(
         { x: bbox.left + bbox.width, y: bbox.top + bbox.height },
         { x: bbox.left, y: bbox.top + bbox.height },
       ];
-      const shaded = await applyShadingMap(fullCanvas, origWidth, origHeight, originalRotated, bboxQuad);
-      const masked = await intersectAlphaWithMask(shaded, origWidth, origHeight, maskNative);
-
-      const featherPx = featherPxFor(origWidth, origHeight);
-      const alphaOnly = await sharp(masked).extractChannel(3).blur(featherPx).raw().toBuffer();
-      const featheredOverlay = await sharp(masked)
-        .ensureAlpha()
-        .joinChannel(alphaOnly, { raw: { width: origWidth, height: origHeight, channels: 1 } })
-        .png()
-        .toBuffer();
-
-      const composited = await sharp(originalRotated)
-        .resize(origWidth, origHeight, { fit: "fill" })
-        .composite([{ input: featheredOverlay, blend: "over" }])
-        .jpeg({ quality: 90, mozjpeg: true })
-        .toBuffer();
+      const composited = await finishDeterministicComposite(fullCanvas, originalRotated, origWidth, origHeight, maskNative, originalRotated, bboxQuad);
 
       const dataUri = `data:image/jpeg;base64,${composited.toString("base64")}`;
       const uploaded = await uploadWithRetry(dataUri, { folder: "product-match/home-material/visualizations" });

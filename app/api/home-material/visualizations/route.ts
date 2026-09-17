@@ -193,7 +193,10 @@ export async function POST(req: NextRequest) {
   const otherProducts = await db.hmProduct.findMany({
     where: {
       id: { not: product.id },
-      OR: [{ uploadedByHmUserId: null }, { uploadedByHmUserId: session.id }],
+      OR: [
+        { uploadedByHmUserId: null, reviewStatus: "published" },
+        { uploadedByHmUserId: session.id },
+      ],
     },
     select: { id: true, material: { select: { category: true } } },
   });

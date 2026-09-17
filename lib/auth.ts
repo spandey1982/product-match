@@ -95,6 +95,30 @@ export async function requireAdmin(): Promise<SessionUser> {
   return session;
 }
 
+/**
+ * A below-admin role scoped to the Home Material internal catalogue tool
+ * (single-product entry, PDF bulk import, review queue — 2026-09-16). Lets
+ * the account owner hand catalogue upkeep to someone else without giving
+ * them full ADMIN (wallets, pricing, orders, etc.). Only a real ADMIN can
+ * grant/revoke this role (see POST /api/admin/home-material/staff) — a
+ * catalogue manager can never escalate their own access.
+ */
+export const HM_CATALOGUE_MANAGER_ROLE = "HM_CATALOGUE_MANAGER";
+
+export function canManageHmCatalogue(session: SessionUser | null): boolean {
+  if (!session) return false;
+  if (isAdmin(session)) return true;
+  return session.role === HM_CATALOGUE_MANAGER_ROLE;
+}
+
+export async function requireHmCatalogueManager(): Promise<SessionUser> {
+  const session = await requireAuth();
+  if (!canManageHmCatalogue(session)) {
+    throw new Error("Forbidden");
+  }
+  return session;
+}
+
 export async function getUserById(id: string) {
   return db.user.findUnique({
     where: { id },

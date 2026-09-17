@@ -980,3 +980,181 @@ requirement scenarios (a wet-area/budget/durability case correctly
 re-ranked `wall_texture+wall_panel` above `paint+wallpaper`, versus the
 "any" case's default ordering), and confirmed a 1-wall room correctly
 returns `null` (no scheme) while a 3-wall room returns a real one.
+
+## 2026-09-11 through 2026-09-16 — intent-first entry, Room Trial, browse-parity rebuild, wallpaper schema v1, scope narrowing
+
+This range isn't reproduced blow-by-blow here to avoid duplicating detail
+that already lives in its natural home — see the pointers below for the
+full account of each. Summary, in order:
+
+- **2026-09-11** — intent-first entry strategic review (approved) and
+  Tier-0 keyword-matched intent input shipped on `/materials`. Full
+  detail: `product/roadmap.md`'s "V2 direction — intent-first entry"
+  section; `ui/decisions.md`'s "Intent-first landing entry" entry.
+- **2026-09-12** — server-side visualization cache/dedupe shipped;
+  "Room Trial" user-facing rename shipped; fullscreen zoomable
+  `ImageLightbox` shipped; mobile wall-vertex precision loupe shipped;
+  OTP gate temporarily removed (`getOrCreateHmUserSession`, guest
+  auto-provisioning). Full detail: `product/roadmap.md`'s "Shipped
+  2026-09-12" list; `architecture/system.md`'s "OTP gate temporarily
+  removed" section.
+- **2026-09-13** — the customer-facing "upload your own wallpaper/paint
+  photo" flow made temporarily public (no retailer-onboarding exists
+  yet). Full detail: `architecture/system.md`'s "Temporary shared trial
+  catalogue" section.
+- **2026-09-14/15** — `/materials` browse rebuilt to reuse `/shop`'s
+  actual shared components (`CatalogFilterBar`, matching card/grid
+  language) on new branch `feature/home-material-browse-parity`
+  (`lib/home-material/browse-product.ts`, `MaterialBrowseSection.tsx`,
+  `MaterialProductCard.tsx`); persistent nav bar added; landing hero
+  copy/layout rewritten twice in response to user feedback; a real
+  `<button>`-nested-in-`<button>` HTML-validity bug found and fixed via
+  Next.js's own dev-mode error overlay (previously misattributed to a
+  browser extension); a real auth bug fixed
+  (`getOrCreateHmUserSession()` now verifies the referenced `HmUser` row
+  still exists before trusting a session cookie); GEO/AEO sitemap/
+  canonical/JSON-LD parity gap partly closed for `/materials`. Full
+  detail: `ui/decisions.md`'s entries from "Browse section rebuilt to
+  match /shop" through "Card info block compacted."
+- **2026-09-16** — wallpaper product schema v1 shipped (additive Prisma
+  migration: `HmProduct` gains description/materialComposition/
+  colorFamily/patternCategory/visualStyle/installationMethod/
+  sampleAvailable/familyId; new `HmProductFamily` and `HmProductEvent`
+  tables; `HmProductEvidence` gains `sourceAuthority`), and V1 scope
+  narrowed from "paint + wallpaper + wall texture + wall panels" to
+  **wallpaper only** (sequencing decision, not an architecture change —
+  schema stays category-agnostic, zero migration needed to resume the
+  others). Same day, this narrowing's docs were audited across the whole
+  domain and a real gap was found and recorded (not yet fixed): the demo
+  seed catalogue and the browse UI's category tabs still expose all 4
+  categories. Full detail: `product/roadmap.md`'s "Wallpaper product
+  schema v1" and "Material & surface expansion register" sections
+  (including its "Code/UI gap" subsection); `product/overview.md`'s V1
+  scope note; `ui/decisions.md`'s "Wallpaper-only V1 narrowing" entry.
+- **2026-09-16** — the internal wallpaper catalogue tool shipped (the
+  "active next task" the previous entry pointed at): single-product
+  add/edit/delete at `/admin/home-material/products`, PDF bulk import
+  at `/admin/home-material/import` (structured pdfjs-dist extraction —
+  reads the PDF's own text/image objects, never OCR/AI vision — with a
+  mandatory human review queue before anything is created), and a new
+  below-admin `HM_CATALOGUE_MANAGER` role (`/admin/home-material/staff`,
+  ADMIN-only to grant/revoke) so catalogue upkeep doesn't require full
+  admin access. `HmProduct` gained `reviewStatus` ("draft" | "published",
+  default "published" for backward compatibility) gating the
+  customer-facing `/materials` feed and recommendation "other products"
+  query; new `HmCatalogueImport`/`HmCatalogueImportPage` staging tables.
+  The old discreet `AddTestProductButton`/`admin-add` tool this replaces
+  was deleted. New dependency: `pdfjs-dist` (approved). Full detail:
+  `architecture/system.md`'s "Internal catalogue tool" and "PDF worker
+  path under Turbopack" sections; `domain/data-model.md`'s updated
+  entity list.
+- **2026-09-16, later the same day** — the very first real supplier PDF
+  tried against the tool above (a genuine wallpaper catalogue, not the
+  synthetic test file) surfaced three real bugs at once: JPEG2000 images
+  failing to decode (`wasmUrl` fix), a real catalogue page holding a
+  dozen-plus product photos rather than the assumed one (extraction
+  redesigned to one candidate per qualifying image, not per page), and a
+  29-minute single blocking request with zero feedback that finished with
+  every candidate landing as unusable "ambiguous" — nothing crashed, it
+  just silently produced nothing. Reworked to page-by-page processing
+  with live progress and a Stop-importing control (confirmation +
+  partial results kept), and products can no longer be published without
+  a photo (draft-with-no-photo is still allowed, flagged in the list).
+  Live-verified end to end against the real file: correct decode (0
+  failures on a 53-image JPX-heavy page), real product photos extracted
+  correctly (verified by eye — a rose-pattern swatch close-up and a full
+  room lifestyle shot both came through clean), full cancel-mid-import
+  flow (partial pages kept, resume correctly refused), and the publish-
+  without-photo block (both the negative and positive case). Full detail:
+  `architecture/system.md`'s "PDF extraction rework" section.
+- **2026-09-17** — two real bugs from a live user report, both found and
+  fixed same day: (1) `app/materials/page.tsx`'s browse query had no
+  `reviewStatus` filter at all, so draft products (the 4 real PDF-import
+  wallpapers, still unpublished) were visible on the public feed while
+  correctly hidden from the room-workspace swatch picker — backwards from
+  the intended gate; fixed the filter, published the 4 wallpapers, and
+  added a one-click Publish/Unpublish toggle to the admin products list
+  so the "only way to publish is the full Edit dialog" trap doesn't
+  recur. (2) the browse card's eye icon always opened the upload-room
+  modal even for a visitor who already has a confirmed wall; added
+  `GET /api/home-material/rooms/active-surface` (read-only lookup) so it
+  now jumps straight into an existing room and auto-generates a room
+  trial there instead. Full detail: `ui/decisions.md`'s "Two real bugs"
+  entry; `product/roadmap.md`'s "Code/UI gap" section for what's now
+  fixed vs. still open.
+- **2026-09-17, later the same day** — a user-reported realism problem
+  ("looks pasted onto a flat surface, not projected onto the wall")
+  traced to two compounding causes: the 100/1–100/4 wallpaper products'
+  reference images were the raw supplier lifestyle/backlit photos
+  extracted from the PDF (whole-room shots, not flat swatches), AND
+  `lib/home-material/visualization.ts`'s true-scale tiling and
+  perspective-homography paths were mutually exclusive — a repeat-pattern
+  product with no AI-detected quad got tiled at true physical scale but
+  pasted as a flat axis-aligned rectangle (zero perspective correction);
+  a product WITH a quad got perspective correction but only as a single
+  stretched instance of the reference image (ignoring its real physical
+  repeat size). Fixed the second, structural cause: `visualization.ts`'s
+  quad-based path now tiles a repeat_sheet product at true scale in the
+  wall's own flat coordinate space FIRST, then perspective-warps that
+  tiled canvas onto the quad via the same homography sub-problem B
+  already validated (`renderPerspectiveTiledPattern`, reusing
+  `warpTextureOntoQuad`/`renderTiledPattern` rather than new geometry
+  code). Verified deterministically (zero AI cost — this whole path is
+  pure sharp/homography math, no Gemini call) against a synthetic
+  trapezoid-quad room photo and a checkerboard test tile: tiles visibly
+  narrow toward the receding side of the trapezoid while staying at the
+  requested physical scale (6 real-world-0.5m tiles across a 3m wall),
+  and the pre-existing plain single-warp path (non-repeat patterns) was
+  re-verified unchanged. The FIRST cause (raw lifestyle photos as tiling
+  references) is a product-data problem, not a code one — still open,
+  see `product/roadmap.md`.
+- **2026-09-17, later still** — closed the gap the perspective-tiling fix
+  above left open: it only ever engaged for an AI-detected quad
+  (`corners`), and both of that day's own test rooms used manual
+  tracing, which never produced one. New `lib/home-material/
+  quad-corners.ts`: `orderQuadCorners` re-orders an arbitrary 4-point
+  outline into canonical TL/TR/BR/BL regardless of the order a user
+  clicked in (the standard "sum/diff" corner-ordering trick — AI
+  detection's own output is contractually already in this order, but a
+  hand click sequence has no such guarantee); `isMeaningfullyAngled`
+  skips promoting a plain rectangle (normal click imprecision included)
+  to a quad, since a rectangle-to-rectangle homography would look
+  identical to the cheaper flat-tiling path anyway while costing a
+  resampling pass. Wired into both `POST .../surfaces` (new wall) and
+  `PATCH .../surfaces/[surfaceId]` (re-shaping an existing one, which
+  previously discarded any quad unconditionally on every save) — a
+  manually-traced or manually-adjusted 4-point wall that's genuinely
+  angled now gets the same perspective-aware tiling an AI-detected quad
+  already does. No client changes needed; the API already accepted a
+  `corners` field, this just derives one when the client doesn't supply
+  it. Verified with pure-function tests (rectangle correctly NOT
+  promoted; real trapezoid correctly reordered from multiple scrambled
+  click sequences) and live end-to-end through the actual save API
+  (traced the same trapezoid wall twice, once in-order and once in a
+  deliberately scrambled click sequence — both produced the identical,
+  correctly-ordered `corners` array in the saved `geometryData`).
+- **2026-09-17** — AI classification + enrichment pass added to the PDF
+  import tool, after the owner sampled real pages from 4 different
+  supplier catalogues and laid out five recurring image roles a page
+  mixes together (clean tile, lifestyle, texture close-up, group shot,
+  noise) that pure size/position heuristics can't tell apart. Shipped: a
+  batched-per-page Gemini vision classification pass
+  (`lib/home-material/pdf-classification.ts`, purely additive — a
+  "noise" verdict never hides a candidate from review), a collection-
+  level text extraction pass for genuine material/tech reference pages
+  (`collection-info-extraction.ts` + `-runner.ts`, surfaced as a "fill
+  from collection info" button, never auto-applied), a "copy shared
+  fields from last approved" review-queue action for colourway siblings,
+  an expanded product-code regex (real files use bare `NNN/N`-style
+  codes, not the synthetic test's letter-prefixed one), and a raised PDF
+  size cap (30MB → 150MB; one real sample file is 84MB). Also found and
+  fixed a real pre-existing bug in the chunked-processing session cache
+  (a plain module-level `Map` doesn't reliably survive Turbopack's
+  incremental dev recompilation across multiple route files — same
+  `globalThis` fix `lib/db.ts` already needed for Prisma). Live-tested
+  against real supplier PDFs end to end, including visually confirming
+  extracted images and AI hints by eye. Full detail, including a real
+  disclosed limitation (a genuine info page whose text is rasterized
+  into the artwork rather than real PDF text, so no text extraction can
+  reach it): `architecture/system.md`'s "AI classification + enrichment
+  pass" section.

@@ -24,6 +24,176 @@ taxonomy-driven material advisor with real AI-generated visualization —
 no free-text search, no embeddings, no behavioural personalization, no
 persistent user profile beyond an OTP-authenticated identity.
 
+## Material & surface expansion register (2026-09-16)
+
+V1 was narrowed from "paint + wallpaper + wall texture + wall panels" to
+**wallpaper only** — see `product/overview.md`'s V1 scope note for the
+reasoning (ship one category correctly before spreading thin across four).
+This is **not** a rejection of the other categories, just a sequencing
+call — recorded here so a future session doesn't have to re-derive intent
+or re-litigate the decision. Not an active task; revisit only when
+explicitly prioritized.
+
+**Deferred wall materials (originally in V1 scope, schema already supports
+them, zero migration needed to add):**
+
+| Material | Status | To resume |
+|---|---|---|
+| Paint | Deferred | `HmMaterial.category = "paint"` taxonomy entries already exist (`lib/home-material/material-taxonomy.ts`). Needs: real seed `HmProduct` rows, visualization prompt/rendering verified for flat colour (no pattern/repeat concerns — should be the simplest of the four to re-add), browse/UI category filter re-enabled. |
+| Wall texture | Deferred | Taxonomy entries exist. Needs: seed products, visualization verified for relief/texture rendering (currently untested since only wallpaper is live), UI re-enabled. |
+| Wall panels | Deferred | Taxonomy entries exist. `HmProduct.patternType`/`sheetWidthM`/`sheetHeightM` (repeat-sheet math) already generalize to panels (a panel is dimensionally the same problem as a wallpaper sheet — fixed-size rigid units tiled across a wall), so this is likely the *second* easiest to resume after wallpaper. Needs: seed products, panel-specific install/joint visual verification. |
+
+**Treat each the same way wallpaper was built** — same `HmProduct`/
+`HmMaterial`/`HmProductEvidence` shape, same AI-boundary rules
+(`ai/boundaries.md`), same provenance discipline. No new domain model
+required; this was confirmed while designing the wallpaper product schema
+(2026-09-16) — the schema is category-agnostic by construction (see that
+proposal doc, published as a Claude Artifact and linked from this file's
+git history / session notes).
+
+**Beyond walls (further out, not yet scoped in any doc beyond the
+`/materials` route-naming decision in `product/overview.md`):** flooring,
+tiles, countertops, ceilings, doors, exterior materials. The top-level
+`/materials` route (rather than `/walls`) was deliberately chosen in the
+original 2026-09-07 brief specifically so this expansion never forces a
+URL/SEO-costly rename. No schema or IA work has been done for non-wall
+surfaces — don't assume the current `HmSurface.surfaceType` free-string or
+`HmRoom` shape is sufficient for e.g. a floor (different geometry entirely
+— area not polygon-on-a-photo-plane in the same way, different
+measurement UX) without a dedicated discovery pass when that's picked up.
+
+**Trigger to revisit this register:** wallpaper V1 reaching a stable,
+validated catalogue + real retailer usage, or an explicit business ask to
+broaden category coverage. Until then, treat any paint/texture/panel/
+non-wall work as out of scope, same as this file already treats
+sub-problem D and the embeddings/taste-graph deferrals below.
+
+### Code/UI gap left by the narrowing — partially resolved 2026-09-17
+
+The 2026-09-16 scope narrowing was a docs+schema decision; it did **not**
+touch the running demo catalogue or the browse UI, so the app was
+briefly wider than the documented scope:
+
+- `scripts/seed-home-material.ts` still seeds 4 paint demo products + 1
+  texture demo product alongside the wallpaper ones — **still true,
+  unresolved.** All 6 non-wallpaper-schema demo rows still show up in
+  `/materials`.
+- `components/home-material/MaterialProductCard.tsx`'s exported
+  `CATEGORY_ORDER`/`CATEGORY_LABELS` (consumed by
+  `MaterialBrowseSection.tsx`'s category tab row) still hardcode all 4
+  categories — **still true, unresolved.** The browse page's filter tabs
+  still offer Paint/Wall Texture/Wall Panels even though none of them are
+  in scope.
+
+Not a bug — nothing crashes or misbehaves — just an inconsistency between
+"documented scope" and "what a visitor actually sees today." Resolve this
+before or as part of the wallpaper-catalogue build (the active next task,
+see `README.md`'s current-direction section): decide whether to hide the
+other 3 tabs outright, mark them "coming soon," or leave them until real
+paint/texture data exists, and decide whether to keep the non-wallpaper
+seed rows around as demo content or delete them now that the real
+wallpaper schema (below) supersedes the seed script's simple shape.
+
+**A related, separate, real bug found and fixed 2026-09-17** (not part of
+the narrowing itself, but discovered while investigating a report that
+newly-added wallpapers weren't showing up as room-workspace swatch
+options): `app/materials/page.tsx`'s product query had **no
+`reviewStatus` filter at all**, despite the internal catalogue tool's own
+commit message claiming reviewStatus "gates the customer-facing
+`/materials` feed." So a draft product (including a photo-less
+placeholder) could show up on the public browse grid while correctly
+staying invisible in the room-workspace swatch picker
+(`app/api/home-material/products/route.ts`, which did filter on this
+from the start) — the exact mismatch behind the report. Fixed by adding
+the missing filter. Separately, publishing a product was previously only
+possible by opening the full Edit dialog and changing the "Review
+status" dropdown — easy to forget after a PDF import (which always lands
+as draft, by design). Added a one-click Publish/Unpublish toggle to
+`/admin/home-material/products` (`ProductsView.tsx`) so this doesn't
+recur. See `ui/decisions.md` for the full write-up.
+
+## Wallpaper product schema v1 — shipped 2026-09-16
+
+Full proposal published as a Claude Artifact ("Wallpaper Product Schema")
+and archived at `research/home-material-wallpaper-product-schema.html`.
+Additive-only Prisma migration
+(`20260916124114_hm_wallpaper_product_schema_v1`): `HmProduct` gained
+`description`/`materialComposition`/`colorFamily`/`patternCategory`/
+`visualStyle`/`installationMethod`/`sampleAvailable`/`familyId`;
+`HmProductEvidence` gained `sourceAuthority`; two new tables,
+`HmProductFamily` (colourway grouping) and `HmProductEvent`. See
+`domain/data-model.md` for the relationships.
+
+**Analytics & badges (approved 2026-09-16, amending the original
+proposal's "not adding" call on this):** the original schema draft
+proposed deferring trending/bestseller/search-tag fields entirely, on the
+grounds that no real behavioural data existed yet. Owner pushed back:
+wants this recorded as real architecture now, not just deferred, because
+it will power (1) an analytics view of what's actually getting
+clicked/viewed/tried/bought, (2) informational badges on product cards,
+(3) future marketing/ad decisions about which products to feature —
+**explicitly NOT AI-driven, and explicitly NOT allowed to narrow what a
+customer sees or force specific products on them** (the same "freedom to
+start with a clear mind" principle already locked for the intent-first
+entry work below).
+
+**What shipped:** `HmProductEvent` — an append-only interaction ledger
+(same convention as `AiUsageEvent`), one row per real event
+(impression/hover/click/detail_view/visualize/compare/shortlist/
+sample_request/quote_request/purchase), scoped to `hmUserId` when logged
+in or an anonymous `sessionId` otherwise (this domain's browse pages are
+intentionally unauthenticated — OTP only gates room upload). This is
+deliberately the **single source of truth for two separate downstream
+uses**, recorded in the model's own doc comment so a future session
+doesn't conflate them:
+1. **Analytics & badges** (what this was built for) — "bestseller"/
+   "trending" computed on demand from real aggregated counts over a time
+   window, never stored as a static field on `HmProduct` (would go stale)
+   and never an AI opinion.
+2. **Session-scoped behavioural personalization** (still proposed, not
+   built — see the intent-first section below) — the same raw events
+   could feed the signal-hierarchy/convergence-threshold model already
+   designed in `research/home-material-intent-first-review.html` §11,
+   without building a second tracking system later.
+
+**Governance rule, written down now while uncontested:** this data must
+never silently affect search/recommendation ranking or hide non-badge
+products — badges are additional, clearly-labelled info only. Any future
+sponsored placement stays structurally separate and always labelled —
+same rule already locked for sponsored placement generally, extended
+explicitly to cover this ledger too.
+
+**Not built yet (real follow-up work, not part of the schema change):**
+UI instrumentation to actually emit these events (hover/click/view
+handlers across `/materials` and room-workspace screens), the aggregate
+query/computation layer for badges, and an admin analytics view. All
+deliberately deferred until there's real traffic to observe — the schema
+exists now specifically so events start accumulating the moment
+instrumentation lands, rather than losing a launch window's worth of data
+waiting for a "big" analytics project. No SKU/traffic threshold trigger
+needed here (unlike the embeddings/tagging 150-200 SKU trigger below) —
+the event log itself costs nothing to have running quietly with low
+volume.
+
+## Internal wallpaper catalogue tool — shipped 2026-09-16
+
+The item this section used to point at as "active next task" — see
+`architecture/system.md`'s "Internal catalogue tool" section for the full
+shape (single-entry add/edit/delete, PDF bulk import with a mandatory
+review queue, the new below-admin `HM_CATALOGUE_MANAGER` role) and "PDF
+worker path under Turbopack" for a real bundler gotcha hit and fixed
+along the way. `domain/data-model.md` has the schema-level summary
+(`HmProduct.reviewStatus`, `HmCatalogueImport`/`HmCatalogueImportPage`).
+
+**Not built (deliberately deferred, no real need yet):** background-job
+processing for very large PDFs (current synchronous-within-the-request
+extraction is fine for an internal staff tool's occasional per-collection
+batches); OCR/AI-vision fallback for a PDF whose product captions are
+flattened into the image rather than real text objects (no real catalogue
+PDF has hit this yet — revisit if one does); a self-service way for a
+catalogue manager to request their own access (grants are ADMIN-only by
+design, see the role's own doc comment in `lib/auth.ts`).
+
 ## The V2 direction — intent-first entry (proposed 2026-09-11, reviewed and approved 2026-09-11)
 
 On 2026-09-11 a large strategic proposal was brought for review: evolve

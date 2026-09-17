@@ -7,32 +7,36 @@ datasource db {
 }
 
 model User {
-  id           String  @id @default(cuid())
-  email        String  @unique
-  name         String
-  password     String
-  role         String  @default("RETAILER")
-  storeName    String?
+  id                     String    @id @default(cuid())
+  email                  String    @unique
+  name                   String
+  password               String
+  role                   String    @default("RETAILER")
+  storeName              String?
   /**
    * Shown to shoppers on the public rental listing (contact card + map link).
    */
-  storePhone   String?
-  /** Retailer's own verified phone — distinct from storePhone (public/unverified storefront contact). Used for security actions (e.g. password change via OTP). Null until verified once via lib/retailer-otp.ts. */
-  phone           String?   @unique
-  phoneVerifiedAt DateTime?
-  /** SHA-256 hex hash of the current forgot-password token — never the raw token (lib/password-reset.ts). Null when no reset is pending. */
+  storePhone             String?
+  /**
+   * Retailer's own verified phone — distinct from storePhone (public/unverified storefront contact). Used for security actions (e.g. password change via OTP). Null until verified once via lib/retailer-otp.ts.
+   */
+  phone                  String?   @unique
+  phoneVerifiedAt        DateTime?
+  /**
+   * SHA-256 hex hash of the current forgot-password token — never the raw token (lib/password-reset.ts). Null when no reset is pending.
+   */
   passwordResetTokenHash String?   @unique
   passwordResetExpiresAt DateTime?
-  storeAddress String?
+  storeAddress           String?
   /**
    * Fixed-list city (lib/geo/city-coordinates.ts) used for /shop's location-radius filter — city-grained, not a geocoded address.
    */
-  storeCity    String?
+  storeCity              String?
   // Business classification picked at signup — purely descriptive, distinct
   // from `role` (which gates ADMIN vs RETAILER access). "RETAILER" |
   // "MANUFACTURER" | "RENTAL_STORE", plain string per this schema's
   // stage-field convention, not a Prisma enum.
-  businessType String  @default("RETAILER")
+  businessType           String    @default("RETAILER")
 
   tryOnProvider String  @default("gemini")
   aiGenSettings String?
@@ -53,11 +57,12 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  products      Product[]
-  modelProfiles ModelProfile[]
-  wallet        Wallet?
-  motionJobs    MotionJob[]
-  clientProfile ClientProfile?
+  products              Product[]
+  modelProfiles         ModelProfile[]
+  wallet                Wallet?
+  motionJobs            MotionJob[]
+  clientProfile         ClientProfile?
+  hmCatalogueImports    HmCatalogueImport[]
 
   @@index([deletedAt])
   @@map("users")
@@ -77,19 +82,31 @@ model ClientProfile {
   userId String @unique
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  /** JSON array of module keys (lib/client-modules.ts ModuleKey), via serializeArray. */
+  /**
+   * JSON array of module keys (lib/client-modules.ts ModuleKey), via serializeArray.
+   */
   enabledModules String
-  /** Module key promoted to the primary/hero nav slot, e.g. "design-studio". */
+  /**
+   * Module key promoted to the primary/hero nav slot, e.g. "design-studio".
+   */
   primaryModule  String
 
-  /** "catalog" (browse products, tap to try on) | "quick-capture" (camera-first, no catalog). Only meaningful when "trial-room" is enabled. */
+  /**
+   * "catalog" (browse products, tap to try on) | "quick-capture" (camera-first, no catalog). Only meaningful when "trial-room" is enabled.
+   */
   trialRoomLayout String @default("catalog")
 
-  /** Overrides the "Mentis" wordmark in the shell when set. */
+  /**
+   * Overrides the "Mentis" wordmark in the shell when set.
+   */
   brandName   String?
-  /** Mentis-curated, closed set — see lib/branding/presets.ts. Never freeform CSS. */
+  /**
+   * Mentis-curated, closed set — see lib/branding/presets.ts. Never freeform CSS.
+   */
   themePreset String  @default("default")
-  /** Optional single hex; only overrides the preset's primary-hue slot, never its structure. */
+  /**
+   * Optional single hex; only overrides the preset's primary-hue slot, never its structure.
+   */
   accentColor String?
 
   createdAt DateTime @default(now())
@@ -710,13 +727,13 @@ model SeoHealthSnapshot {
 // pattern; one-off additions can also be inserted directly (Prisma Studio
 // or a small script) without re-running the whole seed.
 model TaskItem {
-  id           String   @id @default(cuid())
+  id           String  @id @default(cuid())
   title        String
   description  String
   category     String
   dependencies String?
   sourceRef    String?
-  status       String   @default("open") // "open" | "done" | "dismissed"
+  status       String  @default("open") // "open" | "done" | "dismissed"
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -940,9 +957,13 @@ model Wallet {
   userId String @unique
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  /** Retailer wallet balance in credits — 1 decimal place, 1 credit = ₹10 flat (no live exchange rate). See lib/billing/exchange.ts. */
+  /**
+   * Retailer wallet balance in credits — 1 decimal place, 1 credit = ₹10 flat (no live exchange rate). See lib/billing/exchange.ts.
+   */
   balanceCredits Float @default(0)
-  /** Lifetime credits ever added (used for remainingPercentage). */
+  /**
+   * Lifetime credits ever added (used for remainingPercentage).
+   */
   totalCredits   Float @default(0)
 
   status String @default("active")
@@ -960,9 +981,9 @@ model WalletTransaction {
   walletId String
   wallet   Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
 
-  type         String
+  type          String
   amountCredits Float
-  balanceAfter Float
+  balanceAfter  Float
 
   description String
 
@@ -972,7 +993,9 @@ model WalletTransaction {
 
   initiatedBy String
 
-  /** ₹ amount that produced this credit, when initiated by a top-up. Provenance only — the flat ₹10/credit rate makes it derivable, kept for the receipt trail. */
+  /**
+   * ₹ amount that produced this credit, when initiated by a top-up. Provenance only — the flat ₹10/credit rate makes it derivable, kept for the receipt trail.
+   */
   originalAmountInr Float?
 
   createdAt DateTime @default(now())
@@ -994,8 +1017,8 @@ model PaymentOrder {
   razorpayPaymentId String?
   razorpaySignature String?
 
-  amountInr      Int
-  amountCredits  Float?
+  amountInr     Int
+  amountCredits Float?
 
   currency String @default("INR")
 
@@ -1225,6 +1248,7 @@ model HmUser {
   shortlist      HmShortlistItem[]
   leads          HmLead[]
   customSwatches HmProduct[]
+  events         HmProductEvent[]
 
   @@map("hm_users")
 }
@@ -1386,14 +1410,61 @@ model HmProduct {
   materialId String?
   material   HmMaterial? @relation(fields: [materialId], references: [id])
 
+  // Groups colourway siblings of the same design (e.g. "Meadow Bloom" in
+  // Cream/Sage/Blue) for display ("also available in 3 colours") — never
+  // merges purchasing identity. Each colourway stays its own fully
+  // independent purchasable HmProduct (own SKU/price/image). Set only by
+  // MANUAL admin/seed grouping — never AI-inferred (a wrong "these are the
+  // same design" grouping is a real, confusing customer-facing error).
+  familyId String?
+  family   HmProductFamily? @relation(fields: [familyId], references: [id])
+
   sku        String?
   brand      String?
   collection String?
   name       String
 
+  // Customer-friendly explanation. Generated only from already-verified
+  // fields on this product (name/brand/materialComposition/colorName/
+  // finish/patternCategory) — never invents a spec not present elsewhere
+  // on the record. Optional human review before publish.
+  description String?
+
   colorName String?
   colorHex  String?
   finish    String?
+
+  // What it's physically made of — "Non-woven", "Vinyl/PVC", "Fabric-backed".
+  // Source-authoritative only (AI may extract from a real manufacturer/
+  // retailer document, never infer from a photo's appearance) — see
+  // HmProductEvidence for the provenance trail backing this value.
+  materialComposition String?
+
+  // Controlled bucket (warm_neutral | cool | pastel | earth | jewel |
+  // monochrome) — SYSTEM_CALCULATE, deterministically derived from colorHex
+  // (HSL bucketing) whenever colorHex is set/changes. Deliberately not
+  // AI-classified: this is pure colour math, cheaper and more reliable
+  // than a model call for zero accuracy gain.
+  colorFamily String?
+
+  // Platform-derived visual classification (CV over textureAssetUrl), not a
+  // manufacturer claim. patternCategory: floral | geometric | stripe |
+  // abstract | solid | textured | mural | other. visualStyle: a single
+  // dominant tag (modern, traditional, botanical, minimal, ...). Both
+  // logged with confidence via HmProductEvidence when AI-populated.
+  patternCategory String?
+  visualStyle     String?
+
+  // "peel_and_stick" | "paste_the_wall" | "paste_the_paper" | "professional"
+  // — a genuine per-SKU fact (not just category boilerplate), since
+  // peel-and-stick vs. pasted changes DIY-ability. Source-authoritative
+  // only, never inferred from appearance.
+  installationMethod String?
+
+  // Whether a retailer can actually ship a physical sample for this SKU.
+  // Nullable tri-state — null means unknown/unconfirmed, never defaulted
+  // to true or false. MANUAL / retailer-confirmed only.
+  sampleAvailable Boolean?
 
   patternName     String?
   patternRepeatCm Float?
@@ -1432,6 +1503,17 @@ model HmProduct {
   warrantyInfo String?
   availability String  @default("unspecified") // "in_stock" | "order" | "discontinued" | "unspecified"
 
+  // "draft" | "published" — gates visibility on the customer-facing
+  // catalogue (GET /api/home-material/products and its "other products"
+  // recommendation query), NOT stock/availability above. Every pre-existing
+  // row (seed data, the retired admin-add tool, real customer uploads)
+  // defaults to "published" so this is purely additive — nothing that was
+  // visible before this field existed stops being visible. New rows coming
+  // out of the internal catalogue tool (single-entry or PDF bulk import,
+  // 2026-09-16+) default to "draft" at the application layer until an
+  // admin/catalogue-manager explicitly publishes them.
+  reviewStatus String @default("published")
+
   imageUrls       String  @default("[]") // JSON array (lib/serialize.ts)
   // Reference texture asset for product-accurate visualization (pattern/
   // colour source, not a room photo). For a custom upload (see
@@ -1452,16 +1534,148 @@ model HmProduct {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  evidence         HmProductEvidence[]
-  retailerListings HmRetailerProduct[]
-  visualizations   HmVisualization[]
-  recommendations  HmRecommendation[]
-  shortlistedBy    HmShortlistItem[]
-  leads            HmLead[]
+  evidence            HmProductEvidence[]
+  retailerListings    HmRetailerProduct[]
+  visualizations      HmVisualization[]
+  recommendations     HmRecommendation[]
+  shortlistedBy       HmShortlistItem[]
+  leads               HmLead[]
+  events              HmProductEvent[]
+  fromImportPages     HmCatalogueImportPage[]
 
   @@index([materialId])
   @@index([uploadedByHmUserId])
+  @@index([familyId])
+  @@index([reviewStatus])
   @@map("hm_products")
+}
+
+// One row per shared design — an optional parent grouping colourway
+// variants of the same wallpaper for display only (see HmProduct.familyId).
+model HmProductFamily {
+  id   String @id @default(cuid())
+  name String // shared design name, e.g. "Meadow Bloom"
+
+  createdAt DateTime @default(now())
+
+  products HmProduct[]
+
+  @@map("hm_product_families")
+}
+
+// One row per PDF catalogue uploaded through the internal bulk-import tool
+// (2026-09-16+, see docs/home-material/architecture/system.md). Extraction
+// is structured-only — pulled from the PDF's own text/image objects
+// (lib/home-material/pdf-import.ts), never OCR or AI vision — so this is
+// deterministic and free to run. Processed ONE PAGE AT A TIME (not the
+// whole file synchronously) so the admin sees live progress and can stop
+// early — pageCount/pagesProcessed below track that. The uploaded PDF
+// itself is NOT persisted (tried storing it in Cloudinary for cross-
+// request resumability, but real supplier PDFs routinely exceed this
+// account's 10MB raw-upload cap — Cloudinary's chunked upload_large only
+// chunks the transport, not the account's max-asset-size limit). Kept
+// entirely in an in-memory session instead
+// (lib/home-material/pdf-import-sessions.ts) for the lifetime of one
+// processing run; if the server restarts mid-import the admin re-uploads
+// — the pages already extracted before that stay valid.
+model HmCatalogueImport {
+  id         String  @id @default(cuid())
+  collection String // set once for the whole batch — a catalogue PDF is typically one collection
+  brand      String?
+
+  sourceFileName String // audit label only — the PDF bytes are not stored
+
+  uploadedByUserId String
+  uploadedByUser   User   @relation(fields: [uploadedByUserId], references: [id])
+
+  // "processing" | "needs_review" | "cancelled" | "completed" | "failed".
+  // "cancelled" means the admin stopped it early via POST .../cancel —
+  // whatever pages were already extracted stay real, reviewable
+  // candidates, same as "needs_review". "completed" means every page has
+  // left "pending" review (approved or rejected), not that every page
+  // became a product.
+  status       String  @default("processing")
+  errorMessage String?
+
+  // Total pages in the PDF (set once the file is opened) vs. how many have
+  // actually been run through extractPage so far — the live progress bar.
+  pageCount      Int @default(0)
+  pagesProcessed Int @default(0)
+
+  // AI-extracted collection-level facts (2026-09-17) — from
+  // lib/home-material/collection-info-extraction.ts, run once at the end
+  // of processing over every "info"-type page's text (a genuine
+  // material/technology reference page some suppliers include, distinct
+  // from any one product's own listing). JSON shape: CollectionInfoFields
+  // (materialComposition/installationMethod/warrantyInfo/description/
+  // claims). Null when no info pages were found, the API wasn't
+  // configured, or nothing could be confidently extracted — a suggestion
+  // surfaced in the review queue for the admin to apply to some or all
+  // pending candidates, never written to a product automatically.
+  collectionFields String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  pages HmCatalogueImportPage[]
+
+  @@index([status])
+  @@map("hm_catalogue_imports")
+}
+
+// One row per PDF page examined during a bulk import — the review-queue
+// unit. Nothing here becomes a real HmProduct until an admin/catalogue
+// manager explicitly approves it (reviewStatus "approved"); rejecting or
+// leaving a page pending never creates one. Mirrors HmProductEvidence's
+// "don't retrofit provenance later" discipline — every resulting product
+// also gets an HmProductEvidence row pointing back to this import.
+model HmCatalogueImportPage {
+  id       String            @id @default(cuid())
+  importId String
+  import   HmCatalogueImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+
+  pageNumber Int
+
+  // "product" | "info" | "noise" | "ambiguous" — a heuristic guess from
+  // lib/home-material/pdf-import.ts, always overridable by the reviewing
+  // admin. "ambiguous" means the page had an image but the extractor
+  // couldn't confidently isolate one candidate (e.g. multiple images, or an
+  // image plus a long text block) — never guessed, always surfaced for a
+  // human to resolve instead of silently dropped or silently imported.
+  pageType String
+
+  extractedImageUrl String? // Cloudinary upload of the embedded product photo, when one was found
+
+  // Candidate field guesses — a flat JSON OBJECT (name/sku/colorName/
+  // patternName/...), not an array, so lib/serialize.ts's array helpers
+  // don't apply here; parsed with plain JSON.parse. Always editable in the
+  // review UI, never written to HmProduct until approved.
+  extractedFields String @default("{}")
+
+  // AI classification suggestion (2026-09-17) — from lib/home-material/
+  // pdf-classification.ts, a Gemini vision pass over the extracted image
+  // (deterministic pageType above stays untouched by this; this is a
+  // SEPARATE, purely additive signal). JSON shape: {role, confidence,
+  // finishGuess, colorHint} — role is one of clean_tile/lifestyle/
+  // texture_closeup/group_shot/noise. Null means unclassified (not
+  // attempted, API unavailable, or the response couldn't be trusted) —
+  // the review queue must treat null the same as any other pending
+  // candidate, never hide it. A "noise"-classified candidate still stays
+  // fully visible and reachable — this is a sort/triage aid only, never a
+  // filter that can hide a real product from review.
+  aiClassification String?
+
+  // "pending" | "approved" | "rejected"
+  reviewStatus String    @default("pending")
+  reviewedAt   DateTime?
+
+  resultingProductId String?
+  resultingProduct   HmProduct? @relation(fields: [resultingProductId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([importId, reviewStatus])
+  @@map("hm_catalogue_import_pages")
 }
 
 // Per-field provenance — first-class from day one, not retrofitted later
@@ -1480,10 +1694,64 @@ model HmProductEvidence {
   sourceDetail String? // free text — retailer name, URL, etc.
   confidence   Float?
 
+  // How trustworthy the SOURCE ITSELF is — "authoritative" | "retailer_stated"
+  // | "estimated" | "unverified" — deliberately separate from `confidence`
+  // above, which stays AI-extraction-confidence only. A manufacturer PDF
+  // isn't "97% confident," it's authoritative; a plausible AI guess isn't
+  // authoritative however confident the model sounds.
+  sourceAuthority String?
+
   createdAt DateTime @default(now())
 
   @@index([productId, field])
   @@map("hm_product_evidence")
+}
+
+// Append-only interaction ledger — same "durable log, don't just mutate a
+// counter" convention as AiUsageEvent elsewhere in this schema. One row per
+// real customer interaction (impression/hover/click/detail view/visualize/
+// compare/shortlist/sample_request/quote_request/purchase). This is the
+// SINGLE source of truth for two intentionally separate downstream uses —
+// never conflate them:
+//   1. Analytics & badges (what this table was added for, 2026-09-16) —
+//      "bestseller"/"trending" are computed on demand from real aggregated
+//      counts over a time window, never stored as a static field on
+//      HmProduct (would go stale) and never an AI opinion.
+//   2. Session-scoped behavioural personalization (proposed, not yet
+//      built — see docs/home-material/product/roadmap.md) — narrowing
+//      recommendations within one session. Governance: a single event
+//      never updates a persisted preference; only a converging pattern
+//      does, always reversible, always framed as "based on what you've
+//      explored."
+// GOVERNANCE (both uses): this data must never silently affect search/
+// recommendation ranking or hide non-badge products — badges surface as
+// clearly-labelled additional info only. Any future sponsored placement
+// must stay structurally separate and always labelled — it never earns
+// its way into this table's organic counts.
+model HmProductEvent {
+  id String @id @default(cuid())
+
+  productId String
+  product   HmProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  // impression | hover | click | detail_view | visualize | compare |
+  // shortlist | sample_request | quote_request | purchase
+  eventType String
+
+  // Null for an anonymous visitor (this domain's browse/landing pages are
+  // intentionally unauthenticated — OTP only gates room upload). sessionId
+  // identifies an anonymous browsing session when hmUserId is null; at
+  // least one of the two should be present in practice, not enforced at
+  // the schema level.
+  hmUserId  String?
+  hmUser    HmUser? @relation(fields: [hmUserId], references: [id], onDelete: SetNull)
+  sessionId String?
+
+  createdAt DateTime @default(now())
+
+  @@index([productId, eventType, createdAt])
+  @@index([sessionId])
+  @@map("hm_product_events")
 }
 
 // Admin-seeded for V1 — no self-serve retailer onboarding yet (locked

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getOrCreateHmUserSession } from "@/lib/home-material/auth";
+import { deriveQuadFromTrace } from "@/lib/home-material/quad-corners";
 
 const MIN_POINTS = 3;
 const MAX_POINTS = 12;
@@ -54,10 +55,19 @@ export async function PATCH(
     return NextResponse.json({ error: "This selection is too small — try covering more of the wall" }, { status: 400 });
   }
 
+  // Re-shaping previously always dropped any quad entirely, even one
+  // the user was only nudging slightly (see this function's own doc
+  // comment: a re-save is always "user_confirmed" now). A re-shaped
+  // 4-point outline that's genuinely angled is derived fresh from the
+  // new points instead (2026-09-17) — the user just re-traced the wall's
+  // real corners by hand, which deserves perspective correction at least
+  // as much as an untouched AI quad did. See quad-corners.ts.
+  const derivedCorners = deriveQuadFromTrace(points);
+
   const updated = await db.hmSurface.update({
     where: { id: surfaceId },
     data: {
-      geometryData: JSON.stringify({ points }),
+      geometryData: JSON.stringify(derivedCorners ? { points, corners: derivedCorners } : { points }),
       measurementSource: "user_confirmed",
       measurementConfidence: null,
       ...(typeof label === "string" ? { label: label.trim() || null } : {}),
