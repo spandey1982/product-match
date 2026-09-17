@@ -41,9 +41,18 @@ export const dynamic = "force-dynamic";
 async function getBrowseProducts(): Promise<BrowseProduct[]> {
   // Curated/public products only — a signed-out visitor is the primary
   // audience for this page, and a private custom upload belongs to
-  // exactly one HmUser, never shown here.
+  // exactly one HmUser, never shown here. `reviewStatus: "published"` was
+  // missing here until 2026-09-17 — the internal catalogue tool's own
+  // commit message said reviewStatus "gates the customer-facing /materials
+  // feed," but this query never actually enforced it, so a draft product
+  // (including a photo-less placeholder saved as "still need this photo")
+  // could show up on the public browse grid while correctly staying
+  // hidden from the room-workspace swatch picker
+  // (app/api/home-material/products/route.ts, which did filter on this
+  // from the start) — found via a real report of newly-added wallpapers
+  // missing as room-workspace options.
   const products = await db.hmProduct.findMany({
-    where: { uploadedByHmUserId: null },
+    where: { uploadedByHmUserId: null, reviewStatus: "published" },
     orderBy: { createdAt: "asc" },
     select: {
       id: true,

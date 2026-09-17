@@ -68,29 +68,49 @@ broaden category coverage. Until then, treat any paint/texture/panel/
 non-wall work as out of scope, same as this file already treats
 sub-problem D and the embeddings/taste-graph deferrals below.
 
-### Code/UI gap left by the narrowing — not yet resolved (found 2026-09-16)
+### Code/UI gap left by the narrowing — partially resolved 2026-09-17
 
 The 2026-09-16 scope narrowing was a docs+schema decision; it did **not**
-touch the running demo catalogue or the browse UI, so today's app is
-still wider than the documented scope:
+touch the running demo catalogue or the browse UI, so the app was
+briefly wider than the documented scope:
 
-- `scripts/seed-home-material.ts` seeds 4 paint demo products + 1 texture
-  demo product alongside the 1 wallpaper demo product — all 6 still show
-  up in `/materials`.
+- `scripts/seed-home-material.ts` still seeds 4 paint demo products + 1
+  texture demo product alongside the wallpaper ones — **still true,
+  unresolved.** All 6 non-wallpaper-schema demo rows still show up in
+  `/materials`.
 - `components/home-material/MaterialProductCard.tsx`'s exported
   `CATEGORY_ORDER`/`CATEGORY_LABELS` (consumed by
   `MaterialBrowseSection.tsx`'s category tab row) still hardcode all 4
-  categories, so the browse page's filter tabs still offer Paint/Wall
-  Texture/Wall Panels even though none of them are in scope.
+  categories — **still true, unresolved.** The browse page's filter tabs
+  still offer Paint/Wall Texture/Wall Panels even though none of them are
+  in scope.
 
 Not a bug — nothing crashes or misbehaves — just an inconsistency between
 "documented scope" and "what a visitor actually sees today." Resolve this
 before or as part of the wallpaper-catalogue build (the active next task,
 see `README.md`'s current-direction section): decide whether to hide the
 other 3 tabs outright, mark them "coming soon," or leave them until real
-paint/texture data exists, and decide whether to keep the 5 non-wallpaper
+paint/texture data exists, and decide whether to keep the non-wallpaper
 seed rows around as demo content or delete them now that the real
 wallpaper schema (below) supersedes the seed script's simple shape.
+
+**A related, separate, real bug found and fixed 2026-09-17** (not part of
+the narrowing itself, but discovered while investigating a report that
+newly-added wallpapers weren't showing up as room-workspace swatch
+options): `app/materials/page.tsx`'s product query had **no
+`reviewStatus` filter at all**, despite the internal catalogue tool's own
+commit message claiming reviewStatus "gates the customer-facing
+`/materials` feed." So a draft product (including a photo-less
+placeholder) could show up on the public browse grid while correctly
+staying invisible in the room-workspace swatch picker
+(`app/api/home-material/products/route.ts`, which did filter on this
+from the start) — the exact mismatch behind the report. Fixed by adding
+the missing filter. Separately, publishing a product was previously only
+possible by opening the full Edit dialog and changing the "Review
+status" dropdown — easy to forget after a PDF import (which always lands
+as draft, by design). Added a one-click Publish/Unpublish toggle to
+`/admin/home-material/products` (`ProductsView.tsx`) so this doesn't
+recur. See `ui/decisions.md` for the full write-up.
 
 ## Wallpaper product schema v1 — shipped 2026-09-16
 

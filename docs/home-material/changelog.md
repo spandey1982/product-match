@@ -1067,3 +1067,18 @@ full account of each. Summary, in order:
   flow (partial pages kept, resume correctly refused), and the publish-
   without-photo block (both the negative and positive case). Full detail:
   `architecture/system.md`'s "PDF extraction rework" section.
+- **2026-09-17** — two real bugs from a live user report, both found and
+  fixed same day: (1) `app/materials/page.tsx`'s browse query had no
+  `reviewStatus` filter at all, so draft products (the 4 real PDF-import
+  wallpapers, still unpublished) were visible on the public feed while
+  correctly hidden from the room-workspace swatch picker — backwards from
+  the intended gate; fixed the filter, published the 4 wallpapers, and
+  added a one-click Publish/Unpublish toggle to the admin products list
+  so the "only way to publish is the full Edit dialog" trap doesn't
+  recur. (2) the browse card's eye icon always opened the upload-room
+  modal even for a visitor who already has a confirmed wall; added
+  `GET /api/home-material/rooms/active-surface` (read-only lookup) so it
+  now jumps straight into an existing room and auto-generates a room
+  trial there instead. Full detail: `ui/decisions.md`'s "Two real bugs"
+  entry; `product/roadmap.md`'s "Code/UI gap" section for what's now
+  fixed vs. still open.

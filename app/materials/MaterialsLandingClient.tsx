@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { UploadRoomModal } from "@/components/home-material/UploadRoomModal";
@@ -84,6 +84,7 @@ export function MaterialsLandingClient({
   products: BrowseProduct[];
   subtypesByCategory: Record<string, SubtypeOption[]>;
 }) {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const [modalOpen, setModalOpen] = useState(searchParams.get("openUpload") === "1");
   const [modalProductId, setModalProductId] = useState<string | null>(searchParams.get("product"));
@@ -93,6 +94,31 @@ export function MaterialsLandingClient({
   function openUpload(productId?: string) {
     setModalProductId(productId ?? null);
     setModalOpen(true);
+  }
+
+  /**
+   * A returning visitor who already has a room with a confirmed wall
+   * shouldn't be re-prompted to upload a room photo when they pick a
+   * product to preview (2026-09-17 bug fix) — jump straight into that
+   * room instead, auto-selecting the product on its most recently
+   * confirmed wall and generating a room trial there (RoomView.tsx reads
+   * `?product=&surface=&autoPreview=1`). A first-time visitor with no
+   * confirmed wall yet falls back to the existing upload-modal flow.
+   * `/api/home-material/rooms/active-surface` is a read-only check (no
+   * guest account is provisioned just to learn "no room yet").
+   */
+  async function handlePreviewProduct(productId: string) {
+    try {
+      const res = await fetch("/api/home-material/rooms/active-surface");
+      const data = await res.json();
+      if (data.roomId && data.surfaceId) {
+        router.push(`/materials/rooms/${data.roomId}?product=${productId}&surface=${data.surfaceId}&autoPreview=1`);
+        return;
+      }
+    } catch {
+      // Fall through to the upload modal — same as "no room yet."
+    }
+    openUpload(productId);
   }
 
   function handleIntentSubmit(e: React.FormEvent) {
@@ -211,11 +237,11 @@ export function MaterialsLandingClient({
         {hasConfidentMatches ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
             {matched.map((p) => (
-              <MaterialProductCard key={p.id} p={p} onOpen={() => openUpload(p.id)} />
+              <MaterialProductCard key={p.id} p={p} onOpen={() => handlePreviewProduct(p.id)} />
             ))}
           </div>
         ) : (
-          <MaterialBrowseSection products={products} subtypesByCategory={subtypesByCategory} onOpenProduct={openUpload} />
+          <MaterialBrowseSection products={products} subtypesByCategory={subtypesByCategory} onOpenProduct={handlePreviewProduct} />
         )}
       </section>
     </div>

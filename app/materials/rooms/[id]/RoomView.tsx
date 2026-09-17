@@ -990,6 +990,21 @@ export function RoomView({ roomId }: { roomId: string }) {
   // at once they confirm their first wall, so browsing before uploading
   // (Mode A) doesn't dead-end into re-picking the same material again.
   const preselectedProductId = searchParams.get("product");
+  // "Preview on an already-confirmed wall" (2026-09-17 bug fix) — the
+  // browse page's eye icon sends a returning visitor with an existing
+  // confirmed wall straight here with `surface` + `autoPreview=1` (see
+  // MaterialsLandingClient.tsx's handlePreviewProduct and
+  // /api/home-material/rooms/active-surface), instead of the "pre-select
+  // for whichever wall gets confirmed next" flow above, which only ever
+  // fires for a BRAND NEW wall. autoPreviewTriggeredRef guards against
+  // firing twice (e.g. React Strict Mode's double-invoke) — a genuine
+  // page reload re-running this is harmless anyway, since the server-side
+  // visualization cache (lib/home-material/visualization.ts) turns a
+  // repeat of the exact same wall+product into a free cache hit, not a
+  // second AI call.
+  const autoPreviewSurfaceId = searchParams.get("surface");
+  const autoPreview = searchParams.get("autoPreview") === "1";
+  const autoPreviewTriggeredRef = useRef(false);
   const imageRef = useRef<HTMLDivElement>(null);
   const reuploadInputRef = useRef<HTMLInputElement>(null);
 
@@ -1161,6 +1176,26 @@ export function RoomView({ roomId }: { roomId: string }) {
       .then((data) => setUploadMaterials((data.materials as { id: string; category: string; name: string }[] | undefined) ?? []))
       .catch(() => {});
   }, [roomId, router]);
+
+  // See autoPreviewSurfaceId's doc comment above — once the room has
+  // loaded, if this navigation came from the browse page's "preview on my
+  // existing wall" action, select the product on that wall and kick off
+  // generation immediately, without waiting for the customer to pick the
+  // swatch and press "Generate room trial" themselves.
+  useEffect(() => {
+    if (!autoPreview || autoPreviewTriggeredRef.current) return;
+    if (!room || !preselectedProductId || !autoPreviewSurfaceId) return;
+    const surface = room.surfaces.find((s) => s.id === autoPreviewSurfaceId && s.geometryData);
+    if (!surface) return;
+    autoPreviewTriggeredRef.current = true;
+    setSelectedSwatch((sel) => ({ ...sel, [surface.id]: preselectedProductId }));
+    handleGeneratePreview(surface.id, preselectedProductId);
+    // Strip the one-shot params so a later reload/share of this URL
+    // doesn't repeat the auto-trigger (a repeat itself would be a free
+    // cache hit, not a cost concern — this is purely about not surprising
+    // someone who bookmarks or reloads mid-session).
+    router.replace(`/materials/rooms/${roomId}`, { scroll: false });
+  }, [room, autoPreview, preselectedProductId, autoPreviewSurfaceId, roomId, router]);
 
   function resetDraft() {
     setDraftPoints(null);

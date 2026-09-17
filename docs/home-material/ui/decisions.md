@@ -804,3 +804,81 @@ products in 3 of the 4. This is recorded here as a known, deliberate gap
 (not a regression) — see `product/roadmap.md`'s "Code/UI gap" note for
 the resolution options to pick from when the wallpaper-catalogue work
 starts.
+
+## Two real bugs: missing draft-gate filter, and eye icon ignoring an existing room, 2026-09-17
+
+User report: newly-added wallpapers (via the internal catalogue tool
+shipped 2026-09-16) weren't appearing as options in the room workspace,
+and separately, the product card's eye icon should jump straight into an
+already-set-up room and preview there instead of re-prompting for a room
+photo.
+
+**Bug 1 — draft products invisible everywhere they should be, visible
+where they shouldn't be.** Investigation found the 4 real wallpaper
+products added via PDF import (`100/1`–`100/4`, real photos, correctly
+categorized) were stuck in `reviewStatus: "draft"` — by design, PDF
+import approval always lands as draft (see
+`architecture/system.md`), and nobody had gone back to explicitly
+publish them. That alone explained the room-workspace symptom
+(`app/api/home-material/products/route.ts` correctly excludes drafts).
+But a second, real bug compounded it: `app/materials/page.tsx`'s browse
+query had **no `reviewStatus` filter at all**, so those same draft
+products (and any future photo-less placeholder draft) were actually
+visible on the public `/materials` grid the whole time — exactly
+backwards from the intended gate, and the inconsistency that made the
+symptom confusing rather than simply "products aren't published yet."
+Fixed both: added `reviewStatus: "published"` to the `/materials` query,
+and published the 4 real wallpapers (verified live: all 4 now return
+from `/api/home-material/products` with their real Cloudinary photos,
+and render correctly on `/materials`'s Wallpaper tab).
+
+Also added a one-click Publish/Unpublish toggle (an eye/eye-off icon) to
+`/admin/home-material/products` (`ProductsView.tsx`) — previously the
+only way to flip `reviewStatus` was opening the full Edit dialog and
+changing a dropdown, which is exactly the step that got missed here.
+Resubmits the row's own current values (via the existing
+`productToFormValues` shape) with just `reviewStatus` flipped, so the
+PATCH endpoint's existing "needs a photo to publish" rule still applies
+unchanged — disabled with a tooltip on a draft row with no photo.
+
+**Bug 2 — the eye icon always opened the "upload your room" modal, even
+for a returning visitor who already has a confirmed wall.** Added a
+read-only lookup, `GET /api/home-material/rooms/active-surface`
+(`getHmUserSession()`, not `getOrCreateHmUserSession()` — same "don't
+provision a guest just to learn 'no room yet'" discipline as
+`HmNavBar.tsx`), returning the most recently confirmed
+(`geometryData` set) wall across the visitor's rooms. `handlePreviewProduct`
+in `MaterialsLandingClient.tsx` now calls this before deciding what a
+product click should do: a hit navigates straight to
+`/materials/rooms/[roomId]?product=&surface=&autoPreview=1`; a miss
+falls back to the existing upload-modal flow unchanged. `RoomView.tsx`
+reads those three params in a new effect (guarded by a ref so it only
+fires once) and, once the room has loaded and the named surface is
+confirmed, selects the product on it and calls the existing
+`handleGeneratePreview` immediately — no extra click required — then
+strips the params via `router.replace` so a reload doesn't repeat it (a
+repeat would be a free cache hit anyway, per the existing visualization
+cache, so this is about tidiness, not cost).
+
+Live-tested end to end with a synthetic test room (manually traced wall,
+no AI detection call): confirmed `active-surface` correctly returns
+`{roomId:null,surfaceId:null}` before any room exists and the real
+room+surface ids after one is confirmed; confirmed clicking a product's
+eye icon from `/materials` navigated straight into the existing room
+(not the upload modal) and auto-triggered generation for that product on
+that wall — verified by the app correctly landing on the existing
+"wall size needed for an accurate repeat-pattern preview" prompt
+(the same flow a manual click already goes through for a `repeat_sheet`
+product), proving the swatch was auto-selected and generation was
+auto-triggered without a manual pick. `npx tsc --noEmit` clean; lint
+clean except one pre-existing-pattern `react-hooks/exhaustive-deps`
+warning (a handler function omitted from a `useEffect` dependency array,
+consistent with this file's other effects).
+
+**Incidental cost note:** the live test above caused one real Gemini
+vision call (the wall-dimension-estimation step that already runs for
+any `repeat_sheet` product without a stated size) — not anticipated when
+starting the test, since the flow was expected to stop at "swatch
+selected," not reach an actual generation attempt. Disclosed to the user
+per [[ask-before-paid-model-tests]]; cost was minimal (a single vision
+call, not full image generation, which was never reached).

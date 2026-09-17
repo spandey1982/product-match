@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { Plus, Pencil, Trash2, Search, ImageOff } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, ImageOff, Eye, EyeOff } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -230,6 +230,8 @@ export function ProductsView({
   const [editing, setEditing] = useState<ProductRow | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<Record<string, string>>({});
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [toggleError, setToggleError] = useState<Record<string, string>>({});
 
   async function refresh() {
     const params = new URLSearchParams();
@@ -255,6 +257,38 @@ export function ProductsView({
     if (!res.ok) return data.error || "Could not update product";
     await refresh();
     return null;
+  }
+
+  /**
+   * One-click publish/unpublish (2026-09-17) — previously the ONLY way to
+   * flip reviewStatus was opening the full Edit dialog and changing the
+   * "Review status" dropdown, which turned out to be an easy step to miss
+   * after adding products via PDF import (which always lands as draft, by
+   * design — see the import approval route's doc comment): 4 real,
+   * photo-complete wallpaper products sat invisible to customers for a day
+   * simply because nobody had gone back and explicitly published them.
+   * Resubmits the row's own current field values unchanged (via
+   * productToFormValues, the same shape the Edit dialog already sends),
+   * just with reviewStatus flipped — the PATCH endpoint's existing
+   * "needs a photo to publish" rule still applies, so this can't silently
+   * publish a photo-less placeholder.
+   */
+  async function handleToggleStatus(p: ProductRow) {
+    const nextStatus = p.reviewStatus === "published" ? "draft" : "published";
+    setTogglingId(p.id);
+    setToggleError((e) => ({ ...e, [p.id]: "" }));
+    try {
+      const fd = productValuesToFormData({ ...productToFormValues(p), reviewStatus: nextStatus });
+      const res = await fetch(`/api/admin/home-material/products/${p.id}`, { method: "PATCH", body: fd });
+      const data = await res.json();
+      if (!res.ok) {
+        setToggleError((e) => ({ ...e, [p.id]: data.error || "Could not update status" }));
+        return;
+      }
+      await refresh();
+    } finally {
+      setTogglingId(null);
+    }
   }
 
   async function handleDelete(id: string) {
@@ -368,6 +402,20 @@ export function ProductsView({
                   <td className="px-4 py-2.5 text-right">
                     <div className="flex items-center justify-end gap-1">
                       <button
+                        onClick={() => handleToggleStatus(p)}
+                        disabled={togglingId === p.id || (p.reviewStatus !== "published" && !p.textureAssetUrl)}
+                        className="p-1.5 text-gray-400 hover:text-emerald-600 rounded-lg hover:bg-emerald-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        title={
+                          p.reviewStatus === "published"
+                            ? "Unpublish (hide from customers)"
+                            : !p.textureAssetUrl
+                              ? "Add a photo before publishing"
+                              : "Publish (show to customers)"
+                        }
+                      >
+                        {p.reviewStatus === "published" ? <EyeOff size={13} /> : <Eye size={13} />}
+                      </button>
+                      <button
                         onClick={() => setEditing(p)}
                         className="p-1.5 text-gray-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors"
                         title="Edit"
@@ -383,6 +431,9 @@ export function ProductsView({
                         <Trash2 size={13} />
                       </button>
                     </div>
+                    {toggleError[p.id] && (
+                      <p className="text-[10px] text-red-600 mt-1 max-w-[220px] text-right">{toggleError[p.id]}</p>
+                    )}
                     {deleteError[p.id] && (
                       <p className="text-[10px] text-red-600 mt-1 max-w-[220px] text-right">{deleteError[p.id]}</p>
                     )}
