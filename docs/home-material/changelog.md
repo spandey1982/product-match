@@ -1082,3 +1082,29 @@ full account of each. Summary, in order:
   trial there instead. Full detail: `ui/decisions.md`'s "Two real bugs"
   entry; `product/roadmap.md`'s "Code/UI gap" section for what's now
   fixed vs. still open.
+- **2026-09-17, later the same day** — a user-reported realism problem
+  ("looks pasted onto a flat surface, not projected onto the wall")
+  traced to two compounding causes: the 100/1–100/4 wallpaper products'
+  reference images were the raw supplier lifestyle/backlit photos
+  extracted from the PDF (whole-room shots, not flat swatches), AND
+  `lib/home-material/visualization.ts`'s true-scale tiling and
+  perspective-homography paths were mutually exclusive — a repeat-pattern
+  product with no AI-detected quad got tiled at true physical scale but
+  pasted as a flat axis-aligned rectangle (zero perspective correction);
+  a product WITH a quad got perspective correction but only as a single
+  stretched instance of the reference image (ignoring its real physical
+  repeat size). Fixed the second, structural cause: `visualization.ts`'s
+  quad-based path now tiles a repeat_sheet product at true scale in the
+  wall's own flat coordinate space FIRST, then perspective-warps that
+  tiled canvas onto the quad via the same homography sub-problem B
+  already validated (`renderPerspectiveTiledPattern`, reusing
+  `warpTextureOntoQuad`/`renderTiledPattern` rather than new geometry
+  code). Verified deterministically (zero AI cost — this whole path is
+  pure sharp/homography math, no Gemini call) against a synthetic
+  trapezoid-quad room photo and a checkerboard test tile: tiles visibly
+  narrow toward the receding side of the trapezoid while staying at the
+  requested physical scale (6 real-world-0.5m tiles across a 3m wall),
+  and the pre-existing plain single-warp path (non-repeat patterns) was
+  re-verified unchanged. The FIRST cause (raw lifestyle photos as tiling
+  references) is a product-data problem, not a code one — still open,
+  see `product/roadmap.md`.
