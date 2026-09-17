@@ -882,3 +882,68 @@ starting the test, since the flow was expected to stop at "swatch
 selected," not reach an actual generation attempt. Disclosed to the user
 per [[ask-before-paid-model-tests]]; cost was minimal (a single vision
 call, not full image generation, which was never reached).
+
+## PDF import review-queue UX + wall-selector fullscreen/ordering, 2026-09-17
+
+Five user-requested items, all shipped:
+
+- **Multi-select reject** — a checkbox per pending page card plus a
+  "select all" toolbar, batch-rejecting via `Promise.allSettled` over the
+  existing single-page PATCH endpoint rather than a new bulk route.
+- **Immediate undo** — a dismissable toast ("Rejected page N — Undo")
+  after any reject (single or bulk), live for 8 seconds. Required a real
+  API change: the PDF-import PATCH route's own doc comment previously
+  called reject "terminal" — added a new `action: "restore"` branch
+  (rejected → pending only; approved stays terminal, since undoing that
+  would also mean deleting the resulting product, out of scope here).
+- **Restore + thumbnails + delete-all in the "Already reviewed" list** —
+  the table gained a thumbnail column (previously page number + status
+  only, making it impossible to tell candidates apart at a glance), a
+  per-row "Restore" action for rejected rows (same `action: "restore"`
+  endpoint), and a confirmed "Delete all" bulk-clear
+  (`DELETE /api/admin/home-material/catalogue-imports/[id]`, scoped to
+  non-pending rows only — approved rows' resulting products are
+  untouched, the FK points from page to product, not the reverse).
+- **Fullscreen wall selector** — an expand icon above the wall-tracing
+  card toggles a fixed full-viewport overlay around the exact same
+  JSX/state (no separate fullscreen-specific logic to drift out of sync).
+  Desktop shows "Press Esc to exit"; mobile gets a fixed bottom band
+  (cross = exit only, check = run whichever confirm action the current
+  stage has — finish the traced shape or confirm/save the adjusted
+  outline — then exit).
+- **Manual tracing promoted to the primary option**, automatic detection
+  demoted to a secondary text link (previously the reverse) — manual
+  always works regardless of photo angle/lighting and costs no AI call,
+  where detection is a convenience that can fail.
+
+**A real, reproducible-looking "bug" during live-testing turned out to be
+a test-methodology artifact, not an app bug** — worth recording since it
+cost real debugging time: clicking Reject via automated coordinate/ref
+clicks sometimes silently missed the actual button (viewport size
+changed between screenshots, shifting coordinates; a stale accessibility-
+tree ref pointing at an already-reconciled DOM node), making it look like
+the reject succeeded (pending count did drop, from an EARLIER click that
+DID land) while a same-moment "check for the undo toast" call found
+nothing. Separately, the toast's own 8-second window is short enough
+that the real wall-clock time between two separate tool calls (this
+session's own reasoning/latency between "click" and "check") could
+exceed it, making a perfectly-working toast look like it never rendered.
+Confirmed both explanations directly: a single script that clicked AND
+polled `recentlyRejected` state in one execution (no inter-call latency)
+showed the value set correctly and persisting past 2 seconds; a clean
+click-then-screenshot pair completed within the window shows the toast
+rendering exactly as designed, and a same-window Undo click correctly
+restored the page (verified via a direct, unrefreshed fetch to the
+review-page GET showing `reviewStatus` flip back to `"pending"`). No code
+fix was needed — an initial "fix" (deferring `router.refresh()` a tick)
+was tried, found unnecessary once the real cause was understood, and
+reverted rather than left in as unexplained defensive code.
+
+Live-tested against a real in-progress import ("Palm Island," a genuine
+supplier PDF, not a synthetic test file): multi-select and single reject,
+undo, restore (both toast and Reviewed-list paths), and the reviewed
+table's thumbnails all confirmed working against real pending pages.
+"Delete all" was deliberately NOT executed against this real import (it's
+irreversible and this data belongs to the user's actual in-progress
+work) — confirmed only by inspection that the button and confirm dialog
+render correctly. `npx tsc --noEmit` and `eslint` both clean.

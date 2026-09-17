@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { ChevronDown, ChevronUp, Check, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Check, X, Undo2, RotateCcw, Trash2 } from "lucide-react";
 import {
   ProductFormFields,
   EMPTY_PRODUCT_FORM_VALUES,
@@ -48,6 +48,12 @@ const PAGE_TYPE_LABEL: Record<string, string> = {
   ambiguous: "Ambiguous — needs a human call",
 };
 
+// How long the "Undo" toast stays up after a reject (single or bulk)
+// before the rejection is left to stand — matches item 2's "immediate
+// undo" ask: long enough to catch a slip of the mouse, not a general
+// substitute for the Reviewed list's own untimed Restore action (item 3).
+const UNDO_WINDOW_MS = 8000;
+
 function parseExtracted(raw: string): { name: string | null; sku: string | null; rawText: string } {
   try {
     const parsed = JSON.parse(raw);
@@ -57,6 +63,16 @@ function parseExtracted(raw: string): { name: string | null; sku: string | null;
   }
 }
 
+async function reviewPage(importId: string, pageId: string, formData: FormData) {
+  const res = await fetch(`/api/admin/home-material/catalogue-imports/${importId}/pages/${pageId}`, {
+    method: "PATCH",
+    body: formData,
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Request failed");
+  return data;
+}
+
 function PageCard({
   page,
   importId,
@@ -64,7 +80,11 @@ function PageCard({
   importBrand,
   materials,
   families,
-  onResolved,
+  selected,
+  onToggleSelect,
+  bulkBusy,
+  onApproved,
+  onRejected,
 }: {
   page: ImportPage;
   importId: string;
@@ -72,7 +92,11 @@ function PageCard({
   importBrand: string | null;
   materials: MaterialOption[];
   families: FamilyOption[];
-  onResolved: () => void;
+  selected: boolean;
+  onToggleSelect: () => void;
+  bulkBusy: boolean;
+  onApproved: () => void;
+  onRejected: (pageId: string, pageNumber: number) => void;
 }) {
   const extracted = parseExtracted(page.extractedFields);
   // Collapsed by default regardless of pageType: a real catalogue PDF can
@@ -97,24 +121,29 @@ function PageCard({
     try {
       const fd = action === "approve" ? productValuesToFormData(values) : new FormData();
       fd.set("action", action);
-      const res = await fetch(`/api/admin/home-material/catalogue-imports/${importId}/pages/${page.id}`, {
-        method: "PATCH",
-        body: fd,
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || `Could not ${action}`);
-        return;
-      }
-      onResolved();
+      await reviewPage(importId, page.id, fd);
+      if (action === "approve") onApproved();
+      else onRejected(page.id, page.pageNumber);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `Could not ${action}`);
     } finally {
       setLoading(null);
     }
   }
 
+  const disabled = loading !== null || bulkBusy;
+
   return (
-    <div className="bg-white border border-gray-200 rounded-2xl p-4">
+    <div className={`bg-white border rounded-2xl p-4 ${selected ? "border-indigo-300 ring-1 ring-indigo-200" : "border-gray-200"}`}>
       <div className="flex items-start gap-3">
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggleSelect}
+          disabled={disabled}
+          className="mt-1 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 shrink-0 disabled:opacity-50"
+          aria-label={`Select page ${page.pageNumber}`}
+        />
         {page.extractedImageUrl ? (
           <Image src={page.extractedImageUrl} alt="" width={64} height={64} className="rounded-lg object-cover border border-gray-200 shrink-0" unoptimized />
         ) : (
@@ -165,7 +194,7 @@ function PageCard({
       <div className="flex items-center justify-end gap-2 mt-4">
         <button
           onClick={() => submit("reject")}
-          disabled={loading !== null}
+          disabled={disabled}
           className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-gray-600 hover:text-red-600 bg-gray-50 hover:bg-red-50 rounded-lg disabled:opacity-50 transition-colors"
         >
           <X size={12} />
@@ -173,7 +202,7 @@ function PageCard({
         </button>
         <button
           onClick={() => submit("approve")}
-          disabled={loading !== null}
+          disabled={disabled}
           className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg disabled:opacity-50 transition-colors"
         >
           <Check size={12} />
@@ -197,6 +226,139 @@ export function ReviewQueueView({
   const pending = catalogueImport.pages.filter((p) => p.reviewStatus === "pending");
   const resolved = catalogueImport.pages.filter((p) => p.reviewStatus !== "pending");
 
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkRejecting, setBulkRejecting] = useState(false);
+  const [bulkError, setBulkError] = useState("");
+  // Undo toast for the most recent reject (single or bulk) — see
+  // UNDO_WINDOW_MS. Cleared early by a manual Undo click, or once a new
+  // reject replaces it (only the most recent batch is undoable this way;
+  // anything older falls back to the Reviewed list's untimed Restore).
+  const [recentlyRejected, setRecentlyRejected] = useState<{ ids: string[]; pageNumbers: number[] } | null>(null);
+  const [undoing, setUndoing] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
+  const [rowError, setRowError] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!recentlyRejected) return;
+    const t = setTimeout(() => setRecentlyRejected(null), UNDO_WINDOW_MS);
+    return () => clearTimeout(t);
+  }, [recentlyRejected]);
+
+  function resetSelection() {
+    setSelected(new Set());
+  }
+
+  function handleApproved() {
+    resetSelection();
+    router.refresh();
+  }
+
+  function handleRejected(pageId: string, pageNumber: number) {
+    resetSelection();
+    setRecentlyRejected({ ids: [pageId], pageNumbers: [pageNumber] });
+    router.refresh();
+  }
+
+  function toggleSelect(pageId: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(pageId)) next.delete(pageId);
+      else next.add(pageId);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    setSelected((prev) => (prev.size === pending.length ? new Set() : new Set(pending.map((p) => p.id))));
+  }
+
+  async function handleBulkReject() {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    setBulkRejecting(true);
+    setBulkError("");
+    try {
+      const results = await Promise.allSettled(
+        ids.map((pageId) => {
+          const fd = new FormData();
+          fd.set("action", "reject");
+          return reviewPage(catalogueImport.id, pageId, fd);
+        })
+      );
+      const failedCount = results.filter((r) => r.status === "rejected").length;
+      if (failedCount > 0) {
+        setBulkError(`${failedCount} of ${ids.length} couldn't be rejected — they may have already been reviewed elsewhere.`);
+      }
+      const succeededIds = ids.filter((_, i) => results[i].status === "fulfilled");
+      if (succeededIds.length > 0) {
+        setRecentlyRejected({
+          ids: succeededIds,
+          pageNumbers: pending.filter((p) => succeededIds.includes(p.id)).map((p) => p.pageNumber),
+        });
+      }
+      resetSelection();
+      router.refresh();
+    } finally {
+      setBulkRejecting(false);
+    }
+  }
+
+  async function handleUndo() {
+    if (!recentlyRejected) return;
+    setUndoing(true);
+    try {
+      await Promise.all(
+        recentlyRejected.ids.map((pageId) => {
+          const fd = new FormData();
+          fd.set("action", "restore");
+          return reviewPage(catalogueImport.id, pageId, fd);
+        })
+      );
+      setRecentlyRejected(null);
+      router.refresh();
+    } finally {
+      setUndoing(false);
+    }
+  }
+
+  async function handleRestore(pageId: string) {
+    setRestoringId(pageId);
+    setRowError((e) => ({ ...e, [pageId]: "" }));
+    try {
+      const fd = new FormData();
+      fd.set("action", "restore");
+      await reviewPage(catalogueImport.id, pageId, fd);
+      router.refresh();
+    } catch (err) {
+      setRowError((e) => ({ ...e, [pageId]: err instanceof Error ? err.message : "Could not restore" }));
+    } finally {
+      setRestoringId(null);
+    }
+  }
+
+  async function handleDeleteAllReviewed() {
+    if (resolved.length === 0) return;
+    if (!window.confirm(`Permanently delete all ${resolved.length} reviewed entries? Rejected ones can no longer be restored after this. Approved products already created are not affected.`)) {
+      return;
+    }
+    setDeletingAll(true);
+    try {
+      const res = await fetch(`/api/admin/home-material/catalogue-imports/${catalogueImport.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setBulkError(data.error || "Could not delete the reviewed list");
+        return;
+      }
+      setRecentlyRejected(null);
+      router.refresh();
+    } finally {
+      setDeletingAll(false);
+    }
+  }
+
+  const allSelected = pending.length > 0 && selected.size === pending.length;
+
   return (
     <div className="max-w-3xl mx-auto pb-16">
       <Link href="/admin/home-material/import" className="text-xs text-indigo-600 hover:underline">
@@ -210,7 +372,48 @@ export function ReviewQueueView({
         <p className="text-xs text-red-600 mt-2 bg-red-50 rounded-lg p-2">{catalogueImport.errorMessage}</p>
       )}
 
-      <div className="mt-6 space-y-4">
+      {recentlyRejected && (
+        <div className="mt-4 flex items-center justify-between gap-3 bg-gray-800 text-white rounded-xl px-4 py-2.5">
+          <p className="text-xs">
+            Rejected page{recentlyRejected.pageNumbers.length > 1 ? "s" : ""} {recentlyRejected.pageNumbers.join(", ")}.
+          </p>
+          <button
+            onClick={handleUndo}
+            disabled={undoing}
+            className="flex items-center gap-1 text-xs font-semibold text-indigo-300 hover:text-indigo-200 disabled:opacity-50 shrink-0"
+          >
+            <Undo2 size={12} />
+            {undoing ? "Undoing..." : "Undo"}
+          </button>
+        </div>
+      )}
+
+      {pending.length > 0 && (
+        <div className="mt-4 flex items-center justify-between gap-3 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2">
+          <label className="flex items-center gap-2 text-xs text-gray-600">
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={toggleSelectAll}
+              className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+            />
+            {selected.size > 0 ? `${selected.size} selected` : "Select all"}
+          </label>
+          {selected.size > 0 && (
+            <button
+              onClick={handleBulkReject}
+              disabled={bulkRejecting}
+              className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-red-600 hover:text-white hover:bg-red-600 bg-red-50 rounded-lg disabled:opacity-50 transition-colors"
+            >
+              <X size={12} />
+              {bulkRejecting ? "Rejecting..." : `Reject ${selected.size} selected`}
+            </button>
+          )}
+        </div>
+      )}
+      {bulkError && <p className="text-xs text-red-600 mt-2">{bulkError}</p>}
+
+      <div className="mt-4 space-y-4">
         {pending.map((page) => (
           <PageCard
             key={page.id}
@@ -220,7 +423,11 @@ export function ReviewQueueView({
             importBrand={catalogueImport.brand}
             materials={materials}
             families={families}
-            onResolved={() => router.refresh()}
+            selected={selected.has(page.id)}
+            onToggleSelect={() => toggleSelect(page.id)}
+            bulkBusy={bulkRejecting}
+            onApproved={handleApproved}
+            onRejected={handleRejected}
           />
         ))}
         {pending.length === 0 && (
@@ -232,27 +439,63 @@ export function ReviewQueueView({
 
       {resolved.length > 0 && (
         <div className="mt-8">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-2">Already reviewed</p>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Already reviewed</p>
+            <button
+              onClick={handleDeleteAllReviewed}
+              disabled={deletingAll}
+              className="flex items-center gap-1 text-[11px] font-medium text-gray-400 hover:text-red-600 disabled:opacity-50"
+            >
+              <Trash2 size={11} />
+              {deletingAll ? "Deleting..." : "Delete all"}
+            </button>
+          </div>
           <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
             <table className="w-full text-sm">
               <tbody className="divide-y divide-gray-50">
-                {resolved.map((p) => (
-                  <tr key={p.id}>
-                    <td className="px-4 py-2 text-xs text-gray-500">Page {p.pageNumber}</td>
-                    <td className="px-4 py-2 text-xs">
-                      <span className={p.reviewStatus === "approved" ? "text-emerald-700" : "text-gray-500"}>
-                        {p.reviewStatus === "approved" ? "Approved" : "Rejected"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2 text-xs text-right">
-                      {p.resultingProductId && (
-                        <Link href="/admin/home-material/products" className="text-indigo-600 hover:underline">
-                          View in catalogue
-                        </Link>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                {resolved.map((p) => {
+                  const extracted = parseExtracted(p.extractedFields);
+                  return (
+                    <tr key={p.id}>
+                      <td className="px-4 py-2 w-14">
+                        {p.extractedImageUrl ? (
+                          <Image src={p.extractedImageUrl} alt="" width={36} height={36} className="rounded-lg object-cover border border-gray-200" unoptimized />
+                        ) : (
+                          <div className="w-9 h-9 rounded-lg bg-gray-100 border border-gray-200" />
+                        )}
+                      </td>
+                      <td className="px-2 py-2 text-xs text-gray-500">
+                        Page {p.pageNumber}
+                        {extracted.name && <span className="text-gray-400"> · {extracted.name}</span>}
+                      </td>
+                      <td className="px-4 py-2 text-xs">
+                        <span className={p.reviewStatus === "approved" ? "text-emerald-700" : "text-gray-500"}>
+                          {p.reviewStatus === "approved" ? "Approved" : "Rejected"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2 text-xs text-right">
+                        <div className="flex items-center justify-end gap-3">
+                          {p.resultingProductId && (
+                            <Link href="/admin/home-material/products" className="text-indigo-600 hover:underline">
+                              View in catalogue
+                            </Link>
+                          )}
+                          {p.reviewStatus === "rejected" && (
+                            <button
+                              onClick={() => handleRestore(p.id)}
+                              disabled={restoringId === p.id}
+                              className="flex items-center gap-1 text-gray-400 hover:text-indigo-600 disabled:opacity-50"
+                            >
+                              <RotateCcw size={11} />
+                              {restoringId === p.id ? "Restoring..." : "Restore"}
+                            </button>
+                          )}
+                        </div>
+                        {rowError[p.id] && <p className="text-red-600 mt-1">{rowError[p.id]}</p>}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
