@@ -19,8 +19,18 @@ function toMsg91Mobile(phone: string): string {
  * reports/returns a failure — callers should let this propagate so a
  * customer who didn't receive a code sees an error instead of a false
  * "sent" confirmation.
+ *
+ * `message`, if provided, overrides OTP_TEMPLATE — for a caller outside the
+ * BYB Mart flow this SMS gateway was originally built for (e.g. the Home
+ * Material domain). IMPORTANT: MSG91_DLT_TEMPLATE_ID is registered with the
+ * Indian carrier DLT system against the exact default template text — an
+ * overridden message does NOT have a matching DLT registration, so carriers
+ * are likely to silently drop it even when MSG91 itself accepts the API
+ * call (HTTP 200 with a message id, no visible error — the same shape as an
+ * account-balance failure). Only pass an override once that domain has its
+ * own approved DLT template, or accept that real delivery won't work yet.
  */
-export async function sendOtpSms(phone: string, otp: string): Promise<void> {
+export async function sendOtpSms(phone: string, otp: string, message?: string): Promise<void> {
   const authKey = process.env.MSG91_AUTH_KEY;
   const senderId = process.env.MSG91_SENDER_ID;
   const route = process.env.MSG91_ROUTE;
@@ -32,12 +42,12 @@ export async function sendOtpSms(phone: string, otp: string): Promise<void> {
   }
 
   const mobile = toMsg91Mobile(phone);
-  const message = OTP_TEMPLATE(otp);
+  const resolvedMessage = message ?? OTP_TEMPLATE(otp);
 
   const params = new URLSearchParams({
     authkey: authKey,
     mobiles: mobile,
-    message,
+    message: resolvedMessage,
     sender: senderId,
     route,
     country: "91",
@@ -47,7 +57,7 @@ export async function sendOtpSms(phone: string, otp: string): Promise<void> {
   const url = `${apiUrl}?${params.toString()}`;
   const maskedAuthKey = `${authKey.slice(0, 4)}...${authKey.slice(-4)}`;
 
-  console.log(`[msg91] Sending to ${mobile}: "${message}"`);
+  console.log(`[msg91] Sending to ${mobile}: "${resolvedMessage}"`);
   console.log(
     `[msg91] Request: sender=${senderId} route=${route} DLT_TE_ID=${templateId} authkey=${maskedAuthKey} url=${url.replace(authKey, maskedAuthKey)}`
   );

@@ -34,9 +34,13 @@ interface Props {
   onComplete?: () => void;
   /** Called when the user actively cancels (e.g. clicks a cancel button). */
   onCancel?: () => void;
+  /** Label for the "photo already active" continue button. Defaults to the catalog-flow copy. */
+  completeLabel?: string;
+  /** Hides this component's own "Virtual Trial Room" heading/subtitle — for a caller that already renders its own page-level heading directly above this content. */
+  hideHeader?: boolean;
 }
 
-export function TrialRoomSetupContent({ onComplete, onCancel }: Props) {
+export function TrialRoomSetupContent({ onComplete, onCancel, completeLabel = "Browse Catalog", hideHeader = false }: Props) {
   const { photo, photoPreviewUrl, setPhoto, clearPhoto, tryOns, isPhotoLocked, tryOnLimit, setTryOnLimit } =
     useTrialRoom();
 
@@ -102,15 +106,17 @@ export function TrialRoomSetupContent({ onComplete, onCancel }: Props) {
   return (
     <div className="max-w-md mx-auto">
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <HangerPlusIcon className="h-6 w-6 text-indigo-500" />
-          Virtual Trial Room
-        </h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Upload your photo once and try on any product in your catalog.
-        </p>
-      </div>
+      {!hideHeader && (
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+            <HangerPlusIcon className="h-6 w-6 text-indigo-500" />
+            Virtual Trial Room
+          </h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Upload your photo once and try on any product in your catalog.
+          </p>
+        </div>
+      )}
 
       <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm space-y-5">
         {/* Photo area */}
@@ -239,7 +245,7 @@ export function TrialRoomSetupContent({ onComplete, onCancel }: Props) {
                 "shadow-md shadow-indigo-200/50 hover:opacity-90 active:scale-[0.98] transition-all"
               )}
             >
-              Browse Catalog
+              {completeLabel}
               <ArrowRight className="h-4 w-4" />
             </button>
           )}

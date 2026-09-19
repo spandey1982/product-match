@@ -20,10 +20,9 @@ export async function GET(
         wallet: {
           select: {
             id: true,
-            balanceUsd: true,
-            totalCreditsUsd: true,
+            balanceCredits: true,
+            totalCredits: true,
             status: true,
-            lastExchangeRate: true,
             createdAt: true,
             updatedAt: true,
           },
@@ -44,8 +43,8 @@ export async function GET(
       : [];
 
     const w = user.wallet;
-    const remainingPct = w && w.totalCreditsUsd > 0
-      ? Math.round((w.balanceUsd / w.totalCreditsUsd) * 100)
+    const remainingPct = w && w.totalCredits > 0
+      ? Math.round((w.balanceCredits / w.totalCredits) * 100)
       : 0;
 
     return NextResponse.json({
@@ -58,12 +57,11 @@ export async function GET(
       wallet: w
         ? {
             id: w.id,
-            balanceUsd: w.balanceUsd,
-            totalCreditsUsd: w.totalCreditsUsd,
-            usedUsd: w.totalCreditsUsd - w.balanceUsd,
+            balanceCredits: w.balanceCredits,
+            totalCredits: w.totalCredits,
+            usedCredits: w.totalCredits - w.balanceCredits,
             remainingPercentage: remainingPct,
             status: w.status,
-            lastExchangeRate: w.lastExchangeRate,
             createdAt: w.createdAt,
             updatedAt: w.updatedAt,
           }

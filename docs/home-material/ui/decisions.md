@@ -1,0 +1,949 @@
+# Home Material Intelligence — UI Discovery & Decisions
+
+Part of the domain-scoped docs split approved 2026-09-10 — see
+`../README.md` for the index.
+
+## The discovery document
+
+Full research, evidence matrix, reference register, conflict analysis,
+and proposed information/experience/interaction architecture live in
+[`research/home-material-ui-discovery.html`](../../../research/home-material-ui-discovery.html)
+(repo-root `research/`, matching the house style of this repo's other
+research papers — see that folder's existing convention). Read that
+document first before picking up UI work in a future session; this file
+only records the decisions made against it.
+
+## Decisions locked 2026-09-10
+
+The discovery document's §27 posed 5 questions for review. Outcomes:
+
+1. **Mode A entry point (standalone browse, no room upload required):
+   APPROVED, build now.** Shipped same day — see "What shipped" below.
+2. **Interactive homepage hypothesis: APPROVED, with a specific shape.**
+   Not a separate marketing hero page plus a separate browse page — ONE
+   merged screen. `/materials` itself is now the landing page AND the
+   Mode A catalogue browse, communicating the product's core differentiator
+   (see it on your own wall before buying) directly alongside real
+   products, rather than routing a marketing hero to a second page.
+3. **Docs restructuring (this split): APPROVED.** `docs/home-material/`
+   is now organized into `product/`, `domain/`, `ai/`, `architecture/`,
+   `ui/`, with the chronological shipped-feature history moved to
+   `changelog.md`. Zero code impact.
+4. **Rituals / Amazon Watch-and-Shop downgrade: APPROVED, with a stated
+   balance.** Both stay downgraded from "adopt" to "investigate cautiously"
+   per the discovery document's evidence review — but explicitly NOT
+   reclassified as disproven or permanently rejected: absence of strong
+   supporting evidence for a pattern is not evidence the pattern would
+   fail for this product. Revisit either if a stronger source surfaces.
+5. **Proposed phase order (Mode A gap → Discovery vocabulary → Decision
+   vocabulary → Validation flows → visual system): APPROVED as-is.**
+
+## What shipped against decisions 1 and 2 (2026-09-10)
+
+- `app/materials/page.tsx` rebuilt as the merged landing + Mode A browse
+  page: hero section (value proposition, "Upload your room" primary CTA)
+  directly above a public, unauthenticated, server-rendered product grid
+  grouped by material category (paint/wallpaper/wall_texture/wall_panel),
+  each card showing a real color/pattern swatch and honest pricing (exact
+  retailer price vs. indicative range — same never-blend rule used
+  elsewhere in this domain). Marked `export const dynamic = "force-dynamic"`
+  since pricing must never serve a stale build-time snapshot.
+- **"See in my room" deep link**: picking a product on the browse page
+  carries its id through the entire unauthenticated → login → room-upload
+  → room-creation chain (`?product=<id>` query param, preserved through
+  the existing `returnTo` login redirect) and pre-selects that product in
+  the swatch picker the moment the user confirms their first wall —
+  closing the loop the discovery document flagged (Mode A previously had
+  no home in the app; a user who already knew what they wanted had to
+  re-find it after uploading).
+- Browser-verified end to end (not just script-level): clicked "See in my
+  room" on a real seeded product from `/materials`, uploaded a test photo,
+  detected + confirmed a wall, and confirmed the product was pre-selected
+  in the swatch carousel on the resulting surface.
+
+## Discovery-layer vocabulary — shipped 2026-09-10
+
+First piece of the approved phase order's step 2 (§26 of the discovery
+document): concrete anchors, richer material cards, and spatial compare,
+all built on top of the existing engine — no new AI surface, no schema
+change.
+
+- **Concrete/illustrated requirement anchors** (`RoomView.tsx`'s
+  `IllustratedPicker`, `BUDGET_OPTIONS`/`PRIORITY_OPTIONS`): the "Help me
+  choose" panel's budget and priority pickers were plain `<select>`
+  dropdowns with bare abstract labels ("Durability matters most"). NN/g's
+  customization-features research (discovery doc §4) found abstract
+  attributes need a concrete real-world scenario to perform well — its
+  Joybird example illustrated "comfort" with seat-height/posture
+  pictures rather than a bare slider. Replaced both dropdowns with
+  illustrated card-choice UI (one concrete sentence per option, e.g.
+  "Best for high-traffic walls — hallways, kids' rooms, rental
+  properties"). Presentation only — `lib/home-material/recommendation.ts`'s
+  four-value scorer and weights are unchanged.
+- **Suitability chips on material cards** (`app/materials/page.tsx`):
+  browse-page cards now show durability (~Nyr) and maintenance level
+  alongside color/price. Sourced from `MATERIAL_TAXONOMY` (matched by
+  category+subtype), not a new `HmMaterial` DB column — the DB model only
+  stores prose durability/maintenance text; the structured
+  `durabilityYearsApprox`/`maintenanceLevel` fields the recommendation
+  engine already treats as authoritative live only in the typed taxonomy
+  source, reused here rather than duplicated into the schema.
+- **Spatial compare** (`RoomView.tsx`'s `SpatialCompare`): every completed
+  generation for a wall this session is now kept (`visualizationHistory`,
+  additive alongside the existing single-`visualizations` "latest
+  preview" state, session-only — not persisted, no schema change). Once
+  2+ generations exist for a wall, a "Compare what you've tried on this
+  wall" section shows two of them side by side, each swappable via a
+  dropdown, defaulting to the two most recent. Costs nothing beyond what
+  trying each material already cost — no new generation is triggered by
+  comparing.
+
+**Bug found and fixed while live-testing spatial compare:** the compare
+dropdowns both displayed the same (wrong) label even though the two
+images shown below them were correctly different. Root cause: React
+mounts a component's hooks on first render regardless of an early
+`return null`, so `SpatialCompare` was mounting (and its `useState`
+defaults locking in) the very first time a wall card rendered — while
+history was still empty — rather than when 2 real generations existed.
+Fixed by moving the "2+ completed generations" check to the call site so
+`SpatialCompare` only mounts once real data exists to default from.
+Confirmed the underlying bug (images correct, labels wrong) via a live
+two-generation test on the same wall (Charcoal Grey, then Soft Sage);
+the fix itself was verified via type-check and code review rather than a
+third live generation, to avoid unnecessary further AI cost for a
+narrowly-understood React lifecycle fix.
+
+## Decision-layer vocabulary — shipped 2026-09-10
+
+Second piece of the approved phase order (§26 step 3): recommendation
+explainer, cost/estimate strip, and a provenance indicator — all reusing
+data the backend already computes, no new AI surface.
+
+- **"Why this score?" breakdown** (`RoomView.tsx`'s `ScoreBreakdown`,
+  `lib/home-material/recommendation.ts`'s new exported `WEIGHTS` +
+  `MaterialRecommendationResult.components`): brief §37 calls for
+  explaining a recommendation rather than showing a bare percentage.
+  Each recommendation card now has a collapsed-by-default (progressive
+  disclosure) breakdown of the four weighted scoring dimensions
+  (moisture/budget/priority/category), each as a small bar + its real
+  weight. **Deliberately not persisted or restorable after a GET/page
+  reload** — the requirements a score was computed from were never
+  persisted either, so a breakdown can't be honestly reconstructed after
+  the fact; only present on a fresh POST response. Verified live: wet-
+  area + budget + durability requirements produced `{moisture:1,
+  budget:1, priority:0.8, category:0.8}` for the top pick, and a
+  follow-up GET (simulating a page reload) correctly omitted the field.
+- **Cost/estimate strip tightened** (`CostEstimator`): the existing
+  exact-vs-range distinction was inline parenthetical text; now a
+  persistent visual chip ("Retailer price" vs "Platform estimate") sits
+  before the number, so the estimate-vs-real-price distinction survives
+  a skim rather than requiring the user to read the whole line.
+- **Provenance signal on the swatch picker** (`SwatchCarousel`): a small
+  "You" badge now marks your own custom-uploaded materials in the
+  carousel, distinct from curated catalogue items — previously this
+  distinction only surfaced AFTER generating a preview (the "Product-
+  accurate — from your uploaded photo" mode badge), not while choosing.
+  Scoped narrowly: `HmProductEvidence` (sourceType platform/retailer/
+  user) is written on every product today but still has no broader
+  reader anywhere in the app — a fuller provenance UI (e.g. distinguishing
+  a real retailer-verified identity once retailer partnerships exist)
+  is deferred, not attempted this pass, since every non-custom product
+  today is platform-curated demo content and a repeated "platform
+  example" badge on every single card would be noise, not signal.
+
+## Validation-layer flows — shipped 2026-09-10
+
+Third and last piece of the approved phase order (§26 step 4) —
+deliberately the plainest work of the four phases, per the discovery
+document's own principle that precision/plainness increases as
+commitment increases. No illustrated pickers, no progressive disclosure,
+no scoring — standard forms.
+
+- **"Request a sample," new alongside "Request a quote"** (brief §41's
+  Validation-layer loop: Visualize -> Shortlist -> Request sample ->
+  Receive sample -> ... -> Purchase). Previously only a price-quote
+  request existed; a sample is a physically different fulfillment (a
+  retailer ships a real swatch) tracked as its own `HmLead.leadType`
+  ("quote" | "sample", new column) with its own optional
+  `shippingAddress` field — a single plain free-text field, deliberately
+  not a structured address book, since this domain has no address
+  infrastructure yet and inventing one wasn't justified for a demo-
+  retailer flow. A sample can only be requested against a real product
+  (`productId`) — you can't physically ship "a material category" — so
+  the API rejects a sample tied only to `materialCategory`, and the UI
+  only offers the sample trigger when a real product is in context.
+- **Extracted `LeadCaptureButton` into `components/home-material/
+  LeadCaptureButton.tsx`** (previously a private function inside
+  `RoomView.tsx`) so it could be reused rather than duplicated.
+- **Closed a real gap: the shortlist/compare page had no path to actually
+  act on anything.** `/materials/shortlist`'s comparison table already
+  showed every fact side by side but had no "now what" — brief §16's
+  core journey explicitly has Compare/Shortlist leading into Estimate ->
+  Request Quote, and that link was missing entirely. Added a "Next step"
+  row with the same quote/sample actions available inline per shortlisted
+  product.
+
+Live-tested: shortlisting a product then loading `/materials/shortlist`
+correctly returns it; a quote request succeeds with no shipping address
+required; a sample request without an address correctly 400s ("A
+shipping address is required to send a sample"); the same request with
+an address succeeds and stores `leadType: "sample"`; a sample tied only
+to a `materialCategory` correctly 400s ("needs a specific product, not
+just a material category"). Browser-verified the shortlist page's new
+row renders both actions per column, and the sample form correctly shows
+a shipping-address textarea in place of the quote form's area-in-sqft
+field.
+
+## Visual design system — 2 prototype directions proposed, 2026-09-10
+
+Step 5 of the phase order (the visual design system itself) started once
+the user supplied a first draft (a generic "sustainable materials
+library" mockup set — sage/cream palette, card grid, tag chips, sidebar
+nav, comparison table). Two directions were built on OUR actual screens
+(landing/browse, room workspace with wall+swatch+score-breakdown, and a
+validation form), not abstract style tiles, so they're a real side-by-
+side choice rather than a mood board:
+
+- **[Sage Studio](https://claude.ai/code/artifact/6154b33d-e485-4ee9-89c9-ad360cbf6f7b)**
+  (`research/ui-prototype-a-sage-studio.html`) — closely follows the
+  supplied draft's calm sage/cream palette and card/chip language, Sora +
+  Manrope type, but replaces the draft's persistent sidebar with a simple
+  top nav (our product is a guided flow, not a multi-section dashboard —
+  a real structural correction, not just a re-skin) and adds the room-
+  photo moment the draft doesn't show at all.
+- **[Wall & Hearth](https://claude.ai/code/artifact/010e55f5-5877-415f-a411-bf5bf6a594cf)**
+  (`research/ui-prototype-b-wall-and-hearth.html`) — a warmer, more
+  residential direction: the room photo leads the hero (matching Roomvo/
+  IKEA's "open into the tool" pattern), Petrona serif + Karla sans, a
+  plaster-grey neutral base (deliberately not the cream+terracotta
+  combination that reads as a generic AI-generated default).
+
+Both reuse every component already shipped this session (illustrated
+requirement pickers, "why this score" breakdown, cost/estimate chips,
+the "You" provenance badge, plain validation forms) — only the token
+system (color/type) and a couple of structural choices (sidebar vs. top
+nav, text-first vs. photo-first hero) differ, so the comparison is about
+visual direction, not different content.
+
+**Status: PROPOSED, awaiting selection** — neither is applied to the
+live app yet. Both are local-only files (published as Artifacts for
+review; not committed to git — `research/` is gitignored, see the note
+in the memory file about this).
+
+## Sage Studio applied to the live app — 2026-09-10
+
+User picked Sage Studio. Applied via a single scoped mechanism rather
+than editing every component's className strings:
+
+- New `app/materials/layout.tsx` — loads Sora (headings) + Manrope
+  (body) via `next/font/google`, wraps every `/materials/*` route in a
+  `.hm-theme` div. Fonts are loaded here, not in the root layout, so the
+  fashion side keeps its own Geist/Cormorant/Poppins typography
+  untouched — the same domain-separation principle CLAUDE.md already
+  applies to schema/business logic, applied here to visual design too.
+- New `app/materials/materials-theme.css` — overrides Tailwind v4's
+  color theme tokens (`--color-indigo-600`, `--color-gray-500`, etc. —
+  confirmed present in `node_modules/tailwindcss/theme.css`) scoped to
+  `.hm-theme`. Every home-material component already used plain
+  Tailwind utility classes (`bg-indigo-600`, `text-gray-700`, ...)
+  referencing these exact tokens, so overriding the underlying CSS
+  custom property reskins every one of them — including the SHARED
+  `components/ui/Button` — without touching a single component file,
+  and with zero effect outside `.hm-theme` (confirmed live: `/login`,
+  the fashion side's sign-in page, still renders its original indigo/
+  purple branding unchanged).
+- **Deliberately did not change border-radius.** Sage Studio's button
+  mockup is pill-shaped, but `rounded-xl`/`rounded-lg` are shared by
+  buttons AND cards/inputs/panels throughout this domain — overriding
+  that token would have pill-shaped every card and input too, not just
+  buttons. Status chips are already `rounded-full` and match as-is;
+  button shape specifically is a follow-up if wanted, not attempted here.
+- Did not build a persistent top nav/logo header — that's a structural
+  IA addition beyond "apply the chosen palette/type," left as a
+  possible next increment.
+
+Verified: `npx tsc --noEmit`, `eslint`, and a full production build all
+clean; browser-verified the retheme across `/materials` (landing/
+browse), a room workspace (wall photo, swatch picker, illustrated
+budget/priority pickers, truncation warning banner), and `/materials/
+shortlist` — all correctly sage-green/Sora/Manrope; separately verified
+`/login` (fashion side) is completely unaffected.
+
+## Sage Studio layout restructuring + upload modal — 2026-09-10
+
+**User correction that motivated this pass:** the previous entry above
+only reskinned colors/type/component styles on the app's existing
+*structure* — the user checked the live `/materials` and room-workspace
+pages against the Sage Studio prototype and found the actual layout
+unchanged ("same old layout with new theme colours... In fact the Room
+Workspace page is nothing like the prototype"). Sage Studio's screens
+were meant to be the new structural base, not a palette reference.
+
+**Standing process rule going forward, stated explicitly by the user:**
+every future new screen in this domain is generated as progressive
+layout/design options (same propose -> pick -> implement workflow used
+for the two prototype directions), with Sage Studio's already-approved
+screens as the established base to extend consistently — not designed
+from scratch each time.
+
+What changed structurally this pass:
+
+- **`/materials` landing/browse page split into a server component +
+  client component**: `app/materials/page.tsx` now only fetches
+  `BrowseProduct[]` via Prisma and renders `MaterialsLandingClient`
+  (new file) inside `<Suspense fallback={null}>` (required because the
+  client component reads `useSearchParams()`). `MaterialsLandingClient`
+  rebuilds the page to match Sage Studio's actual layout: a split hero
+  (headline/CTA left, an SVG room illustration + floating swatch card
+  right) above a filter-chip category row and a 4-column product grid
+  with hover-reveal "See in my room ->" affordance — replacing the
+  previous single-column marketing-strip layout that only borrowed the
+  prototype's colors.
+- **`/materials/upload` removed as a standalone page**, per the user's
+  explicit instruction — a `File` object can't survive a page
+  navigation, so it wasn't serving a purpose distinct from a modal.
+  Replaced with `components/home-material/UploadRoomModal.tsx` (Radix
+  `Dialog`), opened from the hero CTA or from any product card's "See in
+  my room," which on confirm POSTs the photo and navigates straight to
+  `/materials/rooms/[id]` (with `?product=<id>` preserved when a card
+  triggered it) — collapsing upload-page -> redirect into one modal ->
+  room-workspace step, matching Sage Studio's single-flow feel. The old
+  401 -> login -> return-to-upload-page redirect chain is preserved in
+  spirit: an unauthenticated upload now redirects to
+  `/materials/login?returnTo=/materials?openUpload=1[&product=...]`, and
+  the landing client reads `openUpload`/`product` query params on mount
+  to reopen the modal automatically after login (same fundamental
+  limitation the old page had — a `File` still can't survive the login
+  redirect either way, so the user re-picks the photo post-login).
+- **Room workspace (`RoomView.tsx`) per-surface card restructured** from
+  a single stacked column into Sage Studio's two-column layout
+  (`grid lg:grid-cols-[1.15fr_1fr]`): left column holds the wall
+  photo/preview, swatch carousel, and generated-visualization result;
+  right column stacks the cost estimator and the "Help me choose a
+  material" panel as separate cards. All existing state/logic/props
+  (dimension prompts, preview errors, spatial compare, recommendations,
+  combinations) preserved exactly — only the JSX container structure
+  changed. Verified structurally sound via a clean `tsc --noEmit` (which
+  fails on unbalanced JSX) before any visual check.
+- **New `ConfirmedWallOutline` component**: closes a real gap versus the
+  prototype, which always shows the traced wall outline on the room
+  photo. Previously the app showed no wall visual at all until an AI
+  generation completed. Now, once a wall is confirmed but before any
+  completed visualization exists for it, an SVG polygon (using the same
+  fractional `[0,1]` coordinates already stored in `HmSurface
+  .geometryData`, scaled via `viewBox="0 0 100 100"` +
+  `preserveAspectRatio="none"`) is overlaid on the room photo in Sage
+  Studio's forest-green tint.
+- **New `app/materials/HmThemeRoot.tsx`** — fixes a real bug found while
+  live-testing the new modal: Radix's `Dialog` (used by
+  `UploadRoomModal`) portals its content straight to `document.body`, a
+  SIBLING of the `.hm-theme` wrapper div `app/materials/layout.tsx`
+  already rendered, not a descendant — so the scoped CSS-variable
+  overrides never reached the modal, and its "Continue" button rendered
+  in the fashion side's default indigo instead of forest-green. Fixed by
+  also applying the theme class to `document.documentElement` (a real
+  ancestor of body-portaled content) via a client-side effect, alongside
+  (not instead of) the existing wrapper div. Generalizes to any future
+  portaled component (`Popover`, future dialogs), not just this modal.
+
+Verified live end-to-end after the fix: opened the upload modal (Continue
+button correctly forest-green), uploaded a test photo, traced a wall
+manually, confirmed it, picked a swatch, generated an AI preview, and
+confirmed the full two-column surface card (wall image, swatch carousel,
+cost-estimator chip, AI overview-card feedback text, "Request a
+quote"/"Request a sample" actions, "Have your own wallpaper or paint
+photo?" upload panel) all render correctly in the Sage Studio theme with
+no visual regressions. `npx tsc --noEmit`, `eslint`, and a full
+production build all passed clean; test room deleted afterward via a
+throwaway Prisma script (`HmRoom` cascade-deletes its surfaces/
+visualizations).
+
+## Guide & Shortlist layout options — proposed, selected, and shipped, 2026-09-10
+
+Following the standing process rule above (every new screen gets
+progressive layout options against the Sage Studio base before
+implementation), built a "Guide & Shortlist Layout Options" artifact
+(https://claude.ai/code/artifact/4b68b155-eb2c-4f96-8b95-2677acb90591)
+proposing two structural directions each for `/materials/guide` and
+`/materials/shortlist` — neither screen was in the original 3-screen
+Sage Studio prototype, so both needed their own options rather than an
+assumed default. Same palette/type/component language throughout; only
+layout differs between options.
+
+**User picked 1B for the Material Guide and 2B for Shortlist/Compare.**
+
+- **Material Guide, option 1B (sticky category rail + comparative
+  bars)** — `app/materials/guide/page.tsx`: the previous pill-filter row
+  is replaced with a slim sticky in-page rail (`lg:sticky lg:top-6`,
+  category anchor links), and each material's durability/maintenance/
+  moisture — previously plain prose text — is now a relative horizontal
+  bar, easier to scan across many materials at once than reading full
+  sentences. Bar widths are presentation-only mappings derived from
+  `MATERIAL_TAXONOMY` (matched by category+subtype, same pattern
+  `app/materials/page.tsx` already uses): durability scales against the
+  taxonomy's real max (15 years, lime plaster) as the bar's full-scale
+  reference; maintenanceLevel/moistureLevel (ordinal, not numeric) map
+  to fixed bar-width bands. Not new domain claims — the underlying
+  level/prose text stays the source of truth, the bar is just a visual
+  restatement of it.
+- **Shortlist/Compare, option 2B (full comparison cards, no table)** —
+  `app/materials/shortlist/ShortlistView.tsx`: the attribute-by-row
+  table is replaced with each shortlisted product as its own card
+  (swatch, name, attribute rows, note, quote/sample actions) — reads
+  better on narrower screens and matches the mcard language already used
+  on the browse grid. The strongest value per row (durability/
+  maintenance/moisture, never cost — cheaper isn't objectively "better")
+  is bold-highlighted across the whole shortlist, computed client-side
+  from the same taxonomy lookup as the guide page. Required adding
+  `subtype` to the shortlist API's material `select`
+  (`app/api/home-material/shortlist/route.ts`) since the taxonomy lookup
+  needs category+subtype, not just category.
+
+Live-tested both: the guide page's rail+bars render correctly themed
+(forest-green bar fills) across all four categories; shortlisted three
+real seed products spanning categories (paint/wallpaper/wall_texture)
+via direct API calls, confirmed the card grid renders with correct
+best-value bold-highlighting (lime plaster's ~15yr durability and "good"
+moisture won outright; "low" maintenance tied and both bolded), the
+note text and quote/sample actions render correctly, and the
+`LeadCaptureButton`'s inline expanding form stays contained within its
+own card column with no overflow into neighboring cards. `npx tsc
+--noEmit`, `eslint`, and a full production build all passed clean; test
+shortlist rows deleted afterward via the same DELETE endpoint the UI
+uses.
+
+## Intent-first landing entry — reviewed, prototyped, shipped, 2026-09-11
+
+Following the strategic review in `research/home-material-intent-first-
+review.html` (see `product/roadmap.md` for the full outcome), built a
+3-option prototype set (`research/prototypes/ui-prototype-intent-entry-
+options.html`) for where the new intent input sits inside the
+already-locked Sage Studio hero: (A) replacing the primary CTA, (B) a
+spotlight bar above an unchanged hero, (C) reading as the headline's own
+sentence continuation. **User picked Option C.**
+
+Shipped in `MaterialsLandingClient.tsx`: the input sits directly under
+the sub-headline, styled as a natural continuation of "tell us what
+you're picturing"; "Upload a photo of your room" / "Browse the material
+guide" / "My shortlist" demote to small underlined text links beneath it.
+The product grid and category chips are untouched and remain visible
+regardless of whether a query is active — submitting a query swaps the
+grid's heading and content to ranked matches (or an honest "nothing
+close yet, here's the catalogue" fallback), never hides the grid itself.
+
+Matching is Tier-0 deterministic only, per the review's cost-tier
+architecture: keyword tokenization + category-keyword bonus + a
+"under/below ₹N" price-ceiling hard filter, scored against the exact
+same `BrowseProduct[]` array already fetched server-side for the grid —
+no new API route, no new database query, no AI/embedding call. Live-
+tested: "warm sage paint under 20" correctly returned only paints priced
+≤₹20 ranked with Soft Sage/Warm Beige tied at top (category + colour-word
+match) ahead of Terracotta (category match only), correctly excluding
+Charcoal Grey (₹22, over the ceiling); a nonsense query correctly fell
+back to the full grouped catalogue with an honest "nothing close yet"
+message rather than a fabricated match. `npx tsc --noEmit`, `eslint`,
+and a full production build all passed clean.
+
+Every prototype tour built for this domain from now on is archived
+locally at `research/prototypes/` (gitignored, never pushed) — a
+permanent progress record even after a decision ships. See
+`research/README.md`.
+
+## Browse section rebuilt to match /shop, 2026-09-14
+
+User's explicit ask: the "already know what you want?" browse section
+underneath the intent hero should reuse the same components /shop uses —
+search bar, price + material-type filters, subtype chips ordered by
+popularity, the same responsive grid (2 cols on mobile up to 5 on wide
+screens), and a product card matching `ShopProductCard`'s visual
+language. Done via direct reuse rather than a parallel re-implementation:
+
+- New `components/home-material/MaterialBrowseSection.tsx` wraps the
+  actual shared `components/catalog/CatalogFilterBar` — the identical
+  component /shop's `ShopView` uses — passing material category
+  (paint/wallpaper/wall_texture/wall_panel) as the tab row and price as
+  the only Filters-popover control. `CatalogFilterBar` gained one small,
+  precedented addition (`hideOccasion?: boolean`, matching its existing
+  `hideCategoryTabs`/`hideSubcategoryTabs` pattern) since Home Material
+  has no occasion concept.
+- Subtype chips (e.g. "Interior Emulsion — Matte") reuse
+  `CatalogFilterBar`'s existing subcategory-chip row, populated per
+  category from `app/materials/page.tsx`'s new `getSubtypesByCategory` —
+  only subtypes with an actual listed product appear (same rule /shop's
+  own subcategories already follow), ordered by a deterministic
+  popularity score (`HmLead`×3 + `HmVisualization`×2 +
+  `HmShortlistItem`×1 per product, summed per subtype), falling back to
+  `MATERIAL_TAXONOMY`'s declared order when scores tie (expected
+  pre-launch, when every count is 0) — explainable, not a black box,
+  matching this domain's recommendation-engine philosophy.
+- New `components/home-material/MaterialProductCard.tsx` mirrors
+  `ShopProductCard`'s shell (rounded-2xl/border/shadow/hover-lift,
+  image-on-top, name/price/CTA-button) with Home Material's own content
+  (swatch/texture image, durability/maintenance chips, exact-vs-range
+  price, "See in my room" instead of "Try & Buy" — no cart/checkout in
+  V1). Deliberately did not add a wishlist-style heart toggle — that
+  would need session-aware shortlist state on an otherwise-anonymous
+  landing page, out of scope for this pass.
+- Filtering runs entirely client-side over the already-fetched product
+  array — the catalogue is pre-launch scale (single digits to low tens
+  of products), so a new paginated API endpoint like /shop's
+  `/api/public/products` isn't justified yet (CLAUDE.md §17). Revisit if
+  the catalogue grows enough that shipping the full array becomes
+  wasteful.
+- The intent hero's own natural-language "tell us what you're picturing"
+  hero and its Tier-0 keyword-matched results are untouched and take
+  priority when a query is active (same mutual-exclusivity as before);
+  the new browse section is strictly the "underneath" default view, now
+  reusing `MaterialProductCard` too for one consistent card style across
+  both paths.
+- `BrowseProduct`'s type definition moved to `lib/home-material/
+  browse-product.ts` (previously declared inline in
+  `MaterialsLandingClient.tsx`) since it's now shared by the page, the
+  landing client, the browse section, and the card — one home instead of
+  drifting copies.
+
+Live-tested in the browser: category tabs + subtype chips + price range
++ text search all compose correctly (AND filtering, verified with
+Paint + ₹17–₹20 + "sage" narrowing to exactly Soft Sage), Reset all
+correctly clears every filter, the grid renders 5 columns at desktop
+width (`xl:grid-cols-5`, verified via computed styles) and the base
+`.grid-cols-2` rule is confirmed present for mobile, and clicking a card
+still opens the existing `UploadRoomModal` with the correct product
+carried through, unchanged from before this pass.
+
+## Persistent nav bar, copy trim, hero mobile fix, GEO/AEO gap closed, 2026-09-14
+
+Four user-requested changes in one pass, on `feature/home-material-browse-parity`:
+
+- **Persistent top nav** (`components/home-material/HmNavBar.tsx`, new,
+  mounted in `app/materials/layout.tsx`) — the "not yet built" gap flagged
+  since 2026-09-10. Mirrors `components/layout/ShopHeader.tsx`'s exact
+  shape (brand mark left, icon links right, sticky/blurred) restyled to
+  Sage Studio. Deliberately calls `getHmUserSession()` (read-only), never
+  `getOrCreateHmUserSession()` — this bar renders on every page view
+  including anonymous/crawler traffic, and provisioning a real guest
+  `HmUser` row just to show a shortlist count nobody asked for would
+  create a junk account per visitor. No existing session → the heart
+  renders with no count, same as `ShopHeader` signed-out.
+- **Copy trimmed throughout the landing page** — headline, subheadline,
+  input placeholder, and the two link rows under it (now just "Upload
+  your room" — the guide/shortlist text links were redundant with the
+  new nav icons and dropped), plus the "Already know what you want?"
+  section collapsed from a heading+paragraph to a two-word label
+  ("Browse materials") since the search/filter UI beneath it now speaks
+  for itself.
+- **Hero illustration fixed for mobile** — user's own diagnosis: the
+  decorative room-mockup block (which sits beside the headline on
+  desktop, "no issues") stacks BELOW it on mobile at its full natural
+  height (~355px, an SVG with a ~1.4:1 aspect ratio at full viewport
+  width), pushing the real product grid well past the fold before any
+  scrolling. Capped to `h-32` (128px) below the `md` breakpoint with
+  `overflow-hidden` + `preserveAspectRatio="xMidYMid slice"` so it crops
+  rather than squishes; `md:h-auto` restores the original unconstrained
+  desktop behaviour exactly. The floating "Botanical Leaf" card shrank
+  proportionally (smaller padding/swatch/text, subtype line dropped) so
+  it still reads at the smaller size. Likely the same root cause behind
+  a separately-reported "two product cards taking the full screen" —
+  the shrunk-illustration's floating card and the first real grid card
+  are much less likely to be mistaken for each other now; flagged to
+  the user to confirm with a screenshot if it persists.
+- **GEO/AEO parity gap identified and partly closed.** Confirmed via
+  code read: the 2026-09-04 sitewide GEO/AEO initiative
+  (`feature/geo-aeo-seo`) never touched `/materials` — Home Material was
+  still on its own unmerged branch at the time, and nothing under
+  `app/materials/**` appeared in any grep for the JSON-LD/canonical/
+  sitemap patterns that pattern exists everywhere else in the app. Fixed
+  this pass: `/materials` and `/materials/guide` added to
+  `app/sitemap.ts`; canonical + OpenGraph tags added to both pages'
+  metadata; a new `ItemList`/`Product` JSON-LD block on `/materials`
+  (mirroring `app/shop/page.tsx`'s pattern, adapted since this domain has
+  no per-product detail page — each `ListItem` embeds a full `Product`
+  node rather than linking one); `robots.ts` now disallows
+  `/materials/rooms/` and `/materials/shortlist` (real uploaded room
+  photos and a per-user saved list, same class as the existing
+  `/deliver/` and `/shop/wishlist` exclusions), with matching page-level
+  `robots: {index:false}` on both. Deeper parity (material-guide FAQ/
+  HowTo structured data, `lib/seo/health-score.ts` inclusion,
+  Organization/BreadcrumbList schema) logged as a `TaskItem`
+  (`ai_future`) rather than built in this pass — see `/admin/tasks`.
+
+Live-tested: nav bar renders and links correctly on `/materials`,
+`/materials/guide`, and `/materials/shortlist` (heart shows the active-page
+tint on the shortlist page, matching `ShopHeader`'s pattern); confirmed
+the new `ItemList` JSON-LD parses correctly with all 6 seed products;
+confirmed via computed styles that `h-32` applies unconditionally and
+`md:h-auto` overrides it at desktop width (355px), matching the same
+verified pattern as every other responsive-breakpoint fix this session.
+`tsc`/`eslint`/full `npm run build` all clean.
+
+## Real bug found via Next.js's own dev-mode error overlay, 2026-09-14
+
+User reported "two humongous product cards at the bottom" persisting on
+every device after the mobile-hero fix above, plus "three issues" they
+could see on page load — asked me to check logs myself rather than
+re-guess. That red circular badge in every screenshot this whole
+session was WRONGLY assumed to be the Claude-in-Chrome extension's own
+overlay (recorded that way, incorrectly, in earlier notes) — it's
+actually **Next.js's own dev-mode error indicator** (the "N" is the
+Next.js logo). Opening it surfaced the real root cause directly instead
+of more guessing: `components/home-material/MaterialProductCard.tsx`'s
+outer element was a `<button>` wrapping a real `<Button>` ("See in my
+room") — HTML forbids nesting `<button>` inside `<button>`, and the
+browser's auto-correction for that invalid markup (breaking out of the
+outer element) is what was blowing individual cards up into oversized,
+mis-rendered blocks. Not a CSS/grid issue at all, despite two prior
+rounds of grid-column theorizing.
+
+**Fixed:** outer element changed from `<button type="button" onClick=.../>`
+to `<div role="button" tabIndex={0} onClick=... onKeyDown={...}>` —
+valid HTML that can contain a real nested button, with the `onKeyDown`
+handler preserving Enter/Space keyboard activation a plain div doesn't
+get for free. Grepped the rest of `components/home-material/` and
+`app/materials/` for the same `<button>`-wrapping-`<Button>` pattern —
+this was the only instance.
+
+The remaining, unfixable-in-code issue the overlay also reports is an
+`fdprocessedid` attribute hydration mismatch — Next.js's own error text
+explicitly names "a browser extension installed which messes with the
+HTML" as the cause, and it's confirmed to come from a form-autofill-
+detection extension in this specific testing browser, not from real
+end-user traffic.
+
+Live-tested: reloaded `/materials` repeatedly post-fix — the issue count
+dropped from 4 to 1 (just the extension artifact), and the last grid
+row's previously-fine-looking card plus every other card render at
+normal, uniform size with no layout breakage. Clicking a card still
+opens `UploadRoomModal` correctly through the new div's `onClick`.
+`tsc`/`eslint`/full `npm run build` all clean.
+
+## Landing hero rewrite, nav bar profile/room icons, collection filter, a real auth bug, 2026-09-15
+
+A batch of user-requested changes plus one more real bug found while
+verifying live.
+
+**Hero copy and layout, `MaterialsLandingClient.tsx`:**
+- Headline → "Have a wall in mind?"; subhead → "Let's find out what
+  looks good on it." (both direct replacements the user specified).
+- The single "Upload your room" text link replaced with two buttons:
+  "See it on your wall" (primary, opens `UploadRoomModal` — same action
+  as before, just a real button and clearer label) and "Explore
+  materials" (outline, smooth-scrolls to `#browse-materials`).
+- Illustration height now matches the text column instead of following
+  its own SVG aspect ratio: grid `items-center` → `items-stretch`,
+  illustration wrapper `h-32 md:h-full` (was `md:h-auto`) with the SVG's
+  existing `preserveAspectRatio="xMidYMid slice"` crop now applying at
+  every breakpoint, not just mobile — since the text content got
+  shorter, letting the illustration keep its old natural aspect height
+  made it visibly taller than its paired column.
+- Removed the "Browse materials" subheading entirely (the search bar
+  now speaks for itself) and tightened the hero section's bottom
+  padding / the browse section's top padding so there's no dead band
+  between them — the section boundary is now just the natural gap
+  between elements, not deliberate whitespace.
+
+**Nav bar (`HmNavBar.tsx`), two new icons:**
+- **Room** (`Home` icon) — only rendered when the current session has
+  at least one real room, linking straight to the most recent one. No
+  rooms-list page exists in V1 (every `HmUser` gets one implicit
+  project, per `getOrCreateDefaultProject`'s own doc comment), so "most
+  recent room" is the single sensible target rather than building an
+  index page nobody asked for. Same "don't eagerly provision a guest
+  just to check" discipline as the existing shortlist count.
+- **Account** (new `HmAccountMenu.tsx`, mirroring `CustomerAuthStatus.tsx`'s
+  icon+dropdown shape) — since the OTP gate is temporarily bypassed and
+  every visitor already has SOME session, "signed in" here specifically
+  means a real verified phone, distinguished from a guest by the
+  synthetic `guest_<uuid>` phone pattern only guest rows get. A guest
+  sees "Sign in" (linking to `/materials/login`), never a fake "Hello,
+  guest_xxxxx"; a real user sees their phone + "Sign out" (posts to the
+  already-existing `/api/home-material/auth/logout`).
+- Both new icons only take effect on a real page load, not after a
+  client-side `router.push()` within the same layout — Next.js doesn't
+  re-run a layout's server-component data fetch on a soft navigation
+  inside the same segment. Verified this is exactly what was happening
+  (room icon absent right after upload, present after a manual reload)
+  rather than a bug in the new code.
+
+**Collection filter** — `HmProduct.collection` (an existing schema
+field, unused by any current seed product) is now wired into
+`MaterialBrowseSection` as its own chip row, scoped to the current
+category+subtype selection so switching material type never shows a
+collection with zero matches in it — same "no chip that leads to an
+empty grid" rule subtypes already follow. Renders nothing until a real
+product actually has a collection value. `BrowseProduct`'s shared type
+and `app/materials/page.tsx`'s Prisma select both gained the field.
+
+**"See in my room" → an eye icon**, `MaterialProductCard.tsx` — the
+full-width text button replaced with a circular icon straddling the
+image/info boundary (`right-3 bottom-0 translate-y-1/2`), copying
+`components/catalog/ProductCard.tsx`'s `TryOnCardButton` placement
+convention exactly (the same pattern `/shop`, `/rent`, and the retailer
+catalog all use). An eye icon, not the fashion side's hanger/try-on
+icon — the actual action here is "see this on your wall," and this
+domain has no cart/checkout in V1 to borrow "try & buy"-style language
+from. Purely presentational (`tabIndex={-1}`), not an independent tab
+stop — the whole card's own `onClick` already does the same thing.
+
+**Real bug found and fixed: `getOrCreateHmUserSession()` trusted a
+cookie's referenced user without checking it still exists.** Found
+live-testing the "Continue" button after a room-photo upload — it
+silently failed with `Foreign key constraint violated on
+hm_projects_hmUserId_fkey`. Root cause: a valid JWT signature only
+proves the cookie wasn't tampered with, not that the `HmUser` row it
+names still exists — a reset/restored/re-seeded database (exactly
+what this local environment had been through this session, switching
+between an isolated and the shared dev database) leaves a perfectly
+valid cookie pointing at nothing. `getOrCreateHmUserSession()` now
+verifies the referenced user actually exists via `db.hmUser.findUnique`
+before trusting the existing session, falling through to provisioning
+a fresh guest (and a fresh cookie) exactly like the "no cookie at all"
+case already did. This is a real robustness fix, not just a local-dev
+workaround — the same failure mode could in principle hit production
+after any operation that removes a guest row a live cookie still
+references.
+
+Live-tested every change in the browser: hero copy/buttons/illustration
+render correctly at desktop width; collection filter narrows correctly
+(set two demo products to a temporary "Studio Neutrals" collection,
+confirmed the chip appears and filters to exactly those two, reverted
+after); the account menu shows "Sign in" for the current guest session;
+the room icon appears after a real reload following a fresh upload;
+the eye icon renders at the image/info boundary on every card; the
+room-workspace bug is confirmed fixed — Continue now correctly
+navigates to `/materials/rooms/[id]` instead of silently failing.
+`tsc`/`eslint`/full `npm run build` all clean.
+
+## Four visual-polish fixes on the same pass, 2026-09-15
+
+- **Text/illustration vertical alignment** — the previous pass's
+  `items-stretch` matched the illustration's height to the text
+  column correctly, but a plain `<div>` doesn't center its own content
+  within extra stretched space, so once the illustration ended up
+  taller than the text's own natural height, the text sat stuck to the
+  top instead of centered against the card like the original design.
+  Fixed by making the text column itself `flex flex-col justify-center`
+  — whichever side ends up taller still sets the row height (unchanged
+  from before), but the shorter side's content now centers within it.
+  Verified via exact pixel measurement: 78.35px above the heading,
+  78.36px below the last button — centered to sub-pixel precision.
+- **Hero section padding restored to symmetric** (`py-8 sm:py-14
+  md:py-20` on both edges, was `pt-*`/`pb-4`) — the earlier "remove the
+  empty space" fix over-corrected once the "Browse materials" heading
+  (a second, redundant source of the same gap) was separately removed;
+  with only one spacing source left, symmetric top/bottom reads as
+  intentional framing, not dead space.
+- **"Explore materials" button given real affordance** — the shared
+  `outline` Button variant (`border-gray-200`, no shadow) blended into
+  the near-white hero background. Kept the `outline` variant (still
+  visually secondary to "See it on your wall") but added `shadow-sm` +
+  a theme-tinted border/text color via className overrides, scoped to
+  this one instance rather than changing the shared variant used
+  elsewhere in the app.
+- **Card image aspect ratio**, `MaterialProductCard.tsx`: `aspect-[3/4]`
+  → `aspect-square` — a wallpaper/paint swatch reads better without the
+  portrait crop `/shop`'s garment-photo ratio forces on it.
+
+## Nav bar: separate Home icon, room icon no longer double-coded, 2026-09-15
+
+The room-workspace icon added in the previous pass used the `Home`
+(house) icon — but there was no *actual* Home-page icon at all (only
+the brand logo, which isn't universally read as a nav "home" button),
+so the house icon read as pointing at the wrong destination. Fixed:
+added an explicit `Home` icon linking to `/materials` as the nav's
+first icon, and changed the room-workspace link (still conditional on
+having a real room, still targeting the most recent one) to a
+`DoorOpen` icon instead — visually distinct from Home, reads as
+"enter your room."
+
+Live-tested the full set of fixes together: pixel-verified centering,
+confirmed the outline button's computed style now includes a visible
+sage-tinted border + shadow, confirmed all four nav icons (Home, my
+room when applicable, guide, shortlist) plus the account menu render
+correctly, confirmed cards render as squares. Re-checked the dev
+overlay throughout — stayed at the same single known extension
+artifact, no new issues introduced. `tsc`/`eslint`/full `npm run build`
+all clean.
+
+## Card info block compacted, 2026-09-15
+
+Follow-up to the square-image change: the info block below the image
+kept its previous height (sized to pair with the taller 3:4 image), so
+once the image itself got shorter, that block started reading as
+oversized relative to it. Trimmed three real sources of reserved-but-
+often-unused space in `MaterialProductCard.tsx`, not just tightened
+numbers arbitrarily:
+- `min-h-[2.25rem]` removed from the title — it reserved 2-line height
+  on every card even when a name fits on one line (most of the seed
+  catalogue). A 2-line name is still exactly as tall as it needs to be;
+  a 1-line one no longer carries dead space under it.
+- `space-y-2` → `space-y-1` between the title/subtitle/chips/price
+  blocks, and dropped a redundant `pt-1` on the price row that was
+  adding extra space on top of the gap `space-y` already provided.
+- `pb-4` → `pb-3`. `pt-6` (not `pt-4`) is untouched — that one is real,
+  load-bearing space clearing the eye button that overlaps down from
+  the image, not the excess being trimmed here.
+
+Live-tested: the "Lime Plaster Texture" card (a one-line name, alone in
+its own grid row) is now visibly shorter than the row above it
+("Botanical Leaf Wallpaper" still wraps to two lines and still gets
+that height) — confirms the block now follows its own content instead
+of a fixed reservation. `tsc`/`eslint`/full `npm run build` all clean.
+
+## Wallpaper-only V1 narrowing — UI not yet updated to match, 2026-09-16
+
+V1 scope was narrowed to wallpaper-only this day (see
+`product/overview.md` and `product/roadmap.md`'s "Material & surface
+expansion register"), but that was a docs+schema-level decision only —
+no UI or seed-data change was made alongside it. As a result, everything
+built in this file's "Browse section rebuilt to match /shop" entry above
+still renders exactly as shipped 2026-09-14: `MaterialProductCard.tsx`'s
+`CATEGORY_ORDER`/`CATEGORY_LABELS` still list Paint/Wallpaper/Wall
+Texture/Wall Panels, so `MaterialBrowseSection.tsx`'s category tab row
+still offers all 4, and `scripts/seed-home-material.ts` still seeds demo
+products in 3 of the 4. This is recorded here as a known, deliberate gap
+(not a regression) — see `product/roadmap.md`'s "Code/UI gap" note for
+the resolution options to pick from when the wallpaper-catalogue work
+starts.
+
+## Two real bugs: missing draft-gate filter, and eye icon ignoring an existing room, 2026-09-17
+
+User report: newly-added wallpapers (via the internal catalogue tool
+shipped 2026-09-16) weren't appearing as options in the room workspace,
+and separately, the product card's eye icon should jump straight into an
+already-set-up room and preview there instead of re-prompting for a room
+photo.
+
+**Bug 1 — draft products invisible everywhere they should be, visible
+where they shouldn't be.** Investigation found the 4 real wallpaper
+products added via PDF import (`100/1`–`100/4`, real photos, correctly
+categorized) were stuck in `reviewStatus: "draft"` — by design, PDF
+import approval always lands as draft (see
+`architecture/system.md`), and nobody had gone back to explicitly
+publish them. That alone explained the room-workspace symptom
+(`app/api/home-material/products/route.ts` correctly excludes drafts).
+But a second, real bug compounded it: `app/materials/page.tsx`'s browse
+query had **no `reviewStatus` filter at all**, so those same draft
+products (and any future photo-less placeholder draft) were actually
+visible on the public `/materials` grid the whole time — exactly
+backwards from the intended gate, and the inconsistency that made the
+symptom confusing rather than simply "products aren't published yet."
+Fixed both: added `reviewStatus: "published"` to the `/materials` query,
+and published the 4 real wallpapers (verified live: all 4 now return
+from `/api/home-material/products` with their real Cloudinary photos,
+and render correctly on `/materials`'s Wallpaper tab).
+
+Also added a one-click Publish/Unpublish toggle (an eye/eye-off icon) to
+`/admin/home-material/products` (`ProductsView.tsx`) — previously the
+only way to flip `reviewStatus` was opening the full Edit dialog and
+changing a dropdown, which is exactly the step that got missed here.
+Resubmits the row's own current values (via the existing
+`productToFormValues` shape) with just `reviewStatus` flipped, so the
+PATCH endpoint's existing "needs a photo to publish" rule still applies
+unchanged — disabled with a tooltip on a draft row with no photo.
+
+**Bug 2 — the eye icon always opened the "upload your room" modal, even
+for a returning visitor who already has a confirmed wall.** Added a
+read-only lookup, `GET /api/home-material/rooms/active-surface`
+(`getHmUserSession()`, not `getOrCreateHmUserSession()` — same "don't
+provision a guest just to learn 'no room yet'" discipline as
+`HmNavBar.tsx`), returning the most recently confirmed
+(`geometryData` set) wall across the visitor's rooms. `handlePreviewProduct`
+in `MaterialsLandingClient.tsx` now calls this before deciding what a
+product click should do: a hit navigates straight to
+`/materials/rooms/[roomId]?product=&surface=&autoPreview=1`; a miss
+falls back to the existing upload-modal flow unchanged. `RoomView.tsx`
+reads those three params in a new effect (guarded by a ref so it only
+fires once) and, once the room has loaded and the named surface is
+confirmed, selects the product on it and calls the existing
+`handleGeneratePreview` immediately — no extra click required — then
+strips the params via `router.replace` so a reload doesn't repeat it (a
+repeat would be a free cache hit anyway, per the existing visualization
+cache, so this is about tidiness, not cost).
+
+Live-tested end to end with a synthetic test room (manually traced wall,
+no AI detection call): confirmed `active-surface` correctly returns
+`{roomId:null,surfaceId:null}` before any room exists and the real
+room+surface ids after one is confirmed; confirmed clicking a product's
+eye icon from `/materials` navigated straight into the existing room
+(not the upload modal) and auto-triggered generation for that product on
+that wall — verified by the app correctly landing on the existing
+"wall size needed for an accurate repeat-pattern preview" prompt
+(the same flow a manual click already goes through for a `repeat_sheet`
+product), proving the swatch was auto-selected and generation was
+auto-triggered without a manual pick. `npx tsc --noEmit` clean; lint
+clean except one pre-existing-pattern `react-hooks/exhaustive-deps`
+warning (a handler function omitted from a `useEffect` dependency array,
+consistent with this file's other effects).
+
+**Incidental cost note:** the live test above caused one real Gemini
+vision call (the wall-dimension-estimation step that already runs for
+any `repeat_sheet` product without a stated size) — not anticipated when
+starting the test, since the flow was expected to stop at "swatch
+selected," not reach an actual generation attempt. Disclosed to the user
+per [[ask-before-paid-model-tests]]; cost was minimal (a single vision
+call, not full image generation, which was never reached).
+
+## PDF import review-queue UX + wall-selector fullscreen/ordering, 2026-09-17
+
+Five user-requested items, all shipped:
+
+- **Multi-select reject** — a checkbox per pending page card plus a
+  "select all" toolbar, batch-rejecting via `Promise.allSettled` over the
+  existing single-page PATCH endpoint rather than a new bulk route.
+- **Immediate undo** — a dismissable toast ("Rejected page N — Undo")
+  after any reject (single or bulk), live for 8 seconds. Required a real
+  API change: the PDF-import PATCH route's own doc comment previously
+  called reject "terminal" — added a new `action: "restore"` branch
+  (rejected → pending only; approved stays terminal, since undoing that
+  would also mean deleting the resulting product, out of scope here).
+- **Restore + thumbnails + delete-all in the "Already reviewed" list** —
+  the table gained a thumbnail column (previously page number + status
+  only, making it impossible to tell candidates apart at a glance), a
+  per-row "Restore" action for rejected rows (same `action: "restore"`
+  endpoint), and a confirmed "Delete all" bulk-clear
+  (`DELETE /api/admin/home-material/catalogue-imports/[id]`, scoped to
+  non-pending rows only — approved rows' resulting products are
+  untouched, the FK points from page to product, not the reverse).
+- **Fullscreen wall selector** — an expand icon above the wall-tracing
+  card toggles a fixed full-viewport overlay around the exact same
+  JSX/state (no separate fullscreen-specific logic to drift out of sync).
+  Desktop shows "Press Esc to exit"; mobile gets a fixed bottom band
+  (cross = exit only, check = run whichever confirm action the current
+  stage has — finish the traced shape or confirm/save the adjusted
+  outline — then exit).
+- **Manual tracing promoted to the primary option**, automatic detection
+  demoted to a secondary text link (previously the reverse) — manual
+  always works regardless of photo angle/lighting and costs no AI call,
+  where detection is a convenience that can fail.
+
+**A real, reproducible-looking "bug" during live-testing turned out to be
+a test-methodology artifact, not an app bug** — worth recording since it
+cost real debugging time: clicking Reject via automated coordinate/ref
+clicks sometimes silently missed the actual button (viewport size
+changed between screenshots, shifting coordinates; a stale accessibility-
+tree ref pointing at an already-reconciled DOM node), making it look like
+the reject succeeded (pending count did drop, from an EARLIER click that
+DID land) while a same-moment "check for the undo toast" call found
+nothing. Separately, the toast's own 8-second window is short enough
+that the real wall-clock time between two separate tool calls (this
+session's own reasoning/latency between "click" and "check") could
+exceed it, making a perfectly-working toast look like it never rendered.
+Confirmed both explanations directly: a single script that clicked AND
+polled `recentlyRejected` state in one execution (no inter-call latency)
+showed the value set correctly and persisting past 2 seconds; a clean
+click-then-screenshot pair completed within the window shows the toast
+rendering exactly as designed, and a same-window Undo click correctly
+restored the page (verified via a direct, unrefreshed fetch to the
+review-page GET showing `reviewStatus` flip back to `"pending"`). No code
+fix was needed — an initial "fix" (deferring `router.refresh()` a tick)
+was tried, found unnecessary once the real cause was understood, and
+reverted rather than left in as unexplained defensive code.
+
+Live-tested against a real in-progress import ("Palm Island," a genuine
+supplier PDF, not a synthetic test file): multi-select and single reject,
+undo, restore (both toast and Reviewed-list paths), and the reviewed
+table's thumbnails all confirmed working against real pending pages.
+"Delete all" was deliberately NOT executed against this real import (it's
+irreversible and this data belongs to the user's actual in-progress
+work) — confirmed only by inspection that the button and confirm dialog
+render correctly. `npx tsc --noEmit` and `eslint` both clean.

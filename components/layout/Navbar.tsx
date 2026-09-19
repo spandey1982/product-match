@@ -29,11 +29,14 @@ import {
   CreditBalanceDropdown,
 } from "@/components/billing/CreditBalance";
 import { AdminMenu } from "@/components/layout/AdminMenu";
-import { ALL_MODULES, type ModuleKey } from "@/lib/client-modules";
+import { HmCatalogueMenu } from "@/components/layout/HmCatalogueMenu";
+import { ALL_MODULES, resolveLandingPath, type ModuleKey } from "@/lib/client-modules";
 
 interface NavbarProps {
   user: { name: string; email: string; storeName?: string | null; businessType?: string };
   isAdmin?: boolean;
+  /** True for a full admin OR the narrower HM_CATALOGUE_MANAGER role. */
+  canManageHmCatalogue?: boolean;
   /** Modules this account can see — every module for a default (unrestricted) account. */
   enabledModules?: ModuleKey[];
   /** Module promoted to a top-level nav slot when it isn't one of the base four already. */
@@ -76,6 +79,7 @@ function NavBadge({ count }: { count: number }) {
 export function Navbar({
   user,
   isAdmin,
+  canManageHmCatalogue,
   enabledModules,
   primaryModule,
   brandName,
@@ -94,6 +98,7 @@ export function Navbar({
 
   const modules = enabledModules ?? [...ALL_MODULES];
   const isEnabled = (m: ModuleKey) => modules.includes(m);
+  const landingPath = resolveLandingPath(modules);
   const showAssetsMenu =
     isEnabled("model-studio") || (isEnabled("design-studio") && primaryModule !== "design-studio");
 
@@ -133,7 +138,7 @@ export function Navbar({
     <header className="sticky top-0 z-40 w-full border-b border-gray-100 bg-white/80 backdrop-blur-md">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
         {/* Logo */}
-        <Link href="/catalog" className="flex items-center gap-2 shrink-0">
+        <Link href={landingPath} className="flex items-center gap-2 shrink-0">
           {logoUrl ? (
             <Image
               src={logoUrl}
@@ -192,15 +197,18 @@ export function Navbar({
 
         {/* Search + user */}
         <div className="flex items-center gap-2">
-          <Link
-            href="/catalog"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-50 transition-colors"
-          >
-            <Search className="h-4 w-4" />
-            <span className="hidden md:block text-xs">Search catalog</span>
-          </Link>
+          {isEnabled("catalog") && (
+            <Link
+              href="/catalog"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-50 transition-colors"
+            >
+              <Search className="h-4 w-4" />
+              <span className="hidden md:block text-xs">Search catalog</span>
+            </Link>
+          )}
 
           {isAdmin && <AdminMenu />}
+          {!isAdmin && canManageHmCatalogue && <HmCatalogueMenu />}
 
           {/* User menu */}
           <div className="relative" ref={menuRef}>

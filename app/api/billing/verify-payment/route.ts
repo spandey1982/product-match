@@ -44,8 +44,7 @@ export async function POST(req: NextRequest) {
       success: true,
       alreadyProcessed: result.alreadyProcessed,
       amountInr: paymentOrder.amountInr,
-      creditedUsd: result.creditedUsd,
-      exchangeRate: result.exchangeRate,
+      creditedCredits: result.creditedCredits,
     });
   } catch (err) {
     if ((err as Error).message === "Unauthorized") {

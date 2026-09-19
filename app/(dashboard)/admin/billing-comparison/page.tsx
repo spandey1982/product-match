@@ -6,6 +6,16 @@ export const metadata = { title: "Billing Comparison — Internal" };
 
 const DAYS = 30;
 
+/**
+ * Retail revenue is booked in credits (1 credit = Rs 10 flat, no live rate —
+ * see lib/billing/exchange.ts); GCP cost is booked in real USD. This page is
+ * the one place that still needs to compare the two, so it uses a rough,
+ * hardcoded Rs/USD rate for that comparison ONLY — not a live rate, and not
+ * used anywhere financial. Update by hand if it drifts meaningfully.
+ */
+const APPROX_INR_PER_USD = 88;
+const CREDITS_TO_USD = 10 / APPROX_INR_PER_USD;
+
 async function loadComparison() {
   const since = new Date(Date.now() - DAYS * 24 * 60 * 60 * 1000);
   const where = { createdAt: { gte: since } };
@@ -29,19 +39,20 @@ async function loadComparison() {
         db.walletTransaction.aggregate({
           where: { ...where, type: "DEDUCT" },
           _count: { _all: true },
-          _sum: { amountUsd: true },
+          _sum: { amountCredits: true },
         }),
 
         db.walletTransaction.findMany({
           where: { ...where, type: "DEDUCT" },
-          select: { amountUsd: true, description: true },
+          select: { amountCredits: true, description: true },
         }),
       ]);
 
     const gcpTotal = aiCostAgg._sum.estimatedCostUsd ?? 0;
     const gcpCalls = aiCostAgg._count._all;
 
-    const retailTotal = Math.abs(walletDeductAgg._sum.amountUsd ?? 0);
+    const retailTotalCredits = Math.abs(walletDeductAgg._sum.amountCredits ?? 0);
+    const retailTotal = retailTotalCredits * CREDITS_TO_USD;
     const retailCalls = walletDeductAgg._count._all;
 
     const margin = retailTotal > 0 ? ((retailTotal - gcpTotal) / retailTotal) * 100 : 0;
@@ -59,7 +70,7 @@ async function loadComparison() {
       const count = tx.description.match(/^(\d+)×/) ? parseInt(tx.description.match(/^(\d+)×/)![1], 10) : 1;
       const entry = retailByOp.get(op) ?? { calls: 0, revenue: 0 };
       entry.calls += count;
-      entry.revenue += Math.abs(tx.amountUsd);
+      entry.revenue += Math.abs(tx.amountCredits) * CREDITS_TO_USD;
       retailByOp.set(op, entry);
     }
 
@@ -89,6 +100,9 @@ export default async function BillingComparisonPage() {
         <h1 className="text-xl font-bold text-gray-900">Billing Comparison</h1>
         <p className="text-sm text-gray-500 mt-1">
           Retail revenue vs estimated GCP cost — last {DAYS} days
+        </p>
+        <p className="text-xs text-gray-400 mt-1">
+          Retail revenue is booked in credits and converted to USD here at an approximate Rs {APPROX_INR_PER_USD}/USD rate for comparison only.
         </p>
       </div>
 

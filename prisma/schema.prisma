@@ -7,29 +7,36 @@ datasource db {
 }
 
 model User {
-  id           String  @id @default(cuid())
-  email        String  @unique
-  name         String
-  password     String
-  role         String  @default("RETAILER")
-  storeName    String?
+  id                     String    @id @default(cuid())
+  email                  String    @unique
+  name                   String
+  password               String
+  role                   String    @default("RETAILER")
+  storeName              String?
   /**
    * Shown to shoppers on the public rental listing (contact card + map link).
    */
-  storePhone   String?
-  /** Retailer's own verified phone — distinct from storePhone (public/unverified storefront contact). Used for security actions (e.g. password change via OTP). Null until verified once via lib/retailer-otp.ts. */
-  phone           String?   @unique
-  phoneVerifiedAt DateTime?
-  storeAddress String?
+  storePhone             String?
+  /**
+   * Retailer's own verified phone — distinct from storePhone (public/unverified storefront contact). Used for security actions (e.g. password change via OTP). Null until verified once via lib/retailer-otp.ts.
+   */
+  phone                  String?   @unique
+  phoneVerifiedAt        DateTime?
+  /**
+   * SHA-256 hex hash of the current forgot-password token — never the raw token (lib/password-reset.ts). Null when no reset is pending.
+   */
+  passwordResetTokenHash String?   @unique
+  passwordResetExpiresAt DateTime?
+  storeAddress           String?
   /**
    * Fixed-list city (lib/geo/city-coordinates.ts) used for /shop's location-radius filter — city-grained, not a geocoded address.
    */
-  storeCity    String?
+  storeCity              String?
   // Business classification picked at signup — purely descriptive, distinct
   // from `role` (which gates ADMIN vs RETAILER access). "RETAILER" |
   // "MANUFACTURER" | "RENTAL_STORE", plain string per this schema's
   // stage-field convention, not a Prisma enum.
-  businessType String  @default("RETAILER")
+  businessType           String    @default("RETAILER")
 
   tryOnProvider String  @default("gemini")
   aiGenSettings String?
@@ -50,11 +57,12 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  products      Product[]
-  modelProfiles ModelProfile[]
-  wallet        Wallet?
-  motionJobs    MotionJob[]
-  clientProfile ClientProfile?
+  products              Product[]
+  modelProfiles         ModelProfile[]
+  wallet                Wallet?
+  motionJobs            MotionJob[]
+  clientProfile         ClientProfile?
+  hmCatalogueImports    HmCatalogueImport[]
 
   @@index([deletedAt])
   @@map("users")
@@ -74,16 +82,31 @@ model ClientProfile {
   userId String @unique
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  /** JSON array of module keys (lib/client-modules.ts ModuleKey), via serializeArray. */
+  /**
+   * JSON array of module keys (lib/client-modules.ts ModuleKey), via serializeArray.
+   */
   enabledModules String
-  /** Module key promoted to the primary/hero nav slot, e.g. "design-studio". */
+  /**
+   * Module key promoted to the primary/hero nav slot, e.g. "design-studio".
+   */
   primaryModule  String
 
-  /** Overrides the "Mentis" wordmark in the shell when set. */
+  /**
+   * "catalog" (browse products, tap to try on) | "quick-capture" (camera-first, no catalog). Only meaningful when "trial-room" is enabled.
+   */
+  trialRoomLayout String @default("catalog")
+
+  /**
+   * Overrides the "Mentis" wordmark in the shell when set.
+   */
   brandName   String?
-  /** Mentis-curated, closed set — see lib/branding/presets.ts. Never freeform CSS. */
+  /**
+   * Mentis-curated, closed set — see lib/branding/presets.ts. Never freeform CSS.
+   */
   themePreset String  @default("default")
-  /** Optional single hex; only overrides the preset's primary-hue slot, never its structure. */
+  /**
+   * Optional single hex; only overrides the preset's primary-hue slot, never its structure.
+   */
   accentColor String?
 
   createdAt DateTime @default(now())
@@ -704,13 +727,13 @@ model SeoHealthSnapshot {
 // pattern; one-off additions can also be inserted directly (Prisma Studio
 // or a small script) without re-running the whole seed.
 model TaskItem {
-  id           String   @id @default(cuid())
+  id           String  @id @default(cuid())
   title        String
   description  String
   category     String
   dependencies String?
   sourceRef    String?
-  status       String   @default("open") // "open" | "done" | "dismissed"
+  status       String  @default("open") // "open" | "done" | "dismissed"
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -934,12 +957,16 @@ model Wallet {
   userId String @unique
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  balanceUsd      Float @default(0)
-  totalCreditsUsd Float @default(0)
+  /**
+   * Retailer wallet balance in credits — 1 decimal place, 1 credit = ₹10 flat (no live exchange rate). See lib/billing/exchange.ts.
+   */
+  balanceCredits Float @default(0)
+  /**
+   * Lifetime credits ever added (used for remainingPercentage).
+   */
+  totalCredits   Float @default(0)
 
   status String @default("active")
-
-  lastExchangeRate Float?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -954,9 +981,9 @@ model WalletTransaction {
   walletId String
   wallet   Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
 
-  type         String
-  amountUsd    Float
-  balanceAfter Float
+  type          String
+  amountCredits Float
+  balanceAfter  Float
 
   description String
 
@@ -966,8 +993,10 @@ model WalletTransaction {
 
   initiatedBy String
 
+  /**
+   * ₹ amount that produced this credit, when initiated by a top-up. Provenance only — the flat ₹10/credit rate makes it derivable, kept for the receipt trail.
+   */
   originalAmountInr Float?
-  exchangeRate      Float?
 
   createdAt DateTime @default(now())
 
@@ -988,9 +1017,8 @@ model PaymentOrder {
   razorpayPaymentId String?
   razorpaySignature String?
 
-  amountInr    Int
-  amountUsd    Float?
-  exchangeRate Float?
+  amountInr     Int
+  amountCredits Float?
 
   currency String @default("INR")
 
@@ -1249,4 +1277,787 @@ model MotionQAResult {
   clip MotionClip @relation(fields: [clipId], references: [id], onDelete: Cascade)
 
   @@map("motion_qa_results")
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Home Material Intelligence Platform — a separate product domain (walls:
+// paint, wallpaper, wall texture, wall panels; India-first, V1). See
+// docs/home-material/README.md for the domain brief, locked decisions, and
+// AI boundaries. `hm_` table prefix keeps ownership unambiguous in
+// migrations. No relation from any model below into the fashion-retailer
+// domain (User, Product, Customer, etc.) — see CLAUDE.md §22.
+// ═══════════════════════════════════════════════════════════════════════
+
+// Consumer identity for the Home Material product — deliberately separate
+// from Customer (the fashion /shop marketplace's identity), even though
+// both authenticate via phone OTP. See domain brief's locked decisions.
+model HmUser {
+  id    String  @id @default(cuid())
+  phone String  @unique
+  name  String?
+  email String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  projects       HmProject[]
+  shortlist      HmShortlistItem[]
+  leads          HmLead[]
+  customSwatches HmProduct[]
+  events         HmProductEvent[]
+
+  @@map("hm_users")
+}
+
+// A user's home/renovation project — groups rooms. V1 UX may only ever
+// surface one active project per user, but the model doesn't assume that.
+model HmProject {
+  id       String @id @default(cuid())
+  hmUserId String
+  hmUser   HmUser @relation(fields: [hmUserId], references: [id], onDelete: Cascade)
+
+  name String  @default("My Home")
+  city String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  rooms HmRoom[]
+  leads HmLead[]
+
+  @@index([hmUserId])
+  @@map("hm_projects")
+}
+
+model HmRoom {
+  id        String    @id @default(cuid())
+  projectId String
+  project   HmProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  roomType String // free string (e.g. "living_room", "bedroom") — no fixed enum yet, V1 walls-only doesn't need one
+  imageUrl String // Cloudinary URL of the uploaded room photo
+
+  // pending | analyzing | completed | failed — plain string, matches this
+  // schema's existing stage-field convention (see AutoCatalogItem).
+  analysisState String @default("pending")
+
+  // Structured CV output (wall/furniture/window/door regions, lighting) as
+  // JSON — shape owned by lib/home-material (not yet built). Null until
+  // analysisState reaches "completed".
+  analysisResult String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  surfaces HmSurface[]
+
+  @@index([projectId])
+  @@map("hm_rooms")
+}
+
+model HmSurface {
+  id     String @id @default(cuid())
+  roomId String
+  room   HmRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  // "wall" only in V1 — kept as a free string, not an enum, since floor/
+  // ceiling are an explicit future-phase expansion (see domain brief).
+  surfaceType String  @default("wall")
+  label       String? // e.g. "accent wall", "north wall" — user- or CV-assigned
+
+  // CV-detected region (polygon/bbox) as JSON, null until analyzed.
+  geometryData String?
+
+  // Real-world dimensions (meters, schema-literal unit — same convention
+  // as HmLead.estimatedAreaSqm; UI shows feet, India convention). Null
+  // means "unknown — estimate from the visible photo portion only."
+  // Previously-unused placeholder fields from the Phase 1 schema, now
+  // wired up (2026-09-09) by the wall-truncation honesty feature below —
+  // also feeds the future repeat-pattern sheet-count work.
+  widthMeters  Float?
+  heightMeters Float?
+  areaSqm      Float?
+
+  // ai_estimated | user_confirmed | professional — never silently treat an
+  // estimate as a measurement (Constitution Principle 6, §11).
+  measurementSource     String @default("ai_estimated")
+  measurementConfidence Float?
+
+  // True when wall-detection isn't confident the full physical wall was
+  // captured in the photo (its edge coincides with the image frame
+  // rather than a visible real corner/ceiling-floor convergence) —
+  // 2026-09-09, "never manufacture certainty" applied to wall length.
+  // Never blocks anything: triggers an honest warning + an optional
+  // widthMeters/heightMeters entry, nothing more. Always false for a
+  // manually-drawn shape (no AI judgment exists to set it true).
+  possiblyTruncated Boolean @default(false)
+
+  // User-confirmed adjacency for sheet-count math (2026-09-09). Only ever
+  // WRITTEN by the user's own confirm action (PATCH .../surfaces/adjacency)
+  // — a 2026-09-10 addition (sub-problem A) lets AI SUGGEST which walls
+  // look adjacent from the photo, but that's a suggestion returned to the
+  // client only, never saved directly (see lib/home-material/
+  // adjacency-detection.ts). Surfaces sharing the same non-null value are
+  // treated as one continuous run when the SAME repeat_sheet product is
+  // selected across them: their widths sum before the sheet-count ceiling
+  // formula applies once, instead of computing each wall independently —
+  // matching how wallpaper is actually hung continuously across a real
+  // corner. Null means "not marked adjacent to anything," the default/
+  // independent case.
+  adjacencyGroupId String?
+
+  // True when widthMeters/heightMeters came from AI reference-object
+  // estimation rather than the user typing them in (2026-09-09) — never
+  // blur estimate vs. confirmed (Constitution Principle 6, same rule
+  // measurementSource already follows). Meaningless while both are null.
+  dimensionsEstimated Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  visualizations  HmVisualization[]
+  recommendations HmRecommendation[]
+
+  @@index([roomId])
+  @@index([adjacencyGroupId])
+  @@map("hm_surfaces")
+}
+
+// Category-level material knowledge — "what type of material should I
+// consider", independent of any SKU (domain brief §12). Curated/admin
+// content, not AI-generated at read time.
+model HmMaterial {
+  id String @id @default(cuid())
+
+  category    String // "paint" | "wallpaper" | "wall_texture" | "wall_panel"
+  subtype     String // e.g. "emulsion", "vinyl_wallpaper", "textured_plaster", "pvc_panel"
+  name        String
+  description String?
+
+  durability          String?
+  maintenance         String?
+  moistureSuitability String?
+  installationNotes   String?
+  removalNotes        String?
+
+  avgCostPerSqftMinInr Float?
+  avgCostPerSqftMaxInr Float?
+
+  advantages  String @default("[]") // JSON array (lib/serialize.ts)
+  limitations String @default("[]") // JSON array (lib/serialize.ts)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products        HmProduct[]
+  visualizations  HmVisualization[]
+  recommendations HmRecommendation[]
+
+  @@index([category])
+  @@map("hm_materials")
+}
+
+// A real SKU. materialId links it to its category-level knowledge but is
+// nullable — a product can exist before it's been categorized against the
+// knowledge base.
+model HmProduct {
+  id String @id @default(cuid())
+
+  materialId String?
+  material   HmMaterial? @relation(fields: [materialId], references: [id])
+
+  // Groups colourway siblings of the same design (e.g. "Meadow Bloom" in
+  // Cream/Sage/Blue) for display ("also available in 3 colours") — never
+  // merges purchasing identity. Each colourway stays its own fully
+  // independent purchasable HmProduct (own SKU/price/image). Set only by
+  // MANUAL admin/seed grouping — never AI-inferred (a wrong "these are the
+  // same design" grouping is a real, confusing customer-facing error).
+  familyId String?
+  family   HmProductFamily? @relation(fields: [familyId], references: [id])
+
+  sku        String?
+  brand      String?
+  collection String?
+  name       String
+
+  // Customer-friendly explanation. Generated only from already-verified
+  // fields on this product (name/brand/materialComposition/colorName/
+  // finish/patternCategory) — never invents a spec not present elsewhere
+  // on the record. Optional human review before publish.
+  description String?
+
+  colorName String?
+  colorHex  String?
+  finish    String?
+
+  // What it's physically made of — "Non-woven", "Vinyl/PVC", "Fabric-backed".
+  // Source-authoritative only (AI may extract from a real manufacturer/
+  // retailer document, never infer from a photo's appearance) — see
+  // HmProductEvidence for the provenance trail backing this value.
+  materialComposition String?
+
+  // Controlled bucket (warm_neutral | cool | pastel | earth | jewel |
+  // monochrome) — SYSTEM_CALCULATE, deterministically derived from colorHex
+  // (HSL bucketing) whenever colorHex is set/changes. Deliberately not
+  // AI-classified: this is pure colour math, cheaper and more reliable
+  // than a model call for zero accuracy gain.
+  colorFamily String?
+
+  // Platform-derived visual classification (CV over textureAssetUrl), not a
+  // manufacturer claim. patternCategory: floral | geometric | stripe |
+  // abstract | solid | textured | mural | other. visualStyle: a single
+  // dominant tag (modern, traditional, botanical, minimal, ...). Both
+  // logged with confidence via HmProductEvidence when AI-populated.
+  patternCategory String?
+  visualStyle     String?
+
+  // "peel_and_stick" | "paste_the_wall" | "paste_the_paper" | "professional"
+  // — a genuine per-SKU fact (not just category boilerplate), since
+  // peel-and-stick vs. pasted changes DIY-ability. Source-authoritative
+  // only, never inferred from appearance.
+  installationMethod String?
+
+  // Whether a retailer can actually ship a physical sample for this SKU.
+  // Nullable tri-state — null means unknown/unconfirmed, never defaulted
+  // to true or false. MANUAL / retailer-confirmed only.
+  sampleAvailable Boolean?
+
+  patternName     String?
+  patternRepeatCm Float?
+  orientation     String?
+
+  // Free-text dimensions (roll width/length, panel size, etc. — too varied
+  // across paint/wallpaper/texture/panel to normalize into fixed columns
+  // for V1). Superseded for repeat-pattern sheet goods specifically by
+  // the structured fields below (2026-09-09) — kept for other/legacy use.
+  dimensions String?
+
+  // Sheet-size-aware rendering + ordering (2026-09-09) — mandatory at the
+  // application layer (upload/seed forms must explicitly choose; the
+  // "customizable" DB default below exists only so existing rows and
+  // migrations don't break, never as a silent app-level default for a
+  // NEW product):
+  // - "customizable": one non-repeating design (e.g. a themed mural) that
+  //   scales up to the wall as a single image. minWidthM/minHeightM are
+  //   the smallest size it can be scaled down to without losing detail
+  //   (null = no known floor).
+  // - "repeat_sheet": real sheet goods (patterned wallpaper, veneer, wood
+  //   panels, and eventually tiles) with a fixed real-world sheet size
+  //   (sheetWidthM/sheetHeightM) — the pattern renders at TRUE physical
+  //   scale, tiled, not stretched, and sheet count is calculated from
+  //   sheet size vs. wall size. Required (validated at the API layer,
+  //   not the DB) whenever patternType is "repeat_sheet".
+  patternType  String @default("customizable")
+  sheetWidthM  Float?
+  sheetHeightM Float?
+  minWidthM    Float?
+  minHeightM   Float?
+
+  priceInr  Float?
+  priceUnit String? // "per_sqft" | "per_roll" | "per_panel" | "per_litre"
+
+  warrantyInfo String?
+  availability String  @default("unspecified") // "in_stock" | "order" | "discontinued" | "unspecified"
+
+  // "draft" | "published" — gates visibility on the customer-facing
+  // catalogue (GET /api/home-material/products and its "other products"
+  // recommendation query), NOT stock/availability above. Every pre-existing
+  // row (seed data, the retired admin-add tool, real customer uploads)
+  // defaults to "published" so this is purely additive — nothing that was
+  // visible before this field existed stops being visible. New rows coming
+  // out of the internal catalogue tool (single-entry or PDF bulk import,
+  // 2026-09-16+) default to "draft" at the application layer until an
+  // admin/catalogue-manager explicitly publishes them.
+  reviewStatus String @default("published")
+
+  imageUrls       String  @default("[]") // JSON array (lib/serialize.ts)
+  // Reference texture asset for product-accurate visualization (pattern/
+  // colour source, not a room photo). For a custom upload (see
+  // uploadedByHmUserId below) this IS the uploaded photo — the
+  // visualization pipeline sends it to the model as a reference image
+  // instead of relying on colorName/finish text, since an arbitrary
+  // upload can't be reliably characterized in structured fields.
+  textureAssetUrl String?
+
+  // Set only for a user-uploaded custom swatch (added 2026-09-07, "upload
+  // your own wallpaper/paint" feature) — null for curated/admin swatches.
+  // Scopes visibility: a custom upload is private to the uploading HmUser,
+  // never shown in another user's swatch list.
+  uploadedByHmUserId String?
+  uploadedByHmUser   HmUser? @relation(fields: [uploadedByHmUserId], references: [id], onDelete: Cascade)
+
+  lastUpdatedAt DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  evidence            HmProductEvidence[]
+  retailerListings    HmRetailerProduct[]
+  visualizations      HmVisualization[]
+  recommendations     HmRecommendation[]
+  shortlistedBy       HmShortlistItem[]
+  leads               HmLead[]
+  events              HmProductEvent[]
+  fromImportPages     HmCatalogueImportPage[]
+
+  @@index([materialId])
+  @@index([uploadedByHmUserId])
+  @@index([familyId])
+  @@index([reviewStatus])
+  @@map("hm_products")
+}
+
+// One row per shared design — an optional parent grouping colourway
+// variants of the same wallpaper for display only (see HmProduct.familyId).
+model HmProductFamily {
+  id   String @id @default(cuid())
+  name String // shared design name, e.g. "Meadow Bloom"
+
+  createdAt DateTime @default(now())
+
+  products HmProduct[]
+
+  @@map("hm_product_families")
+}
+
+// One row per PDF catalogue uploaded through the internal bulk-import tool
+// (2026-09-16+, see docs/home-material/architecture/system.md). Extraction
+// is structured-only — pulled from the PDF's own text/image objects
+// (lib/home-material/pdf-import.ts), never OCR or AI vision — so this is
+// deterministic and free to run. Processed ONE PAGE AT A TIME (not the
+// whole file synchronously) so the admin sees live progress and can stop
+// early — pageCount/pagesProcessed below track that. The uploaded PDF
+// itself is NOT persisted (tried storing it in Cloudinary for cross-
+// request resumability, but real supplier PDFs routinely exceed this
+// account's 10MB raw-upload cap — Cloudinary's chunked upload_large only
+// chunks the transport, not the account's max-asset-size limit). Kept
+// entirely in an in-memory session instead
+// (lib/home-material/pdf-import-sessions.ts) for the lifetime of one
+// processing run; if the server restarts mid-import the admin re-uploads
+// — the pages already extracted before that stay valid.
+model HmCatalogueImport {
+  id         String  @id @default(cuid())
+  collection String // set once for the whole batch — a catalogue PDF is typically one collection
+  brand      String?
+
+  sourceFileName String // audit label only — the PDF bytes are not stored
+
+  uploadedByUserId String
+  uploadedByUser   User   @relation(fields: [uploadedByUserId], references: [id])
+
+  // "processing" | "needs_review" | "cancelled" | "completed" | "failed".
+  // "cancelled" means the admin stopped it early via POST .../cancel —
+  // whatever pages were already extracted stay real, reviewable
+  // candidates, same as "needs_review". "completed" means every page has
+  // left "pending" review (approved or rejected), not that every page
+  // became a product.
+  status       String  @default("processing")
+  errorMessage String?
+
+  // Total pages in the PDF (set once the file is opened) vs. how many have
+  // actually been run through extractPage so far — the live progress bar.
+  pageCount      Int @default(0)
+  pagesProcessed Int @default(0)
+
+  // AI-extracted collection-level facts (2026-09-17) — from
+  // lib/home-material/collection-info-extraction.ts, run once at the end
+  // of processing over every "info"-type page's text (a genuine
+  // material/technology reference page some suppliers include, distinct
+  // from any one product's own listing). JSON shape: CollectionInfoFields
+  // (materialComposition/installationMethod/warrantyInfo/description/
+  // claims). Null when no info pages were found, the API wasn't
+  // configured, or nothing could be confidently extracted — a suggestion
+  // surfaced in the review queue for the admin to apply to some or all
+  // pending candidates, never written to a product automatically.
+  collectionFields String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  pages HmCatalogueImportPage[]
+
+  @@index([status])
+  @@map("hm_catalogue_imports")
+}
+
+// One row per PDF page examined during a bulk import — the review-queue
+// unit. Nothing here becomes a real HmProduct until an admin/catalogue
+// manager explicitly approves it (reviewStatus "approved"); rejecting or
+// leaving a page pending never creates one. Mirrors HmProductEvidence's
+// "don't retrofit provenance later" discipline — every resulting product
+// also gets an HmProductEvidence row pointing back to this import.
+model HmCatalogueImportPage {
+  id       String            @id @default(cuid())
+  importId String
+  import   HmCatalogueImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+
+  pageNumber Int
+
+  // "product" | "info" | "noise" | "ambiguous" — a heuristic guess from
+  // lib/home-material/pdf-import.ts, always overridable by the reviewing
+  // admin. "ambiguous" means the page had an image but the extractor
+  // couldn't confidently isolate one candidate (e.g. multiple images, or an
+  // image plus a long text block) — never guessed, always surfaced for a
+  // human to resolve instead of silently dropped or silently imported.
+  pageType String
+
+  extractedImageUrl String? // Cloudinary upload of the embedded product photo, when one was found
+
+  // Candidate field guesses — a flat JSON OBJECT (name/sku/colorName/
+  // patternName/...), not an array, so lib/serialize.ts's array helpers
+  // don't apply here; parsed with plain JSON.parse. Always editable in the
+  // review UI, never written to HmProduct until approved.
+  extractedFields String @default("{}")
+
+  // AI classification suggestion (2026-09-17) — from lib/home-material/
+  // pdf-classification.ts, a Gemini vision pass over the extracted image
+  // (deterministic pageType above stays untouched by this; this is a
+  // SEPARATE, purely additive signal). JSON shape: {role, confidence,
+  // finishGuess, colorHint} — role is one of clean_tile/lifestyle/
+  // texture_closeup/group_shot/noise. Null means unclassified (not
+  // attempted, API unavailable, or the response couldn't be trusted) —
+  // the review queue must treat null the same as any other pending
+  // candidate, never hide it. A "noise"-classified candidate still stays
+  // fully visible and reachable — this is a sort/triage aid only, never a
+  // filter that can hide a real product from review.
+  aiClassification String?
+
+  // "pending" | "approved" | "rejected"
+  reviewStatus String    @default("pending")
+  reviewedAt   DateTime?
+
+  resultingProductId String?
+  resultingProduct   HmProduct? @relation(fields: [resultingProductId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([importId, reviewStatus])
+  @@map("hm_catalogue_import_pages")
+}
+
+// Per-field provenance — first-class from day one, not retrofitted later
+// (see domain brief and PROJECT_KNOWLEDGE.md's "a fix isn't done until
+// it's structural"). One row per fact worth tracing back to its origin.
+model HmProductEvidence {
+  id        String    @id @default(cuid())
+  productId String
+  product   HmProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  field String // e.g. "price", "moistureResistance", "warrantyInfo"
+  value String
+
+  // manufacturer | retailer | user | platform | ai_inferred | external_verified | unspecified
+  sourceType   String
+  sourceDetail String? // free text — retailer name, URL, etc.
+  confidence   Float?
+
+  // How trustworthy the SOURCE ITSELF is — "authoritative" | "retailer_stated"
+  // | "estimated" | "unverified" — deliberately separate from `confidence`
+  // above, which stays AI-extraction-confidence only. A manufacturer PDF
+  // isn't "97% confident," it's authoritative; a plausible AI guess isn't
+  // authoritative however confident the model sounds.
+  sourceAuthority String?
+
+  createdAt DateTime @default(now())
+
+  @@index([productId, field])
+  @@map("hm_product_evidence")
+}
+
+// Append-only interaction ledger — same "durable log, don't just mutate a
+// counter" convention as AiUsageEvent elsewhere in this schema. One row per
+// real customer interaction (impression/hover/click/detail view/visualize/
+// compare/shortlist/sample_request/quote_request/purchase). This is the
+// SINGLE source of truth for two intentionally separate downstream uses —
+// never conflate them:
+//   1. Analytics & badges (what this table was added for, 2026-09-16) —
+//      "bestseller"/"trending" are computed on demand from real aggregated
+//      counts over a time window, never stored as a static field on
+//      HmProduct (would go stale) and never an AI opinion.
+//   2. Session-scoped behavioural personalization (proposed, not yet
+//      built — see docs/home-material/product/roadmap.md) — narrowing
+//      recommendations within one session. Governance: a single event
+//      never updates a persisted preference; only a converging pattern
+//      does, always reversible, always framed as "based on what you've
+//      explored."
+// GOVERNANCE (both uses): this data must never silently affect search/
+// recommendation ranking or hide non-badge products — badges surface as
+// clearly-labelled additional info only. Any future sponsored placement
+// must stay structurally separate and always labelled — it never earns
+// its way into this table's organic counts.
+model HmProductEvent {
+  id String @id @default(cuid())
+
+  productId String
+  product   HmProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  // impression | hover | click | detail_view | visualize | compare |
+  // shortlist | sample_request | quote_request | purchase
+  eventType String
+
+  // Null for an anonymous visitor (this domain's browse/landing pages are
+  // intentionally unauthenticated — OTP only gates room upload). sessionId
+  // identifies an anonymous browsing session when hmUserId is null; at
+  // least one of the two should be present in practice, not enforced at
+  // the schema level.
+  hmUserId  String?
+  hmUser    HmUser? @relation(fields: [hmUserId], references: [id], onDelete: SetNull)
+  sessionId String?
+
+  createdAt DateTime @default(now())
+
+  @@index([productId, eventType, createdAt])
+  @@index([sessionId])
+  @@map("hm_product_events")
+}
+
+// Admin-seeded for V1 — no self-serve retailer onboarding yet (locked
+// decision). Deliberately separate from the fashion User model.
+model HmRetailer {
+  id   String @id @default(cuid())
+  name String
+
+  city        String?
+  serviceArea String? // free text description for V1
+
+  // JSON array of HmMaterial.category values this retailer carries.
+  categories String @default("[]")
+
+  contactPhone String?
+  contactEmail String?
+
+  isVerified Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  productListings HmRetailerProduct[]
+  leads           HmLead[]
+
+  @@map("hm_retailers")
+}
+
+// A retailer's specific listing of a product — price/availability are
+// retailer-specific, the product facts above are not.
+model HmRetailerProduct {
+  id String @id @default(cuid())
+
+  retailerId String
+  retailer   HmRetailer @relation(fields: [retailerId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   HmProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  priceInr     Float?
+  availability String @default("unspecified")
+
+  lastUpdatedAt DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([retailerId, productId])
+  @@index([productId])
+  @@map("hm_retailer_products")
+}
+
+// One AI visualization render. materialId (quick preview, no specific SKU)
+// and productId (product-accurate) are both nullable but mutually
+// exclusive in practice — enforced in application logic, not the schema.
+model HmVisualization {
+  id String @id @default(cuid())
+
+  surfaceId String
+  surface   HmSurface @relation(fields: [surfaceId], references: [id], onDelete: Cascade)
+
+  // "quick_preview" | "product_accurate"
+  mode String
+
+  materialId String?
+  material   HmMaterial? @relation(fields: [materialId], references: [id])
+
+  productId String?
+  product   HmProduct? @relation(fields: [productId], references: [id])
+
+  inputImageUrl  String
+  outputImageUrl String?
+
+  // queued | processing | completed | failed
+  status String @default("queued")
+
+  provider String? // "gemini" | "vertex" | "deterministic" | future
+  model    String?
+
+  generationMs Int?
+  errorMessage String?
+
+  // True when the wall was detected at a significant angle (a confident
+  // 4-corner perspective quad, not just an outline) and the reference
+  // texture was warped onto it via a deterministic homography — not an
+  // AI-generated edit — before compositing (sub-problem B, 2026-09-09
+  // prototype). provider/model above read "deterministic" /
+  // "homography+shading-v1" for these rows, never a Gemini model id.
+  perspectiveCorrected Boolean @default(false)
+
+  // True when a repeat-pattern sheet good was rendered at its real
+  // physical scale (tiled, not stretched) — sub-problem "wallpaper
+  // sheet-size scaling", 2026-09-09. provider/model read "deterministic"
+  // / "tiled-true-scale-v1" for these rows.
+  trueScaleRendered Boolean @default(false)
+
+  // True when the tile grid was phase-shifted to continue an adjacent
+  // wall's pattern across a real corner (sub-problem C, 2026-09-10) —
+  // only meaningful when trueScaleRendered is also true. See
+  // lib/home-material/visualization.ts's adjacencyOffsetM doc comment.
+  adjacencyContinuityApplied Boolean @default(false)
+
+  // "Honest overview" — mandatory post-generation opinion pass over the
+  // FINAL composited image (see docs/home-material/README.md, "Honest
+  // overview"). Tracked separately from status/errorMessage above so a
+  // failed overview never hides an otherwise-successful preview. Never a
+  // bare numeric score shown to the customer — natural language only,
+  // tone-constrained (positive opening, hedged doubt, never negative).
+  overviewStatus String @default("pending") // pending | completed | failed | skipped
+
+  overviewOpening        String?
+  overviewHighlights     String  @default("[]") // JSON array (lib/serialize.ts)
+  overviewConsiderations String  @default("[]") // JSON array (lib/serialize.ts) — always softly hedged, never negative
+  overviewClosing        String?
+
+  // Deterministically chosen HmProduct ids (lib/serialize.ts JSON array) —
+  // never AI-invented, per Constitution Principle 7 ("product database
+  // defines the product"). Always populated alongside the overview,
+  // regardless of how well the primary result scored.
+  overviewAlternativeProductIds String @default("[]")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // "Room Trial" caching (2026-09-12, intent-first review's cheapest locked
+  // win): a hash of everything that actually determines the generated
+  // pixels (room photo, wall outline/corners, product, wall/sheet
+  // dimensions, adjacency offset — see
+  // lib/home-material/visualization.ts's computeVisualizationCacheKey).
+  // An identical repeat request against the same surface reuses a prior
+  // COMPLETED row's result instead of re-running Gemini/overview calls —
+  // zero new AI cost, zero new Cloudinary upload. Null on rows created
+  // before this feature shipped.
+  cacheKey String?
+
+  // Cache-key ALGORITHM version, not a user-facing "trial version" —
+  // bump lib/home-material/visualization.ts's VISUALIZATION_CACHE_KEY_VERSION
+  // whenever the fields folded into the hash change, so old rows are never
+  // matched against a differently-computed new key.
+  version Int @default(1)
+
+  // When this room trial was saved. Every trial is implicitly "saved"
+  // today (nothing is ever auto-deleted), so this is set to createdAt at
+  // generation time — a real per-trial expiry/retention feature (see
+  // docs/home-material/product/roadmap.md's open retention-window
+  // question) can read/write this properly once that default is decided.
+  savedAt DateTime?
+
+  // Reserved for the same future retention feature above. Null = never
+  // expires (today's actual behavior for every existing trial).
+  expiresAt DateTime?
+
+  @@index([surfaceId])
+  @@index([surfaceId, cacheKey])
+  @@map("hm_visualizations")
+}
+
+// Deterministic/hybrid recommendation for a surface — never an
+// LLM-invented score (see domain brief's AI boundaries table).
+model HmRecommendation {
+  id String @id @default(cuid())
+
+  surfaceId String
+  surface   HmSurface @relation(fields: [surfaceId], references: [id], onDelete: Cascade)
+
+  materialId String?
+  material   HmMaterial? @relation(fields: [materialId], references: [id])
+
+  productId String?
+  product   HmProduct? @relation(fields: [productId], references: [id])
+
+  score      Float
+  confidence Float
+
+  reasons  String @default("[]") // JSON array (lib/serialize.ts)
+  concerns String @default("[]") // JSON array (lib/serialize.ts)
+
+  explanation String?
+
+  createdAt DateTime @default(now())
+
+  @@index([surfaceId, score])
+  @@map("hm_recommendations")
+}
+
+// Comparison + Shortlist collapsed into one table for V1 (simplification
+// proposed during discovery — see domain brief's "open/deferred").
+model HmShortlistItem {
+  id String @id @default(cuid())
+
+  hmUserId String
+  hmUser   HmUser @relation(fields: [hmUserId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   HmProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  note String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([hmUserId, productId])
+  @@map("hm_shortlist_items")
+}
+
+// A retailer lead/quote request — the only "commerce" action in V1 (no
+// checkout/payment). Mirrors ShopOrder's inline-contact-fields pattern.
+model HmLead {
+  id String @id @default(cuid())
+
+  hmUserId String
+  hmUser   HmUser @relation(fields: [hmUserId], references: [id], onDelete: Cascade)
+
+  projectId String?
+  project   HmProject? @relation(fields: [projectId], references: [id])
+
+  retailerId String
+  retailer   HmRetailer @relation(fields: [retailerId], references: [id])
+
+  productId String?
+  product   HmProduct? @relation(fields: [productId], references: [id])
+
+  materialCategory String? // set when no specific product is attached yet
+
+  contactName  String
+  contactPhone String
+  contactEmail String?
+
+  message          String?
+  estimatedAreaSqm Float?
+
+  // "quote" | "sample" (2026-09-10, Validation-layer flows) — a sample
+  // request is a physically different fulfillment (ship a real swatch,
+  // brief §41's Visualize->Shortlist->Request sample->Receive sample
+  // loop) from a price quote, so it's tracked as its own intent rather
+  // than folded into a generic "message" — only ever set on a real
+  // productId (you can't physically sample a whole material category).
+  leadType String @default("quote")
+
+  // Only meaningful/required when leadType is "sample" — a single plain
+  // free-text field (deliberately not a structured address book; this
+  // domain has no address infrastructure yet and V1's demo-retailer
+  // flow doesn't need one) — see HmLead's Validation-layer doc note.
+  shippingAddress String?
+
+  // new | contacted | quoted | closed
+  status String @default("new")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([retailerId, status])
+  @@index([hmUserId])
+  @@map("hm_leads")
 }

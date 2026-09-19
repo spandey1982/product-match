@@ -26,9 +26,15 @@ const THEME_PRESET_OPTIONS: { value: string; label: string }[] = [
   { value: "elegant", label: "Elegant — minimal, quiet-luxury" },
 ];
 
+const TRIAL_ROOM_LAYOUT_OPTIONS: { value: string; label: string; description: string }[] = [
+  { value: "catalog", label: "Catalog-based", description: "Customer browses the catalog and taps a product to try it on." },
+  { value: "quick-capture", label: "Quick Capture", description: "Camera-first — capture a garment on the spot and try it on. No catalog needed." },
+];
+
 interface Profile {
   enabledModules: ModuleKey[];
   primaryModule: ModuleKey;
+  trialRoomLayout: string;
   brandName: string | null;
   themePreset: string;
   accentColor: string | null;
@@ -49,6 +55,7 @@ export function ClientProfileForm({ userId, initialLogoUrl, allModules, initialP
     new Set(initialProfile?.enabledModules ?? allModules)
   );
   const [primaryModule, setPrimaryModule] = useState<ModuleKey>(initialProfile?.primaryModule ?? "catalog");
+  const [trialRoomLayout, setTrialRoomLayout] = useState(initialProfile?.trialRoomLayout ?? "catalog");
   const [brandName, setBrandName] = useState(initialProfile?.brandName ?? "");
   const [themePreset, setThemePreset] = useState(initialProfile?.themePreset ?? "default");
   const [accentColor, setAccentColor] = useState(initialProfile?.accentColor ?? "");
@@ -80,6 +87,7 @@ export function ClientProfileForm({ userId, initialLogoUrl, allModules, initialP
         body: JSON.stringify({
           enabledModules: [...enabledModules],
           primaryModule,
+          trialRoomLayout,
           brandName: brandName.trim() || null,
           themePreset,
           accentColor: accentColor || null,
@@ -107,6 +115,7 @@ export function ClientProfileForm({ userId, initialLogoUrl, allModules, initialP
       if (!res.ok) throw new Error("Failed to remove profile");
       setEnabledModules(new Set(allModules));
       setPrimaryModule("catalog");
+      setTrialRoomLayout("catalog");
       setBrandName("");
       setThemePreset("default");
       setAccentColor("");
@@ -193,6 +202,36 @@ export function ClientProfileForm({ userId, initialLogoUrl, allModules, initialP
             </label>
           ))}
         </div>
+
+        {enabledModules.has("trial-room") && (
+          <div className="mt-4">
+            <label className="block text-xs font-medium text-gray-600 mb-1">Virtual Trial Room layout</label>
+            <div className="space-y-2">
+              {TRIAL_ROOM_LAYOUT_OPTIONS.map((o) => (
+                <label
+                  key={o.value}
+                  className={cn(
+                    "flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-colors",
+                    trialRoomLayout === o.value ? "border-indigo-300 bg-indigo-50/60" : "border-gray-200 hover:bg-gray-50"
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name="trialRoomLayout"
+                    value={o.value}
+                    checked={trialRoomLayout === o.value}
+                    onChange={() => setTrialRoomLayout(o.value)}
+                    className="mt-0.5"
+                  />
+                  <div>
+                    <p className="text-sm text-gray-800">{o.label}</p>
+                    <p className="text-xs text-gray-500">{o.description}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="mt-4">
           <label className="block text-xs font-medium text-gray-600 mb-1">Promoted (primary) module</label>

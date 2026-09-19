@@ -30,6 +30,9 @@ const OPERATION_LABELS: Record<string, string> = {
   ai_review: "AI Review",
   auto_catalog_classify: "Auto Classify",
   auto_catalog_verify: "Auto Verify",
+  erase: "Fix Region (Erase)",
+  motion_clip: "Catalogue Motion Clip",
+  motion_compose: "Catalogue Motion Compose",
   other: "Other",
 };
 
@@ -59,7 +62,7 @@ export async function GET(request: NextRequest) {
         type: "DEDUCT",
         ...(Object.keys(dateFilter).length > 0 ? { createdAt: dateFilter } : {}),
       },
-      select: { amountUsd: true, description: true },
+      select: { amountCredits: true, description: true },
     });
 
     const opMap = new Map<string, { calls: number; spent: number; label: string }>();
@@ -69,7 +72,7 @@ export async function GET(request: NextRequest) {
     for (const tx of deductions) {
       const op = parseOperationFromDescription(tx.description);
       const count = parseCountFromDescription(tx.description);
-      const spent = Math.abs(tx.amountUsd);
+      const spent = Math.abs(tx.amountCredits);
 
       const existing = opMap.get(op) ?? { calls: 0, spent: 0, label: OPERATION_LABELS[op] ?? op };
       existing.calls += count;
@@ -92,7 +95,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       operations,
       totals: { spent: parseFloat(totalSpent.toFixed(6)), calls: totalCalls },
-      exchangeRate: wallet.lastExchangeRate,
     });
   } catch (err) {
     if ((err as Error).message === "Unauthorized") {

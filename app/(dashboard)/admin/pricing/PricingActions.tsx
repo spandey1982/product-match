@@ -46,15 +46,15 @@ function PriceFields({
             {OP_LABELS[op]}
           </label>
           <div className="flex items-center gap-1">
-            <span className="text-xs text-gray-400">$</span>
             <input
               type="number"
-              step="0.00001"
+              step="0.5"
               min="0"
               value={prices[op] ?? "0"}
               onChange={(e) => onChange(op, e.target.value)}
               className="w-28 px-2 py-1.5 text-xs text-right tabular-nums border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
             />
+            <span className="text-xs text-gray-400">cr</span>
           </div>
         </div>
       ))}
@@ -129,7 +129,7 @@ export function EditPricingButton({
           <DialogHeader>
             <DialogTitle>Edit Prices</DialogTitle>
             <DialogDescription>
-              Update retail prices for each AI operation (USD).
+              Update retail prices for each AI operation (credits, 1 credit = ₹10).
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
@@ -254,7 +254,7 @@ export function AddPricingButton({
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-2">
-                Prices (USD per call)
+                Prices (credits per call)
               </label>
               <PriceFields
                 prices={prices}

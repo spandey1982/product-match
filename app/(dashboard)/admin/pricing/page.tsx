@@ -4,11 +4,12 @@ import { db } from "@/lib/db";
 import { BILLING_OPERATIONS } from "@/lib/billing/types";
 import { SeedPricingButton } from "./SeedPricingButton";
 import { EditPricingButton, AddPricingButton } from "./PricingActions";
+import { formatCredits as formatCreditsRaw } from "@/lib/utils";
 
 export const metadata = { title: "Pricing Config — Admin" };
 
-function formatUsd(n: number) {
-  return `$${n.toFixed(5)}`;
+function formatCredits(n: number) {
+  return `${formatCreditsRaw(n)} cr`;
 }
 
 function ActiveBadge({ active }: { active: boolean }) {
@@ -86,7 +87,7 @@ export default async function PricingPage() {
                     Operation
                   </th>
                   <th className="text-right px-4 py-2 font-medium text-gray-600 text-xs">
-                    Price (USD)
+                    Price (credits)
                   </th>
                 </tr>
               </thead>
@@ -101,7 +102,7 @@ export default async function PricingPage() {
                         </code>
                       </td>
                       <td className="px-4 py-2.5 text-right tabular-nums text-xs font-medium text-gray-900">
-                        {price != null ? formatUsd(price) : "—"}
+                        {price != null ? formatCredits(price) : "—"}
                       </td>
                     </tr>
                   );

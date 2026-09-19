@@ -573,7 +573,7 @@ export async function generateModelImages(
     ) {
       await refundCharge(
         input.userId,
-        imgCharge.priceUsd,
+        imgCharge.priceCredits,
         `Refund: ${imgOp} failed — AI provider at capacity`
       );
       return { objective, modelType, images: branded, failure: "provider_capacity" };

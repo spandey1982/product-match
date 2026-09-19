@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verifyPassword, setSession } from "@/lib/auth";
 import { DELETION_GRACE_PERIOD_MS } from "@/lib/account/purge";
+import { getLandingPath } from "@/lib/client-modules-server";
 
 const DEMO_EMAIL = "demo@productmatch.ai";
 const DEMO_PASSWORD = "demo1234";
@@ -40,6 +41,7 @@ export async function POST(req: NextRequest) {
         businessType: demo.businessType,
       });
       return NextResponse.json({
+        redirectTo: await getLandingPath(demo.id),
         user: {
           id: demo.id,
           email: demo.email,
@@ -95,6 +97,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       recovered,
+      redirectTo: await getLandingPath(user.id),
       user: {
         id: user.id,
         email: user.email,

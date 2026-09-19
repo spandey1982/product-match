@@ -29,6 +29,9 @@ const OPERATION_LABELS: Record<string, string> = {
   ai_review: "AI Review",
   auto_catalog_classify: "Auto Classify",
   auto_catalog_verify: "Auto Verify",
+  erase: "Fix Region (Erase)",
+  motion_clip: "Catalogue Motion Clip",
+  motion_compose: "Catalogue Motion Compose",
   other: "Other",
 };
 
@@ -58,7 +61,7 @@ export async function GET(request: NextRequest) {
       walletWhere.walletId = wallet.id;
     }
 
-    const [deductions, stores, latestWallet] = await Promise.all([
+    const [deductions, stores] = await Promise.all([
       db.walletTransaction.findMany({
         where: {
           type: "DEDUCT",
@@ -66,16 +69,13 @@ export async function GET(request: NextRequest) {
           ...(Object.keys(dateFilter).length > 0 ? { createdAt: dateFilter } : {}),
         },
         orderBy: { createdAt: "asc" },
-        select: { amountUsd: true, description: true, createdAt: true, walletId: true },
+        select: { amountCredits: true, description: true, createdAt: true, walletId: true },
       }),
       db.user.findMany({
         where: { role: "RETAILER", wallet: { isNot: null } },
         select: { id: true, storeName: true, name: true },
         orderBy: { storeName: "asc" },
       }),
-      storeUserId
-        ? db.wallet.findUnique({ where: { userId: storeUserId }, select: { lastExchangeRate: true } })
-        : db.wallet.findFirst({ where: { lastExchangeRate: { not: null } }, orderBy: { updatedAt: "desc" }, select: { lastExchangeRate: true } }),
     ]);
 
     const opMap = new Map<string, { calls: number; spent: number; label: string }>();
@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
     for (const tx of deductions) {
       const op = parseOperationFromDescription(tx.description);
       const count = parseCountFromDescription(tx.description);
-      const spent = Math.abs(tx.amountUsd);
+      const spent = Math.abs(tx.amountCredits);
 
       const existing = opMap.get(op) ?? { calls: 0, spent: 0, label: OPERATION_LABELS[op] ?? op };
       existing.calls += count;
@@ -129,7 +129,6 @@ export async function GET(request: NextRequest) {
         calls: totalCalls,
       },
       stores: stores.map((s) => ({ id: s.id, label: s.storeName || s.name })),
-      exchangeRate: latestWallet?.lastExchangeRate ?? null,
     });
   } catch (err) {
     if ((err as Error).message === "Unauthorized") {
