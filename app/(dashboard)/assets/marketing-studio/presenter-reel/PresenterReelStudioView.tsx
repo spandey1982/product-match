@@ -113,7 +113,11 @@ export function PresenterReelStudioView({
   }
 
   async function handleGenerate() {
-    if (!product || !personaId) return;
+    if (!product) return;
+    if (!personaId) {
+      setSubmitError("No presenter is available right now — please try again shortly or contact support.");
+      return;
+    }
     setSubmitting(true);
     setSubmitError(null);
     setJob(null);
@@ -173,15 +177,21 @@ export function PresenterReelStudioView({
             </div>
           )}
 
-          <Select
-            label="Presenter"
-            value={personaId}
-            onChange={(e) => setPersonaId(e.target.value)}
-            options={personas.map((p) => ({ value: p.id, label: p.name }))}
-            disabled={!!isBusy}
-          />
+          {personas.length === 0 ? (
+            <div className="text-xs text-center text-amber-600 bg-amber-50 border border-amber-200 rounded-xl py-3 px-4">
+              No presenters are set up yet — this needs to be resolved before videos can be generated.
+            </div>
+          ) : (
+            <Select
+              label="Presenter"
+              value={personaId}
+              onChange={(e) => setPersonaId(e.target.value)}
+              options={personas.map((p) => ({ value: p.id, label: p.name }))}
+              disabled={!!isBusy}
+            />
+          )}
 
-          <Button onClick={handleGenerate} disabled={submitting || !!isBusy || !product.previewUrl} className="w-full gap-1.5">
+          <Button onClick={handleGenerate} disabled={submitting || !!isBusy || !product.previewUrl || personas.length === 0} className="w-full gap-1.5">
             {submitting || isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
             {isBusy ? "Generating…" : "Generate Presenter Reel"}
           </Button>
