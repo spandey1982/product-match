@@ -152,6 +152,37 @@ export function buildCropUrl(baseUrl: string, region: CropRegion): string {
 }
 
 /**
+ * Reduce a Cloudinary delivery URL back to its clean base — no crop,
+ * branding, or any other transformation chain, just "/upload/v<version>/
+ * <public_id>". `applyBranding` (lib/model-gen/branding.ts) bakes a
+ * transformation chain directly into the URL string that ends up stored on
+ * `ProductImage.url`, with no separate clean-URL field kept anywhere — so
+ * any caller that needs to compose its own transform on a known-clean base
+ * (e.g. catalogue-motion's reel anchor resolver, which must animate the
+ * product photo itself, never a branded delivery variant) needs to strip
+ * first. Cloudinary always places the version segment (v<digits>/) directly
+ * before the public_id; any transformation chain sits between "/upload/" and
+ * the LAST such segment, so stripping means keeping only from the last
+ * v<digits>/ marker onward. Safe no-op on a URL with no transformation chain
+ * (returns it unchanged) or a non-Cloudinary/upload URL.
+ */
+export function stripDeliveryTransforms(url: string): string {
+  const marker = "/upload/";
+  const idx = url.indexOf(marker);
+  if (idx === -1) return url;
+  const after = idx + marker.length;
+  const rest = url.slice(after);
+  const versionPattern = /v\d+\//g;
+  let match: RegExpExecArray | null;
+  let lastIndex = -1;
+  while ((match = versionPattern.exec(rest)) !== null) {
+    lastIndex = match.index;
+  }
+  if (lastIndex === -1) return url;
+  return url.slice(0, after) + rest.slice(lastIndex);
+}
+
+/**
  * Expand a subject bounding box to a target aspect ratio, growing only the
  * shorter dimension (never shrinking, never distorting), anchored on the
  * subject's original center, then shifted (not shrunk) to stay within the

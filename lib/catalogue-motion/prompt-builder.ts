@@ -11,14 +11,20 @@
  */
 import type { MotionPreset, MotionConstraints, MotionIntensity } from "./types";
 
-const INTENSITY_DESCRIPTOR: Record<MotionIntensity, string> = {
+/** Exported for reuse by reel-prompt-builder.ts — same intensity vocabulary. */
+export const INTENSITY_DESCRIPTOR: Record<MotionIntensity, string> = {
   minimal: "extremely subtle, barely perceptible",
   elegant: "gentle and elegant",
   dynamic: "noticeable but still refined and controlled",
 };
 
-/** Per-preset camera instruction template. Takes the intensity descriptor. */
-const CAMERA_TEMPLATES: Record<string, (mag: string) => string> = {
+/**
+ * Per-preset camera instruction template. Takes the intensity descriptor.
+ * Exported so lib/catalogue-motion/reel/reel-prompt-builder.ts can reuse the
+ * same camera-movement language — the camera vocabulary is identical between
+ * catalogue and reel modes; only the universal constraint suffix differs.
+ */
+export const CAMERA_TEMPLATES: Record<string, (mag: string) => string> = {
   "slow-push-in": (mag) =>
     `A ${mag} slow forward camera dolly, moving smoothly and continuously toward the subject's center of mass. No cuts, no acceleration changes.`,
   "slow-pull-out": (mag) =>

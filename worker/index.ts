@@ -10,7 +10,11 @@
  * its own deploy target (a second Railway service sharing DATABASE_URL),
  * not a route inside the web app.
  *
- * Registers `.work()` handlers for all three queues.
+ * Registers `.work()` handlers for all four queues — the three
+ * catalogue-motion queues plus presenter.render (AI Presenter Reel, a
+ * separate deliverable that happens to share this same process since it's
+ * the same kind of long-poll Veo call, not because the two features are
+ * related — see lib/presenter-reel/'s own module comments).
  *
  * pg-boss v12's `.work(name, handler)` delivers an ARRAY of jobs per call
  * even though QUEUE_OPTIONS never sets a batchSize (default 1, per pg-boss's
@@ -23,10 +27,11 @@
  */
 import "dotenv/config";
 import { getBoss } from "@/lib/queue/boss";
-import { QUEUES, type MotionRenderPayload, type MotionQAPayload, type MotionComposePayload } from "@/lib/queue/types";
+import { QUEUES, type MotionRenderPayload, type MotionQAPayload, type MotionComposePayload, type PresenterRenderPayload } from "@/lib/queue/types";
 import { handleMotionRender } from "@/lib/catalogue-motion/workers/render";
 import { handleMotionQA } from "@/lib/catalogue-motion/workers/qa";
 import { handleMotionCompose } from "@/lib/catalogue-motion/workers/compose";
+import { handlePresenterRender } from "@/lib/presenter-reel/workers/render";
 
 /** Adapts a single-job handler to pg-boss v12's batch-array `.work()` shape — see the file header comment. */
 function batched<T>(handler: (data: T) => Promise<void>, label: string) {
@@ -44,8 +49,9 @@ async function main() {
   await boss.work<MotionRenderPayload>(QUEUES.MOTION_RENDER, batched(handleMotionRender, "motion.render"));
   await boss.work<MotionQAPayload>(QUEUES.MOTION_QA, batched(handleMotionQA, "motion.qa"));
   await boss.work<MotionComposePayload>(QUEUES.MOTION_COMPOSE, batched(handleMotionCompose, "motion.compose"));
+  await boss.work<PresenterRenderPayload>(QUEUES.PRESENTER_RENDER, batched(handlePresenterRender, "presenter.render"));
 
-  console.log("[worker] catalogue-motion worker started — listening on:", Object.values(QUEUES).join(", "));
+  console.log("[worker] catalogue-motion + presenter-reel worker started — listening on:", Object.values(QUEUES).join(", "));
 }
 
 main().catch((err) => {

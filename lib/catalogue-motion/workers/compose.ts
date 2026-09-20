@@ -27,12 +27,15 @@ import { join } from "path";
 import { db } from "@/lib/db";
 import { uploadWithRetry } from "@/lib/cloudinary";
 import { runFfmpeg } from "../ffmpeg";
+import { sampleClipColors, checkColorConsistency } from "../color-consistency";
 import type { MotionComposePayload } from "@/lib/queue/types";
 import type { DirectorPlan } from "../types";
 
 interface OrderedClip {
+  view: string;
   outputUrl: string;
   plannedHoldSec: number;
+  renderMode: string;
 }
 
 function buildFilterGraph(clips: OrderedClip[], storeName: string | null, totalDuration: number): { filter: string; outLabel: string } {
@@ -79,19 +82,30 @@ export async function handleMotionCompose(payload: MotionComposePayload): Promis
   });
   if (!job) return;
 
-  const plan = job.directorPlan ? (JSON.parse(job.directorPlan) as DirectorPlan) : null;
-  if (!plan) {
-    await db.motionJob.update({ where: { id: payload.jobId }, data: { status: "failed", errorMessage: "No director plan to compose from" } });
-    return;
-  }
+  const acceptedClips = job.clips.filter((c) => c.status === "accepted" && c.outputUrl);
 
-  const acceptedByView = new Map(
-    job.clips.filter((c) => c.status === "accepted" && c.outputUrl).map((c) => [c.view, c])
-  );
-  const orderedClips: OrderedClip[] = plan.shots
-    .map((s) => acceptedByView.get(s.view))
-    .filter((c): c is NonNullable<typeof c> => c != null)
-    .map((c) => ({ outputUrl: c.outputUrl!, plannedHoldSec: c.plannedHoldSec ?? 4 }));
+  let orderedClips: OrderedClip[];
+  if (job.deliverable === "reel") {
+    // Reel jobs never populate directorPlan (see orchestrator.ts's
+    // startReelMotionJob — the hook/interaction/detail/close order is fixed
+    // by the playbook, not planned) — shotIndex, set at clip-creation time
+    // in that same fixed order, is the reel equivalent of directorPlan's
+    // shot ordering.
+    orderedClips = acceptedClips
+      .sort((a, b) => a.shotIndex - b.shotIndex)
+      .map((c) => ({ view: c.view, outputUrl: c.outputUrl!, plannedHoldSec: c.plannedHoldSec ?? 4, renderMode: c.renderMode }));
+  } else {
+    const plan = job.directorPlan ? (JSON.parse(job.directorPlan) as DirectorPlan) : null;
+    if (!plan) {
+      await db.motionJob.update({ where: { id: payload.jobId }, data: { status: "failed", errorMessage: "No director plan to compose from" } });
+      return;
+    }
+    const acceptedByView = new Map(acceptedClips.map((c) => [c.view, c]));
+    orderedClips = plan.shots
+      .map((s) => acceptedByView.get(s.view))
+      .filter((c): c is NonNullable<typeof c> => c != null)
+      .map((c) => ({ view: c.view, outputUrl: c.outputUrl!, plannedHoldSec: c.plannedHoldSec ?? 4, renderMode: c.renderMode }));
+  }
 
   if (orderedClips.length === 0) {
     await db.motionJob.update({
@@ -129,12 +143,39 @@ export async function handleMotionCompose(payload: MotionComposePayload): Promis
       resource_type: "video",
     });
 
+    // Advisory only, best-effort — a sampling failure (or the check simply
+    // finding nothing to flag) must never affect a compose that already
+    // succeeded. See color-consistency.ts's header for why the threshold is
+    // an unvalidated first pass, not a hard gate.
+    //
+    // ai-motion clips only: a pan-zoom detail crop (e.g. blouse/pallu) is
+    // DELIBERATELY framed tight on fabric alone, with little to no skin tone
+    // or background in frame — its average color is expected to differ a
+    // lot from a full-body worn shot regardless of grading consistency.
+    // Live-tested finding (2026-09-06): the very first real run of this
+    // check flagged exactly that comparison (a fabric-only crop vs. a
+    // full-body shot) as "drift," when the three actual worn-garment shots
+    // were well within threshold of each other — comparing a detail crop
+    // was measuring framing, not tone.
+    let colorConsistencyNote: string | null = null;
+    const wornShotClips = orderedClips.filter((c) => c.renderMode === "ai-motion");
+    if (wornShotClips.length > 1) {
+      try {
+        const samples = await sampleClipColors(wornShotClips);
+        colorConsistencyNote = checkColorConsistency(samples).note;
+      } catch (colorErr) {
+        console.error("[compose] color-consistency check failed (non-fatal):", colorErr);
+      }
+    }
+
     await db.motionJob.update({
       where: { id: payload.jobId },
       data: {
         status: "complete",
         outputUrl: upload.secure_url,
         duration: Math.round(totalDuration),
+        errorMessage: null, // clear any stale message from an earlier failed compose attempt on this job
+        colorConsistencyNote,
       },
     });
   } catch (err) {

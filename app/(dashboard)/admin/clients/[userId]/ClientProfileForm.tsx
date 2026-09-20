@@ -13,6 +13,7 @@ const MODULE_LABELS: Record<ModuleKey, string> = {
   "design-studio": "Design Studio",
   "auto-catalog": "Autonomous Catalog",
   "model-studio": "Model Studio",
+  "marketing-studio": "Marketing Studio",
   wishlist: "Wishlist",
 };
 

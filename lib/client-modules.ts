@@ -15,6 +15,7 @@ export const ALL_MODULES = [
   "design-studio",
   "auto-catalog",
   "model-studio",
+  "marketing-studio",
   "wishlist",
 ] as const;
 
@@ -30,6 +31,7 @@ export const MODULE_ROUTES: Record<ModuleKey, string> = {
   "design-studio": "/fashion-designer",
   "auto-catalog": "/auto-catalog",
   "model-studio": "/assets/model-studio",
+  "marketing-studio": "/assets/marketing-studio",
   wishlist: "/wishlist",
 };
 
@@ -42,6 +44,7 @@ const LANDING_PRIORITY: ModuleKey[] = [
   "upload",
   "design-studio",
   "model-studio",
+  "marketing-studio",
   "auto-catalog",
   "wishlist",
 ];

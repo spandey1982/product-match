@@ -75,6 +75,38 @@ export async function extractSampleFrames(url: string, durationSec: number): Pro
   return Promise.all(times.map((t) => extractFrame(url, t)));
 }
 
+export interface AverageColor {
+  r: number;
+  g: number;
+  b: number;
+}
+
+/**
+ * Average RGB color of one video frame, read straight from the URL — used
+ * by color-consistency.ts to compare tone across independently generated
+ * shots at compose time. Scaling to a single pixel makes ffmpeg's own
+ * (area-averaging) scale filter do the averaging: the one output pixel is
+ * the mean of every pixel in the source frame, no JS image-decoding
+ * dependency needed for what's a coarse "does this look wildly different"
+ * signal, not colorimetry.
+ */
+export async function averageFrameColor(url: string, atSec: number): Promise<AverageColor> {
+  const { stdout } = await run(FFMPEG_BIN, [
+    "-v", "error",
+    "-ss", String(Math.max(0, atSec)),
+    "-i", url,
+    "-frames:v", "1",
+    "-vf", "scale=1:1",
+    "-f", "rawvideo",
+    "-pix_fmt", "rgb24",
+    "-",
+  ]);
+  if (stdout.length < 3) {
+    throw new Error(`averageFrameColor: expected 3 bytes of RGB output, got ${stdout.length}`);
+  }
+  return { r: stdout[0], g: stdout[1], b: stdout[2] };
+}
+
 /**
  * Runs ffmpeg with arbitrary args and waits for it to exit — for the
  * compose worker, whose output is a file path passed as the last arg, not

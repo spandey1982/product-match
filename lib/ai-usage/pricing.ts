@@ -93,6 +93,14 @@ const PRICES: Record<string, ModelPrice> = {
   // Gemini Developer API surface — GEMINI_API_KEY, CATALOGUE_MOTION_VEO_AUTH=gemini-api:
   "veo-3.1-fast-generate-preview": { perSecondUsd: 0.10 },
   "veo-3.1-generate-preview": { perSecondUsd: 0.40 },
+  // GA id for the same Standard tier as veo-3.1-generate-preview above (Vertex
+  // surface) — used by lib/presenter-reel/provider/veo-presenter-provider.ts,
+  // which needs Standard specifically because Lite doesn't support
+  // generateAudio. Same $0.40/sec estimate and same triangulated-not-official
+  // provenance caveat as the -preview entry; 4 live paid generations this
+  // session billed consistently with this rate, but never reconciled against
+  // an actual GCP invoice line.
+  "veo-3.1-generate-001": { perSecondUsd: 0.40 },
   // Veo 3.0 (all variants) was DEPRECATED and shut down by Google on
   // 2026-06-30 — deliberately no price entry, and never set as a default,
   // so a stale env var pointing at it fails fast with "unknown model"

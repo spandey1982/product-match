@@ -45,6 +45,7 @@ export default async function MotionReviewPage() {
           backgroundStability: c.qa.backgroundStability,
           motionSmoothness: c.qa.motionSmoothness,
           artifactScore: c.qa.artifactScore,
+          garmentInteractionPlausibility: c.qa.garmentInteractionPlausibility,
           overall: c.qa.overall,
         }
       : null,

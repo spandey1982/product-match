@@ -165,3 +165,24 @@ export type MotionClipStatus =
   | "failed";
 
 export type QAVerdict = "accepted" | "rejected" | "manual_review";
+
+// ── Deliverable (catalogue video vs ad reel) ────────────────────────────────
+
+/**
+ * catalogue → the original systematic front/back/detail walkthrough.
+ * reel → the shorter ad/marketing-style deliverable (lib/catalogue-motion/reel/).
+ * Every existing MotionJob row is implicitly "catalogue" (the column default).
+ */
+export type MotionDeliverable = "catalogue" | "reel";
+
+/** Reel-only: how the product is shown. Meaningless for catalogue jobs. */
+export type ReelPresentation = "model" | "mannequin";
+
+/**
+ * Reel-only creative preset. A free string at the DB layer (see
+ * MotionJob.archetype) so a new preset never needs a migration — this union
+ * is the code-level source of truth for what's actually implemented.
+ * Exactly one value in v1; the type is a union (not a single literal) so
+ * adding a second preset later is a type-level addition, not a rename.
+ */
+export type ReelArchetype = "showcase-engaging";
