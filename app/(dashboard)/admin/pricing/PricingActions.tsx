@@ -29,6 +29,7 @@ const OP_LABELS: Record<BillingOperation, string> = {
   erase: "Fix Region (Erase)",
   motion_clip: "Catalogue Motion Clip",
   motion_compose: "Catalogue Motion Compose",
+  presenter_clip: "AI Presenter Reel Clip",
 };
 
 function PriceFields({

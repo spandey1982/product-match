@@ -39,6 +39,7 @@ import {
   Heart,
   Download,
   Eraser,
+  Video,
 } from "lucide-react";
 import { ProductImageViewer } from "@/components/product/ProductImageViewer";
 import { ProductThumbnailRail } from "@/components/product/ProductThumbnailRail";
@@ -587,6 +588,10 @@ export function ProductDetailView({
                     <ImagePlus className="h-4 w-4" strokeWidth={1.75} />
                   )}
                   {generating ? "Generating…" : "Generate Model Image"}
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => router.push(`/assets/marketing-studio/presenter-reel?productId=${product.id}`)}>
+                  <Video className="h-4 w-4" strokeWidth={1.75} />
+                  Create Marketing Video
                 </DropdownMenuItem>
                 {allImages.length > 1 && (
                   <DropdownMenuItem onSelect={handleDownloadAll} disabled={downloading}>

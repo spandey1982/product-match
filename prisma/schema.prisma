@@ -57,12 +57,13 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  products              Product[]
-  modelProfiles         ModelProfile[]
-  wallet                Wallet?
-  motionJobs            MotionJob[]
-  clientProfile         ClientProfile?
-  hmCatalogueImports    HmCatalogueImport[]
+  products           Product[]
+  modelProfiles      ModelProfile[]
+  wallet             Wallet?
+  motionJobs         MotionJob[]
+  presenterReelJobs  PresenterReelJob[]
+  clientProfile      ClientProfile?
+  hmCatalogueImports HmCatalogueImport[]
 
   @@index([deletedAt])
   @@map("users")
@@ -487,7 +488,8 @@ model Product {
   // product, reused everywhere. Nullable → existing rows unaffected.
   garmentIntelligence GarmentIntelligence?
 
-  motionJobs MotionJob[]
+  motionJobs        MotionJob[]
+  presenterReelJobs PresenterReelJob[]
 
   @@index([category])
   @@index([userId])
@@ -1248,21 +1250,21 @@ model MotionQAResult {
   id     String @id @default(cuid())
   clipId String @unique
 
-  identityConsistency Float?
-  garmentPreservation Float?
-  textureConsistency  Float?
-  lightingStability   Float?
-  backgroundStability Float?
-  motionSmoothness    Float?
+  identityConsistency            Float?
+  garmentPreservation            Float?
+  textureConsistency             Float?
+  lightingStability              Float?
+  backgroundStability            Float?
+  motionSmoothness               Float?
   // Inverse scale: 5 = no artifacts, 1 = severe.
-  artifactScore       Float?
+  artifactScore                  Float?
   // Only meaningful when a hand/fingers touch the garment in the shot (5 by
   // default otherwise): does the fabric's drape actually deform and
   // redistribute around the contact point, or does the fold pattern stay
   // frozen while the hand appears to move over it (texture-mapped, not
   // simulated — see research/reel-engine-components.html, Component 9).
   garmentInteractionPlausibility Float?
-  overall             Float?
+  overall                        Float?
 
   // JSON array of detected issues (lib/serialize.ts).
   issues String?
@@ -1590,14 +1592,14 @@ model HmProduct {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  evidence            HmProductEvidence[]
-  retailerListings    HmRetailerProduct[]
-  visualizations      HmVisualization[]
-  recommendations     HmRecommendation[]
-  shortlistedBy       HmShortlistItem[]
-  leads               HmLead[]
-  events              HmProductEvent[]
-  fromImportPages     HmCatalogueImportPage[]
+  evidence         HmProductEvidence[]
+  retailerListings HmRetailerProduct[]
+  visualizations   HmVisualization[]
+  recommendations  HmRecommendation[]
+  shortlistedBy    HmShortlistItem[]
+  leads            HmLead[]
+  events           HmProductEvent[]
+  fromImportPages  HmCatalogueImportPage[]
 
   @@index([materialId])
   @@index([uploadedByHmUserId])
@@ -2060,4 +2062,95 @@ model HmLead {
   @@index([retailerId, status])
   @@index([hmUserId])
   @@map("hm_leads")
+}
+
+// ── AI Presenter Reel ────────────────────────────────────────────────────
+// Talking-avatar marketing video — a genuinely separate deliverable from
+// MotionJob's camera-motion catalogue reel (see lib/catalogue-motion/reel/):
+// audio-driven dialogue + lip-sync + gesture from a single reference photo,
+// via lib/presenter-reel/provider/veo-presenter-provider.ts. Additive only —
+// zero changes to MotionJob/MotionQAResult or the motion.* queues.
+
+// A curated, code-defined presenter identity — the same registry-first
+// pattern as lib/model-gen/faces.ts's FACE_LIBRARY (ModelProfile.faceId):
+// retailers pick one, never upload their own likeness. Deliberate v1 policy
+// to sidestep consent/deepfake risk entirely (see project memory:
+// ad-reel-direction). faceRegistryId/voiceProviderId are not foreign keys
+// because the registry is code (lib/presenter-reel/personas.ts), not a
+// table — validated at write time, same as ModelProfile.faceId.
+model PresenterPersona {
+  id String @id @default(cuid())
+
+  // Retailer-facing display name (e.g. "Amara", "Rohan").
+  name String
+
+  // lib/presenter-reel/personas.ts registry entry id.
+  faceRegistryId String
+
+  // Which stock voice Veo's dialogue prompt should imply (e.g. "warm-female-1").
+  // Free string, not an enum — see PresenterPersona's own registry file for
+  // the current set, same reasoning as MotionJob.archetype being a free string.
+  voiceProviderId String
+
+  // BCP-47-ish language tag for the spoken script (e.g. "en", "hi").
+  language String @default("en")
+
+  // Soft delete only — same policy as ModelProfile, for the same reason:
+  // historical PresenterReelJob rows reference a persona by id for
+  // explainability; past videos stay valid forever.
+  deletedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  jobs PresenterReelJob[]
+
+  @@index([deletedAt])
+  @@map("presenter_personas")
+}
+
+// One job = one generated presenter-reel clip for one product. Simpler
+// lifecycle than MotionJob by design — a single Veo call produces the
+// entire clip (script, voice, lip-sync, and gesture together), so there is
+// no per-shot QA/compose stage the way the multi-clip catalogue reel needs.
+model PresenterReelJob {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  personaId String
+  persona   PresenterPersona @relation(fields: [personaId], references: [id])
+
+  // The exact spoken line(s) sent to the provider — persisted for audit and
+  // so a retailer can see/regenerate against the same script later.
+  script String
+
+  // queued | scripting | rendering | complete | failed
+  status String @default("queued")
+
+  // "veo" today; a future "heygen" fallback (see the provider decision in
+  // project memory: ad-reel-direction) would use this same free string.
+  provider String?
+
+  // The provider's own job/operation id (Vertex's long-running-operation
+  // name) — kept for debugging and support, not used for polling after the
+  // fact since the worker polls synchronously within one job run.
+  providerJobId String?
+
+  videoUrl     String?
+  durationMs   Int?
+  costUsd      Float?
+  errorMessage String?
+  retryCount   Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, status])
+  @@index([productId])
+  @@map("presenter_reel_jobs")
 }

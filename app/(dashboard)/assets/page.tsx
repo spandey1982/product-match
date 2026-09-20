@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Users, Wand2, ChevronRight, Sparkles } from "lucide-react";
+import { Users, Wand2, Video, ChevronRight, Sparkles } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import type { ModuleKey } from "@/lib/client-modules";
 import { getEnabledModules } from "@/lib/client-modules-server";
@@ -41,6 +41,15 @@ const CARDS: readonly AssetCard[] = [
       "Design garments from raw fabric and references — flat sketches, structured briefs, catalogue-ready assets.",
     Icon: Wand2,
     accent: "from-fuchsia-500 to-purple-600",
+  },
+  {
+    module: "marketing-studio",
+    href: "/assets/marketing-studio",
+    title: "Marketing Studio",
+    description:
+      "AI-generated marketing video for your products — a talking presenter reel today, more formats (Instagram posts, promos) landing here over time.",
+    Icon: Video,
+    accent: "from-rose-500 to-orange-500",
   },
 ];
 
