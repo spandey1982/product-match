@@ -50,6 +50,8 @@ export default async function AdminClientDetailPage({
                 brandName: profile.brandName,
                 themePreset: profile.themePreset,
                 accentColor: profile.accentColor,
+                brandTier: profile.brandTier,
+                priceVisibility: profile.priceVisibility,
               }
             : null
         }

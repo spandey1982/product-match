@@ -10,11 +10,13 @@
  * its own deploy target (a second Railway service sharing DATABASE_URL),
  * not a route inside the web app.
  *
- * Registers `.work()` handlers for all four queues — the three
- * catalogue-motion queues plus presenter.render (AI Presenter Reel, a
- * separate deliverable that happens to share this same process since it's
- * the same kind of long-poll Veo call, not because the two features are
- * related — see lib/presenter-reel/'s own module comments).
+ * Registers `.work()` handlers for all five queues — the three
+ * catalogue-motion queues plus presenter.render (AI Presenter Reel) and
+ * creative.hero-render (Marketing Creative Generation System's
+ * generate-new hero-source-mode only), each a separate deliverable that
+ * happens to share this same process since they're the same kind of
+ * long-poll AI-provider call, not because the features are related — see
+ * lib/presenter-reel/'s and lib/marketing-creative/'s own module comments.
  *
  * pg-boss v12's `.work(name, handler)` delivers an ARRAY of jobs per call
  * even though QUEUE_OPTIONS never sets a batchSize (default 1, per pg-boss's
@@ -27,11 +29,12 @@
  */
 import "dotenv/config";
 import { getBoss } from "@/lib/queue/boss";
-import { QUEUES, type MotionRenderPayload, type MotionQAPayload, type MotionComposePayload, type PresenterRenderPayload } from "@/lib/queue/types";
+import { QUEUES, type MotionRenderPayload, type MotionQAPayload, type MotionComposePayload, type PresenterRenderPayload, type CreativeHeroRenderPayload } from "@/lib/queue/types";
 import { handleMotionRender } from "@/lib/catalogue-motion/workers/render";
 import { handleMotionQA } from "@/lib/catalogue-motion/workers/qa";
 import { handleMotionCompose } from "@/lib/catalogue-motion/workers/compose";
 import { handlePresenterRender } from "@/lib/presenter-reel/workers/render";
+import { handleCreativeRender } from "@/lib/marketing-creative/workers/render";
 
 /** Adapts a single-job handler to pg-boss v12's batch-array `.work()` shape — see the file header comment. */
 function batched<T>(handler: (data: T) => Promise<void>, label: string) {
@@ -50,8 +53,9 @@ async function main() {
   await boss.work<MotionQAPayload>(QUEUES.MOTION_QA, batched(handleMotionQA, "motion.qa"));
   await boss.work<MotionComposePayload>(QUEUES.MOTION_COMPOSE, batched(handleMotionCompose, "motion.compose"));
   await boss.work<PresenterRenderPayload>(QUEUES.PRESENTER_RENDER, batched(handlePresenterRender, "presenter.render"));
+  await boss.work<CreativeHeroRenderPayload>(QUEUES.CREATIVE_HERO_RENDER, batched(handleCreativeRender, "creative.hero-render"));
 
-  console.log("[worker] catalogue-motion + presenter-reel worker started — listening on:", Object.values(QUEUES).join(", "));
+  console.log("[worker] catalogue-motion + presenter-reel + marketing-creative worker started — listening on:", Object.values(QUEUES).join(", "));
 }
 
 main().catch((err) => {

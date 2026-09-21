@@ -57,13 +57,14 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  products           Product[]
-  modelProfiles      ModelProfile[]
-  wallet             Wallet?
-  motionJobs         MotionJob[]
-  presenterReelJobs  PresenterReelJob[]
-  clientProfile      ClientProfile?
-  hmCatalogueImports HmCatalogueImport[]
+  products              Product[]
+  modelProfiles         ModelProfile[]
+  wallet                Wallet?
+  motionJobs            MotionJob[]
+  presenterReelJobs     PresenterReelJob[]
+  marketingCreativeJobs MarketingCreativeJob[]
+  clientProfile         ClientProfile?
+  hmCatalogueImports    HmCatalogueImport[]
 
   @@index([deletedAt])
   @@map("users")
@@ -109,6 +110,20 @@ model ClientProfile {
    * Optional single hex; only overrides the preset's primary-hue slot, never its structure.
    */
   accentColor String?
+
+  /**
+   * Mentis-curated, closed set — see lib/branding/creative-tier.ts. The
+   * single highest-leverage Brand Creative Profile field for marketing
+   * creative generation (research/catalogue-to-campaign.html Part 5.2):
+   * luxury | mid-market | mass-market | boutique | genz-native.
+   */
+  brandTier       String @default("mid-market")
+  /**
+   * Closed set — see lib/branding/creative-tier.ts. suppressed | moderate |
+   * prominent. Governs whether/how prominently the price+discount region
+   * renders in generated marketing creative.
+   */
+  priceVisibility String @default("moderate")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -488,8 +503,9 @@ model Product {
   // product, reused everywhere. Nullable → existing rows unaffected.
   garmentIntelligence GarmentIntelligence?
 
-  motionJobs        MotionJob[]
-  presenterReelJobs PresenterReelJob[]
+  motionJobs            MotionJob[]
+  presenterReelJobs     PresenterReelJob[]
+  marketingCreativeJobs MarketingCreativeJob[]
 
   @@index([category])
   @@index([userId])
@@ -2153,4 +2169,81 @@ model PresenterReelJob {
   @@index([userId, status])
   @@index([productId])
   @@map("presenter_reel_jobs")
+}
+
+/**
+ * One row per marketing-creative generation request (hero-product/promo
+ * template family, V1). Single-row shape like PresenterReelJob, not the
+ * multi-clip MotionJob/MotionClip/MotionQAResult fan-out — one request
+ * produces up to a handful of canvas outputs together, with no independent
+ * per-output retry/status lifecycle worth a child table. See
+ * research/catalogue-to-campaign.html and lib/marketing-creative/.
+ */
+model MarketingCreativeJob {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  // What the retailer actually asked for — "auto" | HeroSourceMode.
+  requestedHeroSourceMode String @default("auto")
+  // Resolved, always-concrete mode this job actually used — never "auto".
+  // reuse-catalogue | generate-new | product-only. See
+  // lib/marketing-creative/hero-source.ts / hero-resolver.ts.
+  heroSourceMode          String
+
+  // "hero-promo" only in V1 — kept as its own field (not collapsed into
+  // contentMode) so a V1.5 craftsmanship-detail-story family needs no
+  // further migration. See lib/marketing-creative/templates.ts.
+  templateFamily String  @default("hero-promo")
+  // aspirational | price-led — V1's two content modes within the shared
+  // hero-promo grammar.
+  contentMode    String
+  // Retail objective (lib/marketing-creative/copy.ts's objective→CTA map),
+  // constrained in V1 to what the hero-promo family actually serves.
+  objective      String
+  // Optional platform hint (instagram-feed | instagram-story |
+  // website-banner | pinterest) — informs canvas defaults and the
+  // hero-source auto-decision table. Never required.
+  platform       String?
+
+  // JSON array of requested canvas keys, e.g. ["square","vertical"].
+  aspectRatios String
+  // JSON array of {aspectRatio,url,width,height}, populated as each canvas
+  // finishes. "[]" until the first output lands. Plain JSON-string column,
+  // consistent with this schema's existing array-column idiom
+  // (occasion/styleTags/colors) — not parsed via lib/serialize.ts, which is
+  // typed for string[] only; lib/marketing-creative/ owns its own
+  // JSON.parse/stringify for this object-array shape.
+  outputs      String @default("[]")
+
+  // The resolved, CLEAN base hero image actually composited (never a
+  // branded delivery URL — see stripDeliveryTransforms precedent in
+  // lib/model-gen/crop-templates.ts). Every requested canvas composites
+  // from this same resolved hero rather than re-resolving per canvas.
+  heroImageUrl             String?
+  // Set only when heroSourceMode = "generate-new" — the new ProductImage
+  // row the generate-new worker created for this job.
+  heroSourceProductImageId String?
+
+  // queued | resolving_hero | rendering | complete | failed. Synchronous
+  // modes (reuse-catalogue, product-only) go straight to "complete" or
+  // "failed" within the create call; only "generate-new" passes through
+  // "queued"/"rendering" via the pg-boss worker.
+  status       String  @default("queued")
+  // Set only for generate-new (which model-gen provider produced the hero).
+  provider     String?
+  errorMessage String?
+  retryCount   Int     @default(0)
+  costUsd      Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, status])
+  @@index([productId])
+  @@map("marketing_creative_jobs")
 }

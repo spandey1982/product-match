@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { serializeArray } from "@/lib/serialize";
 import { ALL_MODULES, type ModuleKey } from "@/lib/client-modules";
 import { isThemePresetKey } from "@/lib/branding/presets";
+import { isBrandTierKey, isPriceVisibilityKey } from "@/lib/branding/creative-tier";
 
 // PUT /api/admin/clients/[userId] — create or update the target account's ClientProfile.
 export async function PUT(
@@ -32,6 +33,12 @@ export async function PUT(
     const accentColor = typeof body.accentColor === "string" && /^#[0-9a-fA-F]{6}$/.test(body.accentColor)
       ? body.accentColor
       : null;
+    const brandTier = typeof body.brandTier === "string" && isBrandTierKey(body.brandTier)
+      ? body.brandTier
+      : "mid-market";
+    const priceVisibility = typeof body.priceVisibility === "string" && isPriceVisibilityKey(body.priceVisibility)
+      ? body.priceVisibility
+      : "moderate";
 
     const profile = await db.clientProfile.upsert({
       where: { userId },
@@ -43,6 +50,8 @@ export async function PUT(
         brandName,
         themePreset,
         accentColor,
+        brandTier,
+        priceVisibility,
       },
       update: {
         enabledModules: serializeArray(enabledModules),
@@ -51,6 +60,8 @@ export async function PUT(
         brandName,
         themePreset,
         accentColor,
+        brandTier,
+        priceVisibility,
       },
     });
 
