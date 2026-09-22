@@ -24,7 +24,7 @@ import { stripDeliveryTransforms } from "@/lib/model-gen/crop-templates";
 import { resolveBrandCreativeProfile } from "@/lib/branding/creative-tier";
 import { buildDeterministicCopy } from "../copy";
 import { runRenderPipeline } from "../render-pipeline";
-import type { CanvasKey, ContentMode, CreativeObjective } from "../types";
+import type { CanvasKey, ContentMode, CreativeObjective, TemplateFamily } from "../types";
 
 const MAX_RENDER_RETRIES = 2; // matches QUEUE_OPTIONS[CREATIVE_HERO_RENDER].retryLimit
 
@@ -43,15 +43,16 @@ export async function handleCreativeRender(payload: CreativeHeroRenderPayload): 
   try {
     const product = await db.product.findUnique({
       where: { id: job.productId },
-      select: { id: true, title: true, category: true, price: true, mrpPrice: true, discountPercent: true },
+      select: { id: true, title: true, category: true, price: true, mrpPrice: true, discountPercent: true, material: true },
     });
     if (!product) throw new Error("product_not_found");
 
     const clientProfile = await db.clientProfile.findUnique({
       where: { userId: job.userId },
-      select: { brandTier: true, priceVisibility: true },
+      select: { brandTier: true, priceVisibility: true, accentColor: true },
     });
     const brand = resolveBrandCreativeProfile(clientProfile);
+    const accentColor = clientProfile?.accentColor ?? null;
 
     const genResult = await generateModelImages({
       productId: product.id,
@@ -77,16 +78,19 @@ export async function handleCreativeRender(payload: CreativeHeroRenderPayload): 
     const heroImageUrl = stripDeliveryTransforms(frontImage.url);
     const contentMode = payload.contentMode as ContentMode;
     const objective = payload.objective as CreativeObjective;
+    const templateFamily = payload.templateFamily as TemplateFamily;
 
-    const copy = buildDeterministicCopy(product, brand.priceVisibility, contentMode, objective);
+    const copy = buildDeterministicCopy(product, brand.priceVisibility, contentMode, objective, templateFamily);
 
     const outputs = await runRenderPipeline({
       productId: product.id,
       userId: job.userId,
       heroImageUrl,
+      templateFamily,
       contentMode,
       copy,
       aspectRatios: payload.aspectRatios as CanvasKey[],
+      accentColor,
     });
 
     await db.marketingCreativeJob.update({

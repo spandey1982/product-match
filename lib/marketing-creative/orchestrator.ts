@@ -16,13 +16,15 @@ import { resolveHeroSourceMode } from "./hero-source";
 import { resolveHeroImageSync } from "./hero-resolver";
 import { buildDeterministicCopy } from "./copy";
 import { runRenderPipeline } from "./render-pipeline";
-import type { CanvasKey, ContentMode, CreativeObjective, PlatformHint, RequestedHeroSourceMode } from "./types";
+import { resolveDefaultTemplateFamily } from "./templates";
+import type { CanvasKey, ContentMode, CreativeObjective, PlatformHint, RequestedHeroSourceMode, TemplateFamily } from "./types";
 
 export interface CreateMarketingCreativeJobInput {
   productId: string;
   userId: string;
   aspectRatios: CanvasKey[];
   objective: CreativeObjective;
+  templateFamily?: TemplateFamily;
   contentMode?: ContentMode;
   heroSourceMode?: RequestedHeroSourceMode;
   platform?: PlatformHint;
@@ -43,6 +45,7 @@ export async function createMarketingCreativeJob(input: CreateMarketingCreativeJ
       price: true,
       mrpPrice: true,
       discountPercent: true,
+      material: true,
       imageUrl: true,
     },
   });
@@ -50,9 +53,12 @@ export async function createMarketingCreativeJob(input: CreateMarketingCreativeJ
 
   const clientProfile = await db.clientProfile.findUnique({
     where: { userId: input.userId },
-    select: { brandTier: true, priceVisibility: true },
+    select: { brandTier: true, priceVisibility: true, accentColor: true },
   });
   const brand = resolveBrandCreativeProfile(clientProfile);
+  const accentColor = clientProfile?.accentColor ?? null;
+
+  const templateFamily: TemplateFamily = input.templateFamily ?? resolveDefaultTemplateFamily(brand.brandTier);
 
   const requestedHeroSourceMode: RequestedHeroSourceMode = input.heroSourceMode ?? "auto";
   // priceVisibility "suppressed" overrides a requested price-led mode — the
@@ -77,6 +83,7 @@ export async function createMarketingCreativeJob(input: CreateMarketingCreativeJ
     productId: product.id,
     requestedHeroSourceMode,
     heroSourceMode,
+    templateFamily,
     contentMode,
     objective: input.objective,
     platform: input.platform ?? null,
@@ -95,6 +102,7 @@ export async function createMarketingCreativeJob(input: CreateMarketingCreativeJ
       userId: input.userId,
       objective: input.objective,
       contentMode,
+      templateFamily,
       aspectRatios: input.aspectRatios,
       platform: input.platform,
     };
@@ -112,16 +120,18 @@ export async function createMarketingCreativeJob(input: CreateMarketingCreativeJ
     return job;
   }
 
-  const copy = buildDeterministicCopy(product, brand.priceVisibility, contentMode, input.objective);
+  const copy = buildDeterministicCopy(product, brand.priceVisibility, contentMode, input.objective, templateFamily);
 
   try {
     const outputs = await runRenderPipeline({
       productId: product.id,
       userId: input.userId,
       heroImageUrl: resolution.heroImageUrl,
+      templateFamily,
       contentMode,
       copy,
       aspectRatios: input.aspectRatios,
+      accentColor,
     });
 
     const job = await db.marketingCreativeJob.create({

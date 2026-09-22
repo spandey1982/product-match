@@ -1,20 +1,41 @@
 /**
- * The V1 template grammar — a small, data-driven region registry for the
- * shared "hero-promo" template family (research/catalogue-to-campaign.html
- * Part 5.3/7), mirroring lib/catalogue-motion/storyboards.ts's
- * data-not-hardcoded pattern: which named regions a given render actually
- * needs, resolved once per request rather than branching scattered through
- * the renderer.
+ * The V1.2 template grammar — a small, data-driven region registry across
+ * the three template families (research/catalogue-to-campaign.html Part
+ * 5.3/7 + the plan's V1.2 revision), mirroring
+ * lib/catalogue-motion/storyboards.ts's data-not-hardcoded pattern: which
+ * named regions a given render actually needs, resolved once per request
+ * rather than branching scattered through the renderer.
  *
- * V1 deliberately has ONE template family with two content modes rather
- * than per-brand-tier layouts — brand differentiation for V1 comes from the
- * Brand Creative Profile (logo presence, price-visibility) driving which
- * regions are PRESENT, not from swapping layouts (report Part 7: minimum
- * complexity, not minimum coverage).
+ * "promo-benefits" is the primary/default family (dense, feature-row +
+ * price-banner + trust-badge, split-panel layout). "hero-editorial" and
+ * "styled-promo" are V1's original full-bleed renderer, kept as clearly-
+ * labeled secondary options — see the plan's Context section for why.
  */
-import type { ContentMode } from "./types";
+import type { ContentMode, TemplateFamily, TemplateLayout } from "./types";
+import type { BrandTierKey } from "@/lib/branding/creative-tier";
 
-export type RegionId = "scrim" | "logo" | "title" | "price" | "cta";
+/**
+ * The default family when a retailer leaves it on "auto" — dense/detailed
+ * ("promo-benefits") is the default for the platform's actual retailer
+ * base (small-to-mid D2C sellers who win on communicated detail, not brand
+ * recognition — see the plan's Context section), except for the luxury/
+ * boutique-tier minority, who default to the minimal "hero-editorial"
+ * register instead. An explicit request always overrides this.
+ */
+export function resolveDefaultTemplateFamily(brandTier: BrandTierKey): TemplateFamily {
+  return brandTier === "luxury" || brandTier === "boutique" ? "hero-editorial" : "promo-benefits";
+}
+
+export type RegionId =
+  | "scrim"
+  | "logo"
+  | "title"
+  | "price"
+  | "cta"
+  | "kicker"
+  | "features"
+  | "priceBanner"
+  | "trustBadges";
 
 export interface TemplateRegion {
   id: RegionId;
@@ -22,20 +43,62 @@ export interface TemplateRegion {
 }
 
 export interface CreativeTemplate {
-  templateFamily: "hero-promo";
+  templateFamily: TemplateFamily;
+  layout: TemplateLayout;
   contentMode: ContentMode;
   regions: TemplateRegion[];
 }
 
 /**
- * Resolves the region set for one render. `hasPriceText` reflects the
- * Brand Creative Profile's price-visibility policy already applied in
- * copy.ts's buildDeterministicCopy() — the price region is never present
- * when there's no priceText to show, regardless of contentMode.
+ * Resolves the region set + layout for one render. `hasPriceText` reflects
+ * the Brand Creative Profile's price-visibility policy already applied in
+ * copy.ts's buildDeterministicCopy() — a price-bearing region is never
+ * present when there's no priceText to show, regardless of contentMode.
  */
-export function resolveTemplate(contentMode: ContentMode, hasPriceText: boolean, hasLogo: boolean): CreativeTemplate {
+export function resolveTemplate(
+  templateFamily: TemplateFamily,
+  contentMode: ContentMode,
+  hasPriceText: boolean,
+  hasLogo: boolean
+): CreativeTemplate {
+  if (templateFamily === "promo-benefits") {
+    return {
+      templateFamily,
+      layout: "split-panel",
+      contentMode,
+      regions: [
+        { id: "kicker", present: true },
+        { id: "title", present: true },
+        { id: "features", present: true },
+        { id: "priceBanner", present: hasPriceText },
+        { id: "trustBadges", present: true },
+        { id: "logo", present: hasLogo },
+        { id: "cta", present: true },
+      ],
+    };
+  }
+
+  if (templateFamily === "hero-editorial") {
+    // Structurally price-less — luxury/premium positioning never shows
+    // price in the creative itself (report Part 3.1), independent of
+    // priceVisibility policy or a caller-requested contentMode.
+    return {
+      templateFamily,
+      layout: "full-bleed",
+      contentMode: "aspirational",
+      regions: [
+        { id: "scrim", present: true },
+        { id: "logo", present: hasLogo },
+        { id: "title", present: true },
+        { id: "cta", present: true },
+      ],
+    };
+  }
+
+  // "styled-promo" — V1's original region set, unchanged.
   return {
-    templateFamily: "hero-promo",
+    templateFamily,
+    layout: "full-bleed",
     contentMode,
     regions: [
       { id: "scrim", present: true },

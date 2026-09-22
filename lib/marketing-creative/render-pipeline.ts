@@ -12,7 +12,7 @@ import { db } from "@/lib/db";
 import { resolveCanvas } from "./canvas";
 import { resolveTemplate } from "./templates";
 import { renderCreativeCanvas } from "./renderer";
-import type { CanvasKey, ContentMode, DeterministicCopy, RenderedOutput } from "./types";
+import type { CanvasKey, ContentMode, DeterministicCopy, RenderedOutput, TemplateFamily } from "./types";
 
 function logoUrlFromPublicId(publicId: string): string | null {
   const cloud = process.env.CLOUDINARY_CLOUD_NAME;
@@ -36,9 +36,12 @@ export interface RunRenderPipelineInput {
   productId: string;
   userId: string;
   heroImageUrl: string;
+  templateFamily: TemplateFamily;
   contentMode: ContentMode;
   copy: DeterministicCopy;
   aspectRatios: CanvasKey[];
+  /** ClientProfile.accentColor, hex or null — see renderer.tsx. */
+  accentColor: string | null;
 }
 
 /**
@@ -57,7 +60,12 @@ export async function runRenderPipeline(input: RunRenderPipelineInput): Promise<
   const outputs: RenderedOutput[] = [];
   for (const key of input.aspectRatios) {
     const canvas = resolveCanvas(key);
-    const template = resolveTemplate(input.contentMode, Boolean(input.copy.priceText || input.copy.discountBadge), Boolean(logoDataUri));
+    const template = resolveTemplate(
+      input.templateFamily,
+      input.contentMode,
+      Boolean(input.copy.priceText || input.copy.discountBadge),
+      Boolean(logoDataUri)
+    );
 
     const rendered = await renderCreativeCanvas({
       canvas,
@@ -65,6 +73,7 @@ export async function runRenderPipeline(input: RunRenderPipelineInput): Promise<
       copy: input.copy,
       heroBuffer: hero.buffer,
       logoDataUri,
+      accentColor: input.accentColor,
     });
 
     const dataUri = `data:${rendered.mime};base64,${rendered.buffer.toString("base64")}`;

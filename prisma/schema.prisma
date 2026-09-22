@@ -2195,12 +2195,15 @@ model MarketingCreativeJob {
   // lib/marketing-creative/hero-source.ts / hero-resolver.ts.
   heroSourceMode          String
 
-  // "hero-promo" only in V1 — kept as its own field (not collapsed into
-  // contentMode) so a V1.5 craftsmanship-detail-story family needs no
-  // further migration. See lib/marketing-creative/templates.ts.
-  templateFamily String  @default("hero-promo")
-  // aspirational | price-led — V1's two content modes within the shared
-  // hero-promo grammar.
+  // promo-benefits (default/primary) | hero-editorial | styled-promo — see
+  // lib/marketing-creative/templates.ts for the region/layout each resolves
+  // to, and the plan's V1.2 Context section for why promo-benefits is the
+  // default (this platform's retailer base wins on communicated detail,
+  // not brand recognition — the two other families are secondary options
+  // for premium/luxury-tier retailers).
+  templateFamily String  @default("promo-benefits")
+  // aspirational | price-led — meaningful for styled-promo/promo-benefits;
+  // hero-editorial ignores this (structurally price-less).
   contentMode    String
   // Retail objective (lib/marketing-creative/copy.ts's objective→CTA map),
   // constrained in V1 to what the hero-promo family actually serves.

@@ -114,6 +114,7 @@ export interface CreativeHeroRenderPayload {
    * existing convention of not depending on feature-specific modules. */
   objective: string;
   contentMode: string;
+  templateFamily: string;
   aspectRatios: string[];
   platform?: string;
 }

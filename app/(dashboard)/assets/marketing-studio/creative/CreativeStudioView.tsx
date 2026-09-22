@@ -27,6 +27,7 @@ interface MarketingCreativeJob {
   id: string;
   status: "queued" | "resolving_hero" | "rendering" | "complete" | "failed";
   heroSourceMode: string;
+  templateFamily: string;
   contentMode: string;
   objective: string;
   aspectRatios: string;
@@ -35,6 +36,25 @@ interface MarketingCreativeJob {
   createdAt: string;
   retryCount: number;
 }
+
+const TEMPLATE_FAMILY_OPTIONS: { value: string; label: string; description: string; recommended?: boolean }[] = [
+  {
+    value: "promo-benefits",
+    label: "Promo Benefits",
+    description: "Feature rows, price banner, trust badges — dense and detail-forward. Best for most retailers.",
+    recommended: true,
+  },
+  {
+    value: "hero-editorial",
+    label: "Hero Editorial",
+    description: "Minimal, photography-first, no price shown. Best for premium/luxury or bridal-tier positioning.",
+  },
+  {
+    value: "styled-promo",
+    label: "Styled Promo",
+    description: "Full-bleed photo with a title and visible price — between the two above.",
+  },
+];
 
 const OBJECTIVE_OPTIONS = [
   { value: "discovery", label: "Product discovery / new arrival" },
@@ -118,6 +138,7 @@ export function CreativeStudioView({
   initialHistory?: MarketingCreativeJob[];
 }) {
   const [objective, setObjective] = useState(product?.hasDiscount ? "price_promotion" : "discovery");
+  const [templateFamily, setTemplateFamily] = useState("promo-benefits");
   const [contentMode, setContentMode] = useState("");
   const [heroSourceMode, setHeroSourceMode] = useState("auto");
   const [aspectRatios, setAspectRatios] = useState<Set<CanvasKey>>(new Set(["square"]));
@@ -186,6 +207,7 @@ export function CreativeStudioView({
         body: JSON.stringify({
           productId: product.id,
           objective,
+          templateFamily,
           contentMode: contentMode || undefined,
           heroSourceMode,
           aspectRatios: [...aspectRatios],
@@ -242,6 +264,42 @@ export function CreativeStudioView({
               No product photo yet — that&apos;s fine, choose &quot;Generate new image&quot; below.
             </div>
           )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Template</label>
+            <div className="space-y-2">
+              {TEMPLATE_FAMILY_OPTIONS.map((o) => (
+                <label
+                  key={o.value}
+                  className={cn(
+                    "flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-colors",
+                    templateFamily === o.value ? "border-indigo-300 bg-indigo-50/60" : "border-gray-200 hover:bg-gray-50"
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name="templateFamily"
+                    value={o.value}
+                    checked={templateFamily === o.value}
+                    onChange={() => setTemplateFamily(o.value)}
+                    disabled={!!isBusy}
+                    className="mt-0.5"
+                  />
+                  <div>
+                    <p className="text-sm text-gray-800 flex items-center gap-1.5">
+                      {o.label}
+                      {o.recommended && (
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-indigo-600 bg-indigo-100 rounded px-1.5 py-0.5">
+                          Recommended
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-xs text-gray-500">{o.description}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
 
           <Select label="Objective" value={objective} onChange={(e) => setObjective(e.target.value)} options={OBJECTIVE_OPTIONS} disabled={!!isBusy} />
           <Select label="Content mode" value={contentMode} onChange={(e) => setContentMode(e.target.value)} options={CONTENT_MODE_OPTIONS} disabled={!!isBusy} />
@@ -319,7 +377,7 @@ export function CreativeStudioView({
               <>
                 <JobResult job={job} />
                 <p className="text-xs text-center text-gray-400">
-                  Sourced as: <span className="font-medium text-gray-600">{job.heroSourceMode}</span>
+                  {job.templateFamily} · sourced as <span className="font-medium text-gray-600">{job.heroSourceMode}</span>
                 </p>
                 <Button variant="outline" onClick={handleGenerate} className="w-full gap-1.5">
                   <RotateCcw className="h-3.5 w-3.5" /> Generate Another

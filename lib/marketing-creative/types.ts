@@ -20,9 +20,44 @@ export type HeroSourceMode = "reuse-catalogue" | "generate-new" | "product-only"
  * hero-source.ts's rules. */
 export type RequestedHeroSourceMode = "auto" | HeroSourceMode;
 
-/** V1's two content modes within the shared hero-promo template family —
- * see research Part 7 (V1 scope). */
+/** V1's two content modes — meaningful within "styled-promo" and
+ * "promo-benefits"; "hero-editorial" ignores this and is always
+ * aspirational (price structurally absent). See research Part 7. */
 export type ContentMode = "aspirational" | "price-led";
+
+/**
+ * The three V1.2 template families (see the plan's Context section for the
+ * research behind this split): "promo-benefits" is the primary/default —
+ * dense, feature-row + price-banner + trust-badge, matching the retailer's
+ * reference image and the "Product Benefits" creative pattern documented in
+ * research/catalogue-to-campaign.html. "hero-editorial" and "styled-promo"
+ * are V1's original full-bleed renderer, kept as clearly-labeled secondary
+ * options for premium/luxury-tier or designer-collaboration retailers.
+ */
+export type TemplateFamily = "promo-benefits" | "hero-editorial" | "styled-promo";
+
+/** Which layout geometry a template family uses — drives how the renderer
+ * builds its Satori tree and how the hero photo gets composited. */
+export type TemplateLayout = "full-bleed" | "split-panel";
+
+/**
+ * Closed set of icon keys a feature row or trust badge can reference —
+ * mapped to actual lucide-react components inside renderer.tsx (kept out
+ * of this framework-independent file). Small and fixed for V1.2; see the
+ * plan's "what stays generic" note.
+ */
+export type IconKey = "sparkles" | "feather" | "check-circle" | "award" | "wind" | "droplet";
+
+export interface FeatureRow {
+  icon: IconKey;
+  label: string;
+  description: string;
+}
+
+export interface TrustBadge {
+  icon: IconKey;
+  label: string;
+}
 
 /** V1's retail objective set (report Part 2.1, narrowed to what the
  * hero-promo family actually serves). */
@@ -53,11 +88,17 @@ export interface FractionalRegion {
 
 export interface DeterministicCopy {
   title: string;
-  /** Formatted current price (e.g. "₹2,499"), or null when priceVisibility is "suppressed". */
+  /** Formatted current price (e.g. "Rs. 2,499"), or null when priceVisibility is "suppressed". */
   priceText: string | null;
   /** e.g. "35% OFF" — present only when contentMode is "price-led" and a real discount exists. */
   discountBadge: string | null;
   ctaText: string;
+  /** promo-benefits only — a short generic tagline. Null for the other two families. */
+  kicker: string | null;
+  /** promo-benefits only — 3 generic feature rows, material-aware. Empty for the other two families. */
+  features: FeatureRow[];
+  /** promo-benefits only — 4 generic trust badges. Empty for the other two families. */
+  trustBadges: TrustBadge[];
 }
 
 export interface RenderedOutput {
