@@ -37,8 +37,12 @@ export type ContentMode = "aspirational" | "price-led";
 export type TemplateFamily = "promo-benefits" | "hero-editorial" | "styled-promo";
 
 /** Which layout geometry a template family uses — drives how the renderer
- * builds its Satori tree and how the hero photo gets composited. */
-export type TemplateLayout = "full-bleed" | "split-panel";
+ * builds its Satori tree and how the hero photo gets composited. All three
+ * families are full-bleed as of the V1.3 revision (see renderer.tsx's
+ * header) — kept as a union rather than inlining "full-bleed" everywhere so
+ * a genuinely different geometry (e.g. a video/reel layout) has somewhere
+ * to slot in later. */
+export type TemplateLayout = "full-bleed";
 
 /**
  * Closed set of icon keys a feature row or trust badge can reference —
@@ -46,7 +50,7 @@ export type TemplateLayout = "full-bleed" | "split-panel";
  * of this framework-independent file). Small and fixed for V1.2; see the
  * plan's "what stays generic" note.
  */
-export type IconKey = "sparkles" | "feather" | "check-circle" | "award" | "wind" | "droplet";
+export type IconKey = "sparkles" | "feather" | "check-circle" | "award" | "wind" | "droplet" | "arrow-right";
 
 export interface FeatureRow {
   icon: IconKey;

@@ -1,5 +1,6 @@
 /**
- * Plain-function icon components for the split-panel renderer.
+ * Plain-function icon components used by the feature-row/trust-badge
+ * regions in renderer.tsx.
  *
  * NOT lucide-react's exported components directly — those are wrapped in
  * `React.forwardRef`, which satori's tree walker (a from-scratch element
@@ -97,6 +98,15 @@ const Droplet = svgIcon([
   },
 ]);
 
+// Used for the promo-benefits CTA's direction cue — a literal "→" (U+2192)
+// tofu'd (live-tested 2026-09-22) in the same way the ₹ glyph did, since
+// @fontsource/inter's bundled latin/latin-ext subsets don't cover it either.
+// Same fix class: draw it, don't rely on the font.
+const ArrowRight = svgIcon([
+  { tag: "path", attrs: { d: "M5 12h14" } },
+  { tag: "path", attrs: { d: "m12 5 7 7-7 7" } },
+]);
+
 export const ICONS: Record<IconKey, (props: IconProps) => ReactElement> = {
   sparkles: Sparkles,
   feather: Feather,
@@ -104,4 +114,5 @@ export const ICONS: Record<IconKey, (props: IconProps) => ReactElement> = {
   award: Award,
   wind: Wind,
   droplet: Droplet,
+  "arrow-right": ArrowRight,
 };

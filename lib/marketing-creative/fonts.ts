@@ -13,6 +13,11 @@
  * Creative Profile field noted in the research for a later phase, not V1
  * (report Part 5.2 lists it among fields not yet needed for V1's two
  * highest-leverage fields, brandTier/priceVisibility).
+ *
+ * V1.3 adds one more weight/style — Inter SemiBold Italic — for
+ * promo-benefits' kicker line only, to soften that family's tone away from
+ * a purely corporate register per retailer feedback. Same package, no new
+ * dependency: @fontsource/inter already bundles every weight/style pairing.
  */
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -29,11 +34,15 @@ export function loadCreativeFonts(): Promise<Font[]> {
       readFile(join(FONT_DIR, "inter-latin-ext-400-normal.woff")),
       readFile(join(FONT_DIR, "inter-latin-700-normal.woff")),
       readFile(join(FONT_DIR, "inter-latin-ext-700-normal.woff")),
-    ]).then(([regular, regularExt, bold, boldExt]) => [
+      readFile(join(FONT_DIR, "inter-latin-600-italic.woff")),
+      readFile(join(FONT_DIR, "inter-latin-ext-600-italic.woff")),
+    ]).then(([regular, regularExt, bold, boldExt, semiboldItalic, semiboldItalicExt]) => [
       { name: "Inter", data: regular, weight: 400 as const, style: "normal" as const },
       { name: "Inter", data: regularExt, weight: 400 as const, style: "normal" as const },
       { name: "Inter", data: bold, weight: 700 as const, style: "normal" as const },
       { name: "Inter", data: boldExt, weight: 700 as const, style: "normal" as const },
+      { name: "Inter", data: semiboldItalic, weight: 600 as const, style: "italic" as const },
+      { name: "Inter", data: semiboldItalicExt, weight: 600 as const, style: "italic" as const },
     ]);
   }
   return cached;

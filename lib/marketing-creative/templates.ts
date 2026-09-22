@@ -7,9 +7,11 @@
  * rather than branching scattered through the renderer.
  *
  * "promo-benefits" is the primary/default family (dense, feature-row +
- * price-banner + trust-badge, split-panel layout). "hero-editorial" and
- * "styled-promo" are V1's original full-bleed renderer, kept as clearly-
- * labeled secondary options — see the plan's Context section for why.
+ * price + trust-badge content, full-bleed with a left-to-right gradient —
+ * V1.3 revision, see renderer.tsx's header for why it moved off the
+ * original split-panel geometry). "hero-editorial" and "styled-promo" are
+ * V1's original full-bleed renderer, kept as clearly-labeled secondary
+ * options — see the plan's Context section for why.
  */
 import type { ContentMode, TemplateFamily, TemplateLayout } from "./types";
 import type { BrandTierKey } from "@/lib/branding/creative-tier";
@@ -34,7 +36,6 @@ export type RegionId =
   | "cta"
   | "kicker"
   | "features"
-  | "priceBanner"
   | "trustBadges";
 
 export interface TemplateRegion {
@@ -64,13 +65,14 @@ export function resolveTemplate(
   if (templateFamily === "promo-benefits") {
     return {
       templateFamily,
-      layout: "split-panel",
+      layout: "full-bleed",
       contentMode,
       regions: [
+        { id: "scrim", present: true },
         { id: "kicker", present: true },
         { id: "title", present: true },
         { id: "features", present: true },
-        { id: "priceBanner", present: hasPriceText },
+        { id: "price", present: hasPriceText },
         { id: "trustBadges", present: true },
         { id: "logo", present: hasLogo },
         { id: "cta", present: true },

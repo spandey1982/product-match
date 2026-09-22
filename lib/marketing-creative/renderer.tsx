@@ -8,11 +8,24 @@
  * `.composite([{ input, blend: "over" }])` pattern already proven in
  * lib/model-gen/erase.ts. No image-generation model is ever involved here.
  *
- * Two layout modes (see templates.ts's CreativeTemplate.layout):
- * "full-bleed" (hero-editorial, styled-promo) — the photo fills the whole
- * canvas, text overlays via a bottom gradient scrim. "split-panel"
- * (promo-benefits) — a solid-fill text panel on the left, the hero photo
- * confined to the right-hand region instead of covering the canvas.
+ * All three families are full-bleed (see templates.ts's CreativeTemplate.
+ * layout) — the photo fills the whole canvas, text overlays via a gradient
+ * scrim, never a separate solid-fill panel. hero-editorial/styled-promo use
+ * a bottom-up scrim (buildFullBleedElement, V1's original tree, untouched).
+ * promo-benefits used a split-panel geometry through V1.2 — a solid-fill
+ * text panel + the photo confined to the remaining width — but retailer
+ * feedback on the first live render flagged three problems with that: a
+ * hard seam between panel and photo, a disconnected white trust-badge
+ * footer strip, and dead space below the panel's content. V1.3's
+ * buildDensePromoElement replaces it with the same technique the /shop PDP's
+ * "Pairs beautifully with" carousel slide already uses (components/product/
+ * AdditionalInfoSlide.tsx) — one photo, a left-to-right gradient, content
+ * vertically centered on top — so the whole canvas reads as one image
+ * instead of two stitched zones. It also drops the promo-benefits CTA's
+ * filled-pill styling (a fake button an Instagram/Pinterest viewer might
+ * mistake for something tappable, when the actual click path is the
+ * platform's own link affordance) and the price banner's solid accent fill
+ * (de-emphasized to an inline text line, present without dominating).
  *
  * Icon rendering: small plain-function icon components (lib/marketing-
  * creative/icons.tsx), not lucide-react's exported components directly —
@@ -28,7 +41,6 @@ import { Resvg } from "@resvg/resvg-js";
 import sharp from "sharp";
 import { reencodeGeneratedImage } from "@/lib/images/reencode";
 import { loadCreativeFonts } from "./fonts";
-import { lightenHex } from "./color";
 import { ICONS } from "./icons";
 import { isRegionPresent, type CreativeTemplate } from "./templates";
 import type { Canvas, DeterministicCopy } from "./types";
@@ -149,95 +161,148 @@ function buildFullBleedElement(canvas: Canvas, template: CreativeTemplate, copy:
   );
 }
 
-// ── Split-panel layout (promo-benefits) ──
+// ── Dense full-bleed layout (promo-benefits) — V1.3 ──
+//
+// Same compositing primitive as buildFullBleedElement below (one photo,
+// resized to cover the canvas, one Satori overlay composited on top) — the
+// only difference from that function is a left-to-right scrim instead of a
+// bottom-up one, and a richer, vertically-centered content column. See this
+// file's header for why V1.2's separate solid-panel geometry was dropped.
 
-/** Fraction of canvas width the solid text panel occupies; the remainder is
- * where the hero photo shows through. */
-const PANEL_WIDTH_FRACTION = 0.46;
-/** Fraction of canvas height the full-width trust-badge footer occupies. */
-const FOOTER_HEIGHT_FRACTION = 0.09;
-
-export function splitPanelGeometry(canvas: Canvas) {
-  const panelWidth = Math.round(canvas.width * PANEL_WIDTH_FRACTION);
-  const footerHeight = Math.round(canvas.height * FOOTER_HEIGHT_FRACTION);
-  return {
-    panelWidth,
-    photoWidth: canvas.width - panelWidth,
-    footerHeight,
-    bodyHeight: canvas.height - footerHeight,
-  };
-}
-
-function buildSplitPanelElement(
+function buildDensePromoElement(
   canvas: Canvas,
   template: CreativeTemplate,
   copy: DeterministicCopy,
   logoDataUri: string | null,
   accentColor: string | null
 ) {
-  const { panelWidth, photoWidth, footerHeight, bodyHeight } = splitPanelGeometry(canvas);
-  const panelTint = lightenHex(accentColor, 0.85);
-  const bannerColor = accentColor && /^#[0-9a-fA-F]{6}$/.test(accentColor) ? accentColor : ACCENT;
+  const accentText = accentColor && /^#[0-9a-fA-F]{6}$/.test(accentColor) ? accentColor : ACCENT;
 
-  const pad = scale(canvas.width, 40);
-  const kickerSize = scale(canvas.width, 22);
-  const titleSize = scale(canvas.width, 44);
-  const featureLabelSize = scale(canvas.width, 24);
-  const featureDescSize = scale(canvas.width, 18);
-  const priceSize = scale(canvas.width, 34);
-  const mrpSize = scale(canvas.width, 18);
-  const ctaSize = scale(canvas.width, 22);
-  const logoSize = scale(canvas.width, 64);
-  const featureIconSize = scale(canvas.width, 22);
-  const badgeIconSize = scale(canvas.width, 20);
-  const footerLabelSize = scale(canvas.width, 15);
+  const pad = scale(canvas.width, 48);
+  const kickerSize = scale(canvas.width, 20);
+  const titleSize = scale(canvas.width, 46);
+  const featureLabelSize = scale(canvas.width, 23);
+  const featureDescSize = scale(canvas.width, 17);
+  const featureIconSize = scale(canvas.width, 21);
+  const priceSize = scale(canvas.width, 28);
+  const discountSize = scale(canvas.width, 17);
+  const ctaSize = scale(canvas.width, 25);
+  const badgeIconSize = scale(canvas.width, 19);
+  const badgeLabelSize = scale(canvas.width, 13);
+  const logoSize = scale(canvas.width, 68);
+  const contentWidth = Math.round(canvas.width * 0.6);
+  const ArrowRightIcon = ICONS["arrow-right"];
 
   return (
-    <div style={{ width: canvas.width, height: canvas.height, display: "flex", flexDirection: "column", fontFamily: "Inter" }}>
-      <div style={{ display: "flex", width: canvas.width, height: bodyHeight }}>
-        {/* Left panel — solid fill, opaque, carries every text region. */}
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            width: panelWidth,
-            height: bodyHeight,
-            backgroundColor: panelTint,
-            padding: pad,
-            gap: scale(canvas.width, 16),
-          }}
-        >
+    <div
+      style={{
+        width: canvas.width,
+        height: canvas.height,
+        display: "flex",
+        flexDirection: "column",
+        fontFamily: "Inter",
+        // Left-to-right, same technique as components/product/
+        // AdditionalInfoSlide.tsx's "Pairs beautifully with" slide — the
+        // SAME photo darkens toward the text side rather than a separate
+        // solid panel butting up against it, so the canvas reads as one
+        // continuous image.
+        backgroundImage:
+          "linear-gradient(to right, rgba(20,17,16,0.86) 0%, rgba(20,17,16,0.62) 42%, rgba(20,17,16,0.18) 74%, rgba(20,17,16,0) 92%)",
+      }}
+    >
+      <div style={{ display: "flex", padding: pad }}>
+        {isRegionPresent(template, "logo") && logoDataUri ? (
+          <div
+            style={{
+              display: "flex",
+              width: logoSize,
+              height: logoSize,
+              borderRadius: Math.round(logoSize * 0.22),
+              backgroundColor: "rgba(255,255,255,0.92)",
+              alignItems: "center",
+              justifyContent: "center",
+              overflow: "hidden",
+            }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={logoDataUri} alt="" width={logoSize} height={logoSize} style={{ objectFit: "contain" }} />
+          </div>
+        ) : null}
+      </div>
+
+      {/* Vertically centered across whatever height remains below the logo
+          row — fills the canvas by design (generous gaps) instead of
+          leaving dead space the way a fixed-height bottom block did. */}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          flexGrow: 1,
+          justifyContent: "center",
+          padding: `0 ${pad}px ${pad}px`,
+        }}
+      >
+        <div style={{ display: "flex", flexDirection: "column", width: contentWidth, gap: scale(canvas.width, 16) }}>
           {isRegionPresent(template, "kicker") && copy.kicker ? (
-            <div style={{ display: "flex", color: INK, fontSize: kickerSize, fontWeight: 600, letterSpacing: 1, textTransform: "uppercase" }}>
+            <div
+              style={{
+                display: "flex",
+                color: accentText,
+                fontStyle: "italic",
+                fontWeight: 600,
+                fontSize: kickerSize,
+                letterSpacing: 1.5,
+                textTransform: "uppercase",
+              }}
+            >
               {copy.kicker}
             </div>
           ) : null}
 
-          <div style={{ display: "flex", color: INK, fontSize: titleSize, fontWeight: 700, lineHeight: 1.1 }}>{copy.title}</div>
+          <div
+            style={{
+              display: "flex",
+              color: PAPER,
+              fontSize: titleSize,
+              fontWeight: 700,
+              lineHeight: 1.14,
+              textShadow: "0 2px 14px rgba(0,0,0,0.4)",
+            }}
+          >
+            {copy.title}
+          </div>
 
           {isRegionPresent(template, "features") && copy.features.length > 0 ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: scale(canvas.width, 10) }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: scale(canvas.width, 9) }}>
               {copy.features.map((f, i) => {
                 const Icon = ICONS[f.icon];
                 return (
                   <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: scale(canvas.width, 10) }}>
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        width: featureIconSize + scale(canvas.width, 12),
-                        height: featureIconSize + scale(canvas.width, 12),
-                        borderRadius: 999,
-                        backgroundColor: bannerColor,
-                        flexShrink: 0,
-                      }}
-                    >
-                      <Icon size={featureIconSize} color={PAPER} strokeWidth={2.25} />
+                    <div style={{ display: "flex", marginTop: scale(canvas.width, 3) }}>
+                      <Icon size={featureIconSize} color={PAPER} strokeWidth={2} />
                     </div>
                     <div style={{ display: "flex", flexDirection: "column" }}>
-                      <div style={{ display: "flex", color: INK, fontSize: featureLabelSize, fontWeight: 700 }}>{f.label}</div>
-                      <div style={{ display: "flex", color: INK, opacity: 0.75, fontSize: featureDescSize, fontWeight: 400 }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          color: PAPER,
+                          fontSize: featureLabelSize,
+                          fontWeight: 700,
+                          textShadow: "0 1px 8px rgba(0,0,0,0.35)",
+                        }}
+                      >
+                        {f.label}
+                      </div>
+                      <div
+                        style={{
+                          display: "flex",
+                          color: PAPER,
+                          opacity: 0.82,
+                          fontSize: featureDescSize,
+                          fontWeight: 400,
+                          textShadow: "0 1px 8px rgba(0,0,0,0.35)",
+                        }}
+                      >
                         {f.description}
                       </div>
                     </div>
@@ -247,25 +312,23 @@ function buildSplitPanelElement(
             </div>
           ) : null}
 
-          <div style={{ display: "flex", flexGrow: 1 }} />
-
-          {isRegionPresent(template, "priceBanner") && (copy.priceText || copy.discountBadge) ? (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: scale(canvas.width, 12),
-                alignSelf: "flex-start",
-                backgroundColor: bannerColor,
-                borderRadius: scale(canvas.width, 14),
-                padding: `${scale(canvas.width, 12)}px ${scale(canvas.width, 20)}px`,
-              }}
-            >
+          {isRegionPresent(template, "price") && (copy.priceText || copy.discountBadge) ? (
+            <div style={{ display: "flex", alignItems: "baseline", gap: scale(canvas.width, 10) }}>
               {copy.priceText ? (
-                <div style={{ display: "flex", color: PAPER, fontSize: priceSize, fontWeight: 700 }}>{copy.priceText}</div>
+                <div
+                  style={{
+                    display: "flex",
+                    color: PAPER,
+                    fontSize: priceSize,
+                    fontWeight: 700,
+                    textShadow: "0 1px 8px rgba(0,0,0,0.35)",
+                  }}
+                >
+                  {copy.priceText}
+                </div>
               ) : null}
               {copy.discountBadge ? (
-                <div style={{ display: "flex", color: "rgba(255,255,255,0.85)", fontSize: mrpSize, fontWeight: 600 }}>
+                <div style={{ display: "flex", color: "rgba(255,255,255,0.72)", fontSize: discountSize, fontWeight: 600 }}>
                   {copy.discountBadge}
                 </div>
               ) : null}
@@ -273,73 +336,50 @@ function buildSplitPanelElement(
           ) : null}
 
           {isRegionPresent(template, "cta") ? (
-            <div
-              style={{
-                display: "flex",
-                alignSelf: "flex-start",
-                backgroundColor: INK,
-                color: PAPER,
-                fontSize: ctaSize,
-                fontWeight: 700,
-                padding: `${scale(canvas.width, 12)}px ${scale(canvas.width, 26)}px`,
-                borderRadius: scale(canvas.width, 999),
-              }}
-            >
-              {copy.ctaText}
+            // Plain text, not a filled pill — the actual click affordance
+            // on every platform this renders for (Instagram link sticker,
+            // Pinterest/website hyperlink) already lives outside the image
+            // itself; a fake button drawn on the pixels risks reading as a
+            // real (broken) control instead.
+            <div style={{ display: "flex", alignItems: "center", gap: scale(canvas.width, 8), marginTop: scale(canvas.width, 4) }}>
+              <div style={{ display: "flex", color: accentText, fontSize: ctaSize, fontWeight: 700 }}>{copy.ctaText}</div>
+              <ArrowRightIcon size={Math.round(ctaSize * 0.85)} color={accentText} strokeWidth={2.5} />
             </div>
           ) : null}
-        </div>
 
-        {/* Right region — deliberately transparent; the hero photo is
-            composited here in sharp, underneath this whole overlay. Only
-            the logo badge (opaque) renders inside it. */}
-        <div style={{ display: "flex", flexDirection: "column", width: photoWidth, height: bodyHeight, padding: pad }}>
-          {isRegionPresent(template, "logo") && logoDataUri ? (
+          {isRegionPresent(template, "trustBadges") && copy.trustBadges.length > 0 ? (
             <div
               style={{
                 display: "flex",
-                alignSelf: "flex-end",
-                width: logoSize,
-                height: logoSize,
-                borderRadius: Math.round(logoSize * 0.22),
-                backgroundColor: "rgba(255,255,255,0.92)",
-                alignItems: "center",
-                justifyContent: "center",
-                overflow: "hidden",
+                flexWrap: "wrap",
+                width: contentWidth,
+                gap: scale(canvas.width, 10),
+                marginTop: scale(canvas.width, 10),
               }}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={logoDataUri} alt="" width={logoSize} height={logoSize} style={{ objectFit: "contain" }} />
+              {copy.trustBadges.map((b, i) => {
+                const Icon = ICONS[b.icon];
+                return (
+                  <div
+                    key={i}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: scale(canvas.width, 6),
+                      width: Math.round(contentWidth / 2) - scale(canvas.width, 5),
+                    }}
+                  >
+                    <Icon size={badgeIconSize} color={PAPER} strokeWidth={2} />
+                    <div style={{ display: "flex", color: PAPER, opacity: 0.85, fontSize: badgeLabelSize, fontWeight: 600 }}>
+                      {b.label}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           ) : null}
         </div>
       </div>
-
-      {isRegionPresent(template, "trustBadges") && copy.trustBadges.length > 0 ? (
-        <div
-          style={{
-            display: "flex",
-            width: canvas.width,
-            height: footerHeight,
-            backgroundColor: PAPER,
-            alignItems: "center",
-            justifyContent: "space-around",
-            padding: `0 ${pad}px`,
-          }}
-        >
-          {copy.trustBadges.map((b, i) => {
-            const Icon = ICONS[b.icon];
-            return (
-              <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: scale(canvas.width, 4) }}>
-                <Icon size={badgeIconSize} color={INK} strokeWidth={2} />
-                <div style={{ display: "flex", color: INK, fontSize: footerLabelSize, fontWeight: 600, textAlign: "center" }}>
-                  {b.label}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -352,8 +392,8 @@ export interface RenderCreativeInput {
   heroBuffer: Buffer;
   /** Base64 data URI of the retailer's logo, or null when there is none. */
   logoDataUri: string | null;
-  /** ClientProfile.accentColor, hex or null — panel tint (split-panel) and
-   * price-banner color derive from this, falling back to ACCENT. */
+  /** ClientProfile.accentColor, hex or null — promo-benefits' kicker/CTA
+   * text color derives from this, falling back to ACCENT. */
   accentColor: string | null;
 }
 
@@ -368,35 +408,14 @@ export async function renderCreativeCanvas(input: RenderCreativeInput): Promise<
   const fonts = await loadCreativeFonts();
   const { canvas, template } = input;
 
-  if (template.layout === "split-panel") {
-    const element = buildSplitPanelElement(canvas, template, input.copy, input.logoDataUri, input.accentColor);
-    const svg = await satori(element, { width: canvas.width, height: canvas.height, fonts });
-    const overlayPng = new Resvg(svg, { fitTo: { mode: "width", value: canvas.width } }).render().asPng();
+  // All three families composite the same way now — one photo resized to
+  // cover the canvas, one Satori overlay on top — they only differ in which
+  // JSX tree builds that overlay.
+  const element =
+    template.templateFamily === "promo-benefits"
+      ? buildDensePromoElement(canvas, template, input.copy, input.logoDataUri, input.accentColor)
+      : buildFullBleedElement(canvas, template, input.copy, input.logoDataUri);
 
-    const { panelWidth, photoWidth, bodyHeight } = splitPanelGeometry(canvas);
-    const panelTint = lightenHex(input.accentColor, 0.85);
-
-    const resizedPhoto = await sharp(input.heroBuffer)
-      .rotate()
-      .resize(photoWidth, bodyHeight, { fit: "cover", position: "attention" })
-      .toBuffer();
-
-    const composited = await sharp({
-      create: { width: canvas.width, height: canvas.height, channels: 4, background: panelTint },
-    })
-      .composite([
-        { input: resizedPhoto, left: panelWidth, top: 0 },
-        { input: overlayPng, left: 0, top: 0, blend: "over" },
-      ])
-      .png()
-      .toBuffer();
-
-    const { buffer, mime } = await reencodeGeneratedImage(composited, "image/png");
-    return { buffer, mime, width: canvas.width, height: canvas.height };
-  }
-
-  // "full-bleed" — V1's original path, unchanged.
-  const element = buildFullBleedElement(canvas, template, input.copy, input.logoDataUri);
   const svg = await satori(element, { width: canvas.width, height: canvas.height, fonts });
   const overlayPng = new Resvg(svg, { fitTo: { mode: "width", value: canvas.width } }).render().asPng();
 
