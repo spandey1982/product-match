@@ -128,6 +128,15 @@ export interface GenerateModelImagesInput {
    * Absent / undefined behaves like "recreate" (backward-compatible default).
    */
   mode?: "resume" | "recreate";
+  /**
+   * Front-view horizontal placement override, for callers building a layout
+   * that puts text beside the photo (lib/marketing-creative's promo-benefits
+   * template) rather than displaying it standalone. Unset (default) leaves
+   * every existing caller's centered framing unchanged — see prompt-sets.ts's
+   * compositionClause for the full rationale. Ignored for objective
+   * "quick_listing" (that path doesn't route through prompt-sets.ts).
+   */
+  compositionHint?: "left-third" | "right-third";
 }
 
 export interface GenerateModelImagesResult {
@@ -492,6 +501,7 @@ export async function generateModelImages(
           existingFrontUrl,
           existingBackUrl,
           existingBaseShots: isResumeMode ? existingBaseShots : undefined,
+          compositionHint: input.compositionHint,
         });
 
   // Brand each image (store logo, or store name) before persisting, so the

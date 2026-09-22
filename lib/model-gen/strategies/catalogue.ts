@@ -104,8 +104,12 @@ export async function runCatalogueStrategy(opts: {
    * `existing: true` so the engine skips branding and recording for them.
    */
   existingBaseShots?: Partial<Record<"front" | "back", { url: string; provider: string }>>;
+  /** See prompt-sets.ts's compositionClause — unset (default) leaves today's
+   * centered framing unchanged; only marketing-creative's generate-new path
+   * sets this. */
+  compositionHint?: "left-third" | "right-third";
 }): Promise<{ images: GeneratedImage[] }> {
-  const { product, modelType, provider = "gemini", userId, backdrop, partImages = [], quality, model, casting = null } = opts;
+  const { product, modelType, provider = "gemini", userId, backdrop, partImages = [], quality, model, casting = null, compositionHint } = opts;
   const existingFrontUrl = opts.existingFrontUrl ?? null;
   const existingBackUrl = opts.existingBackUrl ?? null;
   // Same store + acting user for every call in this run; feature is "catalogue".
@@ -380,6 +384,7 @@ export async function runCatalogueStrategy(opts: {
       // Pin the back to the front's realized backdrop colour (front defines it).
       studioAnchor: isBack ? studioAnchor : null,
       extraReferences: promptRefs,
+      compositionHint,
     });
     // Append the casting appearance/persona/pose-freedom suffix. Empty string
     // when Casting is off, so the legacy prompt is byte-identical.

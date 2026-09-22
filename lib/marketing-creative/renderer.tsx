@@ -19,13 +19,20 @@
  * transition, a flat color-matched panel) placed the text-zone boundary at
  * a FIXED FRACTION of canvas width, chosen without looking at the actual
  * photo. That's the root cause every one of those attempts shared: hero
- * photos from generateModelImages() are essentially center-composed
- * portraits — nothing about the generation asks for off-center framing —
- * so a fixed-fraction boundary drawn from the left edge will, more often
- * than not, land on top of the model instead of on empty background,
- * because there usually isn't enough genuinely empty space that far left
- * to begin with. No amount of retuning the fraction fixes that; the
- * boundary has to come from the photo, not an assumption about it.
+ * photos were essentially center-composed portraits — nothing about the
+ * generation asked for off-center framing — so a fixed-fraction boundary
+ * drawn from the left edge would, more often than not, land on top of the
+ * model instead of on empty background. No amount of retuning the fraction
+ * fixed that; the boundary has to come from the photo, not an assumption
+ * about it — which is what the content-aware scan below does.
+ *
+ * generateModelImages() now also accepts an optional compositionHint (see
+ * lib/model-gen/prompt-sets.ts) that biases generation itself toward
+ * leaving real open space on one side, and lib/marketing-creative/workers/
+ * render.ts's generate-new path sets it. That's a bias on a generative
+ * model, not a guarantee — the scan below stays as the safety net
+ * regardless of whether the hero photo came from that path, an existing
+ * catalogue image, or anywhere else this template might be pointed at.
  *
  * V1.3's current design (this revision) computes the boundary from the
  * photo's actual content: computeColumnComplexity slices the canvas into
@@ -119,8 +126,28 @@ const IDEAL_TEXT_ZONE_FRACTION = 0.42;
  * (see densityScaleFor) instead of assuming this floor is always met. */
 const BASELINE_STRIP_COUNT = 3;
 /** Absolute last resort if even the baseline is unsafe — exists only so the
- * layout has SOME width to render into; not a claim that it's safe. */
-const HARD_MIN_TEXT_ZONE_FRACTION = 0.16;
+ * layout has SOME width to render into; not a claim that it's safe.
+ *
+ * Raised from 0.16 (live-tested 2026-09-22): a photo whose calm space fell
+ * all the way to that floor produced a genuinely unusable ~80px content
+ * column at 1080px canvas width — choppy one-word-per-line wrapping, and
+ * worse, several nested elements (icon layout boxes, wrapped-text clip
+ * regions) resolved to an exact zero size somewhere in satori's Yoga layout
+ * under that narrow a column. satori still emits a zero-area clip mask for
+ * those in its SVG output, and resvg's native rasterizer panics trying to
+ * construct clip geometry from it — a Rust panic, not a catchable JS error,
+ * so it can crash the whole render rather than failing one job gracefully.
+ * ~140px content width (0.24 zone fraction) was confirmed safe in the same
+ * testing; kept deliberately closer to that proven-safe point than to
+ * IDEAL_TEXT_ZONE_FRACTION, since raising this floor also raises how much
+ * of the content-aware safety scan's verdict it can override — the whole
+ * point of that scan was to stop assuming space is safe, so this floor
+ * should only cover the render-crash risk, not quietly reopen the
+ * product-coverage risk the scan exists to prevent. Every dimension this
+ * layout computes is also defensively floored at a positive minimum (see
+ * the Math.max() calls below) as a second, independent guard against the
+ * same class of zero-size element regardless of this constant. */
+const HARD_MIN_TEXT_ZONE_FRACTION = 0.24;
 
 interface ColumnSignal {
   /** Grayscale contrast within the strip — catches detailed/patterned
@@ -341,7 +368,10 @@ function buildDensePromoElement(
   densityScale: number
 ) {
   const accentText = accentColor && /^#[0-9a-fA-F]{6}$/.test(accentColor) ? accentColor : ACCENT;
-  const s = (base1080px: number) => scale(canvas.width, Math.round(base1080px * densityScale));
+  // Math.max(1, …) — a second, independent guard (alongside the raised
+  // HARD_MIN_TEXT_ZONE_FRACTION floor) against any density-scaled dimension
+  // rounding down to exactly 0, which satori/resvg cannot render safely.
+  const s = (base1080px: number) => Math.max(1, scale(canvas.width, Math.round(base1080px * densityScale)));
 
   const pad = scale(canvas.width, 50);
   const kickerSize = s(20);
@@ -356,7 +386,19 @@ function buildDensePromoElement(
   const badgeIconSize = s(20);
   const badgeLabelSize = s(14);
   const logoSize = scale(canvas.width, 66);
-  const contentWidth = textZoneWidth - pad * 2;
+  const contentWidth = Math.max(scale(canvas.width, 40), textZoneWidth - pad * 2);
+  const featureRowGap = scale(canvas.width, 13);
+  // An EXPLICIT, always-positive computed width — not flexGrow+width:0.
+  // Live-tested (2026-09-22): under extreme narrowness (a content-aware
+  // textZoneWidth well below ideal), that flex-basis trick could resolve to
+  // a literal zero-width box, which satori still emits as a real <rect
+  // width="0"> in its SVG output — and resvg's native rasterizer panics
+  // trying to construct clip geometry from a zero-size rect ("called
+  // Option::unwrap() on a None value" in its Rust geom code), crashing the
+  // whole render, not just failing gracefully. Math.max floors this at a
+  // usable minimum so it can never reach zero regardless of how narrow the
+  // safe zone comes out.
+  const featureTextWidth = Math.max(scale(canvas.width, 24), contentWidth - featureIconCircle - featureRowGap);
   const ArrowRightIcon = ICONS["arrow-right"];
   const dividerStyle = { display: "flex" as const, height: 1, width: contentWidth, backgroundColor: "rgba(255,255,255,0.22)" };
 
@@ -449,7 +491,7 @@ function buildDensePromoElement(
             {copy.features.map((f, i) => {
               const Icon = ICONS[f.icon];
               return (
-                <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: scale(canvas.width, 13) }}>
+                <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: featureRowGap }}>
                   <div
                     style={{
                       display: "flex",
@@ -464,13 +506,14 @@ function buildDensePromoElement(
                   >
                     <Icon size={featureIconSize} color={PAPER} strokeWidth={2.25} />
                   </div>
-                  {/* flexGrow+width:0 forces satori to constrain this
-                      column to the row's actual remaining width before
-                      wrapping the description — without it, satori
-                      live-tested (2026-09-22) to under-measure the wrapped
-                      text's height, so the NEXT feature row started too
-                      early and visibly overlapped this one. */}
-                  <div style={{ display: "flex", flexDirection: "column", flexGrow: 1, width: 0 }}>
+                  {/* An explicit width constrains satori to the row's real
+                      remaining space before wrapping the description —
+                      without it, satori under-measures wrapped text height,
+                      so the NEXT feature row starts too early and visibly
+                      overlaps this one. See featureTextWidth's own comment
+                      for why this must be a computed positive number, never
+                      the flexGrow+width:0 trick. */}
+                  <div style={{ display: "flex", flexDirection: "column", width: featureTextWidth }}>
                     <div style={{ display: "flex", color: PAPER, fontSize: featureLabelSize, fontWeight: 700 }}>{f.label}</div>
                     <div
                       style={{

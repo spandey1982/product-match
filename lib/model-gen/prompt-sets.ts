@@ -281,6 +281,11 @@ export interface ViewPromptInput {
    * photo. Empty/absent → no roll-call change (current behaviour).
    */
   extraReferences?: Array<{ label: string; placement: string }>;
+  /**
+   * Front-view-only horizontal placement override — see compositionClause's
+   * header for why this exists and why it defaults to unset (centered).
+   */
+  compositionHint?: "left-third" | "right-third";
 }
 
 /** "Preserve these product specifics: …" clause, or "" when no notes. */
@@ -396,6 +401,26 @@ function orientationClause(viewId: string): string {
 }
 
 /**
+ * Horizontal frame placement — nothing else in this prompt pipeline ever
+ * addresses WHERE in the frame the subject stands (orientationClause above
+ * controls camera angle, not position), so every generation defaults to a
+ * centered portrait. That's fine for a standalone catalogue image but breaks
+ * any downstream layout that needs to put text beside the photo (lib/
+ * marketing-creative's promo-benefits template) — there's no reliable open
+ * space on either side to put it in. Optional and additive: every existing
+ * caller leaves this unset and gets today's centered behaviour unchanged;
+ * only marketing-creative's generate-new path sets it. Phrased as
+ * deliberate ("not a framing error to correct") because an unqualified
+ * off-center instruction risks being read as a mistake and "fixed" back
+ * toward center.
+ */
+function compositionClause(viewId: string, hint: "left-third" | "right-third" | undefined): string {
+  if (!hint || viewId !== "front") return "";
+  const [openSide, subjectSide] = hint === "right-third" ? ["left", "right"] : ["right", "left"];
+  return `Subject composition (mandatory, overrides default centered framing): position the model in the ${subjectSide} third of the frame, her body's horizontal center falling roughly two-thirds of the way across the image toward the ${subjectSide} edge — NOT centered. The entire ${openSide} third of the frame must be genuine open, unobstructed space: plain backdrop or softly defocused environment only, with no part of the model, hair, garment, or any prop crossing into it. This is a deliberate off-center composition for a side-by-side marketing layout, not an error to correct back toward center.`;
+}
+
+/**
  * Compose the full prompt for one view. When a reference model image is
  * supplied it is sent as the first image and the prompt instructs the model to
  * dress that exact person (improving draping consistency); otherwise a fresh
@@ -447,7 +472,7 @@ function extraImageClause(
 }
 
 export function buildViewPrompt(input: ViewPromptInput): string {
-  const { category, color, gender, view, hasReference, detailNotes, material, backdrop, studioAnchor, extraReferences } = input;
+  const { category, color, gender, view, hasReference, detailNotes, material, backdrop, studioAnchor, extraReferences, compositionHint } = input;
   const detail = detailClause(detailNotes);
   const backGuard = backGuardClause(view.id, detailNotes);
   const blouse = blouseClause(category, color);
@@ -455,6 +480,7 @@ export function buildViewPrompt(input: ViewPromptInput): string {
   const anchor = anchorClause(studioAnchor);
   const styling = STYLING_CONSISTENCY_CLAUSE;
   const orientation = orientationClause(view.id);
+  const composition = compositionClause(view.id, compositionHint);
   const realism = realismClause(category, view.id);
   const hair = hairClause(gender);
   const fabricPose = fabricPoseClause(material);
@@ -497,6 +523,7 @@ export function buildViewPrompt(input: ViewPromptInput): string {
       backdrop,
       anchor,
       orientation,
+      composition,
       realism,
       hair,
       fabricPose,
@@ -517,6 +544,7 @@ export function buildViewPrompt(input: ViewPromptInput): string {
     backdrop,
     anchor,
     orientation,
+    composition,
     realism,
     hair,
     fabricPose,

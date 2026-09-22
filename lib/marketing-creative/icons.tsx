@@ -34,6 +34,14 @@ function svgIcon(paths: Array<{ tag: "path" | "circle"; attrs: Record<string, st
       <svg
         width={size}
         height={size}
+        // satori's layout pass (Yoga) reads `style`, not raw SVG width/
+        // height attributes — without this, live-tested (2026-09-22) and
+        // confirmed it computes a zero-size layout box for the icon despite
+        // the attributes rendering the icon at the right size visually, and
+        // that zero-size box becomes a zero-area clip mask in satori's SVG
+        // output that crashes resvg's native rasterizer outright (a Rust
+        // panic, not a catchable JS error) rather than failing gracefully.
+        style={{ display: "flex", width: size, height: size }}
         viewBox="0 0 24 24"
         fill="none"
         stroke={color}

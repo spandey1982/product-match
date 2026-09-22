@@ -59,6 +59,11 @@ export async function handleCreativeRender(payload: CreativeHeroRenderPayload): 
       userId: job.userId,
       objective: "catalogue",
       backdropSection: "scenic",
+      // promo-benefits' text panel sits on the left, product zone on the
+      // right (see lib/marketing-creative/renderer.tsx) — bias generation to
+      // leave real open space on the left instead of relying solely on the
+      // renderer's safe-zone scan to find whatever margin happens to exist.
+      compositionHint: "right-third",
     });
 
     if (genResult.images.length === 0) {
