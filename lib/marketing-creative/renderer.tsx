@@ -15,37 +15,46 @@
  *
  * promo-benefits (V1.3, this revision) needs a different compositing
  * strategy because it carries far more text than the other two families.
- * Two earlier attempts both derived the text zone FROM the hero photo
- * itself — first a plain gradient over one full-canvas crop, then a blurred
- * copy of that same crop with a feathered blur→sharp transition. Both kept
- * reintroducing the same class of defect (a visible soft/blurred sliver of
- * the model wherever her silhouette reached into the text zone), because
- * any technique that shares real product pixels with the text zone has to
- * get the boundary exactly right for every hero photo, and "attention"-crop
- * gives no guarantee about where the subject's silhouette actually ends.
+ * Every earlier attempt (a plain gradient, a blurred copy with a feathered
+ * transition, a flat color-matched panel) placed the text-zone boundary at
+ * a FIXED FRACTION of canvas width, chosen without looking at the actual
+ * photo. That's the root cause every one of those attempts shared: hero
+ * photos from generateModelImages() are essentially center-composed
+ * portraits — nothing about the generation asks for off-center framing —
+ * so a fixed-fraction boundary drawn from the left edge will, more often
+ * than not, land on top of the model instead of on empty background,
+ * because there usually isn't enough genuinely empty space that far left
+ * to begin with. No amount of retuning the fraction fixes that; the
+ * boundary has to come from the photo, not an assumption about it.
  *
- * V1.3's current design (this revision) sidesteps the whole problem: the
- * text zone is a FLAT, solid-color panel — not derived from the photo at
- * all, so there is no shared pixel data and therefore no way for product
- * content to bleed into it, blurred or otherwise. The panel's color is the
- * hero photo's own dominant tone (via sharp's `.stats().dominant`, lightened
- * toward white), so it still harmonizes with the photo instead of looking
- * like an arbitrary color choice — the retailer's own reference example for
- * this approach uses the same trick (a plain panel color-matched to the
- * photo's wall/backdrop tone). A short feather where the crisp product crop
- * meets the panel is still applied, but it now fades real photo pixels
- * toward the FLAT PANEL COLOR (a vignette), never toward a blurred copy of
- * the subject — so even if the model's edge reaches into that band, the
- * result reads as an intentional soft vignette, not a rendering defect.
+ * V1.3's current design (this revision) computes the boundary from the
+ * photo's actual content: computeColumnComplexity slices the canvas into
+ * vertical strips and measures each one's grayscale contrast (a cheap,
+ * local, no-network proxy for "is there a subject/detail here") via sharp's
+ * own stats; resolveSafeTextZoneWidth then walks in from the left edge and
+ * stops the moment contrast spikes — i.e. the moment it's likely hit an arm,
+ * a sleeve, a prop — instead of assuming a percentage is safe. The panel
+ * width used for both the composited photo crop AND the text layout is
+ * whatever that scan actually finds, clamped between a minimum usable width
+ * and an ideal ceiling. This is the direct fix for "part of the model is
+ * still covered" — it no longer guesses.
  *
- * denseZoneGeometry still defines a text zone and product zone, deliberately
- * off-center rather than dead-center or pushed to the edge. Content is a
- * flat column of peer elements (kicker, title, features, price+CTA, trust
- * badges) under one justifyContent:"space-between", each separated by a
- * hairline divider, so the whole available height is used the way a real
- * print ad distributes copy — not clustered, not centered as one block.
- * Text is dark ink now (not white), since a light flat panel doesn't need
- * the shadow/translucency tricks a photo background did for contrast.
+ * The panel itself is a blurred copy of the SAME verified-safe region (not
+ * a flat color) — once the boundary is genuinely content-aware, blurring is
+ * safe again, and it reads as a real continuation of the photo's own tones
+ * and texture rather than an arbitrary flat swatch sitting next to a richly
+ * detailed scene, which was the other half of the retailer's feedback (a
+ * color-matched flat panel still felt visually disconnected from an ornate,
+ * detailed courtyard photo — matching hue isn't the same as matching visual
+ * richness). A short feather where the crisp product crop meets the blurred
+ * panel softens the seam.
+ *
+ * Content is a flat column of peer elements (kicker, title, features,
+ * price+CTA, trust badges) under one justifyContent:"space-between", each
+ * separated by a hairline divider, so the whole available height is used
+ * the way a real print ad distributes copy — not clustered, not centered as
+ * one block. Text is white again (not dark ink), since the panel is once
+ * more a photo-derived background of variable tone, not a flat light fill.
  *
  * It also drops the promo-benefits CTA's filled-pill styling (a fake button
  * an Instagram/Pinterest viewer might mistake for something tappable, when
@@ -99,13 +108,108 @@ function buildHorizontalFeatherMask(width: number, height: number, featherWidth:
   return buf;
 }
 
-/** Mixes an {r,g,b} triple toward white by `amount` (0-1) and returns a hex
- * string — used to turn the hero photo's dominant color into a light panel
- * tint that harmonizes with it, rather than picking an arbitrary color. */
-function lightenRgbToHex(rgb: { r: number; g: number; b: number }, amount: number): string {
-  const mix = (channel: number) => Math.max(0, Math.min(255, Math.round(channel + (255 - channel) * amount)));
-  const toHex = (n: number) => n.toString(16).padStart(2, "0");
-  return `#${toHex(mix(rgb.r))}${toHex(mix(rgb.g))}${toHex(mix(rgb.b))}`;
+const STRIP_COUNT = 24;
+const IDEAL_TEXT_ZONE_FRACTION = 0.42;
+/** A small baseline-establishing count, NOT a content-overriding floor —
+ * live-tested (2026-09-22) and confirmed a large "minimum" here was forcing
+ * acceptance of strips the signals had already correctly flagged as busy
+ * (a doorframe edge, the start of a dupatta), defeating the whole analysis
+ * for photos where genuine safe space is simply narrower than the ideal.
+ * The layout adapts its type scale to whatever width actually comes out
+ * (see densityScaleFor) instead of assuming this floor is always met. */
+const BASELINE_STRIP_COUNT = 3;
+/** Absolute last resort if even the baseline is unsafe — exists only so the
+ * layout has SOME width to render into; not a claim that it's safe. */
+const HARD_MIN_TEXT_ZONE_FRACTION = 0.16;
+
+interface ColumnSignal {
+  /** Grayscale contrast within the strip — catches detailed/patterned
+   * content (embroidery, mirror-work, a busy background) but, on its own,
+   * misses smooth, low-detail product content like plain fabric or skin. */
+  stdev: number;
+  /** Color distance between the strip's overall dominant tone and a sample
+   * from just its own top band (near head height, almost always genuine
+   * background/sky/wall in a portrait crop, regardless of x-position).
+   * Live-tested (2026-09-22) and confirmed necessary: a pale, smooth dupatta
+   * drape scored as "calm" on stdev alone — no internal detail — but its
+   * color plainly did not match that same column's background sample. */
+  colorShift: number;
+}
+
+/** Per-vertical-strip signal across the canvas — cheap, local, no-network
+ * proxies for "is there product/subject content here," not just "is there
+ * detail here." Every strip costs a couple of small sharp extract+stats
+ * calls; STRIP_COUNT of them is fast since it's all in-memory, no I/O. */
+async function computeColumnSignals(baseCropped: Buffer, canvas: Canvas): Promise<ColumnSignal[]> {
+  const stripWidth = canvas.width / STRIP_COUNT;
+  const topBandHeight = Math.max(1, Math.round(canvas.height * 0.14));
+  const signals: ColumnSignal[] = [];
+  for (let i = 0; i < STRIP_COUNT; i++) {
+    const left = Math.floor(i * stripWidth);
+    const right = i === STRIP_COUNT - 1 ? canvas.width : Math.floor((i + 1) * stripWidth);
+    const width = Math.max(1, right - left);
+
+    // .extract() must be materialized via .toBuffer() before a fresh
+    // sharp() instance computes .stats() on it — live-tested (2026-09-22)
+    // and confirmed that chaining .extract(...).stats() directly on this
+    // sharp/libvips build silently returns stats for the UNCROPPED source
+    // instead of the extracted region, which made every strip report
+    // identical numbers and made this whole analysis a no-op.
+    const stripBuffer = await sharp(baseCropped).extract({ left, top: 0, width, height: canvas.height }).toBuffer();
+    const topBandBuffer = await sharp(baseCropped).extract({ left, top: 0, width, height: topBandHeight }).toBuffer();
+
+    const [full, topBand, grey] = await Promise.all([
+      sharp(stripBuffer).stats(),
+      sharp(topBandBuffer).stats(),
+      sharp(stripBuffer).greyscale().stats(),
+    ]);
+
+    const colorShift = Math.sqrt(
+      (full.dominant.r - topBand.dominant.r) ** 2 +
+        (full.dominant.g - topBand.dominant.g) ** 2 +
+        (full.dominant.b - topBand.dominant.b) ** 2
+    );
+
+    signals.push({ stdev: grey.channels[0].stdev, colorShift });
+  }
+  return signals;
+}
+
+/** Walks in from the left edge, stopping the moment EITHER signal spikes —
+ * contrast (a sleeve, a hand, a patterned/embroidered edge) or color-shift
+ * (a smooth but differently-toned garment, like plain fabric, that contrast
+ * alone misses) — once BASELINE_STRIP_COUNT strips have established what
+ * "normal" looks like for this photo. Never more than IDEAL_TEXT_ZONE_
+ * FRACTION's worth even if the photo stays calm the whole way — this is a
+ * text panel, not a license to shrink the product's share of the frame. */
+function resolveSafeTextZoneWidth(signals: ColumnSignal[], canvas: Canvas): number {
+  const idealCount = Math.round(IDEAL_TEXT_ZONE_FRACTION * STRIP_COUNT);
+  const hardMinCount = Math.max(1, Math.round(HARD_MIN_TEXT_ZONE_FRACTION * STRIP_COUNT));
+  const COLOR_SHIFT_THRESHOLD = 34;
+
+  let acceptedCount = 0;
+  let stdevSum = 0;
+  for (let i = 0; i < idealCount && i < signals.length; i++) {
+    const { stdev, colorShift } = signals[i];
+    const stdevBaseline = acceptedCount > 0 ? stdevSum / acceptedCount : stdev;
+    const stdevSpike = stdev > stdevBaseline * 1.5;
+    const colorSpike = colorShift > COLOR_SHIFT_THRESHOLD;
+    if (acceptedCount >= BASELINE_STRIP_COUNT && (stdevSpike || colorSpike)) break;
+    acceptedCount++;
+    stdevSum += stdev;
+  }
+
+  const safeCount = Math.max(hardMinCount, acceptedCount);
+  return Math.round((safeCount / STRIP_COUNT) * canvas.width);
+}
+
+/** Scales type down when the safe zone comes out narrower than the ideal —
+ * so a photo that genuinely doesn't leave much calm space gets compact,
+ * still-fitting type instead of overflow/excessive wrapping. Never scales
+ * up past 1 when the zone is at or above ideal. */
+function densityScaleFor(textZoneWidth: number, canvas: Canvas): number {
+  const ratio = textZoneWidth / (IDEAL_TEXT_ZONE_FRACTION * canvas.width);
+  return Math.max(0.72, Math.min(1, ratio));
 }
 
 // ── Full-bleed layout (hero-editorial, styled-promo) — V1's original tree, unchanged ──
@@ -218,24 +322,13 @@ function buildFullBleedElement(canvas: Canvas, template: CreativeTemplate, copy:
 
 // ── Dense full-bleed layout (promo-benefits) — V1.3 ──
 
-/** Fraction of canvas width reserved for the flat text panel — content is
- * confined inside this, with padding. It's also the boundary the product
- * crop's left-edge vignette starts AT (never before), so the panel itself
- * never has any photo pixels composited into it, faded or otherwise. The
- * product's fully-opaque region starts a little further right still
- * (textZoneWidth + featherWidth), landing its visual center around the
- * canvas's +0.4 to +0.5 mark (center = 0, edges = ±1) — off to one side,
- * never dead-center, never pushed to the edge. */
-const TEXT_ZONE_FRACTION = 0.42;
-
-export function denseZoneGeometry(canvas: Canvas) {
-  const textZoneWidth = Math.round(canvas.width * TEXT_ZONE_FRACTION);
-  // Short vignette where the crisp product crop fades toward the panel
-  // color — this is NOT a blur transition (there is no blur anywhere in
-  // this layout anymore), just an alpha fade of real photo pixels into a
-  // matching flat color, so it reads as an edge treatment, not a defect.
-  const featherWidth = scale(canvas.width, 60);
-  return { textZoneWidth, featherWidth };
+/** Short feather where the crisp product crop meets the blurred panel — a
+ * soft depth-of-field-style falloff rather than a hard cut. It's fine for
+ * this to blend real (unblurred-vs-blurred) pixels, unlike an earlier
+ * attempt's mistake, because both textZoneWidth and this feather now start
+ * from a content-verified-safe boundary, not an assumed one. */
+function featherWidthFor(canvas: Canvas): number {
+  return scale(canvas.width, 90);
 }
 
 function buildDensePromoElement(
@@ -243,26 +336,29 @@ function buildDensePromoElement(
   template: CreativeTemplate,
   copy: DeterministicCopy,
   logoDataUri: string | null,
-  accentColor: string | null
+  accentColor: string | null,
+  textZoneWidth: number,
+  densityScale: number
 ) {
   const accentText = accentColor && /^#[0-9a-fA-F]{6}$/.test(accentColor) ? accentColor : ACCENT;
+  const s = (base1080px: number) => scale(canvas.width, Math.round(base1080px * densityScale));
 
-  const pad = scale(canvas.width, 52);
-  const kickerSize = scale(canvas.width, 20);
-  const titleSize = scale(canvas.width, 46);
-  const featureLabelSize = scale(canvas.width, 23);
-  const featureDescSize = scale(canvas.width, 18);
-  const featureIconSize = scale(canvas.width, 22);
-  const priceSize = scale(canvas.width, 29);
-  const discountSize = scale(canvas.width, 18);
-  const ctaSize = scale(canvas.width, 24);
-  const badgeIconSize = scale(canvas.width, 20);
-  const badgeLabelSize = scale(canvas.width, 14);
+  const pad = scale(canvas.width, 50);
+  const kickerSize = s(20);
+  const titleSize = s(44);
+  const featureLabelSize = s(23);
+  const featureDescSize = s(18);
+  const featureIconSize = s(20);
+  const featureIconCircle = s(38);
+  const priceSize = s(29);
+  const discountSize = s(18);
+  const ctaSize = s(24);
+  const badgeIconSize = s(20);
+  const badgeLabelSize = s(14);
   const logoSize = scale(canvas.width, 66);
-  const { textZoneWidth } = denseZoneGeometry(canvas);
   const contentWidth = textZoneWidth - pad * 2;
   const ArrowRightIcon = ICONS["arrow-right"];
-  const dividerStyle = { display: "flex" as const, height: 1, width: contentWidth, backgroundColor: "rgba(20,17,16,0.15)" };
+  const dividerStyle = { display: "flex" as const, height: 1, width: contentWidth, backgroundColor: "rgba(255,255,255,0.22)" };
 
   return (
     <div style={{ width: canvas.width, height: canvas.height, display: "flex", flexDirection: "column", fontFamily: "Inter" }}>
@@ -274,8 +370,7 @@ function buildDensePromoElement(
               width: logoSize,
               height: logoSize,
               borderRadius: Math.round(logoSize * 0.22),
-              backgroundColor: "rgba(255,255,255,0.95)",
-              border: "1px solid rgba(20,17,16,0.1)",
+              backgroundColor: "rgba(255,255,255,0.92)",
               alignItems: "center",
               justifyContent: "center",
               overflow: "hidden",
@@ -288,20 +383,24 @@ function buildDensePromoElement(
       </div>
 
       {/* Every element here — kicker, title, features, price+CTA, trust
-          badges — is a direct flex child of ONE column with
-          justifyContent:"space-between", so gaps distribute evenly across
-          the whole available height instead of clustering. Dark ink text
-          throughout: the panel behind this is now a flat, light,
-          photo-color-matched fill (painted by renderCreativeCanvas as the
-          base layer, not drawn here), so there's no variable-photo-tone
-          contrast problem left to solve with translucency or shadows. */}
+          badges — is a direct flex child of ONE column with a fixed,
+          density-scaled gap (NOT justifyContent:"space-between" — live-
+          tested 2026-09-22 and confirmed that when a narrow, content-aware
+          textZoneWidth pushes text into more wrap lines than the available
+          height can fit, space-between's slack calculation goes negative
+          and rows overlap instead of just flowing past the bottom, which is
+          far worse than a less-than-perfectly-distributed layout). White
+          text with a ribbon/icon-circle contrast treatment: the panel is a
+          blurred, photo-derived background of variable tone again (not a
+          flat fill), so text needs a reliable contrast anchor regardless of
+          what's underneath at any given point. */}
       <div
         style={{
           display: "flex",
           flexDirection: "column",
           flexGrow: 1,
-          justifyContent: "space-between",
-          padding: `0 ${pad}px`,
+          gap: s(22),
+          padding: `${s(18)}px ${pad}px ${pad}px`,
           width: contentWidth,
         }}
       >
@@ -309,19 +408,40 @@ function buildDensePromoElement(
           <div
             style={{
               display: "flex",
-              color: accentText,
-              fontStyle: "italic",
-              fontWeight: 600,
-              fontSize: kickerSize,
-              letterSpacing: 1.2,
-              textTransform: "uppercase",
+              alignSelf: "flex-start",
+              backgroundColor: accentText,
+              borderRadius: scale(canvas.width, 6),
+              padding: `${scale(canvas.width, 7)}px ${scale(canvas.width, 16)}px`,
             }}
           >
-            {copy.kicker}
+            <div
+              style={{
+                display: "flex",
+                color: PAPER,
+                fontStyle: "italic",
+                fontWeight: 600,
+                fontSize: kickerSize,
+                letterSpacing: 1.2,
+                textTransform: "uppercase",
+              }}
+            >
+              {copy.kicker}
+            </div>
           </div>
         ) : null}
 
-        <div style={{ display: "flex", color: INK, fontSize: titleSize, fontWeight: 700, lineHeight: 1.14 }}>{copy.title}</div>
+        <div
+          style={{
+            display: "flex",
+            color: PAPER,
+            fontSize: titleSize,
+            fontWeight: 700,
+            lineHeight: 1.14,
+            textShadow: "0 2px 14px rgba(0,0,0,0.45)",
+          }}
+        >
+          {copy.title}
+        </div>
 
         {isRegionPresent(template, "features") && copy.features.length > 0 ? (
           <div style={{ display: "flex", flexDirection: "column", gap: scale(canvas.width, 16) }}>
@@ -330,12 +450,38 @@ function buildDensePromoElement(
               const Icon = ICONS[f.icon];
               return (
                 <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: scale(canvas.width, 13) }}>
-                  <div style={{ display: "flex", marginTop: scale(canvas.width, 2) }}>
-                    <Icon size={featureIconSize} color={accentText} strokeWidth={2.25} />
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      width: featureIconCircle,
+                      height: featureIconCircle,
+                      borderRadius: 999,
+                      backgroundColor: accentText,
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Icon size={featureIconSize} color={PAPER} strokeWidth={2.25} />
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column" }}>
-                    <div style={{ display: "flex", color: INK, fontSize: featureLabelSize, fontWeight: 700 }}>{f.label}</div>
-                    <div style={{ display: "flex", color: INK, opacity: 0.72, fontSize: featureDescSize, fontWeight: 400 }}>
+                  {/* flexGrow+width:0 forces satori to constrain this
+                      column to the row's actual remaining width before
+                      wrapping the description — without it, satori
+                      live-tested (2026-09-22) to under-measure the wrapped
+                      text's height, so the NEXT feature row started too
+                      early and visibly overlapped this one. */}
+                  <div style={{ display: "flex", flexDirection: "column", flexGrow: 1, width: 0 }}>
+                    <div style={{ display: "flex", color: PAPER, fontSize: featureLabelSize, fontWeight: 700 }}>{f.label}</div>
+                    <div
+                      style={{
+                        display: "flex",
+                        color: PAPER,
+                        opacity: 0.88,
+                        fontSize: featureDescSize,
+                        fontWeight: 400,
+                        textShadow: "0 1px 8px rgba(0,0,0,0.35)",
+                      }}
+                    >
                       {f.description}
                     </div>
                   </div>
@@ -351,10 +497,29 @@ function buildDensePromoElement(
             {isRegionPresent(template, "price") && (copy.priceText || copy.discountBadge) ? (
               <div style={{ display: "flex", alignItems: "baseline", gap: scale(canvas.width, 10) }}>
                 {copy.priceText ? (
-                  <div style={{ display: "flex", color: INK, fontSize: priceSize, fontWeight: 700 }}>{copy.priceText}</div>
+                  <div
+                    style={{
+                      display: "flex",
+                      whiteSpace: "nowrap",
+                      color: PAPER,
+                      fontSize: priceSize,
+                      fontWeight: 700,
+                      textShadow: "0 1px 8px rgba(0,0,0,0.35)",
+                    }}
+                  >
+                    {copy.priceText}
+                  </div>
                 ) : null}
                 {copy.discountBadge ? (
-                  <div style={{ display: "flex", color: "rgba(20,17,16,0.55)", fontSize: discountSize, fontWeight: 600 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      whiteSpace: "nowrap",
+                      color: "rgba(255,255,255,0.78)",
+                      fontSize: discountSize,
+                      fontWeight: 600,
+                    }}
+                  >
                     {copy.discountBadge}
                   </div>
                 ) : null}
@@ -368,7 +533,9 @@ function buildDensePromoElement(
               // itself; a fake button drawn on the pixels risks reading as a
               // real (broken) control instead.
               <div style={{ display: "flex", alignItems: "center", gap: scale(canvas.width, 8) }}>
-                <div style={{ display: "flex", color: accentText, fontSize: ctaSize, fontWeight: 700 }}>{copy.ctaText}</div>
+                <div style={{ display: "flex", whiteSpace: "nowrap", color: accentText, fontSize: ctaSize, fontWeight: 700 }}>
+                  {copy.ctaText}
+                </div>
                 <ArrowRightIcon size={Math.round(ctaSize * 0.85)} color={accentText} strokeWidth={2.5} />
               </div>
             ) : null}
@@ -391,8 +558,8 @@ function buildDensePromoElement(
                       width: Math.round(contentWidth / 2) - scale(canvas.width, 7),
                     }}
                   >
-                    <Icon size={badgeIconSize} color={accentText} strokeWidth={2} />
-                    <div style={{ display: "flex", color: INK, opacity: 0.85, fontSize: badgeLabelSize, fontWeight: 600 }}>
+                    <Icon size={badgeIconSize} color={PAPER} strokeWidth={2} />
+                    <div style={{ display: "flex", color: PAPER, opacity: 0.85, fontSize: badgeLabelSize, fontWeight: 600 }}>
                       {b.label}
                     </div>
                   </div>
@@ -438,31 +605,39 @@ export async function renderCreativeCanvas(input: RenderCreativeInput): Promise<
     .toBuffer();
 
   if (template.templateFamily === "promo-benefits") {
-    // The panel's flat fill is the hero photo's own dominant color,
-    // lightened — harmonizes with the photo without sharing any of its
-    // actual pixels, which is what makes this immune to the blur-bleed
-    // defect the two earlier compositing strategies both had.
-    const { dominant } = await sharp(baseCropped).stats();
-    const panelColor = lightenRgbToHex(dominant, 0.74);
+    // Content-aware boundary: scan the actual photo for where it's calm
+    // before deciding how wide the text zone can be — see this file's
+    // header for why a fixed fraction can't work in general.
+    const signals = await computeColumnSignals(baseCropped, canvas);
+    const textZoneWidth = resolveSafeTextZoneWidth(signals, canvas);
+    const densityScale = densityScaleFor(textZoneWidth, canvas);
+    const featherWidth = featherWidthFor(canvas);
 
-    const element = buildDensePromoElement(canvas, template, input.copy, input.logoDataUri, input.accentColor);
+    const element = buildDensePromoElement(
+      canvas,
+      template,
+      input.copy,
+      input.logoDataUri,
+      input.accentColor,
+      textZoneWidth,
+      densityScale
+    );
     const svg = await satori(element, { width: canvas.width, height: canvas.height, fonts });
     const overlayPng = new Resvg(svg, { fitTo: { mode: "width", value: canvas.width } }).render().asPng();
 
-    const { textZoneWidth, featherWidth } = denseZoneGeometry(canvas);
+    // The panel is a blurred copy of the SAME verified-safe region — real
+    // photo tones/texture, not an arbitrary fill, and safe to blur because
+    // the boundary is now content-verified rather than assumed.
+    const blurredBase = await sharp(baseCropped).blur(scale(canvas.width, 26)).toBuffer();
 
-    // The product crop starts AT textZoneWidth, never before — the panel
-    // must never have any photo pixels composited into it, faded or not.
+    // The product crop starts AT textZoneWidth, feathering in toward fully
+    // opaque so the blur→sharp change reads as a soft falloff.
     const cropStartX = textZoneWidth;
     const sharpRegionWidth = canvas.width - cropStartX;
     const photoRegion = await sharp(baseCropped)
       .extract({ left: cropStartX, top: 0, width: sharpRegionWidth, height: canvas.height })
       .toBuffer();
 
-    // Short alpha fade on the crop's own left edge (toward transparent, so
-    // the flat panel color shows through underneath) — a vignette, not a
-    // blur: it softens the seam without ever showing a blurred rendition of
-    // the subject, because there's nothing blurred anywhere in this layout.
     const maskPng = await sharp(buildHorizontalFeatherMask(sharpRegionWidth, canvas.height, featherWidth), {
       raw: { width: sharpRegionWidth, height: canvas.height, channels: 4 },
     })
@@ -475,9 +650,7 @@ export async function renderCreativeCanvas(input: RenderCreativeInput): Promise<
       .png()
       .toBuffer();
 
-    const composited = await sharp({
-      create: { width: canvas.width, height: canvas.height, channels: 4, background: panelColor },
-    })
+    const composited = await sharp(blurredBase)
       .composite([
         { input: featheredPhoto, left: cropStartX, top: 0 },
         { input: overlayPng, left: 0, top: 0, blend: "over" },
