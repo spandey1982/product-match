@@ -24,26 +24,40 @@
  * garment — the actual thing being sold — is exactly what a viewer must be
  * able to see clearly for the creative to do its job.
  *
- * buildDensePromoElement + renderCreativeCanvas's promo-benefits branch now
+ * buildDensePromoElement + renderCreativeCanvas's promo-benefits branch
  * enforce a real two-zone geometry instead of hoping sharp's "attention"
- * crop happens to leave room: a text zone (~44% of canvas width) and a
- * product zone (~56%, deliberately off-center rather than dead-center or
- * pushed to the edge — see denseZoneGeometry). The product zone is a crisp
- * crop of the hero photo; the text zone is the SAME underlying crop, blurred,
- * with a short feathered (gradually-blurring, not a hard cut) transition
- * between them — literally the "extrapolated, blurred" background technique
- * requested, and the same spirit as the /shop PDP's "Pairs beautifully with"
- * slide (components/product/AdditionalInfoSlide.tsx), just with an actual
- * blur instead of only a gradient, because promo-benefits' text block is
- * dense enough to need real separation from the product, not just darkening.
- * A light scrim still sits over the text zone for contrast, but far lighter
- * than V1.3's first pass since the blur already does most of the work.
+ * crop happens to leave room: a text zone and a product zone (see
+ * denseZoneGeometry), deliberately off-center rather than dead-center or
+ * pushed to the edge. The product zone is a crisp crop of the hero photo;
+ * the text zone is the SAME underlying crop, blurred, with a feathered
+ * (gradually-blurring, not a hard cut) transition between them.
+ *
+ * That transition band's placement matters and was wrong in the first cut
+ * of this design: it ended exactly at the text zone's boundary, which means
+ * its second half was already blending real (unblurred) product pixels
+ * with blur — visible as a soft/blurred sliver of the model whenever her
+ * silhouette reached that far left, live-tested and confirmed by the
+ * retailer. Fixed by starting the feather band AT the text-zone boundary
+ * and running it rightward from there — the entire text zone is now
+ * guaranteed pure blur with zero product pixels composited into it at any
+ * opacity, and the transition itself lives entirely in the buffer between
+ * the two zones where nothing needs to be legible.
+ *
+ * Content layout also moved from one vertically-centered cluster to a
+ * genuine top-to-bottom spread (space-between, not center) plus a
+ * full-width bottom band for trust badges spanning both zones — so the
+ * composition uses the frame the way a real print ad does (compare
+ * research/catalogue-to-campaign.html's reference examples) instead of
+ * reading as a block of text pasted over a photo.
  *
  * It also drops the promo-benefits CTA's filled-pill styling (a fake button
  * an Instagram/Pinterest viewer might mistake for something tappable, when
  * the actual click path is the platform's own link affordance) and the
  * price banner's solid accent fill (de-emphasized to an inline text line,
- * present without dominating).
+ * present without dominating) — a colored kicker ribbon and icon-circle
+ * badges stayed/returned though, since those are informational labels, not
+ * fake controls, and give text reliable contrast against a photo whose tone
+ * varies underneath it.
  *
  * Icon rendering: small plain-function icon components (lib/marketing-
  * creative/icons.tsx), not lucide-react's exported components directly —
@@ -201,20 +215,24 @@ function buildFullBleedElement(canvas: Canvas, template: CreativeTemplate, copy:
 
 // ── Dense full-bleed layout (promo-benefits) — V1.3 ──
 
-/** Fraction of canvas width reserved for text. The remaining ~56% is the
- * product zone — deliberately not 50/50 and not dead-center-vs-edge; the
- * product's effective center lands around the canvas's +0.4 to +0.5 mark
- * (treating center as 0, the edges as ±1), visible and off to one side
- * without ever being pushed toward an edge. */
-const TEXT_ZONE_FRACTION = 0.44;
+/** Fraction of canvas width reserved for text — content is confined inside
+ * this, with padding, and it is the boundary the blur→sharp feather band
+ * starts AT (never before), so nothing in the text zone is ever partially
+ * sharp. The product's effective fully-opaque region starts even further
+ * right (textZoneWidth + featherWidth), landing its visual center around
+ * the canvas's +0.4 to +0.5 mark (center = 0, edges = ±1) — off to one
+ * side, never dead-center, never pushed to the edge. */
+const TEXT_ZONE_FRACTION = 0.4;
 
 export function denseZoneGeometry(canvas: Canvas) {
   const textZoneWidth = Math.round(canvas.width * TEXT_ZONE_FRACTION);
-  // Width of the blur→sharp transition band, centered on the zone
-  // boundary — this is what makes the separation read as a soft depth-of-
-  // field falloff instead of a hard cut between two regions.
-  const featherWidth = scale(canvas.width, 170);
-  return { textZoneWidth, featherWidth };
+  // Transition band, entirely AFTER textZoneWidth — a buffer strip with no
+  // text in it, so blending real pixels with blur there is harmless.
+  const featherWidth = scale(canvas.width, 110);
+  // Full-width strip at the very bottom for trust badges — spans both
+  // zones so the composition reads as one frame, not two stitched halves.
+  const footerHeight = Math.round(canvas.height * 0.1);
+  return { textZoneWidth, featherWidth, footerHeight };
 }
 
 function buildDensePromoElement(
@@ -226,19 +244,20 @@ function buildDensePromoElement(
 ) {
   const accentText = accentColor && /^#[0-9a-fA-F]{6}$/.test(accentColor) ? accentColor : ACCENT;
 
-  const pad = scale(canvas.width, 48);
-  const kickerSize = scale(canvas.width, 20);
-  const titleSize = scale(canvas.width, 46);
-  const featureLabelSize = scale(canvas.width, 23);
-  const featureDescSize = scale(canvas.width, 17);
-  const featureIconSize = scale(canvas.width, 21);
-  const priceSize = scale(canvas.width, 28);
-  const discountSize = scale(canvas.width, 17);
+  const pad = scale(canvas.width, 52);
+  const kickerSize = scale(canvas.width, 21);
+  const titleSize = scale(canvas.width, 47);
+  const featureLabelSize = scale(canvas.width, 24);
+  const featureDescSize = scale(canvas.width, 19);
+  const featureIconSize = scale(canvas.width, 20);
+  const featureIconCircle = scale(canvas.width, 40);
+  const priceSize = scale(canvas.width, 29);
+  const discountSize = scale(canvas.width, 18);
   const ctaSize = scale(canvas.width, 25);
-  const badgeIconSize = scale(canvas.width, 19);
-  const badgeLabelSize = scale(canvas.width, 13);
+  const badgeIconSize = scale(canvas.width, 21);
+  const badgeLabelSize = scale(canvas.width, 15);
   const logoSize = scale(canvas.width, 68);
-  const { textZoneWidth } = denseZoneGeometry(canvas);
+  const { textZoneWidth, footerHeight } = denseZoneGeometry(canvas);
   const contentWidth = textZoneWidth - pad * 2;
   const ArrowRightIcon = ICONS["arrow-right"];
 
@@ -278,156 +297,161 @@ function buildDensePromoElement(
         ) : null}
       </div>
 
-      {/* Vertically centered across whatever height remains below the logo
-          row — fills the canvas by design (generous gaps) instead of
-          leaving dead space the way a fixed-height bottom block did. */}
+      {/* Every element here — kicker, title, features, price+CTA — is a
+          direct flex child of ONE column with justifyContent:"space-between",
+          so the gaps distribute evenly across the whole available height.
+          An earlier version grouped these into two clusters (top block,
+          price/CTA block) with space-between only between the two groups,
+          which just relocated the "clustered" problem into one big gap in
+          the middle instead of spreading content the way a real print ad
+          does — this flat structure is what actually fixes it. */}
       <div
         style={{
           display: "flex",
           flexDirection: "column",
           flexGrow: 1,
-          justifyContent: "center",
-          padding: `0 ${pad}px ${pad}px`,
+          justifyContent: "space-between",
+          padding: `0 ${pad}px`,
+          width: contentWidth,
         }}
       >
-        <div style={{ display: "flex", flexDirection: "column", width: contentWidth, gap: scale(canvas.width, 26) }}>
-          {isRegionPresent(template, "kicker") && copy.kicker ? (
+        {isRegionPresent(template, "kicker") && copy.kicker ? (
+          <div
+            style={{
+              display: "flex",
+              alignSelf: "flex-start",
+              backgroundColor: accentText,
+              borderRadius: scale(canvas.width, 6),
+              padding: `${scale(canvas.width, 7)}px ${scale(canvas.width, 16)}px`,
+            }}
+          >
             <div
               style={{
                 display: "flex",
-                color: accentText,
+                color: PAPER,
                 fontStyle: "italic",
                 fontWeight: 600,
                 fontSize: kickerSize,
-                letterSpacing: 1.5,
+                letterSpacing: 1.2,
                 textTransform: "uppercase",
               }}
             >
               {copy.kicker}
             </div>
-          ) : null}
-
-          <div
-            style={{
-              display: "flex",
-              color: PAPER,
-              fontSize: titleSize,
-              fontWeight: 700,
-              lineHeight: 1.14,
-              textShadow: "0 2px 14px rgba(0,0,0,0.4)",
-            }}
-          >
-            {copy.title}
           </div>
+        ) : null}
 
-          {isRegionPresent(template, "features") && copy.features.length > 0 ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: scale(canvas.width, 15) }}>
-              {copy.features.map((f, i) => {
-                const Icon = ICONS[f.icon];
-                return (
-                  <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: scale(canvas.width, 10) }}>
-                    <div style={{ display: "flex", marginTop: scale(canvas.width, 3) }}>
-                      <Icon size={featureIconSize} color={PAPER} strokeWidth={2} />
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column" }}>
-                      <div
-                        style={{
-                          display: "flex",
-                          color: PAPER,
-                          fontSize: featureLabelSize,
-                          fontWeight: 700,
-                          textShadow: "0 1px 8px rgba(0,0,0,0.35)",
-                        }}
-                      >
-                        {f.label}
-                      </div>
-                      <div
-                        style={{
-                          display: "flex",
-                          color: PAPER,
-                          opacity: 0.82,
-                          fontSize: featureDescSize,
-                          fontWeight: 400,
-                          textShadow: "0 1px 8px rgba(0,0,0,0.35)",
-                        }}
-                      >
-                        {f.description}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : null}
+        <div
+          style={{
+            display: "flex",
+            color: PAPER,
+            fontSize: titleSize,
+            fontWeight: 700,
+            lineHeight: 1.14,
+            textShadow: "0 2px 14px rgba(0,0,0,0.4)",
+          }}
+        >
+          {copy.title}
+        </div>
 
-          {isRegionPresent(template, "price") && (copy.priceText || copy.discountBadge) ? (
-            <div style={{ display: "flex", alignItems: "baseline", gap: scale(canvas.width, 10) }}>
-              {copy.priceText ? (
-                <div
-                  style={{
-                    display: "flex",
-                    color: PAPER,
-                    fontSize: priceSize,
-                    fontWeight: 700,
-                    textShadow: "0 1px 8px rgba(0,0,0,0.35)",
-                  }}
-                >
-                  {copy.priceText}
-                </div>
-              ) : null}
-              {copy.discountBadge ? (
-                <div style={{ display: "flex", color: "rgba(255,255,255,0.72)", fontSize: discountSize, fontWeight: 600 }}>
-                  {copy.discountBadge}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-
-          {isRegionPresent(template, "cta") ? (
-            // Plain text, not a filled pill — the actual click affordance
-            // on every platform this renders for (Instagram link sticker,
-            // Pinterest/website hyperlink) already lives outside the image
-            // itself; a fake button drawn on the pixels risks reading as a
-            // real (broken) control instead.
-            <div style={{ display: "flex", alignItems: "center", gap: scale(canvas.width, 8), marginTop: scale(canvas.width, 4) }}>
-              <div style={{ display: "flex", color: accentText, fontSize: ctaSize, fontWeight: 700 }}>{copy.ctaText}</div>
-              <ArrowRightIcon size={Math.round(ctaSize * 0.85)} color={accentText} strokeWidth={2.5} />
-            </div>
-          ) : null}
-
-          {isRegionPresent(template, "trustBadges") && copy.trustBadges.length > 0 ? (
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                width: contentWidth,
-                gap: scale(canvas.width, 10),
-                marginTop: scale(canvas.width, 10),
-              }}
-            >
-              {copy.trustBadges.map((b, i) => {
-                const Icon = ICONS[b.icon];
-                return (
+        {isRegionPresent(template, "features") && copy.features.length > 0 ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: scale(canvas.width, 16) }}>
+            {copy.features.map((f, i) => {
+              const Icon = ICONS[f.icon];
+              return (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: scale(canvas.width, 14) }}>
                   <div
-                    key={i}
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: scale(canvas.width, 6),
-                      width: Math.round(contentWidth / 2) - scale(canvas.width, 5),
+                      justifyContent: "center",
+                      width: featureIconCircle,
+                      height: featureIconCircle,
+                      borderRadius: 999,
+                      backgroundColor: accentText,
+                      flexShrink: 0,
                     }}
                   >
-                    <Icon size={badgeIconSize} color={PAPER} strokeWidth={2} />
-                    <div style={{ display: "flex", color: PAPER, opacity: 0.85, fontSize: badgeLabelSize, fontWeight: 600 }}>
-                      {b.label}
+                    <Icon size={featureIconSize} color={PAPER} strokeWidth={2.25} />
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column" }}>
+                    <div style={{ display: "flex", color: PAPER, fontSize: featureLabelSize, fontWeight: 700 }}>{f.label}</div>
+                    <div style={{ display: "flex", color: PAPER, fontSize: featureDescSize, fontWeight: 400 }}>
+                      {f.description}
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          ) : null}
-        </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
+
+        {isRegionPresent(template, "price") || isRegionPresent(template, "cta") ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: scale(canvas.width, 12) }}>
+            {isRegionPresent(template, "price") && (copy.priceText || copy.discountBadge) ? (
+              <div style={{ display: "flex", alignItems: "baseline", gap: scale(canvas.width, 10) }}>
+                {copy.priceText ? (
+                  <div
+                    style={{
+                      display: "flex",
+                      color: PAPER,
+                      fontSize: priceSize,
+                      fontWeight: 700,
+                      textShadow: "0 1px 8px rgba(0,0,0,0.35)",
+                    }}
+                  >
+                    {copy.priceText}
+                  </div>
+                ) : null}
+                {copy.discountBadge ? (
+                  <div style={{ display: "flex", color: "rgba(255,255,255,0.78)", fontSize: discountSize, fontWeight: 600 }}>
+                    {copy.discountBadge}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {isRegionPresent(template, "cta") ? (
+              // Plain text, not a filled pill — the actual click affordance
+              // on every platform this renders for (Instagram link sticker,
+              // Pinterest/website hyperlink) already lives outside the image
+              // itself; a fake button drawn on the pixels risks reading as a
+              // real (broken) control instead.
+              <div style={{ display: "flex", alignItems: "center", gap: scale(canvas.width, 8) }}>
+                <div style={{ display: "flex", color: accentText, fontSize: ctaSize, fontWeight: 700 }}>{copy.ctaText}</div>
+                <ArrowRightIcon size={Math.round(ctaSize * 0.85)} color={accentText} strokeWidth={2.5} />
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
+
+      {/* Full-width footer, spanning both the text and product zones — the
+          composition's bottom edge ties the whole frame together instead of
+          the trust badges reading as content confined to just one side. */}
+      {isRegionPresent(template, "trustBadges") && copy.trustBadges.length > 0 ? (
+        <div
+          style={{
+            display: "flex",
+            width: canvas.width,
+            height: footerHeight,
+            alignItems: "center",
+            justifyContent: "space-around",
+            padding: `0 ${pad}px`,
+            backgroundImage: "linear-gradient(to top, rgba(20,17,16,0.55) 0%, rgba(20,17,16,0) 100%)",
+          }}
+        >
+          {copy.trustBadges.map((b, i) => {
+            const Icon = ICONS[b.icon];
+            return (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: scale(canvas.width, 7) }}>
+                <Icon size={badgeIconSize} color={PAPER} strokeWidth={2} />
+                <div style={{ display: "flex", color: PAPER, fontSize: badgeLabelSize, fontWeight: 600 }}>{b.label}</div>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -479,8 +503,11 @@ export async function renderCreativeCanvas(input: RenderCreativeInput): Promise<
     // (guaranteed pixel-aligned with the blurred layer, no parallax jump at
     // the boundary), feathered in from fully transparent to fully opaque
     // across featherWidth so it fades in out of the blur gradually instead
-    // of cutting in at a hard edge.
-    const cropStartX = Math.max(0, textZoneWidth - featherWidth);
+    // of cutting in at a hard edge. Starts AT textZoneWidth, never before —
+    // the text zone itself must never composite any sharp pixels, at any
+    // opacity, or product content bleeds through as a visible soft blur
+    // wherever the subject's silhouette happens to reach that far left.
+    const cropStartX = textZoneWidth;
     const sharpRegionWidth = canvas.width - cropStartX;
     const sharpRegion = await sharp(baseCropped)
       .extract({ left: cropStartX, top: 0, width: sharpRegionWidth, height: canvas.height })
