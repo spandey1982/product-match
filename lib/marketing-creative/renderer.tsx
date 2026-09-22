@@ -9,23 +9,41 @@
  * lib/model-gen/erase.ts. No image-generation model is ever involved here.
  *
  * All three families are full-bleed (see templates.ts's CreativeTemplate.
- * layout) — the photo fills the whole canvas, text overlays via a gradient
- * scrim, never a separate solid-fill panel. hero-editorial/styled-promo use
- * a bottom-up scrim (buildFullBleedElement, V1's original tree, untouched).
- * promo-benefits used a split-panel geometry through V1.2 — a solid-fill
- * text panel + the photo confined to the remaining width — but retailer
- * feedback on the first live render flagged three problems with that: a
- * hard seam between panel and photo, a disconnected white trust-badge
- * footer strip, and dead space below the panel's content. V1.3's
- * buildDensePromoElement replaces it with the same technique the /shop PDP's
- * "Pairs beautifully with" carousel slide already uses (components/product/
- * AdditionalInfoSlide.tsx) — one photo, a left-to-right gradient, content
- * vertically centered on top — so the whole canvas reads as one image
- * instead of two stitched zones. It also drops the promo-benefits CTA's
- * filled-pill styling (a fake button an Instagram/Pinterest viewer might
- * mistake for something tappable, when the actual click path is the
- * platform's own link affordance) and the price banner's solid accent fill
- * (de-emphasized to an inline text line, present without dominating).
+ * layout) — the photo fills the whole canvas, never a separate solid-fill
+ * panel. hero-editorial/styled-promo use a simple bottom-up scrim over one
+ * "cover"-fit crop (buildFullBleedElement, V1's original tree, untouched).
+ *
+ * promo-benefits (V1.3, this revision) needs a different compositing
+ * strategy because it carries far more text than the other two families.
+ * V1.2's solid-fill split-panel drew retailer feedback (hard seam, a
+ * disconnected trust-badge footer, dead space) — fixed by moving to a
+ * single full-canvas "cover" crop with a left-to-right gradient, same as
+ * this file's first V1.3 pass. But that in turn drew a second, sharper
+ * round of feedback: with no dedicated zone for the text, the content
+ * column landed on top of the model/garment on some renders, and the
+ * garment — the actual thing being sold — is exactly what a viewer must be
+ * able to see clearly for the creative to do its job.
+ *
+ * buildDensePromoElement + renderCreativeCanvas's promo-benefits branch now
+ * enforce a real two-zone geometry instead of hoping sharp's "attention"
+ * crop happens to leave room: a text zone (~44% of canvas width) and a
+ * product zone (~56%, deliberately off-center rather than dead-center or
+ * pushed to the edge — see denseZoneGeometry). The product zone is a crisp
+ * crop of the hero photo; the text zone is the SAME underlying crop, blurred,
+ * with a short feathered (gradually-blurring, not a hard cut) transition
+ * between them — literally the "extrapolated, blurred" background technique
+ * requested, and the same spirit as the /shop PDP's "Pairs beautifully with"
+ * slide (components/product/AdditionalInfoSlide.tsx), just with an actual
+ * blur instead of only a gradient, because promo-benefits' text block is
+ * dense enough to need real separation from the product, not just darkening.
+ * A light scrim still sits over the text zone for contrast, but far lighter
+ * than V1.3's first pass since the blur already does most of the work.
+ *
+ * It also drops the promo-benefits CTA's filled-pill styling (a fake button
+ * an Instagram/Pinterest viewer might mistake for something tappable, when
+ * the actual click path is the platform's own link affordance) and the
+ * price banner's solid accent fill (de-emphasized to an inline text line,
+ * present without dominating).
  *
  * Icon rendering: small plain-function icon components (lib/marketing-
  * creative/icons.tsx), not lucide-react's exported components directly —
@@ -51,6 +69,26 @@ const ACCENT = "#b8622a";
 
 function scale(canvasWidth: number, base1080px: number): number {
   return Math.round(base1080px * (canvasWidth / 1080));
+}
+
+/** A white RGBA raw buffer whose alpha ramps 0→255 across the first
+ * `featherWidth` px (left edge fully transparent, growing opaque) and then
+ * holds at 255 for the rest — used as a `dest-in` mask so a sharp crop
+ * fades in gradually from a blurred layer underneath it, rather than
+ * cutting in abruptly at a hard edge. */
+function buildHorizontalFeatherMask(width: number, height: number, featherWidth: number): Buffer {
+  const buf = Buffer.alloc(width * height * 4);
+  for (let x = 0; x < width; x++) {
+    const alpha = x < featherWidth ? Math.round((x / Math.max(1, featherWidth - 1)) * 255) : 255;
+    for (let y = 0; y < height; y++) {
+      const i = (y * width + x) * 4;
+      buf[i] = 255;
+      buf[i + 1] = 255;
+      buf[i + 2] = 255;
+      buf[i + 3] = alpha;
+    }
+  }
+  return buf;
 }
 
 // ── Full-bleed layout (hero-editorial, styled-promo) — V1's original tree, unchanged ──
@@ -162,12 +200,22 @@ function buildFullBleedElement(canvas: Canvas, template: CreativeTemplate, copy:
 }
 
 // ── Dense full-bleed layout (promo-benefits) — V1.3 ──
-//
-// Same compositing primitive as buildFullBleedElement below (one photo,
-// resized to cover the canvas, one Satori overlay composited on top) — the
-// only difference from that function is a left-to-right scrim instead of a
-// bottom-up one, and a richer, vertically-centered content column. See this
-// file's header for why V1.2's separate solid-panel geometry was dropped.
+
+/** Fraction of canvas width reserved for text. The remaining ~56% is the
+ * product zone — deliberately not 50/50 and not dead-center-vs-edge; the
+ * product's effective center lands around the canvas's +0.4 to +0.5 mark
+ * (treating center as 0, the edges as ±1), visible and off to one side
+ * without ever being pushed toward an edge. */
+const TEXT_ZONE_FRACTION = 0.44;
+
+export function denseZoneGeometry(canvas: Canvas) {
+  const textZoneWidth = Math.round(canvas.width * TEXT_ZONE_FRACTION);
+  // Width of the blur→sharp transition band, centered on the zone
+  // boundary — this is what makes the separation read as a soft depth-of-
+  // field falloff instead of a hard cut between two regions.
+  const featherWidth = scale(canvas.width, 170);
+  return { textZoneWidth, featherWidth };
+}
 
 function buildDensePromoElement(
   canvas: Canvas,
@@ -190,7 +238,8 @@ function buildDensePromoElement(
   const badgeIconSize = scale(canvas.width, 19);
   const badgeLabelSize = scale(canvas.width, 13);
   const logoSize = scale(canvas.width, 68);
-  const contentWidth = Math.round(canvas.width * 0.6);
+  const { textZoneWidth } = denseZoneGeometry(canvas);
+  const contentWidth = textZoneWidth - pad * 2;
   const ArrowRightIcon = ICONS["arrow-right"];
 
   return (
@@ -201,13 +250,12 @@ function buildDensePromoElement(
         display: "flex",
         flexDirection: "column",
         fontFamily: "Inter",
-        // Left-to-right, same technique as components/product/
-        // AdditionalInfoSlide.tsx's "Pairs beautifully with" slide — the
-        // SAME photo darkens toward the text side rather than a separate
-        // solid panel butting up against it, so the canvas reads as one
-        // continuous image.
+        // A light contrast scrim confined to roughly the text zone — the
+        // actual separation from the product now comes from the blur in
+        // renderCreativeCanvas's compositing step, not from darkening, so
+        // this can stay much lighter than a scrim carrying the whole job.
         backgroundImage:
-          "linear-gradient(to right, rgba(20,17,16,0.86) 0%, rgba(20,17,16,0.62) 42%, rgba(20,17,16,0.18) 74%, rgba(20,17,16,0) 92%)",
+          "linear-gradient(to right, rgba(20,17,16,0.5) 0%, rgba(20,17,16,0.32) 55%, rgba(20,17,16,0.05) 78%, rgba(20,17,16,0) 90%)",
       }}
     >
       <div style={{ display: "flex", padding: pad }}>
@@ -242,7 +290,7 @@ function buildDensePromoElement(
           padding: `0 ${pad}px ${pad}px`,
         }}
       >
-        <div style={{ display: "flex", flexDirection: "column", width: contentWidth, gap: scale(canvas.width, 16) }}>
+        <div style={{ display: "flex", flexDirection: "column", width: contentWidth, gap: scale(canvas.width, 26) }}>
           {isRegionPresent(template, "kicker") && copy.kicker ? (
             <div
               style={{
@@ -273,7 +321,7 @@ function buildDensePromoElement(
           </div>
 
           {isRegionPresent(template, "features") && copy.features.length > 0 ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: scale(canvas.width, 9) }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: scale(canvas.width, 15) }}>
               {copy.features.map((f, i) => {
                 const Icon = ICONS[f.icon];
                 return (
@@ -408,20 +456,66 @@ export async function renderCreativeCanvas(input: RenderCreativeInput): Promise<
   const fonts = await loadCreativeFonts();
   const { canvas, template } = input;
 
-  // All three families composite the same way now — one photo resized to
-  // cover the canvas, one Satori overlay on top — they only differ in which
-  // JSX tree builds that overlay.
-  const element =
-    template.templateFamily === "promo-benefits"
-      ? buildDensePromoElement(canvas, template, input.copy, input.logoDataUri, input.accentColor)
-      : buildFullBleedElement(canvas, template, input.copy, input.logoDataUri);
+  // Both paths start from the same "cover"-fit, attention-cropped photo —
+  // they only differ in what happens to it before the text overlay goes on.
+  const baseCropped = await sharp(input.heroBuffer)
+    .rotate()
+    .resize(canvas.width, canvas.height, { fit: "cover", position: "attention" })
+    .toBuffer();
 
+  if (template.templateFamily === "promo-benefits") {
+    const element = buildDensePromoElement(canvas, template, input.copy, input.logoDataUri, input.accentColor);
+    const svg = await satori(element, { width: canvas.width, height: canvas.height, fonts });
+    const overlayPng = new Resvg(svg, { fitTo: { mode: "width", value: canvas.width } }).render().asPng();
+
+    const { textZoneWidth, featherWidth } = denseZoneGeometry(canvas);
+
+    // The text zone is the SAME crop, blurred — an "extrapolated" continuation
+    // of the product photo rather than an unrelated fill, so there's no seam
+    // in color or lighting, only a change in focus.
+    const blurredBase = await sharp(baseCropped).blur(scale(canvas.width, 30)).toBuffer();
+
+    // The product zone is a crisp sub-crop of that exact same base image
+    // (guaranteed pixel-aligned with the blurred layer, no parallax jump at
+    // the boundary), feathered in from fully transparent to fully opaque
+    // across featherWidth so it fades in out of the blur gradually instead
+    // of cutting in at a hard edge.
+    const cropStartX = Math.max(0, textZoneWidth - featherWidth);
+    const sharpRegionWidth = canvas.width - cropStartX;
+    const sharpRegion = await sharp(baseCropped)
+      .extract({ left: cropStartX, top: 0, width: sharpRegionWidth, height: canvas.height })
+      .toBuffer();
+
+    const maskPng = await sharp(buildHorizontalFeatherMask(sharpRegionWidth, canvas.height, featherWidth), {
+      raw: { width: sharpRegionWidth, height: canvas.height, channels: 4 },
+    })
+      .png()
+      .toBuffer();
+
+    const featheredSharpRegion = await sharp(sharpRegion)
+      .ensureAlpha()
+      .composite([{ input: maskPng, blend: "dest-in" }])
+      .png()
+      .toBuffer();
+
+    const composited = await sharp(blurredBase)
+      .composite([
+        { input: featheredSharpRegion, left: cropStartX, top: 0 },
+        { input: overlayPng, left: 0, top: 0, blend: "over" },
+      ])
+      .png()
+      .toBuffer();
+
+    const { buffer, mime } = await reencodeGeneratedImage(composited, "image/png");
+    return { buffer, mime, width: canvas.width, height: canvas.height };
+  }
+
+  // hero-editorial / styled-promo — V1's original path, unchanged.
+  const element = buildFullBleedElement(canvas, template, input.copy, input.logoDataUri);
   const svg = await satori(element, { width: canvas.width, height: canvas.height, fonts });
   const overlayPng = new Resvg(svg, { fitTo: { mode: "width", value: canvas.width } }).render().asPng();
 
-  const composited = await sharp(input.heroBuffer)
-    .rotate()
-    .resize(canvas.width, canvas.height, { fit: "cover", position: "attention" })
+  const composited = await sharp(baseCropped)
     .composite([{ input: overlayPng, blend: "over" }])
     .png()
     .toBuffer();
