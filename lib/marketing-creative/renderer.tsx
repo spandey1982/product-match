@@ -951,10 +951,37 @@ export async function renderCreativeCanvas(input: RenderCreativeInput): Promise<
     const edgeStrip = await sharp(productCrop)
       .extract({ left: 0, top: 0, width: edgeStripWidth, height: productCropHeight })
       .toBuffer();
-    const panelBase = await sharp(edgeStrip)
+    const panelBaseRaw = await sharp(edgeStrip)
       .resize(canvas.width, canvas.height, { fit: "fill" })
       .blur(scale(canvas.width, 22))
       .toBuffer();
+
+    // Contrast scrim (V1.5): live-tested (2026-09-24) against a bright
+    // indoor boutique backdrop and found a real bug every prior test (all
+    // dark evening/outdoor courtyard photos) never exposed — panelBase's
+    // white text has NO guaranteed contrast against it; it just happens to
+    // read fine when the source photo is naturally dark. A bright wall or
+    // well-lit interior produces a near-white panel with white text on top
+    // of it — close to unreadable. Every reference ad this project has been
+    // measured against uses a scrim for exactly this reason. Measure the
+    // panel's actual mean luminance and darken it only enough to guarantee
+    // legibility (TARGET_MAX_LUMINANCE) — dark photos already under that
+    // ceiling get zero scrim, so today's good-looking outdoor renders are
+    // untouched; only genuinely bright panels get darkened, and only as
+    // much as their own brightness requires.
+    const TARGET_MAX_LUMINANCE = 90;
+    const MAX_SCRIM_ALPHA = 0.82;
+    const panelLuminance = (await sharp(panelBaseRaw).greyscale().stats()).channels[0].mean;
+    let panelBase = panelBaseRaw;
+    if (panelLuminance > TARGET_MAX_LUMINANCE) {
+      const scrimAlpha = Math.min(MAX_SCRIM_ALPHA, 1 - TARGET_MAX_LUMINANCE / panelLuminance);
+      const scrim = await sharp({
+        create: { width: canvas.width, height: canvas.height, channels: 4, background: { r: 20, g: 17, b: 16, alpha: scrimAlpha } },
+      })
+        .png()
+        .toBuffer();
+      panelBase = await sharp(panelBaseRaw).composite([{ input: scrim, blend: "over" }]).png().toBuffer();
+    }
 
     // Feather the product crop's own left edge toward transparent so the
     // panel shows through gradually at the seam, instead of a hard cut.
