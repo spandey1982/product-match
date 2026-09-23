@@ -668,34 +668,59 @@ export async function renderCreativeCanvas(input: RenderCreativeInput): Promise<
     const svg = await satori(element, { width: canvas.width, height: canvas.height, fonts });
     const overlayPng = new Resvg(svg, { fitTo: { mode: "width", value: canvas.width } }).render().asPng();
 
-    // The panel is a blurred copy of the SAME verified-safe region — real
-    // photo tones/texture, not an arbitrary fill, and safe to blur because
-    // the boundary is now content-verified rather than assumed.
-    const blurredBase = await sharp(baseCropped).blur(scale(canvas.width, 26)).toBuffer();
-
-    // The product crop starts AT textZoneWidth, feathering in toward fully
-    // opaque so the blur→sharp change reads as a soft falloff.
-    const cropStartX = textZoneWidth;
-    const sharpRegionWidth = canvas.width - cropStartX;
-    const photoRegion = await sharp(baseCropped)
-      .extract({ left: cropStartX, top: 0, width: sharpRegionWidth, height: canvas.height })
+    // Joint layout, not a guillotine cut: earlier revisions sliced a vertical
+    // strip off ONE whole-canvas crop, so the product's scale was whatever
+    // "cover the full canvas" happened to produce — independent of how wide
+    // its actual zone was. A narrow zone left the subject looking small and
+    // adrift in unused space; a wide zone could crop it too tight. Instead,
+    // crop the ORIGINAL photo directly to the product zone's real dimensions
+    // — sharp's "attention" strategy then re-frames (zooms and repositions,
+    // both axes) specifically for that box, so the subject fills whatever
+    // space it actually has, the way a designer drags and scales a placed
+    // photo to its frame rather than generating it pre-sized.
+    const productZoneWidth = canvas.width - textZoneWidth;
+    const productCrop = await sharp(input.heroBuffer)
+      .rotate()
+      .resize(productZoneWidth, canvas.height, { fit: "cover", position: "attention" })
       .toBuffer();
 
-    const maskPng = await sharp(buildHorizontalFeatherMask(sharpRegionWidth, canvas.height, featherWidth), {
-      raw: { width: sharpRegionWidth, height: canvas.height, channels: 4 },
+    // The panel is derived from the product crop's OWN left edge — stretched
+    // to fill the text zone, then blurred — not an independent full-canvas
+    // crop. That's what makes it a real "extrapolated" continuation of what's
+    // actually displayed next to it (tonally and compositionally anchored to
+    // it) rather than a same-toned but disconnected fill, and it avoids the
+    // scale mismatch an independently-zoomed panel source would have at the
+    // seam.
+    // panelBase is stretched to the FULL canvas width, not just textZoneWidth
+    // — it's the base layer the product crop composites on top of, so it
+    // must cover the whole frame even though only its left portion ends up
+    // visible once the feathered photo is placed over the rest.
+    const edgeStripWidth = Math.min(productZoneWidth, scale(canvas.width, 80));
+    const edgeStrip = await sharp(productCrop)
+      .extract({ left: 0, top: 0, width: edgeStripWidth, height: canvas.height })
+      .toBuffer();
+    const panelBase = await sharp(edgeStrip)
+      .resize(canvas.width, canvas.height, { fit: "fill" })
+      .blur(scale(canvas.width, 22))
+      .toBuffer();
+
+    // Feather the product crop's own left edge toward transparent so the
+    // panel shows through gradually at the seam, instead of a hard cut.
+    const maskPng = await sharp(buildHorizontalFeatherMask(productZoneWidth, canvas.height, featherWidth), {
+      raw: { width: productZoneWidth, height: canvas.height, channels: 4 },
     })
       .png()
       .toBuffer();
 
-    const featheredPhoto = await sharp(photoRegion)
+    const featheredPhoto = await sharp(productCrop)
       .ensureAlpha()
       .composite([{ input: maskPng, blend: "dest-in" }])
       .png()
       .toBuffer();
 
-    const composited = await sharp(blurredBase)
+    const composited = await sharp(panelBase)
       .composite([
-        { input: featheredPhoto, left: cropStartX, top: 0 },
+        { input: featheredPhoto, left: textZoneWidth, top: 0 },
         { input: overlayPng, left: 0, top: 0, blend: "over" },
       ])
       .png()
