@@ -290,12 +290,40 @@ async function computeColumnSignals(baseCropped: Buffer, canvas: Canvas): Promis
  * contrast (a sleeve, a hand, a patterned/embroidered edge) or color-shift
  * (a smooth but differently-toned garment, like plain fabric, that contrast
  * alone misses) — once BASELINE_STRIP_COUNT strips have established what
- * "normal" looks like for this photo. Never more than IDEAL_TEXT_ZONE_
- * FRACTION's worth even if the photo stays calm the whole way — this is a
- * text panel, not a license to shrink the product's share of the frame. */
-function resolveSafeTextZoneWidth(signals: ColumnSignal[], canvas: Canvas): number {
+ * "normal" looks like for this photo.
+ *
+ * V1.5 (2026-09-23): live-tested against the actual cached hero photo (a
+ * real ornate-courtyard generation) with per-strip signals printed raw, and
+ * the walk was found to stop almost immediately (~17% of canvas width,
+ * only reaching 25% because HARD_MIN_TEXT_ZONE_FRACTION floors it) — not
+ * because the model starts there, but because Rajasthani courtyard
+ * architecture is genuinely detailed (carved doorframes, a marigold
+ * string) well before the model's actual position. The printed data ruled
+ * out an initially-planned fix (smoothing isolated spikes with a trailing
+ * moving average): stdev stays elevated almost continuously from strip ~4
+ * onward, all the way through both the busy background AND the model — the
+ * "busy-ness" here isn't a brief isolated blip to smooth past, it's
+ * sustained texture in the true background too, so no local per-strip
+ * statistic can reliably tell "ornate doorway" apart from "model" on this
+ * photo.
+ *
+ * What the scan CAN'T tell from pixels, the generation prompt already
+ * guarantees when compositionHint was used (see lib/model-gen/prompt-sets.
+ * ts's compositionClause): "the entire [open] third of the frame must be
+ * genuine open, unobstructed space... no part of the model, hair, garment,
+ * or any prop crossing into it." That's not a pixel inference, it's an
+ * instruction we wrote and can simply trust — so `guaranteedSafeFraction`
+ * (passed through from renderCreativeCanvas, sourced from workers/render.
+ * ts only when that hint was actually used for this hero photo) sets a
+ * FLOOR under the scan's result, wired through Math.max below, independent
+ * of whatever the pixel signals say. Photos with no such guarantee (an
+ * existing catalogue image, reuse-catalogue path) get no floor here and
+ * fall back to the scan + HARD_MIN exactly as before — this must never
+ * regress the original "model got covered" bug for that path. */
+function resolveSafeTextZoneWidth(signals: ColumnSignal[], canvas: Canvas, guaranteedSafeFraction?: number): number {
   const maxCount = Math.round(MAX_TEXT_ZONE_FRACTION * STRIP_COUNT);
   const hardMinCount = Math.max(1, Math.round(HARD_MIN_TEXT_ZONE_FRACTION * STRIP_COUNT));
+  const guaranteedCount = guaranteedSafeFraction ? Math.round(guaranteedSafeFraction * STRIP_COUNT) : 0;
   const COLOR_SHIFT_THRESHOLD = 34;
 
   let acceptedCount = 0;
@@ -310,7 +338,7 @@ function resolveSafeTextZoneWidth(signals: ColumnSignal[], canvas: Canvas): numb
     stdevSum += stdev;
   }
 
-  const safeCount = Math.max(hardMinCount, acceptedCount);
+  const safeCount = Math.max(hardMinCount, acceptedCount, guaranteedCount);
   return Math.round((safeCount / STRIP_COUNT) * canvas.width);
 }
 
@@ -463,6 +491,12 @@ function featherWidthFor(canvas: Canvas): number {
   return scale(canvas.width, 90);
 }
 
+/** Below this fraction of canvas.height, headroom isn't worth promoting
+ * kicker/title into their own band — too little room to matter, and the
+ * inline narrow-column rendering (unchanged) is simpler and safer for a
+ * sliver of leftover space. */
+const MASTHEAD_MIN_HEADROOM_FRACTION = 0.15;
+
 function buildDensePromoElement(
   canvas: Canvas,
   template: CreativeTemplate,
@@ -470,7 +504,8 @@ function buildDensePromoElement(
   logoDataUri: string | null,
   accentColor: string | null,
   textZoneWidth: number,
-  typeScale: number
+  typeScale: number,
+  headroomHeight: number
 ) {
   const accentText = accentColor && /^#[0-9a-fA-F]{6}$/.test(accentColor) ? accentColor : ACCENT;
   const heightScale = heightScaleFor(canvas);
@@ -487,9 +522,34 @@ function buildDensePromoElement(
   // still left the surrounding rhythm feeling cramped/left-pinned relative
   // to its own bigger type, so section-to-section and top breathing room
   // grow a bit faster than font sizes do, capped independently of s()'s own
-  // 1.3/1.35 ceilings so it doesn't also inflate icon/text sizes.
-  const gapScale = Math.min(1.5, typeScale * heightScale);
+  // 1.3/1.35 ceilings so it doesn't also inflate icon/text sizes. Raised
+  // 1.5→2.2 (V1.5): once the masthead (below) can take the title out of
+  // this column entirely, the column has less mandatory content, so gaps
+  // need more headroom to keep using leftover height instead of just
+  // leaving it blank again.
+  const gapScale = Math.min(2.2, typeScale * heightScale);
   const g = (base1080px: number) => Math.max(1, scale(canvas.width, Math.round(base1080px * gapScale)));
+
+  // Full-width masthead (V1.5): when the natural-height crop leaves real
+  // headroom above the photo, that space used to be filled by a synthetic
+  // blurred patch alone — retailer feedback: "why not use that space for
+  // title or other important info?" There's no product up there at all
+  // (the photo doesn't start until headroomHeight), so kicker+title can
+  // safely use the FULL canvas width, not just the narrow zone — and get
+  // to be a genuinely large editorial masthead instead of competing for
+  // space with features/price/CTA in the column below. mastheadTypeScale
+  // always lands at typeScaleForZone's cap (canvas.width is always well
+  // past the pivot fraction of itself) — deliberate, this is the one place
+  // in the layout meant to read as unambiguously the largest text on the
+  // canvas. overflow:"hidden" + a height cap tied to headroomHeight itself
+  // are a hard safety net against a long title pushing past its band into
+  // where the photo is composited (no live text-measurement available to
+  // guarantee it fits otherwise).
+  const useMasthead = headroomHeight >= canvas.height * MASTHEAD_MIN_HEADROOM_FRACTION;
+  const mastheadTypeScale = typeScaleForZone(canvas.width, canvas);
+  const sm = (base1080px: number) => Math.max(1, scale(canvas.width, Math.round(base1080px * mastheadTypeScale * heightScale)));
+  const mastheadTitleSize = Math.min(sm(44), Math.max(1, Math.round(headroomHeight * 0.32)));
+  const mastheadKickerSize = Math.min(sm(20), Math.max(1, Math.round(headroomHeight * 0.14)));
 
   const pad = scale(canvas.width, 50);
   const kickerSize = s(20);
@@ -542,6 +602,59 @@ function buildDensePromoElement(
         ) : null}
       </div>
 
+      {useMasthead ? (
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "center",
+            gap: scale(canvas.width, 10),
+            width: canvas.width,
+            height: headroomHeight,
+            padding: `0 ${pad}px`,
+            overflow: "hidden",
+          }}
+        >
+          {isRegionPresent(template, "kicker") && copy.kicker ? (
+            <div
+              style={{
+                display: "flex",
+                alignSelf: "flex-start",
+                backgroundColor: accentText,
+                borderRadius: scale(canvas.width, 6),
+                padding: `${scale(canvas.width, 7)}px ${scale(canvas.width, 16)}px`,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  color: PAPER,
+                  fontStyle: "italic",
+                  fontWeight: 600,
+                  fontSize: mastheadKickerSize,
+                  letterSpacing: 1.2,
+                  textTransform: "uppercase",
+                }}
+              >
+                {copy.kicker}
+              </div>
+            </div>
+          ) : null}
+          <div
+            style={{
+              display: "flex",
+              color: PAPER,
+              fontSize: mastheadTitleSize,
+              fontWeight: 700,
+              lineHeight: 1.12,
+              textShadow: "0 2px 14px rgba(0,0,0,0.45)",
+            }}
+          >
+            {copy.title}
+          </div>
+        </div>
+      ) : null}
+
       {/* Every element here — kicker, title, features, price+CTA, trust
           badges — is a direct flex child of ONE column with a fixed,
           scaled gap (NOT justifyContent:"space-between" — live-
@@ -569,7 +682,7 @@ function buildDensePromoElement(
           width: contentWidth,
         }}
       >
-        {isRegionPresent(template, "kicker") && copy.kicker ? (
+        {!useMasthead && isRegionPresent(template, "kicker") && copy.kicker ? (
           <div
             style={{
               display: "flex",
@@ -595,18 +708,20 @@ function buildDensePromoElement(
           </div>
         ) : null}
 
-        <div
-          style={{
-            display: "flex",
-            color: PAPER,
-            fontSize: titleSize,
-            fontWeight: 700,
-            lineHeight: 1.14,
-            textShadow: "0 2px 14px rgba(0,0,0,0.45)",
-          }}
-        >
-          {copy.title}
-        </div>
+        {!useMasthead ? (
+          <div
+            style={{
+              display: "flex",
+              color: PAPER,
+              fontSize: titleSize,
+              fontWeight: 700,
+              lineHeight: 1.14,
+              textShadow: "0 2px 14px rgba(0,0,0,0.45)",
+            }}
+          >
+            {copy.title}
+          </div>
+        ) : null}
 
         {isRegionPresent(template, "features") && copy.features.length > 0 ? (
           <div style={{ display: "flex", flexDirection: "column", gap: s(16) }}>
@@ -784,6 +899,14 @@ export interface RenderCreativeInput {
   /** ClientProfile.accentColor, hex or null — promo-benefits' kicker/CTA
    * text color derives from this, falling back to ACCENT. */
   accentColor: string | null;
+  /** Set only when this hero photo was generated with a compositionHint
+   * (see lib/model-gen/prompt-sets.ts) that promised a genuinely open,
+   * model-free fraction of the frame on the text side — a floor
+   * resolveSafeTextZoneWidth can trust directly instead of re-deriving it
+   * from pixels. Undefined for any hero photo without that guarantee
+   * (reuse-catalogue, product-only) — those keep the pixel-scan-only
+   * behavior unchanged. */
+  guaranteedSafeFraction?: number;
 }
 
 export interface RenderCreativeOutput {
@@ -809,21 +932,9 @@ export async function renderCreativeCanvas(input: RenderCreativeInput): Promise<
     // before deciding how wide the text zone can be — see this file's
     // header for why a fixed fraction can't work in general.
     const signals = await computeColumnSignals(baseCropped, canvas);
-    const textZoneWidth = resolveSafeTextZoneWidth(signals, canvas);
+    const textZoneWidth = resolveSafeTextZoneWidth(signals, canvas, input.guaranteedSafeFraction);
     const typeScale = typeScaleForZone(textZoneWidth, canvas);
     const featherWidth = featherWidthFor(canvas);
-
-    const element = buildDensePromoElement(
-      canvas,
-      template,
-      input.copy,
-      input.logoDataUri,
-      input.accentColor,
-      textZoneWidth,
-      typeScale
-    );
-    const svg = await satori(element, { width: canvas.width, height: canvas.height, fonts });
-    const overlayPng = new Resvg(svg, { fitTo: { mode: "width", value: canvas.width } }).render().asPng();
 
     // Joint layout, not a guillotine cut: earlier revisions sliced a vertical
     // strip off ONE whole-canvas crop, so the product's scale was whatever
@@ -835,6 +946,11 @@ export async function renderCreativeCanvas(input: RenderCreativeInput): Promise<
     // both axes) specifically for that box, so the subject fills whatever
     // space it actually has, the way a designer drags and scales a placed
     // photo to its frame rather than generating it pre-sized.
+    //
+    // This crop math now runs BEFORE building the Satori element (V1.5) —
+    // it used to run after, but buildDensePromoElement needs to know
+    // productCropTop (the headroom amount) to decide whether to render a
+    // full-width masthead there instead of a wasted blurred patch.
     const productZoneWidth = canvas.width - textZoneWidth;
 
     // Forcing the crop to cover the FULL canvas height, unconditionally, was
@@ -903,6 +1019,19 @@ export async function renderCreativeCanvas(input: RenderCreativeInput): Promise<
       // continues above a subject in a full-length shot.
       productCropTop = canvas.height - productCropHeight;
     }
+
+    const element = buildDensePromoElement(
+      canvas,
+      template,
+      input.copy,
+      input.logoDataUri,
+      input.accentColor,
+      textZoneWidth,
+      typeScale,
+      productCropTop
+    );
+    const svg = await satori(element, { width: canvas.width, height: canvas.height, fonts });
+    const overlayPng = new Resvg(svg, { fitTo: { mode: "width", value: canvas.width } }).render().asPng();
 
     // The panel is derived from the product crop's OWN left edge — stretched
     // to fill the text zone, then blurred — not an independent full-canvas

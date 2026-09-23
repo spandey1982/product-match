@@ -42,6 +42,10 @@ export interface RunRenderPipelineInput {
   aspectRatios: CanvasKey[];
   /** ClientProfile.accentColor, hex or null — see renderer.tsx. */
   accentColor: string | null;
+  /** See RenderCreativeInput.guaranteedSafeFraction in renderer.tsx — set
+   * only when heroImageUrl came from a generation call that used
+   * compositionHint. */
+  guaranteedSafeFraction?: number;
 }
 
 /**
@@ -74,6 +78,7 @@ export async function runRenderPipeline(input: RunRenderPipelineInput): Promise<
       heroBuffer: hero.buffer,
       logoDataUri,
       accentColor: input.accentColor,
+      guaranteedSafeFraction: input.guaranteedSafeFraction,
     });
 
     const dataUri = `data:${rendered.mime};base64,${rendered.buffer.toString("base64")}`;
