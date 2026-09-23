@@ -91,6 +91,40 @@
  * null (reading 'useContext')". icons.tsx renders the identical <svg> shape
  * using the same path data, just without the forwardRef wrapper. See that
  * file's header for the full explanation.
+ *
+ * V1.4 (2026-09-23) fixes the retailer's next round of feedback — a real
+ * marketing-design brief diagnosing that the panel still behaved like a
+ * FIXED-SIZE content box despite being nominally content-aware. Root cause:
+ * two ceilings, both computed from canvas geometry alone rather than from
+ * how much calm space the photo actually has. (1) resolveSafeTextZoneWidth's
+ * search used to stop at IDEAL_TEXT_ZONE_FRACTION (42%) no matter how much
+ * further the photo stayed calm — so any render whose real safe space
+ * exceeded 42% (increasingly common now that compositionHint:"right-third"
+ * biases generation toward leaving open space) never got to use the rest of
+ * it. Fixed by separating the search ceiling (new MAX_TEXT_ZONE_FRACTION,
+ * 60%, a product-protection bound) from the typography pivot (the same 42%,
+ * now just a pivot, not a search limit). (2) typeScaleForZone (renamed from
+ * densityScaleFor) used to cap at 1.0 — type could shrink for a cramped
+ * zone but never grow for a spacious one, so even a discovered wide zone
+ * rendered at the same base font size as a narrow one. Fixed by uncapping
+ * the top end (1.3, mirroring heightScaleFor's own cap). Together these are
+ * the actual "fit-to-region" lever: a genuinely wide calm zone now both
+ * gets to exist and renders visibly larger type in it, instead of the same
+ * fixed column at the same fixed size regardless of the photo.
+ *
+ * This uncapping surfaced a real, separate, PRE-EXISTING correctness bug
+ * that simply hadn't been exercised by earlier testing: the price row
+ * (price + discount badge) and CTA row (text + arrow icon) each lay out two
+ * auto-width `whiteSpace:"nowrap"` children in a flex row with no explicit
+ * width. satori/Yoga defaults flex children to shrinkable, and once such a
+ * row's available width came out narrower than its children's combined
+ * natural width (which typeScale growing above 1x made much more likely to
+ * actually happen), Yoga shrank the LAYOUT boxes used for gap/positioning
+ * while the glyph paths satori draws stay shaped at full natural size
+ * regardless — so the second child rendered on top of the first instead of
+ * beside it. Fixed with `flexShrink: 0` on each of those four text/label
+ * divs, the standard fix for "this inline content must never shrink below
+ * its natural size."
  */
 import satori from "satori";
 import { Resvg } from "@resvg/resvg-js";
@@ -130,14 +164,27 @@ function buildHorizontalFeatherMask(width: number, height: number, featherWidth:
 }
 
 const STRIP_COUNT = 24;
+/** The TYPOGRAPHY PIVOT, not a search limit (V1.4 revision — see below).
+ * Zones narrower than this shrink type; zones wider than this grow it. Kept
+ * at V1.3's original value so a zone landing exactly here renders identical
+ * to before this revision. */
 const IDEAL_TEXT_ZONE_FRACTION = 0.42;
+/** Live-tested (2026-09-23) and confirmed the real root cause of "content
+ * forced towards the left no matter how much empty space is there": the
+ * safe-zone WALK used to stop searching at IDEAL_TEXT_ZONE_FRACTION, so even
+ * a photo with far more genuine calm space than 42% never got to use it —
+ * a de facto fixed-size box regardless of the photo. This is a separate
+ * ceiling from the pivot above: it only bounds how far the content-aware
+ * scan is allowed to walk, protecting the product's minimum share of the
+ * frame — it is not a target width, and most renders land well under it. */
+const MAX_TEXT_ZONE_FRACTION = 0.6;
 /** A small baseline-establishing count, NOT a content-overriding floor —
  * live-tested (2026-09-22) and confirmed a large "minimum" here was forcing
  * acceptance of strips the signals had already correctly flagged as busy
  * (a doorframe edge, the start of a dupatta), defeating the whole analysis
  * for photos where genuine safe space is simply narrower than the ideal.
  * The layout adapts its type scale to whatever width actually comes out
- * (see densityScaleFor) instead of assuming this floor is always met. */
+ * (see typeScaleForZone) instead of assuming this floor is always met. */
 const BASELINE_STRIP_COUNT = 3;
 /** Absolute last resort if even the baseline is unsafe — exists only so the
  * layout has SOME width to render into; not a claim that it's safe.
@@ -224,13 +271,13 @@ async function computeColumnSignals(baseCropped: Buffer, canvas: Canvas): Promis
  * FRACTION's worth even if the photo stays calm the whole way — this is a
  * text panel, not a license to shrink the product's share of the frame. */
 function resolveSafeTextZoneWidth(signals: ColumnSignal[], canvas: Canvas): number {
-  const idealCount = Math.round(IDEAL_TEXT_ZONE_FRACTION * STRIP_COUNT);
+  const maxCount = Math.round(MAX_TEXT_ZONE_FRACTION * STRIP_COUNT);
   const hardMinCount = Math.max(1, Math.round(HARD_MIN_TEXT_ZONE_FRACTION * STRIP_COUNT));
   const COLOR_SHIFT_THRESHOLD = 34;
 
   let acceptedCount = 0;
   let stdevSum = 0;
-  for (let i = 0; i < idealCount && i < signals.length; i++) {
+  for (let i = 0; i < maxCount && i < signals.length; i++) {
     const { stdev, colorShift } = signals[i];
     const stdevBaseline = acceptedCount > 0 ? stdevSum / acceptedCount : stdev;
     const stdevSpike = stdev > stdevBaseline * 1.5;
@@ -244,13 +291,20 @@ function resolveSafeTextZoneWidth(signals: ColumnSignal[], canvas: Canvas): numb
   return Math.round((safeCount / STRIP_COUNT) * canvas.width);
 }
 
-/** Scales type down when the safe zone comes out narrower than the ideal —
- * so a photo that genuinely doesn't leave much calm space gets compact,
- * still-fitting type instead of overflow/excessive wrapping. Never scales
- * up past 1 when the zone is at or above ideal. */
-function densityScaleFor(textZoneWidth: number, canvas: Canvas): number {
+/** Bidirectional around IDEAL_TEXT_ZONE_FRACTION: scales type DOWN when the
+ * safe zone comes out narrower than the pivot (unchanged from V1.3 — a
+ * photo that genuinely doesn't leave much calm space still gets compact,
+ * still-fitting type instead of overflow/excessive wrapping), and — new in
+ * V1.4 — scales type UP when the zone comes out wider than the pivot, which
+ * is now possible since resolveSafeTextZoneWidth can discover zones up to
+ * MAX_TEXT_ZONE_FRACTION instead of stopping its search at the pivot. This
+ * is the actual "fit-to-region" lever: a headline in a genuinely wide calm
+ * zone should read larger, not sit at the same base size as a cramped one.
+ * Capped at 1.3, not unbounded, for the same reason heightScaleFor caps at
+ * 1.35 — a big headline is the goal, not one that dwarfs its own column. */
+function typeScaleForZone(textZoneWidth: number, canvas: Canvas): number {
   const ratio = textZoneWidth / (IDEAL_TEXT_ZONE_FRACTION * canvas.width);
-  return Math.max(0.72, Math.min(1, ratio));
+  return Math.max(0.72, Math.min(1.3, ratio));
 }
 
 // ── Full-bleed layout (hero-editorial, styled-promo) — V1's original tree, unchanged ──
@@ -393,18 +447,26 @@ function buildDensePromoElement(
   logoDataUri: string | null,
   accentColor: string | null,
   textZoneWidth: number,
-  densityScale: number
+  typeScale: number
 ) {
   const accentText = accentColor && /^#[0-9a-fA-F]{6}$/.test(accentColor) ? accentColor : ACCENT;
   const heightScale = heightScaleFor(canvas);
   // Math.max(1, …) — a second, independent guard (alongside the raised
-  // HARD_MIN_TEXT_ZONE_FRACTION floor) against any density-scaled dimension
-  // rounding down to exactly 0, which satori/resvg cannot render safely.
-  // densityScale shrinks type for a narrow (width-constrained) zone;
-  // heightScale grows it for a tall (extra vertical room) canvas — two
-  // independent axes, deliberately multiplied together rather than one
-  // constant standing in for both.
-  const s = (base1080px: number) => Math.max(1, scale(canvas.width, Math.round(base1080px * densityScale * heightScale)));
+  // HARD_MIN_TEXT_ZONE_FRACTION floor) against any scaled dimension rounding
+  // down to exactly 0, which satori/resvg cannot render safely. typeScale
+  // shrinks OR grows type for the width axis (narrow zone vs. wide zone,
+  // see typeScaleForZone); heightScale grows it for a tall (extra vertical
+  // room) canvas — two independent axes, deliberately multiplied together
+  // rather than one constant standing in for both.
+  const s = (base1080px: number) => Math.max(1, scale(canvas.width, Math.round(base1080px * typeScale * heightScale)));
+  // Gaps get a further, slightly more generous multiplier than type itself
+  // — live-tested (2026-09-23): a wide calm zone growing the headline alone
+  // still left the surrounding rhythm feeling cramped/left-pinned relative
+  // to its own bigger type, so section-to-section and top breathing room
+  // grow a bit faster than font sizes do, capped independently of s()'s own
+  // 1.3/1.35 ceilings so it doesn't also inflate icon/text sizes.
+  const gapScale = Math.min(1.5, typeScale * heightScale);
+  const g = (base1080px: number) => Math.max(1, scale(canvas.width, Math.round(base1080px * gapScale)));
 
   const pad = scale(canvas.width, 50);
   const kickerSize = s(20);
@@ -459,7 +521,7 @@ function buildDensePromoElement(
 
       {/* Every element here — kicker, title, features, price+CTA, trust
           badges — is a direct flex child of ONE column with a fixed,
-          density-scaled gap (NOT justifyContent:"space-between" — live-
+          scaled gap (NOT justifyContent:"space-between" — live-
           tested 2026-09-22 and confirmed that when a narrow, content-aware
           textZoneWidth pushes text into more wrap lines than the available
           height can fit, space-between's slack calculation goes negative
@@ -474,8 +536,13 @@ function buildDensePromoElement(
           display: "flex",
           flexDirection: "column",
           flexGrow: 1,
-          gap: s(22),
-          padding: `${s(18)}px ${pad}px ${pad}px`,
+          // Group-to-group rhythm (kicker→title→features→price→badges) uses
+          // gapScale, not typeScale — this is the "content should sit
+          // further from a flush top-left corner when there's real leftover
+          // space" lever, separate from font sizing itself (see gapScale's
+          // comment above).
+          gap: g(22),
+          padding: `${g(18)}px ${pad}px ${pad}px`,
           width: contentWidth,
         }}
       >
@@ -571,11 +638,35 @@ function buildDensePromoElement(
           <div style={{ display: "flex", flexDirection: "column", gap: s(12) }}>
             <div style={dividerStyle} />
             {isRegionPresent(template, "price") && (copy.priceText || copy.discountBadge) ? (
-              <div style={{ display: "flex", alignItems: "baseline", gap: s(10) }}>
+              // alignItems:"flex-end", not "baseline" — live-tested
+              // (2026-09-23) and confirmed satori/Yoga under-measures this
+              // row's rendered height under "baseline" alignment once type
+              // can scale above 1x (typeScaleForZone's new upper half): the
+              // row visibly overlapped the CTA line directly below it in the
+              // same flex-start column, the same under-measurement failure
+              // class as featureTextWidth's own comment describes, just
+              // triggered by alignment mode here instead of a zero-width
+              // flex-basis. flex-end still bottom-aligns the two differently
+              // sized price/discount texts, which reads the same visually.
+              <div style={{ display: "flex", alignItems: "flex-end", gap: s(10) }}>
                 {copy.priceText ? (
                   <div
                     style={{
                       display: "flex",
+                      // flexShrink:0 — live-tested (2026-09-23) and confirmed
+                      // its absence was the real cause of the price/discount
+                      // text visibly overlapping: satori/Yoga defaults flex
+                      // children to shrinkable, and once this row's computed
+                      // available width came out narrower than the combined
+                      // natural width of both nowrap text strings, Yoga
+                      // shrank the LAYOUT boxes used for gap/positioning —
+                      // but the actual glyph paths satori draws are shaped
+                      // at full natural size regardless, so the shrunk boxes
+                      // and the full-size glyphs disagreed, and the second
+                      // string's glyphs landed on top of the first's. Text
+                      // that must render at full size (nowrap, a factual
+                      // price) must never be allowed to shrink its box.
+                      flexShrink: 0,
                       whiteSpace: "nowrap",
                       color: PAPER,
                       fontSize: priceSize,
@@ -590,6 +681,7 @@ function buildDensePromoElement(
                   <div
                     style={{
                       display: "flex",
+                      flexShrink: 0,
                       whiteSpace: "nowrap",
                       color: "rgba(255,255,255,0.78)",
                       fontSize: discountSize,
@@ -609,7 +701,16 @@ function buildDensePromoElement(
               // itself; a fake button drawn on the pixels risks reading as a
               // real (broken) control instead.
               <div style={{ display: "flex", alignItems: "center", gap: s(8) }}>
-                <div style={{ display: "flex", whiteSpace: "nowrap", color: accentText, fontSize: ctaSize, fontWeight: 700 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    flexShrink: 0,
+                    whiteSpace: "nowrap",
+                    color: accentText,
+                    fontSize: ctaSize,
+                    fontWeight: 700,
+                  }}
+                >
                   {copy.ctaText}
                 </div>
                 <ArrowRightIcon size={Math.round(ctaSize * 0.85)} color={accentText} strokeWidth={2.5} />
@@ -686,7 +787,7 @@ export async function renderCreativeCanvas(input: RenderCreativeInput): Promise<
     // header for why a fixed fraction can't work in general.
     const signals = await computeColumnSignals(baseCropped, canvas);
     const textZoneWidth = resolveSafeTextZoneWidth(signals, canvas);
-    const densityScale = densityScaleFor(textZoneWidth, canvas);
+    const typeScale = typeScaleForZone(textZoneWidth, canvas);
     const featherWidth = featherWidthFor(canvas);
 
     const element = buildDensePromoElement(
@@ -696,7 +797,7 @@ export async function renderCreativeCanvas(input: RenderCreativeInput): Promise<
       input.logoDataUri,
       input.accentColor,
       textZoneWidth,
-      densityScale
+      typeScale
     );
     const svg = await satori(element, { width: canvas.width, height: canvas.height, fonts });
     const overlayPng = new Resvg(svg, { fitTo: { mode: "width", value: canvas.width } }).render().asPng();
