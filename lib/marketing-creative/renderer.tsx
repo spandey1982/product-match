@@ -57,11 +57,25 @@
  * panel softens the seam.
  *
  * Content is a flat column of peer elements (kicker, title, features,
- * price+CTA, trust badges) under one justifyContent:"space-between", each
- * separated by a hairline divider, so the whole available height is used
- * the way a real print ad distributes copy — not clustered, not centered as
- * one block. Text is white again (not dark ink), since the panel is once
- * more a photo-derived background of variable tone, not a flat light fill.
+ * price+CTA, trust badges) under one fixed, density- AND height-scaled gap
+ * (flex-start flow, not justifyContent:"space-between" — see
+ * resolveSafeTextZoneWidth's neighbourhood for why), each separated by a
+ * hairline divider. Text is white again (not dark ink), since the panel is
+ * once more a photo-derived background of variable tone, not a flat light
+ * fill.
+ *
+ * Two more joint-layout fixes (2026-09-23), both from the same root cause —
+ * font/spacing/crop decisions computed from canvas.width alone, blind to
+ * canvas.height: heightScaleFor grows type and gaps on taller canvases
+ * (vertical/pinterest have real extra room a square canvas doesn't; without
+ * this every canvas got identical type sizes and the surplus just sat empty
+ * below the last line). And the product crop no longer forces itself to
+ * cover the full canvas HEIGHT unconditionally — on a tall canvas that
+ * forced more zoom than the photo's own proportions called for, cropping
+ * the sides of the garment just to reach that height; it now falls back to
+ * an undistorted width-fit crop, bottom-anchored, with the panel's
+ * background filling in the headroom above when the photo doesn't reach the
+ * top on its own.
  *
  * It also drops the promo-benefits CTA's filled-pill styling (a fake button
  * an Instagram/Pinterest viewer might mistake for something tappable, when
@@ -349,6 +363,20 @@ function buildFullBleedElement(canvas: Canvas, template: CreativeTemplate, copy:
 
 // ── Dense full-bleed layout (promo-benefits) — V1.3 ──
 
+/** Square (1080×1080) is the reference canvas; vertical (1080×1350) and
+ * pinterest (1080×1500) have proportionally more vertical room. Live-tested
+ * (2026-09-23) and confirmed every font/gap size in this layout was
+ * computed from canvas.width alone — identical between square and vertical
+ * despite vertical having 25% more height — so the surplus just sat empty
+ * below the last element instead of the type actually using the space it
+ * was given, exactly the "not even efficient with the space" complaint.
+ * Multiplies type/spacing up on taller canvases instead. Capped, not
+ * unbounded — a big headline is the goal, not a headline that no longer
+ * fits its own column. */
+function heightScaleFor(canvas: Canvas): number {
+  return Math.min(1.35, canvas.height / 1080);
+}
+
 /** Short feather where the crisp product crop meets the blurred panel — a
  * soft depth-of-field-style falloff rather than a hard cut. It's fine for
  * this to blend real (unblurred-vs-blurred) pixels, unlike an earlier
@@ -368,10 +396,15 @@ function buildDensePromoElement(
   densityScale: number
 ) {
   const accentText = accentColor && /^#[0-9a-fA-F]{6}$/.test(accentColor) ? accentColor : ACCENT;
+  const heightScale = heightScaleFor(canvas);
   // Math.max(1, …) — a second, independent guard (alongside the raised
   // HARD_MIN_TEXT_ZONE_FRACTION floor) against any density-scaled dimension
   // rounding down to exactly 0, which satori/resvg cannot render safely.
-  const s = (base1080px: number) => Math.max(1, scale(canvas.width, Math.round(base1080px * densityScale)));
+  // densityScale shrinks type for a narrow (width-constrained) zone;
+  // heightScale grows it for a tall (extra vertical room) canvas — two
+  // independent axes, deliberately multiplied together rather than one
+  // constant standing in for both.
+  const s = (base1080px: number) => Math.max(1, scale(canvas.width, Math.round(base1080px * densityScale * heightScale)));
 
   const pad = scale(canvas.width, 50);
   const kickerSize = s(20);
@@ -387,7 +420,7 @@ function buildDensePromoElement(
   const badgeLabelSize = s(14);
   const logoSize = scale(canvas.width, 66);
   const contentWidth = Math.max(scale(canvas.width, 40), textZoneWidth - pad * 2);
-  const featureRowGap = scale(canvas.width, 13);
+  const featureRowGap = s(13);
   // An EXPLICIT, always-positive computed width — not flexGrow+width:0.
   // Live-tested (2026-09-22): under extreme narrowness (a content-aware
   // textZoneWidth well below ideal), that flex-basis trick could resolve to
@@ -486,7 +519,7 @@ function buildDensePromoElement(
         </div>
 
         {isRegionPresent(template, "features") && copy.features.length > 0 ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: scale(canvas.width, 16) }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: s(16) }}>
             <div style={dividerStyle} />
             {copy.features.map((f, i) => {
               const Icon = ICONS[f.icon];
@@ -535,10 +568,10 @@ function buildDensePromoElement(
         ) : null}
 
         {isRegionPresent(template, "price") || isRegionPresent(template, "cta") ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: scale(canvas.width, 12) }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: s(12) }}>
             <div style={dividerStyle} />
             {isRegionPresent(template, "price") && (copy.priceText || copy.discountBadge) ? (
-              <div style={{ display: "flex", alignItems: "baseline", gap: scale(canvas.width, 10) }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: s(10) }}>
                 {copy.priceText ? (
                   <div
                     style={{
@@ -575,7 +608,7 @@ function buildDensePromoElement(
               // Pinterest/website hyperlink) already lives outside the image
               // itself; a fake button drawn on the pixels risks reading as a
               // real (broken) control instead.
-              <div style={{ display: "flex", alignItems: "center", gap: scale(canvas.width, 8) }}>
+              <div style={{ display: "flex", alignItems: "center", gap: s(8) }}>
                 <div style={{ display: "flex", whiteSpace: "nowrap", color: accentText, fontSize: ctaSize, fontWeight: 700 }}>
                   {copy.ctaText}
                 </div>
@@ -586,9 +619,9 @@ function buildDensePromoElement(
         ) : null}
 
         {isRegionPresent(template, "trustBadges") && copy.trustBadges.length > 0 ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: scale(canvas.width, 12) }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: s(12) }}>
             <div style={dividerStyle} />
-            <div style={{ display: "flex", flexWrap: "wrap", gap: scale(canvas.width, 14) }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: s(14) }}>
               {copy.trustBadges.map((b, i) => {
                 const Icon = ICONS[b.icon];
                 return (
@@ -679,10 +712,47 @@ export async function renderCreativeCanvas(input: RenderCreativeInput): Promise<
     // space it actually has, the way a designer drags and scales a placed
     // photo to its frame rather than generating it pre-sized.
     const productZoneWidth = canvas.width - textZoneWidth;
-    const productCrop = await sharp(input.heroBuffer)
+
+    // Forcing the crop to cover the FULL canvas height, unconditionally, was
+    // the bug on taller canvases (vertical/pinterest): to reach a taller
+    // target from the same zone width, "cover" fit has to zoom in MORE than
+    // the photo's own proportions call for, cropping the sides of the
+    // garment just to fill height it didn't need to fill. Live-tested
+    // (2026-09-23) and confirmed on a vertical canvas — part of the model
+    // was cropped away that a square canvas, same photo, same zone width,
+    // showed completely. Fixed by checking the WIDTH-FIT natural height
+    // first: only force the extra zoom when the photo's own proportions
+    // already reach the canvas height on their own; otherwise use the
+    // undistorted width-fit crop and let the panel's background — already
+    // built to extend the scene, just horizontally until now — extend
+    // vertically too, the same idea applied on the axis that actually needs
+    // it for this canvas shape.
+    const widthFit = await sharp(input.heroBuffer)
       .rotate()
-      .resize(productZoneWidth, canvas.height, { fit: "cover", position: "attention" })
-      .toBuffer();
+      .resize({ width: productZoneWidth })
+      .toBuffer({ resolveWithObject: true });
+    const naturalHeight = widthFit.info.height;
+
+    let productCrop: Buffer;
+    let productCropHeight: number;
+    let productCropTop: number;
+    if (naturalHeight >= canvas.height) {
+      productCrop = await sharp(input.heroBuffer)
+        .rotate()
+        .resize(productZoneWidth, canvas.height, { fit: "cover", position: "attention" })
+        .toBuffer();
+      productCropHeight = canvas.height;
+      productCropTop = 0;
+    } else {
+      // No horizontal crop at all here — just a uniform scale-down, so
+      // nothing of the garment is lost. Bottom-anchored (feet grounded,
+      // like a real standing-figure shot); the surplus canvas height above
+      // her becomes headroom the panel's background fills in, the same way
+      // real architecture continues above a subject in a full-length shot.
+      productCrop = widthFit.data;
+      productCropHeight = naturalHeight;
+      productCropTop = canvas.height - naturalHeight;
+    }
 
     // The panel is derived from the product crop's OWN left edge — stretched
     // to fill the text zone, then blurred — not an independent full-canvas
@@ -691,13 +761,13 @@ export async function renderCreativeCanvas(input: RenderCreativeInput): Promise<
     // it) rather than a same-toned but disconnected fill, and it avoids the
     // scale mismatch an independently-zoomed panel source would have at the
     // seam.
-    // panelBase is stretched to the FULL canvas width, not just textZoneWidth
-    // — it's the base layer the product crop composites on top of, so it
-    // must cover the whole frame even though only its left portion ends up
-    // visible once the feathered photo is placed over the rest.
+    // panelBase is stretched to the FULL canvas width AND height — it's the
+    // base layer everything else composites onto, so it must cover the whole
+    // frame even where the product crop doesn't reach (its left edge always;
+    // above it too, when productCropTop > 0).
     const edgeStripWidth = Math.min(productZoneWidth, scale(canvas.width, 80));
     const edgeStrip = await sharp(productCrop)
-      .extract({ left: 0, top: 0, width: edgeStripWidth, height: canvas.height })
+      .extract({ left: 0, top: 0, width: edgeStripWidth, height: productCropHeight })
       .toBuffer();
     const panelBase = await sharp(edgeStrip)
       .resize(canvas.width, canvas.height, { fit: "fill" })
@@ -706,8 +776,8 @@ export async function renderCreativeCanvas(input: RenderCreativeInput): Promise<
 
     // Feather the product crop's own left edge toward transparent so the
     // panel shows through gradually at the seam, instead of a hard cut.
-    const maskPng = await sharp(buildHorizontalFeatherMask(productZoneWidth, canvas.height, featherWidth), {
-      raw: { width: productZoneWidth, height: canvas.height, channels: 4 },
+    const maskPng = await sharp(buildHorizontalFeatherMask(productZoneWidth, productCropHeight, featherWidth), {
+      raw: { width: productZoneWidth, height: productCropHeight, channels: 4 },
     })
       .png()
       .toBuffer();
@@ -720,7 +790,7 @@ export async function renderCreativeCanvas(input: RenderCreativeInput): Promise<
 
     const composited = await sharp(panelBase)
       .composite([
-        { input: featheredPhoto, left: textZoneWidth, top: 0 },
+        { input: featheredPhoto, left: textZoneWidth, top: productCropTop },
         { input: overlayPng, left: 0, top: 0, blend: "over" },
       ])
       .png()
