@@ -29,22 +29,23 @@ import type { CanvasKey, ContentMode, CreativeObjective, TemplateFamily } from "
 const MAX_RENDER_RETRIES = 2; // matches QUEUE_OPTIONS[CREATIVE_HERO_RENDER].retryLimit
 
 // compositionClause (lib/model-gen/prompt-sets.ts) promises "the entire
-// [open] third" (0.333) as a MINIMUM — live-tested (2026-09-23) by
-// overlaying gridlines on the actual cached hero photo's attention-cropped
-// base and visually finding where the garment truly begins: ~40-42% of
-// canvas width, meaningfully past the literal minimum, because the model
-// also complied with the prompt's other instruction (body center ~two-
-// thirds across) more generously than the bare minimum requires. 0.36
-// trusts that real measurement with a safety margin below it (not the
-// literal 0.333, which was confirmed to leave real usable space
-// unclaimed), while staying comfortably short of the observed true edge to
-// absorb generation-to-generation variance across different photos.
-// renderer.tsx's safe-zone scan can trust this as a floor for any hero
-// photo generated via this path, instead of re-deriving it from pixels
-// (which live-tested 2026-09-23 as unreliable against genuinely detailed
-// backdrops — see resolveSafeTextZoneWidth's header). If compositionClause's
-// wording ever changes, re-measure and update this too.
-const COMPOSITION_GUARANTEED_SAFE_FRACTION = 0.36;
+// [open] third" (0.333) as a MINIMUM — live-tested (2026-09-23, refined
+// 2026-09-24 with finer-spaced gridlines) by overlaying gridlines on the
+// actual cached hero photo's attention-cropped base: the garment's densely
+// embroidered body starts ~42%, but its flared skirt hem (the widest,
+// most visually prominent part, and the part retailer feedback specifically
+// circled as still leaving unused room short of it) reaches no further
+// left than ~46%. 0.40 trusts that measurement with a real safety margin
+// below the tighter (42%) figure — not the literal 0.333 promise, which
+// was confirmed to leave real usable space unclaimed, and not pushed all
+// the way to 42-46%, which would leave no margin for generation-to-
+// generation variance across different photos. renderer.tsx's safe-zone
+// scan can trust this as a floor for any hero photo generated via this
+// path, instead of re-deriving it from pixels (which live-tested
+// 2026-09-23 as unreliable against genuinely detailed backdrops — see
+// resolveSafeTextZoneWidth's header). If compositionClause's wording ever
+// changes, re-measure and update this too.
+const COMPOSITION_GUARANTEED_SAFE_FRACTION = 0.4;
 
 export async function handleCreativeRender(payload: CreativeHeroRenderPayload): Promise<void> {
   const job = await db.marketingCreativeJob.findUnique({

@@ -163,18 +163,24 @@ function buildHorizontalFeatherMask(width: number, height: number, featherWidth:
   return buf;
 }
 
-/** Same idea as buildHorizontalFeatherMask, rotated 90° — the photo's TOP
- * edge fades in from transparent instead of its left edge. Used only when
- * the natural-height crop leaves headroom above the photo (see
- * renderCreativeCanvas): without this, the headroom fill met the crisp
- * photo at a hard, uncomposited seam, which is exactly what read as an
- * obviously pasted-on "patch" rather than a real continuation of the
- * scene — live-tested (2026-09-23), retailer feedback: "the vertical image
- * is still prepared by adding the extension patch/swatch at the top." */
-function buildVerticalFeatherMask(width: number, height: number, featherHeight: number): Buffer {
+/** Same idea as buildHorizontalFeatherMask, rotated 90° — one edge fades in
+ * from transparent instead of the left edge. Used when the crop can't
+ * safely reach the full canvas height and leaves a gap the panel's
+ * background needs to fill (see renderCreativeCanvas): without this, the
+ * fill met the crisp photo at a hard, uncomposited seam, which is exactly
+ * what read as an obviously pasted-on "patch" rather than a real
+ * continuation of the scene — live-tested (2026-09-23), retailer feedback:
+ * "the vertical image is still prepared by adding the extension patch/
+ * swatch at the top." V1.5 always top-anchors the crop (any gap now falls
+ * at the BOTTOM — "shift things down... there is still so much empty dead
+ * gap at the bottom" per the same feedback), so `edge` picks which side
+ * fades: "top" (fades in descending from y=0, gap above) or "bottom"
+ * (fades out approaching height, gap below). */
+function buildVerticalFeatherMask(width: number, height: number, featherHeight: number, edge: "top" | "bottom"): Buffer {
   const buf = Buffer.alloc(width * height * 4);
   for (let y = 0; y < height; y++) {
-    const alpha = y < featherHeight ? Math.round((y / Math.max(1, featherHeight - 1)) * 255) : 255;
+    const distanceFromEdge = edge === "top" ? y : height - 1 - y;
+    const alpha = distanceFromEdge < featherHeight ? Math.round((distanceFromEdge / Math.max(1, featherHeight - 1)) * 255) : 255;
     for (let x = 0; x < width; x++) {
       const i = (y * width + x) * 4;
       buf[i] = 255;
@@ -491,12 +497,6 @@ function featherWidthFor(canvas: Canvas): number {
   return scale(canvas.width, 90);
 }
 
-/** Below this fraction of canvas.height, headroom isn't worth promoting
- * kicker/title into their own band — too little room to matter, and the
- * inline narrow-column rendering (unchanged) is simpler and safer for a
- * sliver of leftover space. */
-const MASTHEAD_MIN_HEADROOM_FRACTION = 0.15;
-
 function buildDensePromoElement(
   canvas: Canvas,
   template: CreativeTemplate,
@@ -504,8 +504,7 @@ function buildDensePromoElement(
   logoDataUri: string | null,
   accentColor: string | null,
   textZoneWidth: number,
-  typeScale: number,
-  headroomHeight: number
+  typeScale: number
 ) {
   const accentText = accentColor && /^#[0-9a-fA-F]{6}$/.test(accentColor) ? accentColor : ACCENT;
   const heightScale = heightScaleFor(canvas);
@@ -522,34 +521,9 @@ function buildDensePromoElement(
   // still left the surrounding rhythm feeling cramped/left-pinned relative
   // to its own bigger type, so section-to-section and top breathing room
   // grow a bit faster than font sizes do, capped independently of s()'s own
-  // 1.3/1.35 ceilings so it doesn't also inflate icon/text sizes. Raised
-  // 1.5→2.2 (V1.5): once the masthead (below) can take the title out of
-  // this column entirely, the column has less mandatory content, so gaps
-  // need more headroom to keep using leftover height instead of just
-  // leaving it blank again.
+  // 1.3/1.35 ceilings so it doesn't also inflate icon/text sizes.
   const gapScale = Math.min(2.2, typeScale * heightScale);
   const g = (base1080px: number) => Math.max(1, scale(canvas.width, Math.round(base1080px * gapScale)));
-
-  // Full-width masthead (V1.5): when the natural-height crop leaves real
-  // headroom above the photo, that space used to be filled by a synthetic
-  // blurred patch alone — retailer feedback: "why not use that space for
-  // title or other important info?" There's no product up there at all
-  // (the photo doesn't start until headroomHeight), so kicker+title can
-  // safely use the FULL canvas width, not just the narrow zone — and get
-  // to be a genuinely large editorial masthead instead of competing for
-  // space with features/price/CTA in the column below. mastheadTypeScale
-  // always lands at typeScaleForZone's cap (canvas.width is always well
-  // past the pivot fraction of itself) — deliberate, this is the one place
-  // in the layout meant to read as unambiguously the largest text on the
-  // canvas. overflow:"hidden" + a height cap tied to headroomHeight itself
-  // are a hard safety net against a long title pushing past its band into
-  // where the photo is composited (no live text-measurement available to
-  // guarantee it fits otherwise).
-  const useMasthead = headroomHeight >= canvas.height * MASTHEAD_MIN_HEADROOM_FRACTION;
-  const mastheadTypeScale = typeScaleForZone(canvas.width, canvas);
-  const sm = (base1080px: number) => Math.max(1, scale(canvas.width, Math.round(base1080px * mastheadTypeScale * heightScale)));
-  const mastheadTitleSize = Math.min(sm(44), Math.max(1, Math.round(headroomHeight * 0.32)));
-  const mastheadKickerSize = Math.min(sm(20), Math.max(1, Math.round(headroomHeight * 0.14)));
 
   const pad = scale(canvas.width, 50);
   const kickerSize = s(20);
@@ -602,59 +576,6 @@ function buildDensePromoElement(
         ) : null}
       </div>
 
-      {useMasthead ? (
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            justifyContent: "center",
-            gap: scale(canvas.width, 10),
-            width: canvas.width,
-            height: headroomHeight,
-            padding: `0 ${pad}px`,
-            overflow: "hidden",
-          }}
-        >
-          {isRegionPresent(template, "kicker") && copy.kicker ? (
-            <div
-              style={{
-                display: "flex",
-                alignSelf: "flex-start",
-                backgroundColor: accentText,
-                borderRadius: scale(canvas.width, 6),
-                padding: `${scale(canvas.width, 7)}px ${scale(canvas.width, 16)}px`,
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  color: PAPER,
-                  fontStyle: "italic",
-                  fontWeight: 600,
-                  fontSize: mastheadKickerSize,
-                  letterSpacing: 1.2,
-                  textTransform: "uppercase",
-                }}
-              >
-                {copy.kicker}
-              </div>
-            </div>
-          ) : null}
-          <div
-            style={{
-              display: "flex",
-              color: PAPER,
-              fontSize: mastheadTitleSize,
-              fontWeight: 700,
-              lineHeight: 1.12,
-              textShadow: "0 2px 14px rgba(0,0,0,0.45)",
-            }}
-          >
-            {copy.title}
-          </div>
-        </div>
-      ) : null}
-
       {/* Every element here — kicker, title, features, price+CTA, trust
           badges — is a direct flex child of ONE column with a fixed,
           scaled gap (NOT justifyContent:"space-between" — live-
@@ -682,7 +603,7 @@ function buildDensePromoElement(
           width: contentWidth,
         }}
       >
-        {!useMasthead && isRegionPresent(template, "kicker") && copy.kicker ? (
+        {isRegionPresent(template, "kicker") && copy.kicker ? (
           <div
             style={{
               display: "flex",
@@ -708,20 +629,18 @@ function buildDensePromoElement(
           </div>
         ) : null}
 
-        {!useMasthead ? (
-          <div
-            style={{
-              display: "flex",
-              color: PAPER,
-              fontSize: titleSize,
-              fontWeight: 700,
-              lineHeight: 1.14,
-              textShadow: "0 2px 14px rgba(0,0,0,0.45)",
-            }}
-          >
-            {copy.title}
-          </div>
-        ) : null}
+        <div
+          style={{
+            display: "flex",
+            color: PAPER,
+            fontSize: titleSize,
+            fontWeight: 700,
+            lineHeight: 1.14,
+            textShadow: "0 2px 14px rgba(0,0,0,0.45)",
+          }}
+        >
+          {copy.title}
+        </div>
 
         {isRegionPresent(template, "features") && copy.features.length > 0 ? (
           <div style={{ display: "flex", flexDirection: "column", gap: s(16) }}>
@@ -947,78 +866,62 @@ export async function renderCreativeCanvas(input: RenderCreativeInput): Promise<
     // space it actually has, the way a designer drags and scales a placed
     // photo to its frame rather than generating it pre-sized.
     //
-    // This crop math now runs BEFORE building the Satori element (V1.5) —
-    // it used to run after, but buildDensePromoElement needs to know
-    // productCropTop (the headroom amount) to decide whether to render a
-    // full-width masthead there instead of a wasted blurred patch.
     const productZoneWidth = canvas.width - textZoneWidth;
 
     // Forcing the crop to cover the FULL canvas height, unconditionally, was
-    // the bug on taller canvases (vertical/pinterest): to reach a taller
-    // target from the same zone width, "cover" fit has to zoom in MORE than
-    // the photo's own proportions call for, cropping the sides of the
-    // garment just to fill height it didn't need to fill. Live-tested
-    // (2026-09-23) and confirmed on a vertical canvas — part of the model
-    // was cropped away that a square canvas, same photo, same zone width,
-    // showed completely. Fixed by checking the WIDTH-FIT natural height
-    // first: only force the extra zoom when the photo's own proportions
-    // already reach the canvas height on their own; otherwise use the
-    // undistorted width-fit crop and let the panel's background — already
-    // built to extend the scene, just horizontally until now — extend
-    // vertically too, the same idea applied on the axis that actually needs
-    // it for this canvas shape.
+    // the bug on taller canvases two revisions ago: at a WIDE product zone,
+    // "cover" fit's attention crop didn't reliably center on the model,
+    // cropping into the garment. V1.5 re-tested this directly against the
+    // real cached hero photo now that Fix 1 (above) narrows the product
+    // zone by widening the text zone — live-tested (2026-09-24) and
+    // confirmed the opposite of what was assumed: a NARROWER zone makes
+    // "attention" crop MORE reliable, not less (less ambiguous side content
+    // to weigh), and calibrated exactly how far it can be pushed by
+    // rendering the same photo at several target heights and inspecting
+    // each one: safe at a 34.6% required crop (full figure, comfortable
+    // margin), still safe at 36.2%, borderline at 38.2% (hairline right at
+    // the edge), and clearly cutting her face by 42.6%. MAX_FULL_CROP_
+    // FRACTION is set below the borderline point, not at it.
+    const MAX_FULL_CROP_FRACTION = 0.35;
+
     const widthFit = await sharp(input.heroBuffer)
       .rotate()
       .resize({ width: productZoneWidth })
       .toBuffer({ resolveWithObject: true });
     const naturalHeight = widthFit.info.height;
-
-    // A source photo notably taller-aspect than the target canvas (e.g. a
-    // 1792×2400 source into a 1080×1350 zone) can leave a LARGE gap here —
-    // closing it entirely would mean the exact unconditional crop that was
-    // just fixed above. But closing NONE of it (V1.4's first pass) leaned
-    // entirely on a synthetic headroom fill, which retailer feedback
-    // (2026-09-23) called an obvious "patch." Splitting the difference:
-    // allow a SMALL, capped zoom/crop (attention-cropped, same as the
-    // full-cover branch, just bounded) to close part of the gap, and only
-    // let the synthetic fill cover whatever's left — smaller, so it reads
-    // as breathing room above the subject rather than a pasted swatch.
-    const MAX_HEADROOM_CROP_FRACTION = 0.12;
+    const requiredCropFraction = Math.max(0, 1 - naturalHeight / canvas.height);
 
     let productCrop: Buffer;
     let productCropHeight: number;
-    let productCropTop: number;
-    if (naturalHeight >= canvas.height) {
+    if (requiredCropFraction <= MAX_FULL_CROP_FRACTION) {
+      // Full height reachable within the calibrated-safe crop budget —
+      // closes the gap completely, no synthetic fill needed at all.
       productCrop = await sharp(input.heroBuffer)
         .rotate()
         .resize(productZoneWidth, canvas.height, { fit: "cover", position: "attention" })
         .toBuffer();
       productCropHeight = canvas.height;
-      productCropTop = 0;
     } else {
-      // targetHeight solves cropFraction = 1 - naturalHeight/targetHeight
-      // for cropFraction = MAX_HEADROOM_CROP_FRACTION — the tallest height
-      // "cover" fit can reach at productZoneWidth while cropping at most
-      // that fraction of the width away.
-      const targetHeight = Math.min(canvas.height, Math.round(naturalHeight / (1 - MAX_HEADROOM_CROP_FRACTION)));
-      if (targetHeight > naturalHeight) {
-        productCrop = await sharp(input.heroBuffer)
-          .rotate()
-          .resize(productZoneWidth, targetHeight, { fit: "cover", position: "attention" })
-          .toBuffer();
-        productCropHeight = targetHeight;
-      } else {
-        // No horizontal crop at all here — just a uniform scale-down, so
-        // nothing of the garment is lost.
-        productCrop = widthFit.data;
-        productCropHeight = naturalHeight;
-      }
-      // Bottom-anchored (feet grounded, like a real standing-figure shot);
-      // any surplus canvas height still left above her becomes headroom the
-      // panel's background fills in, the same way real architecture
-      // continues above a subject in a full-length shot.
-      productCropTop = canvas.height - productCropHeight;
+      // A source photo notably taller-aspect than the target canvas (e.g. a
+      // 1792×2400 source into a 1000×1500 pinterest zone) can still exceed
+      // the safe crop budget even after Fix 1's narrower zone. Reach as
+      // close to full height as the budget safely allows — closing most of
+      // the gap — and leave only the genuine remainder to the fill below,
+      // rather than either over-cropping the model or leaving the full gap
+      // unclosed.
+      const targetHeight = Math.round(naturalHeight / (1 - MAX_FULL_CROP_FRACTION));
+      productCrop = await sharp(input.heroBuffer)
+        .rotate()
+        .resize(productZoneWidth, targetHeight, { fit: "cover", position: "attention" })
+        .toBuffer();
+      productCropHeight = targetHeight;
     }
+    // Always top-anchored (V1.5) — retailer feedback (2026-09-24): "stop
+    // creating that blur headroom extension as there is still so much
+    // empty dead gap at the bottom... shift things down." Any shortfall
+    // that survives the crop budget above now falls at the BOTTOM (a
+    // "footroom" fill, below) instead of being manufactured at the top.
+    const productCropTop = 0;
 
     const element = buildDensePromoElement(
       canvas,
@@ -1027,8 +930,7 @@ export async function renderCreativeCanvas(input: RenderCreativeInput): Promise<
       input.logoDataUri,
       input.accentColor,
       textZoneWidth,
-      typeScale,
-      productCropTop
+      typeScale
     );
     const svg = await satori(element, { width: canvas.width, height: canvas.height, fonts });
     const overlayPng = new Resvg(svg, { fitTo: { mode: "width", value: canvas.width } }).render().asPng();
@@ -1043,7 +945,8 @@ export async function renderCreativeCanvas(input: RenderCreativeInput): Promise<
     // panelBase is stretched to the FULL canvas width AND height — it's the
     // base layer everything else composites onto, so it must cover the whole
     // frame even where the product crop doesn't reach (its left edge always;
-    // above it too, when productCropTop > 0).
+    // below it too, when productCropHeight < canvas.height — see footroom
+    // below).
     const edgeStripWidth = Math.min(productZoneWidth, scale(canvas.width, 80));
     const edgeStrip = await sharp(productCrop)
       .extract({ left: 0, top: 0, width: edgeStripWidth, height: productCropHeight })
@@ -1067,27 +970,33 @@ export async function renderCreativeCanvas(input: RenderCreativeInput): Promise<
       .png()
       .toBuffer();
 
-    // When the width-fit crop leaves headroom above the photo (productCropTop
-    // > 0), fill it from the photo's OWN top band — not panelBase's LEFT-edge
-    // derivation, which points the wrong physical direction for a vertical
-    // gap and produced a visibly disconnected "patch" (retailer feedback,
-    // 2026-09-23) — then feather the photo's top edge into it the same way
-    // the left edge already feathers into the panel, so the seam blends
-    // instead of cutting hard.
-    let headroomComposite: Array<{ input: Buffer; left: number; top: number }> = [];
-    if (productCropTop > 0) {
-      const topBandHeight = Math.min(productCropHeight, scale(canvas.width, 80));
-      const topBand = await sharp(productCrop)
-        .extract({ left: 0, top: 0, width: productZoneWidth, height: topBandHeight })
+    // Any shortfall that survives MAX_FULL_CROP_FRACTION's budget now falls
+    // at the BOTTOM (productCropTop is always 0 — see above), filled from
+    // the photo's OWN bottom band — not panelBase's LEFT-edge derivation,
+    // which points the wrong physical direction for a vertical gap and
+    // produced a visibly disconnected "patch" (retailer feedback,
+    // 2026-09-23, repeated 2026-09-24 pointing at the top specifically) —
+    // then feather the photo's bottom edge into it the same way the left
+    // edge already feathers into the panel, so the seam blends instead of
+    // cutting hard. In practice this now rarely triggers at all: the
+    // calibrated crop budget above closes the gap completely for square/
+    // vertical on the real cached photo, and only pinterest's more extreme
+    // height still needs a (much smaller than before) residual fill.
+    let footroomComposite: Array<{ input: Buffer; left: number; top: number }> = [];
+    if (productCropHeight < canvas.height) {
+      const footroomHeight = canvas.height - productCropHeight;
+      const bottomBandHeight = Math.min(productCropHeight, scale(canvas.width, 80));
+      const bottomBand = await sharp(productCrop)
+        .extract({ left: 0, top: productCropHeight - bottomBandHeight, width: productZoneWidth, height: bottomBandHeight })
         .toBuffer();
-      const headroomFill = await sharp(topBand)
-        .resize(productZoneWidth, productCropTop, { fit: "fill" })
+      const footroomFill = await sharp(bottomBand)
+        .resize(productZoneWidth, footroomHeight, { fit: "fill" })
         .blur(scale(canvas.width, 22))
         .toBuffer();
-      headroomComposite = [{ input: headroomFill, left: textZoneWidth, top: 0 }];
+      footroomComposite = [{ input: footroomFill, left: textZoneWidth, top: productCropHeight }];
 
       const verticalFeatherHeight = Math.min(productCropHeight, featherWidth);
-      const verticalMaskPng = await sharp(buildVerticalFeatherMask(productZoneWidth, productCropHeight, verticalFeatherHeight), {
+      const verticalMaskPng = await sharp(buildVerticalFeatherMask(productZoneWidth, productCropHeight, verticalFeatherHeight, "bottom"), {
         raw: { width: productZoneWidth, height: productCropHeight, channels: 4 },
       })
         .png()
@@ -1100,7 +1009,7 @@ export async function renderCreativeCanvas(input: RenderCreativeInput): Promise<
 
     const composited = await sharp(panelBase)
       .composite([
-        ...headroomComposite,
+        ...footroomComposite,
         { input: featheredPhoto, left: textZoneWidth, top: productCropTop },
         { input: overlayPng, left: 0, top: 0, blend: "over" },
       ])
