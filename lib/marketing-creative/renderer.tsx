@@ -163,6 +163,29 @@ function buildHorizontalFeatherMask(width: number, height: number, featherWidth:
   return buf;
 }
 
+/** Same idea as buildHorizontalFeatherMask, rotated 90° — the photo's TOP
+ * edge fades in from transparent instead of its left edge. Used only when
+ * the natural-height crop leaves headroom above the photo (see
+ * renderCreativeCanvas): without this, the headroom fill met the crisp
+ * photo at a hard, uncomposited seam, which is exactly what read as an
+ * obviously pasted-on "patch" rather than a real continuation of the
+ * scene — live-tested (2026-09-23), retailer feedback: "the vertical image
+ * is still prepared by adding the extension patch/swatch at the top." */
+function buildVerticalFeatherMask(width: number, height: number, featherHeight: number): Buffer {
+  const buf = Buffer.alloc(width * height * 4);
+  for (let y = 0; y < height; y++) {
+    const alpha = y < featherHeight ? Math.round((y / Math.max(1, featherHeight - 1)) * 255) : 255;
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      buf[i] = 255;
+      buf[i + 1] = 255;
+      buf[i + 2] = 255;
+      buf[i + 3] = alpha;
+    }
+  }
+  return buf;
+}
+
 const STRIP_COUNT = 24;
 /** The TYPOGRAPHY PIVOT, not a search limit (V1.4 revision — see below).
  * Zones narrower than this shrink type; zones wider than this grow it. Kept
@@ -834,6 +857,18 @@ export async function renderCreativeCanvas(input: RenderCreativeInput): Promise<
       .toBuffer({ resolveWithObject: true });
     const naturalHeight = widthFit.info.height;
 
+    // A source photo notably taller-aspect than the target canvas (e.g. a
+    // 1792×2400 source into a 1080×1350 zone) can leave a LARGE gap here —
+    // closing it entirely would mean the exact unconditional crop that was
+    // just fixed above. But closing NONE of it (V1.4's first pass) leaned
+    // entirely on a synthetic headroom fill, which retailer feedback
+    // (2026-09-23) called an obvious "patch." Splitting the difference:
+    // allow a SMALL, capped zoom/crop (attention-cropped, same as the
+    // full-cover branch, just bounded) to close part of the gap, and only
+    // let the synthetic fill cover whatever's left — smaller, so it reads
+    // as breathing room above the subject rather than a pasted swatch.
+    const MAX_HEADROOM_CROP_FRACTION = 0.12;
+
     let productCrop: Buffer;
     let productCropHeight: number;
     let productCropTop: number;
@@ -845,14 +880,28 @@ export async function renderCreativeCanvas(input: RenderCreativeInput): Promise<
       productCropHeight = canvas.height;
       productCropTop = 0;
     } else {
-      // No horizontal crop at all here — just a uniform scale-down, so
-      // nothing of the garment is lost. Bottom-anchored (feet grounded,
-      // like a real standing-figure shot); the surplus canvas height above
-      // her becomes headroom the panel's background fills in, the same way
-      // real architecture continues above a subject in a full-length shot.
-      productCrop = widthFit.data;
-      productCropHeight = naturalHeight;
-      productCropTop = canvas.height - naturalHeight;
+      // targetHeight solves cropFraction = 1 - naturalHeight/targetHeight
+      // for cropFraction = MAX_HEADROOM_CROP_FRACTION — the tallest height
+      // "cover" fit can reach at productZoneWidth while cropping at most
+      // that fraction of the width away.
+      const targetHeight = Math.min(canvas.height, Math.round(naturalHeight / (1 - MAX_HEADROOM_CROP_FRACTION)));
+      if (targetHeight > naturalHeight) {
+        productCrop = await sharp(input.heroBuffer)
+          .rotate()
+          .resize(productZoneWidth, targetHeight, { fit: "cover", position: "attention" })
+          .toBuffer();
+        productCropHeight = targetHeight;
+      } else {
+        // No horizontal crop at all here — just a uniform scale-down, so
+        // nothing of the garment is lost.
+        productCrop = widthFit.data;
+        productCropHeight = naturalHeight;
+      }
+      // Bottom-anchored (feet grounded, like a real standing-figure shot);
+      // any surplus canvas height still left above her becomes headroom the
+      // panel's background fills in, the same way real architecture
+      // continues above a subject in a full-length shot.
+      productCropTop = canvas.height - productCropHeight;
     }
 
     // The panel is derived from the product crop's OWN left edge — stretched
@@ -877,20 +926,52 @@ export async function renderCreativeCanvas(input: RenderCreativeInput): Promise<
 
     // Feather the product crop's own left edge toward transparent so the
     // panel shows through gradually at the seam, instead of a hard cut.
-    const maskPng = await sharp(buildHorizontalFeatherMask(productZoneWidth, productCropHeight, featherWidth), {
+    const horizontalMaskPng = await sharp(buildHorizontalFeatherMask(productZoneWidth, productCropHeight, featherWidth), {
       raw: { width: productZoneWidth, height: productCropHeight, channels: 4 },
     })
       .png()
       .toBuffer();
 
-    const featheredPhoto = await sharp(productCrop)
+    let featheredPhoto = await sharp(productCrop)
       .ensureAlpha()
-      .composite([{ input: maskPng, blend: "dest-in" }])
+      .composite([{ input: horizontalMaskPng, blend: "dest-in" }])
       .png()
       .toBuffer();
 
+    // When the width-fit crop leaves headroom above the photo (productCropTop
+    // > 0), fill it from the photo's OWN top band — not panelBase's LEFT-edge
+    // derivation, which points the wrong physical direction for a vertical
+    // gap and produced a visibly disconnected "patch" (retailer feedback,
+    // 2026-09-23) — then feather the photo's top edge into it the same way
+    // the left edge already feathers into the panel, so the seam blends
+    // instead of cutting hard.
+    let headroomComposite: Array<{ input: Buffer; left: number; top: number }> = [];
+    if (productCropTop > 0) {
+      const topBandHeight = Math.min(productCropHeight, scale(canvas.width, 80));
+      const topBand = await sharp(productCrop)
+        .extract({ left: 0, top: 0, width: productZoneWidth, height: topBandHeight })
+        .toBuffer();
+      const headroomFill = await sharp(topBand)
+        .resize(productZoneWidth, productCropTop, { fit: "fill" })
+        .blur(scale(canvas.width, 22))
+        .toBuffer();
+      headroomComposite = [{ input: headroomFill, left: textZoneWidth, top: 0 }];
+
+      const verticalFeatherHeight = Math.min(productCropHeight, featherWidth);
+      const verticalMaskPng = await sharp(buildVerticalFeatherMask(productZoneWidth, productCropHeight, verticalFeatherHeight), {
+        raw: { width: productZoneWidth, height: productCropHeight, channels: 4 },
+      })
+        .png()
+        .toBuffer();
+      featheredPhoto = await sharp(featheredPhoto)
+        .composite([{ input: verticalMaskPng, blend: "dest-in" }])
+        .png()
+        .toBuffer();
+    }
+
     const composited = await sharp(panelBase)
       .composite([
+        ...headroomComposite,
         { input: featheredPhoto, left: textZoneWidth, top: productCropTop },
         { input: overlayPng, left: 0, top: 0, blend: "over" },
       ])
