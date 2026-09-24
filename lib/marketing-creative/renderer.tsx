@@ -873,16 +873,22 @@ export async function renderCreativeCanvas(input: RenderCreativeInput): Promise<
     // "cover" fit's attention crop didn't reliably center on the model,
     // cropping into the garment. V1.5 re-tested this directly against the
     // real cached hero photo now that Fix 1 (above) narrows the product
-    // zone by widening the text zone — live-tested (2026-09-24) and
-    // confirmed the opposite of what was assumed: a NARROWER zone makes
-    // "attention" crop MORE reliable, not less (less ambiguous side content
-    // to weigh), and calibrated exactly how far it can be pushed by
-    // rendering the same photo at several target heights and inspecting
-    // each one: safe at a 34.6% required crop (full figure, comfortable
-    // margin), still safe at 36.2%, borderline at 38.2% (hairline right at
-    // the edge), and clearly cutting her face by 42.6%. MAX_FULL_CROP_
-    // FRACTION is set below the borderline point, not at it.
-    const MAX_FULL_CROP_FRACTION = 0.35;
+    // zone by widening the text zone, and calibrated a 0.35 ceiling against
+    // that photo (generated under the OLD compositionHint prompt — see
+    // prompt-sets.ts's verticalMarginClause for what changed).
+    //
+    // Recalibrated 2026-09-24 against TWO fresh photos generated under the
+    // updated prompt (deliberate headroom/footroom request): the previous
+    // 0.35 ceiling was itself a symptom of the old prompt's near-zero
+    // margin, not a hard limit of "attention" cropping. Tested pinterest's
+    // actual worst case (0.509 required) and pushed well beyond it on both
+    // a kurti and the harder heavy/flared lehenga case — both stayed
+    // completely clean (full head clearance) up to 0.591, the highest
+    // tested. 0.55 sits with real margin below that on both photos, while
+    // fully covering pinterest's worst case with room to spare — closing
+    // the footroom-fill gap entirely for photos with this prompt's margin,
+    // not just shrinking it.
+    const MAX_FULL_CROP_FRACTION = 0.55;
 
     const widthFit = await sharp(input.heroBuffer)
       .rotate()
