@@ -29,23 +29,25 @@ import type { CanvasKey, ContentMode, CreativeObjective, TemplateFamily } from "
 const MAX_RENDER_RETRIES = 2; // matches QUEUE_OPTIONS[CREATIVE_HERO_RENDER].retryLimit
 
 // compositionClause (lib/model-gen/prompt-sets.ts) promises "the entire
-// [open] third" (0.333) as a MINIMUM — live-tested (2026-09-23, refined
-// 2026-09-24 with finer-spaced gridlines) by overlaying gridlines on the
-// actual cached hero photo's attention-cropped base: the garment's densely
-// embroidered body starts ~42%, but its flared skirt hem (the widest,
-// most visually prominent part, and the part retailer feedback specifically
-// circled as still leaving unused room short of it) reaches no further
-// left than ~46%. 0.40 trusts that measurement with a real safety margin
-// below the tighter (42%) figure — not the literal 0.333 promise, which
-// was confirmed to leave real usable space unclaimed, and not pushed all
-// the way to 42-46%, which would leave no margin for generation-to-
-// generation variance across different photos. renderer.tsx's safe-zone
-// scan can trust this as a floor for any hero photo generated via this
-// path, instead of re-deriving it from pixels (which live-tested
-// 2026-09-23 as unreliable against genuinely detailed backdrops — see
-// resolveSafeTextZoneWidth's header). If compositionClause's wording ever
-// changes, re-measure and update this too.
-const COMPOSITION_GUARANTEED_SAFE_FRACTION = 0.4;
+// [open] half" as a MINIMUM (raised from a third 2026-09-24, along with an
+// explicit ban on sharp/in-focus architectural detail in that half — see
+// that clause's own header). Re-measured against two FRESH generations
+// under that updated prompt (2026-09-24, both real hero photos, not
+// synthetic): a kurti/indoor-boutique photo came back safe to ~55%, and —
+// the harder case — a heavy, flared lehenga against a grand courtyard
+// backdrop came back safe to ~51-54%, up from ~42-46% under the old
+// prompt on the same category. The previously-sharp doorframe that used to
+// sit right at the boundary is now a soft blurred drape instead. 0.45
+// trusts this with a real margin below BOTH fresh measurements (6-9
+// points), not pushed to either — live-tested (2026-09-24) at 0.45 against
+// both photos directly (square + vertical, both categories): comfortable
+// clearance before the model in every case. Still a single global
+// constant, not category-aware — a lighter/simpler garment could likely
+// trust a good deal more than this, but that needs the category-tiered
+// backdrop work (proposed separately) rather than one shared number
+// stretched to cover the hardest case. If compositionClause's wording
+// changes again, re-measure and update this too.
+const COMPOSITION_GUARANTEED_SAFE_FRACTION = 0.45;
 
 export async function handleCreativeRender(payload: CreativeHeroRenderPayload): Promise<void> {
   const job = await db.marketingCreativeJob.findUnique({
