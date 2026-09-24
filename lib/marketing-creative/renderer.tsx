@@ -537,6 +537,31 @@ function featherWidthFor(canvas: Canvas): number {
   return scale(canvas.width, 90);
 }
 
+/**
+ * Intentional line-breaking (V1.6, #6 of the outstanding-items list):
+ * Satori's native wrap is greedy/character-width-only, which can leave a
+ * long title reading as one word per line in a narrow column ("Mint /
+ * Green / Embroidered / Lehenga / Set"). Joins adjacent word PAIRS with a
+ * non-breaking space so the wrap engine prefers 2-word lines — but every
+ * REAL space in the string stays a real, breakable space, so if a pair
+ * still doesn't fit the available width, Satori just wraps at the next
+ * real space exactly as it does today. This can only ever remove wrap
+ * opportunities relative to plain text, never ADD a place text could
+ * overflow that wasn't already a valid break point — the overflow-safety
+ * of native wrap is unchanged, only its preference. Left alone for titles
+ * of 3 words or fewer, where single-word lines aren't the problem this
+ * exists to fix and pairing risks an awkward 1-vs-2 split for no benefit.
+ */
+function groupTitleWords(title: string): string {
+  const words = title.trim().split(/\s+/);
+  if (words.length <= 3) return title;
+  const parts: string[] = [];
+  for (let i = 0; i < words.length; i += 2) {
+    parts.push(i + 1 < words.length ? `${words[i]} ${words[i + 1]}` : words[i]);
+  }
+  return parts.join(" ");
+}
+
 function buildDensePromoElement(
   canvas: Canvas,
   template: CreativeTemplate,
@@ -679,7 +704,7 @@ function buildDensePromoElement(
             textShadow: "0 2px 14px rgba(0,0,0,0.45)",
           }}
         >
-          {copy.title}
+          {groupTitleWords(copy.title)}
         </div>
 
         {isRegionPresent(template, "features") && copy.features.length > 0 ? (
