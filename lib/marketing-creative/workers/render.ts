@@ -38,17 +38,31 @@ const MAX_RENDER_RETRIES = 2; // matches QUEUE_OPTIONS[CREATIVE_HERO_RENDER].ret
 // the harder case — a heavy, flared lehenga against a grand courtyard
 // backdrop came back safe to ~51-54%, up from ~42-46% under the old
 // prompt on the same category. The previously-sharp doorframe that used to
-// sit right at the boundary is now a soft blurred drape instead. 0.45
-// trusts this with a real margin below BOTH fresh measurements (6-9
-// points), not pushed to either — live-tested (2026-09-24) at 0.45 against
-// both photos directly (square + vertical, both categories): comfortable
-// clearance before the model in every case. Still a single global
-// constant, not category-aware — a lighter/simpler garment could likely
-// trust a good deal more than this, but that needs the category-tiered
-// backdrop work (proposed separately) rather than one shared number
-// stretched to cover the hardest case. If compositionClause's wording
-// changes again, re-measure and update this too.
-const COMPOSITION_GUARANTEED_SAFE_FRACTION = 0.45;
+// sit right at the boundary is now a soft blurred drape instead.
+//
+// Category-aware (2026-09-24, now that the backdrop library gives every
+// product a real category signal): a single shared number has to stay
+// conservative enough for the heaviest/most flared category, which
+// under-uses the real margin a simpler garment's own measurement supports.
+// Two tiers from the two real data points above — not per-category
+// precision the data doesn't support yet: "heavy" categories keep the
+// original 0.45 (real margin below the lehenga's measured ~51-54% floor);
+// "light" categories get 0.49 (real margin below the kurti's measured
+// ~55% floor, still meaningfully short of it). Everything else
+// (Suit/Saree/unrecognized) stays on the conservative default — no fresh
+// measurement for those yet, so no basis to push them past it.
+const HEAVY_CATEGORIES = new Set(["lehenga"]);
+const LIGHT_CATEGORIES = new Set(["kurti", "kurta", "shirt"]);
+const SAFE_FRACTION_HEAVY = 0.45;
+const SAFE_FRACTION_LIGHT = 0.49;
+const SAFE_FRACTION_DEFAULT = 0.45;
+
+function resolveGuaranteedSafeFraction(category: string | null | undefined): number {
+  const key = (category ?? "").toLowerCase();
+  if (HEAVY_CATEGORIES.has(key)) return SAFE_FRACTION_HEAVY;
+  if (LIGHT_CATEGORIES.has(key)) return SAFE_FRACTION_LIGHT;
+  return SAFE_FRACTION_DEFAULT;
+}
 
 export async function handleCreativeRender(payload: CreativeHeroRenderPayload): Promise<void> {
   const job = await db.marketingCreativeJob.findUnique({
@@ -135,7 +149,7 @@ export async function handleCreativeRender(payload: CreativeHeroRenderPayload): 
       copy,
       aspectRatios: payload.aspectRatios as CanvasKey[],
       accentColor,
-      guaranteedSafeFraction: COMPOSITION_GUARANTEED_SAFE_FRACTION,
+      guaranteedSafeFraction: resolveGuaranteedSafeFraction(product.category),
     });
 
     await db.marketingCreativeJob.update({
