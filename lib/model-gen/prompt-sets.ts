@@ -281,6 +281,11 @@ export interface ViewPromptInput {
    * photo. Empty/absent → no roll-call change (current behaviour).
    */
   extraReferences?: Array<{ label: string; placement: string }>;
+  /**
+   * Front-view-only horizontal placement override — see compositionClause's
+   * header for why this exists and why it defaults to unset (centered).
+   */
+  compositionHint?: "left-third" | "right-third";
 }
 
 /** "Preserve these product specifics: …" clause, or "" when no notes. */
@@ -372,8 +377,14 @@ function outfitCompletionClause(category: string, color: string): string {
  * product's catalogue set reads as one coherent shoot. Deterministic,
  * category-agnostic; the product garment itself is unaffected.
  */
+// Word choice changed from "simple, understated" to explicit styling
+// guidance (2026-09-24, retailer feedback: these are marketing images,
+// footwear should read as heeled sandals/stylish flats for women and
+// polished formal shoes for men, not an afterthought) — the CONSISTENCY
+// requirement (identical across views) this clause exists for is unchanged,
+// only the descriptive quality of what gets kept consistent.
 const STYLING_CONSISTENCY_CLAUSE =
-  "Every element that is not the product garment itself — footwear, any complementary top or bottoms worn with the product, and any jewellery or accessories — must be simple, understated, and kept exactly identical in colour and style across all views, so the front and back read as the same outfit photographed in one session.";
+  "Every element that is not the product garment itself — footwear, any complementary top or bottoms worn with the product, and any jewellery or accessories — must be elegant and camera-ready (well-chosen heeled sandals, block heels, or embellished juttis for women; polished formal shoes for men — never plain, worn-looking, or an afterthought), and kept exactly identical in colour and style across all views, so the front and back read as the same outfit photographed in one session.";
 
 /**
  * Hard camera-orientation contract, appended as the LAST sentence of front
@@ -393,6 +404,64 @@ function orientationClause(viewId: string): string {
     return "Camera orientation (mandatory): the model is seen from directly behind, back of the garment fully visible.";
   }
   return "";
+}
+
+/**
+ * Horizontal frame placement — nothing else in this prompt pipeline ever
+ * addresses WHERE in the frame the subject stands (orientationClause above
+ * controls camera angle, not position), so every generation defaults to a
+ * centered portrait. That's fine for a standalone catalogue image but breaks
+ * any downstream layout that needs to put text beside the photo (lib/
+ * marketing-creative's promo-benefits template) — there's no reliable open
+ * space on either side to put it in. Optional and additive: every existing
+ * caller leaves this unset and gets today's centered behaviour unchanged;
+ * only marketing-creative's generate-new path sets it. Phrased as
+ * deliberate ("not a framing error to correct") because an unqualified
+ * off-center instruction risks being read as a mistake and "fixed" back
+ * toward center.
+ */
+// Revised 2026-09-24 (retailer feedback, two problems traced to this exact
+// clause):
+// (1) "plain backdrop OR softly defocused environment" was compiled with
+//     from the generated photo — live-tested and confirmed the model still
+//     rendered a sharp, in-focus doorframe/archway well into the open side,
+//     which the renderer's safe-zone scan correctly treats as unsafe
+//     (busy ≠ empty), leaving a dead gap between where text can safely end
+//     and where the model actually starts. "Softly defocused" wasn't
+//     specific enough to rule out sharp architectural detail — this
+//     revision forbids it outright rather than leaving it as an option.
+// (2) Was scoped to a THIRD (0.333) of the frame; the layout now wants up
+//     to roughly half when the photo supports it — raised the requested
+//     open fraction to match, and added an explicit instruction to keep
+//     the model's edge close to that boundary rather than drifting further
+//     into the frame than requested, which was the other half of "so much
+//     empty dead gap" — open space beyond what's asked for is just as much
+//     wasted width as a boundary that's too conservative.
+function compositionClause(viewId: string, hint: "left-third" | "right-third" | undefined): string {
+  if (!hint || viewId !== "front") return "";
+  const [openSide, subjectSide] = hint === "right-third" ? ["left", "right"] : ["right", "left"];
+  return `Subject composition (mandatory, overrides default centered framing): position the model in the ${subjectSide} half of the frame, her body's nearest edge (garment, arm, or hair) starting close to the horizontal midline — not drifting further toward the ${subjectSide} edge than necessary, and not centered. The entire ${openSide} half of the frame must be genuine open, unobstructed space: a plain, softly-lit backdrop (a wall, a soft gradient, an out-of-focus wash of colour) with no sharp or in-focus architectural detail — no doorframes, archways, furniture edges, or hanging props rendered in clear focus — and no part of the model, hair, garment, or any prop crossing into it. Any background element in this half must read as a soft, indistinct wash, not a recognisable object. This is a deliberate off-center composition for a side-by-side marketing layout, not an error to correct back toward center.`;
+}
+
+/**
+ * Vertical framing margin — added 2026-09-24 (retailer feedback): the
+ * renderer needs to crop this same master photo into taller aspect ratios
+ * (portrait, pinterest) without cropping the model, but measuring the
+ * actual generated photos found almost no margin to work with (~6% of
+ * frame height above the head, ~3% below the feet — the model fills
+ * nearly the entire vertical frame). Requesting deliberate headroom and
+ * footroom here — a wider/further-back framing than a tightly-cropped
+ * portrait — gives the compositor real, known-safe background margin to
+ * crop into for taller formats, instead of needing a synthetic fill.
+ * Scoped the same way compositionClause is — only when compositionHint is
+ * set (i.e., only marketing-creative's generate-new path), so every other
+ * caller (product page generation, auto-catalog) keeps today's framing
+ * unchanged. Also front-only, since that's the only view the renderer's
+ * multi-format crop ever operates on.
+ */
+function verticalMarginClause(viewId: string, hint: "left-third" | "right-third" | undefined): string {
+  if (!hint || viewId !== "front") return "";
+  return "Vertical framing (mandatory): compose as a wider, further-back full-length shot, not a tight crop — leave visible environment above the model's head (roughly 15-18% of the frame height) and below her feet (roughly 10-12%), so the shot reads as a wide-angle full-length capture rather than one tightly cropped to her silhouette. Her head and feet must both stay well clear of the top and bottom edges.";
 }
 
 /**
@@ -447,7 +516,7 @@ function extraImageClause(
 }
 
 export function buildViewPrompt(input: ViewPromptInput): string {
-  const { category, color, gender, view, hasReference, detailNotes, material, backdrop, studioAnchor, extraReferences } = input;
+  const { category, color, gender, view, hasReference, detailNotes, material, backdrop, studioAnchor, extraReferences, compositionHint } = input;
   const detail = detailClause(detailNotes);
   const backGuard = backGuardClause(view.id, detailNotes);
   const blouse = blouseClause(category, color);
@@ -455,6 +524,8 @@ export function buildViewPrompt(input: ViewPromptInput): string {
   const anchor = anchorClause(studioAnchor);
   const styling = STYLING_CONSISTENCY_CLAUSE;
   const orientation = orientationClause(view.id);
+  const composition = compositionClause(view.id, compositionHint);
+  const verticalMargin = verticalMarginClause(view.id, compositionHint);
   const realism = realismClause(category, view.id);
   const hair = hairClause(gender);
   const fabricPose = fabricPoseClause(material);
@@ -497,6 +568,8 @@ export function buildViewPrompt(input: ViewPromptInput): string {
       backdrop,
       anchor,
       orientation,
+      composition,
+      verticalMargin,
       realism,
       hair,
       fabricPose,
@@ -517,6 +590,8 @@ export function buildViewPrompt(input: ViewPromptInput): string {
     backdrop,
     anchor,
     orientation,
+    composition,
+    verticalMargin,
     realism,
     hair,
     fabricPose,

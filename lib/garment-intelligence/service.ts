@@ -43,6 +43,43 @@ function parseStored(data: string): GarmentIntelligence | null {
 }
 
 /**
+ * Cache-ONLY read — never triggers a fresh analysis, unlike
+ * ensureGarmentIntelligence below. For a consumer that must never spend a
+ * new AI call from its own code path (lib/marketing-creative's synchronous
+ * reuse-catalogue/product-only render, which has no billing step of its
+ * own to charge a fresh GI extraction against). Same cache-validity rule
+ * as ensureGarmentIntelligence's step 1 (both source image URLs must still
+ * match) — just returns null instead of falling through to analysis when
+ * there's no valid cached row.
+ */
+export async function getCachedGarmentIntelligence(productId: string): Promise<GarmentIntelligenceRecord | null> {
+  const product = await db.product.findUnique({
+    where: { id: productId },
+    select: { imageUrl: true, backImageUrl: true, partImages: true },
+  });
+  if (!product?.imageUrl) return null;
+
+  const parts = parsePartImages(product.partImages);
+  const backPart = findBackPart(parts);
+  const backImageUrl = backPart?.url ?? product.backImageUrl ?? null;
+
+  const cached = await db.garmentIntelligence.findUnique({ where: { productId } });
+  if (!cached || cached.analyzedImageUrl !== product.imageUrl || (cached.analyzedBackImageUrl ?? null) !== backImageUrl) {
+    return null;
+  }
+  const intelligence = parseStored(cached.data);
+  if (!intelligence) return null;
+
+  return {
+    intelligence,
+    promptNotes: renderPromptNotes(intelligence),
+    backPromptNotes: intelligence.back ? renderBackPromptNotes(intelligence.back, intelligence) : renderBackFallbackNotes(intelligence),
+    model: cached.model,
+    analyzedImageUrl: cached.analyzedImageUrl,
+  };
+}
+
+/**
  * Return the product's garment intelligence, extracting + persisting it first
  * when absent or stale. Null when unavailable for any reason (disabled flag is
  * NOT checked here — callers gate themselves so an explicit admin/R&D request

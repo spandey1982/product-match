@@ -32,6 +32,20 @@ const TRIAL_ROOM_LAYOUT_OPTIONS: { value: string; label: string; description: st
   { value: "quick-capture", label: "Quick Capture", description: "Camera-first — capture a garment on the spot and try it on. No catalog needed." },
 ];
 
+const BRAND_TIER_OPTIONS: { value: string; label: string }[] = [
+  { value: "luxury", label: "Luxury / premium-craft" },
+  { value: "mid-market", label: "Mid-market" },
+  { value: "mass-market", label: "Mass-market / price-sensitive" },
+  { value: "boutique", label: "Boutique / founder-led" },
+  { value: "genz-native", label: "Gen-Z-native / D2C" },
+];
+
+const PRICE_VISIBILITY_OPTIONS: { value: string; label: string; description: string }[] = [
+  { value: "suppressed", label: "Suppressed", description: "Price never appears in generated marketing creative — deferred to the product page." },
+  { value: "moderate", label: "Moderate", description: "Price shown when relevant, discount not emphasized." },
+  { value: "prominent", label: "Prominent", description: "Price and discount are headline elements — for price-led promotional creative." },
+];
+
 interface Profile {
   enabledModules: ModuleKey[];
   primaryModule: ModuleKey;
@@ -39,6 +53,8 @@ interface Profile {
   brandName: string | null;
   themePreset: string;
   accentColor: string | null;
+  brandTier: string;
+  priceVisibility: string;
 }
 
 interface Props {
@@ -60,6 +76,8 @@ export function ClientProfileForm({ userId, initialLogoUrl, allModules, initialP
   const [brandName, setBrandName] = useState(initialProfile?.brandName ?? "");
   const [themePreset, setThemePreset] = useState(initialProfile?.themePreset ?? "default");
   const [accentColor, setAccentColor] = useState(initialProfile?.accentColor ?? "");
+  const [brandTier, setBrandTier] = useState(initialProfile?.brandTier ?? "mid-market");
+  const [priceVisibility, setPriceVisibility] = useState(initialProfile?.priceVisibility ?? "moderate");
   const [logoUrl, setLogoUrl] = useState(initialLogoUrl);
 
   const [saving, setSaving] = useState(false);
@@ -92,6 +110,8 @@ export function ClientProfileForm({ userId, initialLogoUrl, allModules, initialP
           brandName: brandName.trim() || null,
           themePreset,
           accentColor: accentColor || null,
+          brandTier,
+          priceVisibility,
         }),
       });
       if (!res.ok) {
@@ -120,6 +140,8 @@ export function ClientProfileForm({ userId, initialLogoUrl, allModules, initialP
       setBrandName("");
       setThemePreset("default");
       setAccentColor("");
+      setBrandTier("mid-market");
+      setPriceVisibility("moderate");
       router.refresh();
     } catch (e) {
       setError((e as Error).message);
@@ -370,6 +392,55 @@ export function ClientProfileForm({ userId, initialLogoUrl, allModules, initialP
               </button>
             </div>
           )}
+        </div>
+      </section>
+
+      {/* Marketing Creative — Brand Creative Profile (research/catalogue-to-campaign.html Part 5.2) */}
+      <section className="bg-white border border-gray-200 rounded-2xl p-5">
+        <h2 className="text-sm font-semibold text-gray-900 mb-1">Marketing Creative</h2>
+        <p className="text-xs text-gray-500 mb-4">
+          Drives how generated marketing creative (Assets → Marketing Studio → Marketing Creative) looks and what it shows — never affects catalogue photos.
+        </p>
+
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Brand tier</label>
+          <select
+            value={brandTier}
+            onChange={(e) => setBrandTier(e.target.value)}
+            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+          >
+            {BRAND_TIER_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="mt-4">
+          <label className="block text-xs font-medium text-gray-600 mb-1">Price visibility</label>
+          <div className="space-y-2">
+            {PRICE_VISIBILITY_OPTIONS.map((o) => (
+              <label
+                key={o.value}
+                className={cn(
+                  "flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-colors",
+                  priceVisibility === o.value ? "border-indigo-300 bg-indigo-50/60" : "border-gray-200 hover:bg-gray-50"
+                )}
+              >
+                <input
+                  type="radio"
+                  name="priceVisibility"
+                  value={o.value}
+                  checked={priceVisibility === o.value}
+                  onChange={() => setPriceVisibility(o.value)}
+                  className="mt-0.5"
+                />
+                <div>
+                  <p className="text-sm text-gray-800">{o.label}</p>
+                  <p className="text-xs text-gray-500">{o.description}</p>
+                </div>
+              </label>
+            ))}
+          </div>
         </div>
       </section>
 

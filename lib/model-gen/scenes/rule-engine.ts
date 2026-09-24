@@ -65,14 +65,23 @@ export interface SceneRecommendation {
 const OCCASION_WEIGHT = 2;
 const STYLE_TAG_WEIGHT = 1;
 const SEASON_WEIGHT = 1;
+// Highest weight — category is the strongest, least ambiguous signal a
+// product carries (unlike occasion/styleTags, which can be sparse or
+// unset), and it's the signal the backdrop-tier proposal (2026-09-24) is
+// built on: a heavy/designer category should outrank a lifestyle scene that
+// only happens to also match on styleTags. recommendFor.categories was
+// defined in the type since this file's original authoring but never
+// populated on any scene or scored here — wiring it up is this change.
+const CATEGORY_WEIGHT = 3;
 
 /**
- * Score every scene against a product's metadata (occasion/styleTags/season —
- * the same enums lib/metadata/analyze.ts extracts) and return the ranked list.
- * Only scenes with score > 0 are meaningful recommendations; the UI shows a
- * "Suggested" tag on the top pick(s) only.
+ * Score every scene against a product's metadata (category/occasion/
+ * styleTags/season — the same enums lib/metadata/analyze.ts extracts) and
+ * return the ranked list. Only scenes with score > 0 are meaningful
+ * recommendations; the UI shows a "Suggested" tag on the top pick(s) only.
  */
 export function recommendScenes(signals: SceneSignals): SceneRecommendation[] {
+  const category = (signals.category ?? "").toLowerCase();
   const occasion = new Set((signals.occasion ?? []).map((v) => v.toLowerCase()));
   const styleTags = new Set((signals.styleTags ?? []).map((v) => v.toLowerCase()));
   const season = new Set((signals.season ?? []).map((v) => v.toLowerCase()));
@@ -81,6 +90,10 @@ export function recommendScenes(signals: SceneSignals): SceneRecommendation[] {
     let score = 0;
     const reasons: string[] = [];
 
+    if (category && (scene.recommendFor.categories ?? []).some((c) => c.toLowerCase() === category)) {
+      score += CATEGORY_WEIGHT;
+      reasons.push(signals.category!);
+    }
     for (const o of scene.recommendFor.occasion ?? []) {
       if (occasion.has(o.toLowerCase())) {
         score += OCCASION_WEIGHT;

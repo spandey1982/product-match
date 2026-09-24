@@ -128,6 +128,15 @@ export interface GenerateModelImagesInput {
    * Absent / undefined behaves like "recreate" (backward-compatible default).
    */
   mode?: "resume" | "recreate";
+  /**
+   * Front-view horizontal placement override, for callers building a layout
+   * that puts text beside the photo (lib/marketing-creative's promo-benefits
+   * template) rather than displaying it standalone. Unset (default) leaves
+   * every existing caller's centered framing unchanged — see prompt-sets.ts's
+   * compositionClause for the full rationale. Ignored for objective
+   * "quick_listing" (that path doesn't route through prompt-sets.ts).
+   */
+  compositionHint?: "left-third" | "right-third";
 }
 
 export interface GenerateModelImagesResult {
@@ -146,6 +155,24 @@ export interface GenerateModelImagesResult {
   failure?: "storage_unreachable" | "generation_failed" | "insufficient_credits" | "provider_capacity";
   /** True when resume mode found nothing to fill in — catalogue is already complete. */
   resumeComplete?: boolean;
+  /**
+   * The Scenic Collection accent colour NAME resolved for this generation
+   * (resolvePaletteAccent's actual return shape — e.g. "dusty rose", never
+   * a hex value) — null when this generation used Studio, not Scenic, or
+   * didn't reach that branch. Surfaced for lib/marketing-creative, which
+   * has nothing else that varies its own accentColor by product+backdrop
+   * — see accent-colors.ts's paletteColorNameToHex for the hex mapping.
+   */
+  resolvedSceneAccent?: string | null;
+  /**
+   * The SAME GarmentIntelligence this call already extracted/cached for
+   * its own prompt enrichment (see the `ensureGarmentIntelligence` call
+   * below) — surfaced so callers with a further use for it (lib/
+   * marketing-creative's copy generation) don't need a second lookup.
+   * Null when GI is disabled or extraction failed; callers already treat
+   * intelligence as an enhancement, never a dependency.
+   */
+  garmentIntelligence?: GarmentIntelligence | null;
 }
 
 export async function generateModelImages(
@@ -380,6 +407,9 @@ export async function generateModelImages(
   let backdrop: string;
   let brandingHint: { preferredLogo: "dark" | "light"; brightness: number };
   let sceneMeta: { sceneId: string; intensity: string; density: string } | null = null;
+  // Lifted out of the `if (useScenic)` block below so it survives to this
+  // function's final return — see GenerateModelImagesResult.resolvedSceneAccent.
+  let resolvedSceneAccent: string | null = null;
 
   if (useScenic) {
     // Explicit choice from the generation-settings modal wins outright — it's
@@ -402,6 +432,7 @@ export async function generateModelImages(
       pattern: product.pattern,
     });
     const accent = resolvePaletteAccent(scene, product.color);
+    resolvedSceneAccent = accent;
     backdrop = renderScenePrompt(scene, variation, sceneIntensity, sceneDensity, accent);
     brandingHint = scene.brandingHint;
     sceneMeta = {
@@ -492,6 +523,7 @@ export async function generateModelImages(
           existingFrontUrl,
           existingBackUrl,
           existingBaseShots: isResumeMode ? existingBaseShots : undefined,
+          compositionHint: input.compositionHint,
         });
 
   // Brand each image (store logo, or store name) before persisting, so the
@@ -581,7 +613,7 @@ export async function generateModelImages(
     return { objective, modelType, images: branded, failure: "generation_failed" };
   }
 
-  return { objective, modelType, images: branded };
+  return { objective, modelType, images: branded, resolvedSceneAccent, garmentIntelligence };
 }
 
 export { DEFAULT_OBJECTIVE, DEFAULT_MODEL_TYPE };

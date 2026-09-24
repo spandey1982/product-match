@@ -16,6 +16,11 @@ export const QUEUES = {
   // the whole clip (script, voice, lip-sync, gesture together), so there's
   // no separate QA/compose stage the multi-clip motion pipeline needs.
   PRESENTER_RENDER: "presenter.render",
+  // Marketing Creative Generation System — used ONLY for the "generate-new"
+  // hero-source-mode (a real paid AI call). The two deterministic modes
+  // (reuse-catalogue, product-only) run inline in the API request, never
+  // touching this queue — see lib/marketing-creative/orchestrator.ts.
+  CREATIVE_HERO_RENDER: "creative.hero-render",
 } as const;
 
 /**
@@ -41,6 +46,9 @@ export const QUEUE_OPTIONS: Record<(typeof QUEUES)[keyof typeof QUEUES], {
   // category-level failure mode for this deliverable the way dense-pattern
   // garments were for the reel engine. Revisit once real volume exists.
   [QUEUES.PRESENTER_RENDER]: { retryLimit: 2, retryDelay: 30, retryBackoff: true, expireInSeconds: 180 },
+  // Same shape as PRESENTER_RENDER — one AI-provider call producing one new
+  // hero image, same transient-failure profile.
+  [QUEUES.CREATIVE_HERO_RENDER]: { retryLimit: 2, retryDelay: 30, retryBackoff: true, expireInSeconds: 180 },
 };
 
 export interface MotionRenderPayload {
@@ -95,4 +103,18 @@ export interface PresenterRenderPayload {
   durationSec: number;
   userId: string;
   productId: string;
+}
+
+export interface CreativeHeroRenderPayload {
+  jobId: string;
+  productId: string;
+  userId: string;
+  /** Import type only — see lib/marketing-creative/types.ts. Kept as plain
+   * strings here rather than importing those types, matching this file's
+   * existing convention of not depending on feature-specific modules. */
+  objective: string;
+  contentMode: string;
+  templateFamily: string;
+  aspectRatios: string[];
+  platform?: string;
 }
