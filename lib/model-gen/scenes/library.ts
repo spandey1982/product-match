@@ -133,11 +133,47 @@ export const SCENES: Scene[] = [
           rich: ["fairy-lit canopy", "floral arrangements", "string lighting", "draped sheer fabric panels", "a lounge seating vignette"],
         },
       },
+      // Added 2026-09-24 (backdrop-library proposal, validated) — grand-tier
+      // variety for heavy/designer wear: a second genuinely grand option so
+      // "heavy designer clothing" doesn't always land in the same courtyard.
+      // A colonnaded gallery/verandah reads as a distinctly different
+      // building and light quality (even, indirect daylight) than the
+      // courtyard's dusk archways or the haveli's carved-door entrance.
+      {
+        id: "heritage-gallery-verandah",
+        label: "Heritage Gallery Verandah",
+        cameraStyle: "soft-daylight",
+        environment: "a colonnaded heritage gallery verandah with tall arched stone columns and even, softly diffused daylight",
+        depth: {
+          foreground: "a softly blurred stone column edge",
+          midground: "a row of arched columns framing the model in even daylight",
+          background: "a sunlit inner courtyard glimpsed between the columns, softly defocused",
+        },
+        decor: {
+          minimal: ["a single potted palm at the base of a column"],
+          classic: ["potted palms along the verandah", "a patterned stone floor", "a carved column base"],
+          rich: ["potted palms", "an intricately patterned stone floor", "carved column bases", "a hanging brass lantern", "a low stone bench"],
+        },
+      },
     ],
     brandingHint: { preferredLogo: "light", brightness: 0.55 },
     theme: { icon: "Gem", color: "#B8860B" },
     negativeExtras: ["no crowd of onlookers, guests or event staff in frame — the model is the only person shown"],
-    recommendFor: { occasion: ["Wedding", "Bridal", "Anniversary", "Reception"], styleTags: ["Bridal", "Royal", "Traditional"] },
+    // categories scoped to Lehenga only, deliberately NOT Saree — direct
+    // user feedback (2026-09-24): "a fort or a palace should not be the
+    // only background for heavy designer clothing... a simple saree need
+    // not have that kind of grand architecture." Saree gets its own,
+    // less-grand default tier below (Festive/Boutique). A genuinely heavy
+    // bridal saree can still be pointed at this scene manually — it's just
+    // not the auto-recommended default for the category as a whole, since
+    // Product.category alone can't distinguish "bridal saree" from
+    // "everyday saree" (that finer signal is exactly what the proposed
+    // Garment Intelligence integration would add).
+    recommendFor: {
+      occasion: ["Wedding", "Bridal", "Anniversary", "Reception"],
+      styleTags: ["Bridal", "Royal", "Traditional"],
+      categories: ["Lehenga"],
+    },
   },
   // Merged from the former Diwali + Eid scenes — holiday-agnostic on
   // purpose (see the file header's 2026-09 refactor note): no diya/rangoli/
@@ -228,7 +264,15 @@ export const SCENES: Scene[] = [
       "no fireworks or smoke",
       "no religious text, calligraphy, or religious iconography rendered as a literal graphic",
     ],
-    recommendFor: { occasion: ["Festive", "Traditional", "Religious"], styleTags: ["Traditional", "Festive", "Ethnic"] },
+    // categories: ["Saree"] added 2026-09-24 (backdrop-library proposal) —
+    // this scene's heritage-hall/living-room/garden-terrace variations are
+    // this category's semi-grand/lifestyle default, deliberately short of
+    // royal-heritage's full palace-courtyard register.
+    recommendFor: {
+      occasion: ["Festive", "Traditional", "Religious"],
+      styleTags: ["Traditional", "Festive", "Ethnic"],
+      categories: ["Saree"],
+    },
   },
 
   // ── Nature pack ──────────────────────────────────────────────────────────
@@ -314,7 +358,14 @@ export const SCENES: Scene[] = [
     ],
     brandingHint: { preferredLogo: "dark", brightness: 0.85 },
     theme: { icon: "Sun", color: "#F2B705" },
-    recommendFor: { season: ["Summer", "Spring", "Autumn", "All Season"], occasion: ["Casual", "Party"], styleTags: ["Casual", "Boho"] },
+    // categories added 2026-09-24 (backdrop-library proposal) — this
+    // scene's sunlit-garden variation is Kurti/Kurta's lifestyle option.
+    recommendFor: {
+      season: ["Summer", "Spring", "Autumn", "All Season"],
+      occasion: ["Casual", "Party"],
+      styleTags: ["Casual", "Boho"],
+      categories: ["Kurti", "Kurta"],
+    },
   },
 
   // ── Boutique pack (consistent) ──────────────────────────────────────────
@@ -349,7 +400,14 @@ export const SCENES: Scene[] = [
     brandingHint: { preferredLogo: "dark", brightness: 0.82 },
     theme: { icon: "ShoppingBag", color: "#A9745B" },
     negativeExtras: ["no legible signage or price tags", "no other shoppers in frame"],
-    recommendFor: { occasion: ["Casual", "Formal"], styleTags: ["Minimalist", "Contemporary"] },
+    // categories added 2026-09-24 (backdrop-library proposal) — this
+    // scene's semi-grand interior serves Saree's mid tier and Kurti/Kurta's
+    // lifestyle tier.
+    recommendFor: {
+      occasion: ["Casual", "Formal"],
+      styleTags: ["Minimalist", "Contemporary"],
+      categories: ["Saree", "Kurti", "Kurta"],
+    },
   },
 
   // ── Editorial pack (consistent) ─────────────────────────────────────────
@@ -509,12 +567,20 @@ export const SCENES: Scene[] = [
     recommendFor: { occasion: ["Casual", "Everyday"], styleTags: ["Casual", "Contemporary"], season: ["All Season"] },
   },
 
-  // ── Corporate pack (consistent) ─────────────────────────────────────────
+  // ── Corporate pack ───────────────────────────────────────────────────────
+  // Changed "consistent" → "varies" (2026-09-24, backdrop-library proposal)
+  // to add a second, occasion-relevant variation for menswear specifically
+  // — direct user feedback: "a men suit background should be relevant to
+  // the attire and not a random stuff." Office lounge covers formal/work
+  // context; the new Upscale Event Venue covers the occasion office alone
+  // doesn't (weddings, formal events) without reaching for an unrelated
+  // scenic pack. selectSceneVariation's stableIndex still picks
+  // deterministically per product, same as every other "varies" scene.
   {
     id: "corporate",
     label: "Corporate",
     brandPack: "corporate",
-    variationPolicy: "consistent",
+    variationPolicy: "varies",
     cameraStyles: ["soft-daylight", "indoor-studio"],
     palette: {
       base: ["cool slate grey", "warm white", "brushed steel"],
@@ -537,11 +603,82 @@ export const SCENES: Scene[] = [
           rich: ["a glass partition", "an upholstered bench", "potted plants", "a minimalist side table", "soft ambient pendant lighting"],
         },
       },
+      {
+        id: "upscale-event-venue",
+        label: "Upscale Event Venue",
+        cameraStyle: "indoor-studio",
+        environment: "an upscale hotel lobby or event-venue interior with polished marble floors and warm low ambient lighting",
+        depth: {
+          foreground: "a softly blurred edge of a marble-topped console table",
+          midground: "warm low lighting and a marble column framing the model",
+          background: "a softly defocused lobby interior with distant warm light fixtures",
+        },
+        decor: {
+          minimal: ["a single low floral arrangement on a console table"],
+          classic: ["a marble console table", "a low floral arrangement", "a warm wall sconce"],
+          rich: ["a marble console table", "an elegant floral arrangement", "warm wall sconces", "a patterned marble floor", "a softly gleaming chandelier out of focus above"],
+        },
+      },
     ],
     brandingHint: { preferredLogo: "dark", brightness: 0.8 },
     theme: { icon: "Briefcase", color: "#33415C" },
     negativeExtras: ["no legible screens, documents or signage"],
-    recommendFor: { occasion: ["Office", "Formal"], styleTags: ["Minimalist", "Traditional"] },
+    // categories added 2026-09-24 — Suit is deliberately excluded from
+    // every other scene's categories (never a random scenic pull) and only
+    // recommended here, where both variations are actually relevant to
+    // formal menswear.
+    recommendFor: { occasion: ["Office", "Formal"], styleTags: ["Minimalist", "Traditional"], categories: ["Suit"] },
+  },
+
+  // ── Minimal pack (consistent) ────────────────────────────────────────────
+  // Added 2026-09-24 (backdrop-library proposal, validated) — the baseline
+  // every category falls back to, and the ONLY option for the simplest
+  // categories (Shirt). Deliberately NOT the same register as Editorial:
+  // that scene is bold/dramatic single-source lighting; this is calm, even
+  // light with no hard shadow play — meant to disappear behind the garment
+  // rather than make a statement, and to work equally well behind a
+  // ₹15,000 lehenga and an everyday shirt (it's Lehenga's baseline too).
+  // Its own accent tone still derives from the product's colour via
+  // resolvePaletteAccent (engine.ts) — the wall isn't a fixed colour, it's
+  // a fixed TREATMENT (plain, soft, one modest prop).
+  {
+    id: "plain-wall-studio",
+    label: "Plain Wall Studio",
+    brandPack: "minimal",
+    variationPolicy: "consistent",
+    cameraStyles: ["indoor-studio", "soft-daylight"],
+    palette: {
+      base: ["warm ivory", "soft sand", "muted clay"],
+      accent: ["dusty rose", "sage green", "warm taupe"],
+      avoid: ["pure white", "stark grey"],
+    },
+    variations: [
+      {
+        id: "plain-wall-studio-default",
+        label: "Plain Wall Studio",
+        environment: "a softly and evenly lit solid-colour studio wall in a warm neutral tone, with no visible texture, pattern or architectural detail",
+        depth: {
+          foreground: "clean, empty negative space",
+          midground: "even, soft ambient light with no hard shadow play",
+          background: "a smooth, gently gradated solid-colour wall",
+        },
+        decor: {
+          minimal: [],
+          classic: ["a single small potted plant resting at the base of the frame"],
+          rich: ["a small potted plant", "a neatly folded stack of fabric resting on a low stool"],
+        },
+      },
+    ],
+    brandingHint: { preferredLogo: "dark", brightness: 0.88 },
+    theme: { icon: "Square", color: "#A38F72" },
+    negativeExtras: ["no dramatic or high-contrast single-source lighting", "no visible wall texture, molding, or architectural detail", "at most one small prop, never a styled vignette"],
+    // Broad categories list, deliberately — this is the universal fallback
+    // every category can be recommended, at a lower CATEGORY_WEIGHT tie
+    // than a more specific scene when both match (recommendScenes sorts by
+    // total score, and a category match alone here won't outrank a scene
+    // that also matches occasion/styleTags). Shirt has no entry in any
+    // other scene's categories, so this is its only recommendation.
+    recommendFor: { categories: ["Lehenga", "Saree", "Kurti", "Kurta", "Suit", "Shirt"] },
   },
 ];
 
@@ -568,6 +705,7 @@ export const BRAND_PACKS: BrandPackMeta[] = [
   { id: "boutique", label: "Boutique Collection" },
   { id: "editorial", label: "Editorial Collection" },
   { id: "corporate", label: "Corporate Collection" },
+  { id: "minimal", label: "Minimal Collection" },
 ];
 
 /**
