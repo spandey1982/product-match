@@ -483,9 +483,49 @@ function buildFullBleedElement(canvas: Canvas, template: CreativeTemplate, copy:
  * was given, exactly the "not even efficient with the space" complaint.
  * Multiplies type/spacing up on taller canvases instead. Capped, not
  * unbounded — a big headline is the goal, not a headline that no longer
- * fits its own column. */
-function heightScaleFor(canvas: Canvas): number {
-  return Math.min(1.35, canvas.height / 1080);
+ * fits its own column.
+ *
+ * Dampened by content volume (2026-09-24): this growth was implicitly
+ * tuned against the generic copy library's own length — live-tested and
+ * confirmed Garment-Intelligence-derived copy (real feature descriptions
+ * can run meaningfully longer than "Stylish look for every occasion") at
+ * full height-scale growth clipped the trust-badges row clean off the
+ * bottom of a vertical canvas. There's no real rendered-height measurement
+ * available here (Satori/resvg run after this), so this is a proxy, not a
+ * guarantee — total copy character count vs. the generic library's own
+ * volume (224, measured directly) — but it only ever scales the GROWTH
+ * back toward 1.0 for longer-than-usual copy, never below what a square
+ * canvas already renders safely, so it can't make a working render worse. */
+const CONTENT_VOLUME_BASELINE = 224;
+
+function contentVolume(copy: DeterministicCopy): number {
+  let total = copy.title.length;
+  for (const f of copy.features) total += f.label.length + f.description.length;
+  for (const b of copy.trustBadges) total += b.label.length;
+  return total;
+}
+
+// Live-tested (2026-09-24): a proportional dampener alone (volume ratio
+// directly scaling the growth back) wasn't enough — gapScale multiplies
+// heightScale BY typeScale (zone-width-driven, not content-length-driven,
+// so never dampened), so even a modestly-elevated heightScale still
+// compounded into real overflow via gaps. Falls fully back to 1.0 (zero
+// height-driven bonus — the exact scale a square canvas already renders
+// this same content at safely) once volume crosses 1.5x baseline, instead
+// of asymptotically approaching it — the tall canvas's real extra height
+// becomes pure safety margin at that point rather than something more
+// scaling can still eat into.
+const HEAVY_VOLUME_MULTIPLIER = 1.5;
+
+function heightScaleFor(canvas: Canvas, copy: DeterministicCopy): number {
+  const rawScale = Math.min(1.35, canvas.height / 1080);
+  if (rawScale <= 1) return rawScale;
+  const volume = contentVolume(copy);
+  const overageRatio = volume / CONTENT_VOLUME_BASELINE;
+  if (overageRatio <= 1) return rawScale;
+  if (overageRatio >= HEAVY_VOLUME_MULTIPLIER) return 1;
+  const dampener = 1 - (overageRatio - 1) / (HEAVY_VOLUME_MULTIPLIER - 1);
+  return 1 + (rawScale - 1) * dampener;
 }
 
 /** Short feather where the crisp product crop meets the blurred panel — a
@@ -507,7 +547,7 @@ function buildDensePromoElement(
   typeScale: number
 ) {
   const accentText = accentColor && /^#[0-9a-fA-F]{6}$/.test(accentColor) ? accentColor : ACCENT;
-  const heightScale = heightScaleFor(canvas);
+  const heightScale = heightScaleFor(canvas, copy);
   // Math.max(1, …) — a second, independent guard (alongside the raised
   // HARD_MIN_TEXT_ZONE_FRACTION floor) against any scaled dimension rounding
   // down to exactly 0, which satori/resvg cannot render safely. typeScale

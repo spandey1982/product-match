@@ -22,6 +22,7 @@ export interface CopyProductInput {
   mrpPrice: number | null;
   discountPercent: number | null;
   material?: string | null;
+  category?: string | null;
 }
 
 /** en-IN grouping (lakhs/crores), no decimals. Prefixed with the literal
@@ -206,7 +207,7 @@ function buildIntelligentFeatureRows(intelligence: GarmentIntelligence | null | 
  * the rest of the generic set as-is (GI doesn't speak to care instructions
  * like "Easy Care", so that one never changes).
  */
-function buildIntelligentTrustBadges(intelligence: GarmentIntelligence | null | undefined): TrustBadge[] {
+function buildIntelligentTrustBadges(intelligence: GarmentIntelligence | null | undefined, category?: string | null): TrustBadge[] {
   const generic = buildTrustBadges();
   if (!intelligence) return generic;
   const badges: TrustBadge[] = [...generic];
@@ -219,6 +220,22 @@ function buildIntelligentTrustBadges(intelligence: GarmentIntelligence | null | 
   const textureLabel = shortDrape ? `${capitalize(shortDrape)} Drape` : shortFinish ? `${capitalize(shortFinish)} Finish` : null;
   if (textureLabel) {
     badges[1] = { icon: "wind", label: textureLabel };
+  }
+
+  // Live-tested (2026-09-24): a genuine 5th ADDITIVE badge (pushed onto the
+  // array rather than replacing a slot) overflowed the vertical canvas —
+  // 3 multi-line feature rows plus 5 wrapped badges is taller than 1350px,
+  // and Satori clips whatever doesn't fit rather than shrinking it. This is
+  // exactly the failure class V1.5's masthead removal undid (guessing that
+  // space is available without measuring it). Fixed by REPLACING a slot
+  // instead of adding one — same 4-item footprint as the generic set,
+  // always, so this can never be the thing that pushes a render over its
+  // own canvas. "Lightweight Fabric" is the slot swapped (the closest thing
+  // to a duplicate of the texture badge above it when both are present).
+  const motif = shortPhrase(intelligence.pattern.motifs[0]);
+  const bonusLabel = motif ? titleCase(motif) : category && category.trim() ? category.trim() : null;
+  if (bonusLabel) {
+    badges[2] = { icon: "sparkles", label: bonusLabel };
   }
 
   return badges;
@@ -275,6 +292,6 @@ export function buildDeterministicCopy(
     ctaText: resolveCtaText(objective),
     kicker: isPromoBenefits ? resolveIntelligentKicker(objective, intelligence) : null,
     features: isPromoBenefits ? buildIntelligentFeatureRows(intelligence, product.material) : [],
-    trustBadges: isPromoBenefits ? buildIntelligentTrustBadges(intelligence) : [],
+    trustBadges: isPromoBenefits ? buildIntelligentTrustBadges(intelligence, product.category) : [],
   };
 }
