@@ -76,14 +76,20 @@ const PRICES: Record<string, ModelPrice> = {
   // Vertex Virtual Try-On (per generated image, no tokens reported)
   "virtual-try-on-001": { perImageUsd: 0.04 },
 
-  // Veo video generation (Catalogue Motion) — billed per second of OUTPUT
-  // video. These rates are NOT from Google's own pricing page (WebFetch on
-  // docs.cloud.google.com only returned nav shells, not rendered content —
-  // see the catalogue-motion Phase 2 research); they are triangulated from
-  // third-party pricing writeups and forum posts found via search
-  // (2026-08-22 / 2026-08-24) and are meaningfully less certain than the
-  // entries above. Reconcile against the actual GCP/AI-Studio bill after the
-  // first real Veo run, same as gemini-3.1-flash-image was reconciled above.
+  // Veo video generation (Catalogue Motion + Presenter Reel) — billed per
+  // second of OUTPUT video. VERIFIED 2026-09-24 directly against
+  // ai.google.dev/gemini-api/docs/pricing (a successful WebFetch — the
+  // earlier attempt against docs.cloud.google.com only returned nav shells,
+  // not rendered content): Standard $0.40 (720p/1080p), Fast $0.10 (720p),
+  // Lite $0.05 (720p) — matching every rate below exactly. Google's own page
+  // labels $0.40 the "video with audio price (default)" and does not publish
+  // a separate, lower rate for audio disabled on the Standard tier — so
+  // there's no cheaper "Standard, no audio" SKU to switch to; Lite is the
+  // only audio-incapable, materially cheaper tier. (Third-party blogs
+  // claiming a $0.75/sec "audio premium" on Standard don't match Google's
+  // own docs — treat those as unreliable.) Also consistent with every real
+  // paid generation billed this session (10+ calls across M0–M4 testing),
+  // which all matched these rates with zero run-to-run variance.
   //
   // Two separate model-id namespaces because Veo is reachable through two
   // auth backends (see provider/veo-provider.ts) that don't expose the same
@@ -93,13 +99,9 @@ const PRICES: Record<string, ModelPrice> = {
   // Gemini Developer API surface — GEMINI_API_KEY, CATALOGUE_MOTION_VEO_AUTH=gemini-api:
   "veo-3.1-fast-generate-preview": { perSecondUsd: 0.10 },
   "veo-3.1-generate-preview": { perSecondUsd: 0.40 },
-  // GA id for the same Standard tier as veo-3.1-generate-preview above (Vertex
-  // surface) — used by lib/presenter-reel/provider/veo-presenter-provider.ts,
-  // which needs Standard specifically because Lite doesn't support
-  // generateAudio. Same $0.40/sec estimate and same triangulated-not-official
-  // provenance caveat as the -preview entry; 4 live paid generations this
-  // session billed consistently with this rate, but never reconciled against
-  // an actual GCP invoice line.
+  // GA id for the same Standard tier as veo-3.1-generate-preview above —
+  // used by lib/presenter-reel/provider/veo-presenter-provider.ts, which
+  // needs Standard specifically because Lite doesn't support generateAudio.
   "veo-3.1-generate-001": { perSecondUsd: 0.40 },
   // Veo 3.0 (all variants) was DEPRECATED and shut down by Google on
   // 2026-06-30 — deliberately no price entry, and never set as a default,
