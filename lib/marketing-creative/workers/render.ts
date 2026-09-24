@@ -23,6 +23,7 @@ import { generateModelImages } from "@/lib/model-gen/engine";
 import { stripDeliveryTransforms } from "@/lib/model-gen/crop-templates";
 import { resolveBrandCreativeProfile } from "@/lib/branding/creative-tier";
 import { buildDeterministicCopy } from "../copy";
+import { paletteColorNameToHex } from "../accent-colors";
 import { runRenderPipeline } from "../render-pipeline";
 import type { CanvasKey, ContentMode, CreativeObjective, TemplateFamily } from "../types";
 
@@ -73,7 +74,6 @@ export async function handleCreativeRender(payload: CreativeHeroRenderPayload): 
       select: { brandTier: true, priceVisibility: true, accentColor: true },
     });
     const brand = resolveBrandCreativeProfile(clientProfile);
-    const accentColor = clientProfile?.accentColor ?? null;
 
     const genResult = await generateModelImages({
       productId: product.id,
@@ -106,7 +106,25 @@ export async function handleCreativeRender(payload: CreativeHeroRenderPayload): 
     const objective = payload.objective as CreativeObjective;
     const templateFamily = payload.templateFamily as TemplateFamily;
 
-    const copy = buildDeterministicCopy(product, brand.priceVisibility, contentMode, objective, templateFamily);
+    // V1.6: Garment Intelligence + accent color, both "varies by product
+    // and backdrop" fixes for the sameness complaint. `genResult` already
+    // carries both — generateModelImages ran GI for its own prompt
+    // enrichment and resolved a Scenic accent tone for its own backdrop
+    // prompt moments ago, in this same call. Reusing them here costs
+    // nothing extra: no second GI lookup, no second scene resolution.
+    const copy = buildDeterministicCopy(
+      product,
+      brand.priceVisibility,
+      contentMode,
+      objective,
+      templateFamily,
+      genResult.garmentIntelligence
+    );
+    // ClientProfile.accentColor is an explicit retailer brand choice —
+    // always wins when set. Otherwise fall back to this generation's own
+    // resolved backdrop accent (hex-mapped); renderer.tsx's own hardcoded
+    // ACCENT constant remains the final fallback when neither resolves.
+    const accentColor = clientProfile?.accentColor ?? paletteColorNameToHex(genResult.resolvedSceneAccent) ?? null;
 
     const outputs = await runRenderPipeline({
       productId: product.id,

@@ -12,6 +12,7 @@ import { parseArray } from "@/lib/serialize";
 import { getBoss } from "@/lib/queue/boss";
 import { QUEUES, type CreativeHeroRenderPayload } from "@/lib/queue/types";
 import { resolveBrandCreativeProfile } from "@/lib/branding/creative-tier";
+import { getCachedGarmentIntelligence } from "@/lib/garment-intelligence/service";
 import { resolveHeroSourceMode } from "./hero-source";
 import { resolveHeroImageSync } from "./hero-resolver";
 import { buildDeterministicCopy } from "./copy";
@@ -120,7 +121,20 @@ export async function createMarketingCreativeJob(input: CreateMarketingCreativeJ
     return job;
   }
 
-  const copy = buildDeterministicCopy(product, brand.priceVisibility, contentMode, input.objective, templateFamily);
+  // V1.6: cache-only GI read (never triggers a fresh analysis from this
+  // synchronous, no-billing-step path — see getCachedGarmentIntelligence's
+  // own header) so a product analyzed at upload time (or by an earlier
+  // generate-new render) still gets product-specific copy here, not just
+  // on the async path.
+  const cachedIntelligence = await getCachedGarmentIntelligence(product.id);
+  const copy = buildDeterministicCopy(
+    product,
+    brand.priceVisibility,
+    contentMode,
+    input.objective,
+    templateFamily,
+    cachedIntelligence?.intelligence ?? null
+  );
 
   try {
     const outputs = await runRenderPipeline({
