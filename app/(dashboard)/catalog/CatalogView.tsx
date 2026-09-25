@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   Plus, X, Check, CheckSquare,
   Sparkles, Mic, Loader2, MicOff, AlertCircle, Trash2, ImageDown,
@@ -28,6 +29,20 @@ interface CatalogViewProps {
 }
 
 export function CatalogView({ storeName, logoUrl }: CatalogViewProps = {}) {
+  // Pick mode (V1.8 Part 4): ?pick=<tool> reroutes every ProductCard
+  // straight into that Marketing Studio tool instead of the product detail
+  // page — the entry point for "Browse catalogue" from Marketing Studio
+  // when no product is in context yet. Reuses this page's existing
+  // search/category/SKU filtering outright rather than duplicating it in
+  // a separate picker UI (see the V1.8 plan's Part 4 design decision).
+  const PICK_DESTINATIONS: Record<string, string> = {
+    "marketing-creative": "/assets/marketing-studio/creative",
+    "presenter-reel": "/assets/marketing-studio/presenter-reel",
+  };
+  const searchParams = useSearchParams();
+  const pickDestination = PICK_DESTINATIONS[searchParams.get("pick") ?? ""];
+  const productLinkTo = pickDestination ? (productId: string) => `${pickDestination}?productId=${productId}` : undefined;
+
   // ── catalog state ──────────────────────────────────────────────────────────
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -618,7 +633,7 @@ export function CatalogView({ storeName, logoUrl }: CatalogViewProps = {}) {
                     bulkMode ? (
                       <div key={product.id} className="relative cursor-pointer" onClick={() => toggleSelection(product.id)}>
                         <div className={cn("rounded-2xl transition-all pointer-events-none", selectedIds.has(product.id) && "ring-2 ring-indigo-500 ring-offset-2")}>
-                          <ProductCard product={product} />
+                          <ProductCard product={product} linkTo={productLinkTo} />
                         </div>
                         <div className={cn(
                           "absolute top-2.5 left-2.5 z-30 h-6 w-6 rounded-md border-2 flex items-center justify-center transition-all",
@@ -630,7 +645,7 @@ export function CatalogView({ storeName, logoUrl }: CatalogViewProps = {}) {
                         </div>
                       </div>
                     ) : (
-                      <ProductCard key={product.id} product={product} />
+                      <ProductCard key={product.id} product={product} linkTo={productLinkTo} />
                     )
                   ))}
                 </div>
@@ -650,7 +665,7 @@ export function CatalogView({ storeName, logoUrl }: CatalogViewProps = {}) {
                       bulkMode ? (
                         <div key={product.id} className="relative cursor-pointer" onClick={() => toggleSelection(product.id)}>
                           <div className={cn("rounded-2xl transition-all", selectedIds.has(product.id) && "ring-2 ring-indigo-500 ring-offset-2")}>
-                            <ProductCard product={product} />
+                            <ProductCard product={product} linkTo={productLinkTo} />
                           </div>
                           <div className={cn(
                             "absolute top-2.5 left-2.5 z-30 h-6 w-6 rounded-md border-2 flex items-center justify-center transition-all",
@@ -662,7 +677,7 @@ export function CatalogView({ storeName, logoUrl }: CatalogViewProps = {}) {
                           </div>
                         </div>
                       ) : (
-                        <ProductCard key={product.id} product={product} />
+                        <ProductCard key={product.id} product={product} linkTo={productLinkTo} />
                       )
                     ))}
                   </div>

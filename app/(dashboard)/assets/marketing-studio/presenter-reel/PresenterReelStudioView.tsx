@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Sparkles, AlertCircle, RotateCcw, CheckCircle2, XCircle, History } from "lucide-react";
+import Link from "next/link";
+import { Loader2, Sparkles, AlertCircle, RotateCcw, CheckCircle2, XCircle, History, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
@@ -151,6 +152,12 @@ export function PresenterReelStudioView({
           <span className="font-medium text-gray-700">⋮</span> menu in the top right, and choose{" "}
           <span className="font-medium text-gray-700">Create Marketing Video</span>.
         </p>
+        <Link
+          href="/catalog?pick=presenter-reel"
+          className="inline-flex items-center gap-1.5 mt-4 text-sm font-medium text-indigo-600 hover:text-indigo-700"
+        >
+          Browse catalogue <ArrowRight className="h-3.5 w-3.5" />
+        </Link>
       </div>
     );
   }
