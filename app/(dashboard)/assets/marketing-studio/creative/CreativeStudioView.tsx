@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Sparkles, AlertCircle, RotateCcw, CheckCircle2, XCircle, History, Download } from "lucide-react";
+import Link from "next/link";
+import { Loader2, Sparkles, AlertCircle, RotateCcw, CheckCircle2, XCircle, History, Download, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
@@ -239,6 +240,12 @@ export function CreativeStudioView({
           <span className="font-medium text-gray-700">⋮</span> menu in the top right, and choose{" "}
           <span className="font-medium text-gray-700">Create Marketing Creative</span>.
         </p>
+        <Link
+          href="/catalog?pick=marketing-creative"
+          className="inline-flex items-center gap-1.5 mt-4 text-sm font-medium text-indigo-600 hover:text-indigo-700"
+        >
+          Browse catalogue <ArrowRight className="h-3.5 w-3.5" />
+        </Link>
       </div>
     );
   }
@@ -285,8 +292,15 @@ export function CreativeStudioView({
                     disabled={!!isBusy}
                     className="mt-0.5"
                   />
-                  <div>
-                    <p className="text-sm text-gray-800 flex items-center gap-1.5">
+                  {/* min-w-0 — without it, a flex row's child never shrinks
+                      below its text content's natural (unwrapped) width, so
+                      a long description just runs off the edge of a narrow
+                      viewport instead of wrapping. Confirmed the actual
+                      cause of the off-screen overflow on a real phone
+                      (2026-09-25) — the shell's own width wasn't the whole
+                      story, this flexbox default was too. */}
+                  <div className="min-w-0">
+                    <p className="text-sm text-gray-800 flex items-center gap-1.5 flex-wrap">
                       {o.label}
                       {o.recommended && (
                         <span className="text-[10px] font-semibold uppercase tracking-wide text-indigo-600 bg-indigo-100 rounded px-1.5 py-0.5">
@@ -342,7 +356,7 @@ export function CreativeStudioView({
                     disabled={!!isBusy}
                     className="mt-0.5"
                   />
-                  <div>
+                  <div className="min-w-0">
                     <p className="text-sm text-gray-800">{o.label}</p>
                     <p className="text-xs text-gray-500">{o.description}</p>
                   </div>

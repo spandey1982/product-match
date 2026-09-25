@@ -14,9 +14,15 @@ import { useGenerationStatus } from "@/components/generation/GenerationStatusPro
 
 interface ProductCardProps {
   product: Product;
+  /** Overrides the card's destination — used by /catalog's pick mode
+   * (see CatalogView.tsx) to route straight into a Marketing Studio tool
+   * instead of the product detail page. Defaults to today's behavior
+   * (`/products/${id}`) when omitted — every other caller of this
+   * component is unaffected. */
+  linkTo?: (productId: string) => string;
 }
 
-export function ProductCard({ product }: ProductCardProps) {
+export function ProductCard({ product, linkTo }: ProductCardProps) {
   const { getStatus, subscribe, unsubscribe } = useGenerationStatus();
   const genStatus = getStatus(product.id);
   const isGenerating = genStatus?.generating ?? false;
@@ -50,7 +56,7 @@ export function ProductCard({ product }: ProductCardProps) {
     : product;
 
   return (
-    <Link href={`/products/${product.id}`} className="group block">
+    <Link href={linkTo ? linkTo(product.id) : `/products/${product.id}`} className="group block">
       <div className="rounded-2xl bg-white border border-gray-100 overflow-hidden shadow-sm hover:shadow-md transition-all duration-200 hover:-translate-y-0.5">
 
         {/*
