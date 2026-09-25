@@ -1,26 +1,26 @@
 import { notFound } from "next/navigation";
-import Link from "next/link";
-import { Video, LayoutGrid } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { getEnabledModules } from "@/lib/client-modules-server";
+import { MarketingStudioNav } from "./MarketingStudioNav";
 
 /**
- * Marketing Studio shell — a left-nav frame around whichever marketing/ad
- * tool is active, not a single-purpose page the way assets/model-studio is.
- * Deliberately built for more than one tool from day one: Presenter Reel is
- * the only entry today, but the point of this hub (per the product
- * decision that created it) is to hold future tools — an Instagram-post
- * image generator, etc. — as sibling nav items, not a rename later.
+ * Marketing Studio shell — a nav frame around whichever marketing/ad tool
+ * is active, not a single-purpose page the way assets/model-studio is.
+ * Deliberately built for more than one tool from day one — Presenter Reel,
+ * Marketing Creative, and Gallery today, future tools get a new row in
+ * MarketingStudioNav.tsx, not a new hub.
+ *
+ * Below md: a horizontal scrollable tab strip instead of a permanent
+ * sidebar — the fixed two-column layout this replaced (flex gap-8 + a
+ * hardcoded w-56 aside, no breakpoint at all) was confirmed the root cause
+ * of a real mobile-layout break (2026-09-25): it rendered unconditionally
+ * at any viewport width, crushing the header and running description text
+ * off-screen on a phone. MarketingStudioNav renders both presentations
+ * from one shared link list.
  *
  * Same 404-for-disabled-module gating convention as
  * assets/model-studio/layout.tsx.
  */
-const NAV_ITEMS = [
-  { href: "/assets/marketing-studio/presenter-reel", label: "Presenter Reel", Icon: Video },
-  { href: "/assets/marketing-studio/gallery", label: "Gallery", Icon: LayoutGrid },
-  // Future tools (e.g. Instagram post generation) get a new row here, not a new hub.
-];
-
 export default async function MarketingStudioLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
   if (!session) notFound();
@@ -29,21 +29,10 @@ export default async function MarketingStudioLayout({ children }: { children: Re
   if (!modules.includes("marketing-studio")) notFound();
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8 flex gap-8">
-      <aside className="w-56 shrink-0">
-        <h2 className="text-lg font-bold text-gray-900 mb-4">Marketing Studio</h2>
-        <nav className="space-y-1">
-          {NAV_ITEMS.map(({ href, label, Icon }) => (
-            <Link
-              key={href}
-              href={href}
-              className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
-            >
-              <Icon className="h-4 w-4" strokeWidth={1.75} />
-              {label}
-            </Link>
-          ))}
-        </nav>
+    <div className="max-w-6xl mx-auto px-4 py-6 md:py-8 flex flex-col md:flex-row gap-4 md:gap-8">
+      <aside className="md:w-56 shrink-0">
+        <h2 className="hidden md:block text-lg font-bold text-gray-900 mb-4">Marketing Studio</h2>
+        <MarketingStudioNav />
       </aside>
       <div className="flex-1 min-w-0">{children}</div>
     </div>
