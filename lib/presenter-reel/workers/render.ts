@@ -25,16 +25,33 @@ import type { PresenterRenderPayload } from "@/lib/queue/types";
 import { veoPresenterProvider, nearestPresenterDuration } from "../provider/veo-presenter-provider";
 import { uploadWithRetry } from "@/lib/cloudinary";
 import { chargeForCall, refundCharge } from "@/lib/billing/charge";
-import { applyDisclosureOverlay, cleanupDisclosureOutput } from "../disclosure-overlay";
+import { finishPresenterClip, cleanupFinishedClip } from "../video-finishing";
+import type { EndCardContent } from "../end-card";
 
 const MAX_RENDER_RETRIES = 2; // matches QUEUE_OPTIONS[PRESENTER_RENDER].retryLimit
 
 export async function handlePresenterRender(payload: PresenterRenderPayload): Promise<void> {
-  const job = await db.presenterReelJob.findUnique({ where: { id: payload.jobId }, select: { id: true, userId: true } });
+  const job = await db.presenterReelJob.findUnique({
+    where: { id: payload.jobId },
+    select: { id: true, userId: true, ctaMode: true, ctaText: true, endCardData: true },
+  });
   if (!job) {
     console.error(`[presenter-reel] job ${payload.jobId} not found — dropping`);
     return;
   }
+
+  // Same try/catch-and-degrade parse pattern used everywhere else this
+  // codebase reads a JSON-string column — a malformed endCardData means
+  // "no end card" (falls back to a plain hook clip), not a job failure.
+  let endCard: EndCardContent | null = null;
+  if (job.endCardData) {
+    try {
+      endCard = JSON.parse(job.endCardData) as EndCardContent;
+    } catch {
+      console.error(`[presenter-reel] job ${payload.jobId} had unparsable endCardData — rendering without it`);
+    }
+  }
+  const ctaOnScreenText = job.ctaMode === "on_screen" ? job.ctaText : null;
 
   const durationSec = nearestPresenterDuration(payload.durationSec);
   // Pre-flight credit gate, same shape as every other paid AI call — see
@@ -59,12 +76,18 @@ export async function handlePresenterRender(payload: PresenterRenderPayload): Pr
       usage: { feature: "presenter_reel", userId: payload.userId, storeId: payload.userId },
     });
 
-    // Burn in the AI-disclosure label before upload — see disclosure-overlay.ts's
-    // header for why this needs to be in the pixels, not just our own UI.
-    // Falls back to the plain video on any ffmpeg failure rather than
-    // failing an otherwise-successful render.
-    const disclosedPath = await applyDisclosureOverlay(result.videoBase64, result.mimeType);
-    const uploadSource = disclosedPath ?? `data:${result.mimeType};base64,${result.videoBase64}`;
+    // Stitch the end card (hook_end_card mode only) and burn in the
+    // AI-disclosure label + on-screen CTA before upload — see
+    // video-finishing.ts's header for why this needs to be in the pixels,
+    // not just our own UI. Falls back to an earlier-stage file on any
+    // ffmpeg failure rather than failing an otherwise-successful render.
+    const finishedPath = await finishPresenterClip({
+      videoBase64: result.videoBase64,
+      mimeType: result.mimeType,
+      endCard,
+      ctaOnScreenText,
+    });
+    const uploadSource = finishedPath ?? `data:${result.mimeType};base64,${result.videoBase64}`;
     try {
       const upload = await uploadWithRetry(uploadSource, {
         folder: "product-match/presenter-reel",
@@ -82,7 +105,7 @@ export async function handlePresenterRender(payload: PresenterRenderPayload): Pr
         },
       });
     } finally {
-      if (disclosedPath) await cleanupDisclosureOutput(disclosedPath);
+      await cleanupFinishedClip(finishedPath);
     }
   } catch (err) {
     // Every failed attempt refunds its own charge — a retried job re-runs

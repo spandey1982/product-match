@@ -25,7 +25,11 @@ async function main() {
       console.log(`SKIP ${id}: not found`);
       continue;
     }
-    const script = await generatePresenterScript(product, { feature: "presenter_reel", userId: product.userId });
+    const script = await generatePresenterScript(
+      product,
+      { durationSec: 8, deliveryMode: "full_script", ctaMode: "on_screen" },
+      { feature: "presenter_reel", userId: product.userId }
+    );
     console.log(`\n=== ${product.title} ===`);
     console.log(`Script: "${script}"`);
     console.log(`Word count: ${script.split(/\s+/).length}`);
