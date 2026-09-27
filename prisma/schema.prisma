@@ -2142,8 +2142,52 @@ model PresenterReelJob {
   persona   PresenterPersona @relation(fields: [personaId], references: [id])
 
   // The exact spoken line(s) sent to the provider — persisted for audit and
-  // so a retailer can see/regenerate against the same script later.
+  // so a retailer can see/regenerate against the same script later. In
+  // "hook_end_card" deliveryMode this is the hook line ONLY, not the full
+  // pitch — the rest lives in the deterministic end card, never spoken.
   script String
+
+  // Script template used to generate `script` — "value_trust" today; a free
+  // string (not an enum) so new templates from the content-strategy roadmap
+  // (research/presenter-reel-content-strategy.html) don't need a migration.
+  templateId String @default("value_trust")
+
+  // The Veo duration actually requested for this job (4/6/8) — was
+  // previously only passed through the queue payload, never persisted, so a
+  // retailer had no durable record of what they picked. Distinct from
+  // durationMs below, which is the measured actual render length.
+  durationSec Int @default(8)
+
+  // none | on_screen | spoken — none: no CTA in the clip at all (the
+  // retailer's posting platform, e.g. Instagram, supplies its own action
+  // affordance). on_screen (default): burned into the video as text, same
+  // ffmpeg overlay mechanism as the AI-disclosure label — costs no script
+  // duration. spoken: the avatar says it, which extends the script and can
+  // push the render into the next duration tier — the Studio UI must show
+  // that cost before the retailer opts in.
+  ctaMode String @default("on_screen")
+
+  // The CTA copy itself, when ctaMode != "none". Null for "none".
+  ctaText String?
+
+  // Deterministic end-card content (price/bullets/CTA), JSON-stringified —
+  // same "structured blob as a String column" convention as
+  // GarmentIntelligence.data, parsed with lib/presenter-reel/end-card.ts's
+  // own type, never by hand. Null when deliveryMode is "full_script" (no
+  // end card rendered) or the template has no end-card content.
+  endCardData String?
+
+  // full_script | hook_end_card. full_script (today's only mode): the whole
+  // template's content is spoken within the Veo clip. hook_end_card: only a
+  // short hook is spoken; price/features/trust/CTA render as a deterministic
+  // static card (lib/presenter-reel/end-card.ts, zero LLM calls, same
+  // "never let generative AI render factual pixels" discipline as
+  // lib/marketing-creative/copy.ts) stitched onto the end of the Veo output
+  // with a transition — see research/presenter-reel-content-strategy.html
+  // section "Duration, transparency, and the hook + end-card mode" for the
+  // full rationale (lets a cheaper, shorter Veo duration still carry a full
+  // set of facts, since the end card costs no Veo-seconds).
+  deliveryMode String @default("full_script")
 
   // queued | scripting | rendering | complete | failed
   status String @default("queued")

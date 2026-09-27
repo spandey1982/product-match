@@ -35,7 +35,16 @@ export async function POST(req: NextRequest) {
   try {
     const session = await requireAuth();
     const body = (await req.json().catch(() => null)) as
-      | { productId?: string; personaId?: string; durationSec?: number }
+      | {
+          productId?: string;
+          personaId?: string;
+          durationSec?: number;
+          templateId?: string;
+          deliveryMode?: "full_script" | "hook_end_card";
+          ctaMode?: "none" | "on_screen" | "spoken";
+          ctaText?: string;
+          script?: string;
+        }
       | null;
 
     if (!body?.productId) {
@@ -50,6 +59,11 @@ export async function POST(req: NextRequest) {
       userId: session.id,
       personaId: body.personaId,
       durationSec: typeof body.durationSec === "number" ? body.durationSec : undefined,
+      templateId: body.templateId,
+      deliveryMode: body.deliveryMode,
+      ctaMode: body.ctaMode,
+      ctaText: body.ctaText,
+      script: body.script,
     });
 
     // The orchestrator returns only { id } (its job is create+enqueue, not

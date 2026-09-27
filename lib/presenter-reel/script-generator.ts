@@ -1,20 +1,20 @@
 /**
- * M3 — turns product metadata into the spoken line a presenter clip's
- * script comes from. Before this existed, every job (M1/M2's verification
- * included) used a hand-written script string.
+ * Turns product metadata (+ Garment Intelligence, when available) into the
+ * spoken line(s) for a presenter clip. Rewritten for the content-strategy
+ * upgrade (research/presenter-reel-content-strategy.html) — duration- and
+ * delivery-mode-aware, preferring GI-derived detail over the coarser
+ * Product fields when available, and structured so a second script
+ * template is a new prompt builder, not a rewrite (only "value_trust"
+ * exists today, per the reviewer's ranked build order in that doc).
  *
- * The prompt is built from the same examples that already validated the
- * winning register during the M0/M1 spike (research/
- * ai-presenter-reel-reverse-engineering.html) — "Hey! Just look at
- * this..." — rather than inventing a new voice from scratch, so the script
- * this produces matches what's already been proven to generate well.
+ * In "hook_end_card" delivery mode this generates ONLY a short opener —
+ * price/features/trust/CTA move to the deterministic end card (end-card.ts)
+ * instead, never spoken, never LLM-authored.
  */
 import { parseArray } from "@/lib/serialize";
 import type { AiUsageContext } from "@/lib/ai-usage/record";
 import { callGeminiForJson } from "./gemini-client";
-
-/** ~8s of natural spoken pacing (~2.5–3 words/sec) — Veo's hard per-call duration cap, same constraint the catalogue reel engine already works around. */
-const MAX_WORDS = 22;
+import { wordBudgetFor, type DeliveryMode, type CtaMode } from "./duration-budget";
 
 export interface ScriptProductInput {
   title: string;
@@ -26,17 +26,58 @@ export interface ScriptProductInput {
   /** Serialized JSON array (Product.occasion) — read via lib/serialize.ts's parseArray, never parsed directly. */
   occasion?: string | null;
   price: number;
+  /** Garment Intelligence's curated "what a buyer would notice first" list (craftsmanship.highlights) — cataloguing-time-extracted, preferred over the coarser fields above when present. Empty/undefined for products never analyzed. */
+  giHighlights?: string[];
+}
+
+export interface GenerateScriptOptions {
+  durationSec: number;
+  deliveryMode: DeliveryMode;
+  ctaMode: CtaMode;
+  /** Required when ctaMode is "spoken" — the exact CTA the model must end on. */
+  ctaText?: string | null;
+  templateId?: "value_trust";
 }
 
 interface GeneratedScriptResponse {
   script: string;
 }
 
-function buildPrompt(product: ScriptProductInput): string {
-  const occasions = parseArray(product.occasion ?? undefined).join(", ") || "everyday wear";
-  const detail = product.detailNotes?.trim() || product.pattern?.trim() || product.material?.trim() || "not specified";
+function pickDetail(product: ScriptProductInput): string {
+  if (product.giHighlights && product.giHighlights.length > 0) return product.giHighlights[0];
+  return product.detailNotes?.trim() || product.pattern?.trim() || product.material?.trim() || "not specified";
+}
 
-  return `You are writing a single spoken line for an 8-second talking-presenter product video. A model will say this line on camera while gesturing naturally — no other narration, no second sentence.
+function buildPrompt(product: ScriptProductInput, options: GenerateScriptOptions): string {
+  const occasions = parseArray(product.occasion ?? undefined).join(", ") || "everyday wear";
+  const wordBudget = wordBudgetFor(options.durationSec, options.deliveryMode, options.ctaMode);
+  const spokenCtaLine =
+    options.ctaMode === "spoken" && options.ctaText
+      ? `\n- End with this exact call to action, spoken naturally: "${options.ctaText}"`
+      : "";
+
+  if (options.deliveryMode === "hook_end_card") {
+    return `You are writing a single short spoken HOOK line for an AI presenter product video — just the opening line, not the full pitch. The rest of the product's details (price, features, call to action) will appear as on-screen text right after the model finishes speaking, NOT in this line.
+
+Product: ${product.title}
+Category: ${product.category}
+Color: ${product.color}
+Occasion: ${occasions}
+
+Write ONE natural, warm, attention-grabbing spoken opener that introduces this product — a greeting-and-reveal, not a feature pitch (features come later, on-screen). Real examples of the right register:
+- "Hey! You have to see this one."
+- "Hi everyone — wait until you see this gorgeous piece."
+
+Rules:
+- ${wordBudget} words maximum.
+- Plain spoken English. No hashtags, no emoji, at most one exclamation point.
+- Do NOT mention price, discounts, or a call to action — those come later, on-screen.${spokenCtaLine}
+
+Respond with ONLY this JSON, no markdown fence: {"script": "..."}`;
+  }
+
+  const detail = pickDetail(product);
+  return `You are writing a single spoken line for a ${options.durationSec}-second talking-presenter product video. A model will say this line on camera while gesturing naturally — no other narration, no second sentence.
 
 Product: ${product.title}
 Category: ${product.category}
@@ -44,28 +85,32 @@ Color: ${product.color}
 Material: ${product.material ?? "not specified"}
 Pattern/detail: ${detail}
 Occasion: ${occasions}
-Price: ₹${product.price}
+Price: Rs. ${product.price}
 
-Write ONE natural, warm, enthusiastic spoken line that introduces this product and calls out ONE genuine, specific detail from the fields above — never invent a detail that isn't given. Match this exact register and length; these are real examples already validated on real generations:
-- "Hey! Just look at this stunning burgundy suit — the tailored fit is amazing, perfect for weddings and parties."
-- "Hi everyone! This gorgeous peach saree has the most beautiful gold embroidery all over it — just look at this pallu, isn't it stunning?"
+Write ONE natural, warm, enthusiastic spoken line that: opens with a greeting, calls out ONE genuine, specific detail from the fields above (never invent a detail that isn't given), and mentions the price naturally as part of the sentence. Match this register, these are real examples already validated on real generations:
+- "Hey! Just look at this stunning burgundy suit — the tailored fit is amazing, perfect for weddings and parties, just Rs. 2999."
+- "Hi everyone! This gorgeous peach saree has the most beautiful gold embroidery all over it, at just Rs. 1499 — isn't it stunning?"
 
 Rules:
-- ${MAX_WORDS} words maximum — it must fit naturally into 8 seconds of speech.
+- ${wordBudget} words maximum — it must fit naturally into ${options.durationSec} seconds of speech.
 - Plain spoken English. No hashtags, no emoji, at most one exclamation point.
 - Open with "Hey!" or "Hi everyone!" or a close equivalent, matching the examples.
-- Reference the specific detail given above, not a generic compliment like "so beautiful."
+- Reference the specific detail given above, not a generic compliment like "so beautiful."${spokenCtaLine}
 
 Respond with ONLY this JSON, no markdown fence: {"script": "..."}`;
 }
 
 /**
  * Throws on missing API key, HTTP failure, or unparsable Gemini response —
- * same contract as callGeminiForJson itself; callers (the future
- * orchestrator) decide whether to catch and fall back to a manual script.
+ * same contract as callGeminiForJson itself; callers decide whether to
+ * catch and fall back to a manual script.
  */
-export async function generatePresenterScript(product: ScriptProductInput, usage: AiUsageContext): Promise<string> {
-  const prompt = buildPrompt(product);
+export async function generatePresenterScript(
+  product: ScriptProductInput,
+  options: GenerateScriptOptions,
+  usage: AiUsageContext
+): Promise<string> {
+  const prompt = buildPrompt(product, options);
   const result = await callGeminiForJson<GeneratedScriptResponse>(prompt, {
     temperature: 0.7,
     usage: { ...usage, operation: "generate_script" },
@@ -74,13 +119,13 @@ export async function generatePresenterScript(product: ScriptProductInput, usage
   const script = result.script?.trim();
   if (!script) throw new Error("Gemini returned an empty script");
 
+  const wordBudget = wordBudgetFor(options.durationSec, options.deliveryMode, options.ctaMode);
   const wordCount = script.split(/\s+/).length;
-  if (wordCount > MAX_WORDS + 8) {
-    // Soft check, not a hard failure — Gemini-2.5-flash-lite has been
-    // reliable on this constraint in testing, but an occasional overlong
-    // line just means Veo paces the speech faster within the fixed 8s
-    // clip, not a broken generation. Logged so real drift is visible.
-    console.warn(`[presenter-reel] script exceeded target length (${wordCount} words): "${script}"`);
+  if (wordCount > wordBudget + 8) {
+    // Soft check, not a hard failure — occasional overlong lines just mean
+    // Veo paces the speech faster within the fixed duration, not a broken
+    // generation. Logged so real drift is visible.
+    console.warn(`[presenter-reel] script exceeded target length (${wordCount}/${wordBudget} words): "${script}"`);
   }
 
   return script;
