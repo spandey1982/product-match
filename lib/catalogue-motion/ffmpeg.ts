@@ -115,3 +115,15 @@ export async function averageFrameColor(url: string, atSec: number): Promise<Ave
 export async function runFfmpeg(args: string[]): Promise<void> {
   await run(FFMPEG_BIN, args);
 }
+
+/**
+ * Same as runFfmpeg, but also returns stderr on success — ffmpeg filters
+ * like silencedetect/astats write their analysis to stderr regardless of
+ * exit code, and callers that need to parse that log (presenter-reel's
+ * freeze-frame.ts) have no other way to reach it via runFfmpeg's void
+ * return.
+ */
+export async function runFfmpegCapture(args: string[]): Promise<{ stderr: string }> {
+  const { stderr } = await run(FFMPEG_BIN, args);
+  return { stderr };
+}

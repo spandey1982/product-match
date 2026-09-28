@@ -14,7 +14,7 @@
 import { parseArray } from "@/lib/serialize";
 import type { AiUsageContext } from "@/lib/ai-usage/record";
 import { callGeminiForJson } from "./gemini-client";
-import { wordBudgetFor, type DeliveryMode, type CtaMode } from "./duration-budget";
+import { wordBudgetFor, type DeliveryMode, type CtaMode, type TimingMode } from "./duration-budget";
 
 export interface ScriptProductInput {
   title: string;
@@ -37,6 +37,8 @@ export interface GenerateScriptOptions {
   /** Required when ctaMode is "spoken" — the exact CTA the model must end on. */
   ctaText?: string | null;
   templateId?: "value_trust";
+  /** Only meaningful for hook_end_card — "fixed" caps the hook word budget tighter (duration-budget.ts), leaving more margin for freeze-frame.ts's non-analyzed fixed offset. Defaults to "smart". */
+  timingMode?: TimingMode;
 }
 
 interface GeneratedScriptResponse {
@@ -50,7 +52,7 @@ function pickDetail(product: ScriptProductInput): string {
 
 function buildPrompt(product: ScriptProductInput, options: GenerateScriptOptions): string {
   const occasions = parseArray(product.occasion ?? undefined).join(", ") || "everyday wear";
-  const wordBudget = wordBudgetFor(options.durationSec, options.deliveryMode, options.ctaMode);
+  const wordBudget = wordBudgetFor(options.durationSec, options.deliveryMode, options.ctaMode, options.timingMode);
   const spokenCtaLine =
     options.ctaMode === "spoken" && options.ctaText
       ? `\n- End with this exact call to action, spoken naturally: "${options.ctaText}"`
@@ -119,7 +121,7 @@ export async function generatePresenterScript(
   const script = result.script?.trim();
   if (!script) throw new Error("Gemini returned an empty script");
 
-  const wordBudget = wordBudgetFor(options.durationSec, options.deliveryMode, options.ctaMode);
+  const wordBudget = wordBudgetFor(options.durationSec, options.deliveryMode, options.ctaMode, options.timingMode);
   const wordCount = script.split(/\s+/).length;
   if (wordCount > wordBudget + 8) {
     // Soft check, not a hard failure — occasional overlong lines just mean

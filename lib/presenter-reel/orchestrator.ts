@@ -24,7 +24,7 @@ import { stripDeliveryTransforms } from "@/lib/model-gen/crop-templates";
 import { generatePresenterScript, type ScriptProductInput } from "./script-generator";
 import { buildEndCardContent } from "./end-card";
 import { nearestPresenterDuration } from "./provider/veo-presenter-provider";
-import { wordBudgetFor, charLimitFor, ALLOWED_DURATIONS, type DeliveryMode, type CtaMode } from "./duration-budget";
+import { wordBudgetFor, charLimitFor, ALLOWED_DURATIONS, type DeliveryMode, type CtaMode, type TimingMode } from "./duration-budget";
 import type { GarmentIntelligence } from "@/lib/garment-intelligence/types";
 
 // Same objective filter as lib/catalogue-motion/reel/reference-resolver.ts's
@@ -98,6 +98,7 @@ export interface PreviewPresenterScriptInput {
   deliveryMode?: DeliveryMode;
   ctaMode?: CtaMode;
   ctaText?: string | null;
+  timingMode?: TimingMode;
 }
 
 export interface PreviewPresenterScriptResult {
@@ -113,6 +114,7 @@ export async function previewPresenterScript(input: PreviewPresenterScriptInput)
   const durationSec = validatedDuration(input.durationSec);
   const deliveryMode = input.deliveryMode ?? "full_script";
   const ctaMode = input.ctaMode ?? "on_screen";
+  const timingMode = input.timingMode ?? "smart";
 
   const giHighlights = await fetchGiHighlights(product.id);
   const scriptInput: ScriptProductInput = {
@@ -123,14 +125,14 @@ export async function previewPresenterScript(input: PreviewPresenterScriptInput)
 
   const script = await generatePresenterScript(
     scriptInput,
-    { durationSec, deliveryMode, ctaMode, ctaText: input.ctaText },
+    { durationSec, deliveryMode, ctaMode, ctaText: input.ctaText, timingMode },
     { feature: "presenter_reel", userId: input.userId }
   );
 
   return {
     script,
-    wordBudget: wordBudgetFor(durationSec, deliveryMode, ctaMode),
-    charLimit: charLimitFor(durationSec, deliveryMode, ctaMode),
+    wordBudget: wordBudgetFor(durationSec, deliveryMode, ctaMode, timingMode),
+    charLimit: charLimitFor(durationSec, deliveryMode, ctaMode, timingMode),
     durationSec,
   };
 }
@@ -144,6 +146,7 @@ export interface CreatePresenterReelJobInput {
   deliveryMode?: DeliveryMode;
   ctaMode?: CtaMode;
   ctaText?: string | null;
+  timingMode?: TimingMode;
   /** The final script to render — normally the (possibly retailer-edited) result of a prior previewPresenterScript() call. Falls back to generating fresh if omitted, so direct/scripted callers (verify scripts, tests) keep working unchanged. */
   script?: string;
 }
@@ -162,6 +165,7 @@ export async function createPresenterReelJob(input: CreatePresenterReelJobInput)
   const durationSec = validatedDuration(input.durationSec);
   const deliveryMode = input.deliveryMode ?? "full_script";
   const ctaMode = input.ctaMode ?? "on_screen";
+  const timingMode = input.timingMode ?? "smart";
   const templateId = input.templateId ?? DEFAULT_TEMPLATE_ID;
   // Never trust client-supplied CTA copy as authoritative when ctaMode is
   // "none" — clear it server-side regardless of what the request sent.
@@ -177,7 +181,7 @@ export async function createPresenterReelJob(input: CreatePresenterReelJobInput)
     };
     script = await generatePresenterScript(
       scriptInput,
-      { durationSec, deliveryMode, ctaMode, ctaText },
+      { durationSec, deliveryMode, ctaMode, ctaText, timingMode },
       { feature: "presenter_reel", userId: input.userId }
     );
   }
@@ -185,7 +189,16 @@ export async function createPresenterReelJob(input: CreatePresenterReelJobInput)
   const endCardContent =
     deliveryMode === "hook_end_card"
       ? await buildEndCardContent(
-          { id: product.id, title: product.title, price: product.price, mrpPrice: product.mrpPrice, discountPercent: product.discountPercent, material: product.material, pattern: product.pattern },
+          {
+            id: product.id,
+            userId: input.userId,
+            title: product.title,
+            price: product.price,
+            mrpPrice: product.mrpPrice,
+            discountPercent: product.discountPercent,
+            material: product.material,
+            pattern: product.pattern,
+          },
           ctaMode,
           ctaText
         )
@@ -203,6 +216,7 @@ export async function createPresenterReelJob(input: CreatePresenterReelJobInput)
       ctaMode,
       ctaText,
       deliveryMode,
+      endingTimingMode: timingMode,
       endCardData: endCardContent ? JSON.stringify(endCardContent) : null,
     },
     select: { id: true },

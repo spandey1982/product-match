@@ -27,13 +27,14 @@ import { uploadWithRetry } from "@/lib/cloudinary";
 import { chargeForCall, refundCharge } from "@/lib/billing/charge";
 import { finishPresenterClip, cleanupFinishedClip } from "../video-finishing";
 import type { EndCardContent } from "../end-card";
+import type { TimingMode } from "../duration-budget";
 
 const MAX_RENDER_RETRIES = 2; // matches QUEUE_OPTIONS[PRESENTER_RENDER].retryLimit
 
 export async function handlePresenterRender(payload: PresenterRenderPayload): Promise<void> {
   const job = await db.presenterReelJob.findUnique({
     where: { id: payload.jobId },
-    select: { id: true, userId: true, ctaMode: true, ctaText: true, endCardData: true },
+    select: { id: true, userId: true, ctaMode: true, ctaText: true, endCardData: true, endingTimingMode: true },
   });
   if (!job) {
     console.error(`[presenter-reel] job ${payload.jobId} not found — dropping`);
@@ -84,6 +85,8 @@ export async function handlePresenterRender(payload: PresenterRenderPayload): Pr
     const finishedPath = await finishPresenterClip({
       videoBase64: result.videoBase64,
       mimeType: result.mimeType,
+      nominalDurationSec: durationSec,
+      timingMode: (job.endingTimingMode as TimingMode) ?? "smart",
       endCard,
       ctaOnScreenText,
     });
