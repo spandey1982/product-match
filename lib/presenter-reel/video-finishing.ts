@@ -41,6 +41,23 @@ const BLUR_RAMP_SEC = 0.5;
 const CARD_FADE_START_SEC = 0.35;
 const CARD_FADE_DURATION_SEC = 0.4;
 const MAX_BLUR_SIGMA = 22;
+/**
+ * Canonical frame rate / audio sample rate for BOTH the trimmed segment and
+ * the settle tail, so concatSegments's stream-copy concat is joining two
+ * segments with identical codec parameters. Confirmed as a real bug
+ * (2026-09-29): Veo returns 24fps/48kHz video+audio, but the tail was only
+ * ever rendered at a hardcoded 30fps/44100Hz — concatenating the two via
+ * `-c copy` without normalizing trimVideo's output to match produced a
+ * corrupted container (audio track ~2s shorter than the video track, a
+ * garbled non-integer avg_frame_rate, and total duration inflated well
+ * beyond the sum of the two segments), which is what actually caused the
+ * "freezes mid-sentence with a weirdly long tail" defect — not the
+ * freeze-frame timestamp selection itself, which was already landing
+ * correctly. Reproduced locally with a synthetic 24fps/48kHz clip before
+ * this fix, confirmed gone after.
+ */
+const OUTPUT_FPS = 30;
+const OUTPUT_SAMPLE_RATE = 44100;
 
 export interface FinishClipInput {
   videoBase64: string;
@@ -57,16 +74,20 @@ function escapeDrawtext(text: string): string {
   return text.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\u2019");
 }
 
+/** `-ss` placed AFTER `-i` (not before) so this is a frame-accurate decode-to-timestamp seek, not a fast keyframe-snapped one — on a short clip the cost is negligible, and a keyframe-snapped seek can land noticeably earlier than the computed freeze time, capturing a visibly mid-word/mid-gesture frame instead of the settled one selectFreezeFrameTime chose. */
 async function extractFramePng(srcPath: string, atSec: number, outPath: string): Promise<void> {
-  await runFfmpeg(["-y", "-ss", String(Math.max(0, atSec)), "-i", srcPath, "-frames:v", "1", outPath]);
+  await runFfmpeg(["-y", "-i", srcPath, "-ss", String(Math.max(0, atSec)), "-frames:v", "1", outPath]);
 }
 
+/** Explicitly normalizes to OUTPUT_FPS/OUTPUT_SAMPLE_RATE — see that constant's comment for why concatSegments requires both segments to already share these exactly. */
 async function trimVideo(srcPath: string, endTimeSec: number, outPath: string): Promise<void> {
   await runFfmpeg([
     "-y",
     "-i", srcPath,
     "-t", String(endTimeSec),
+    "-r", String(OUTPUT_FPS),
     "-c:v", "libx264",
+    "-ar", String(OUTPUT_SAMPLE_RATE),
     "-c:a", "aac",
     "-pix_fmt", "yuv420p",
     outPath,
@@ -94,16 +115,17 @@ async function buildSettleTail(framePngPath: string, blurredFramePngPath: string
     "-loop", "1", "-t", String(BLUR_RAMP_SEC + 0.2), "-i", framePngPath,
     "-loop", "1", "-t", String(TAIL_DURATION_SEC), "-i", blurredFramePngPath,
     "-loop", "1", "-t", String(TAIL_DURATION_SEC), "-i", cardPngPath,
-    "-f", "lavfi", "-t", String(TAIL_DURATION_SEC), "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
+    "-f", "lavfi", "-t", String(TAIL_DURATION_SEC), "-i", `anullsrc=channel_layout=stereo:sample_rate=${OUTPUT_SAMPLE_RATE}`,
     "-filter_complex",
-    `[0:v]fps=30,scale=720:1280,format=yuv420p[crisp];` +
-      `[1:v]fps=30,scale=720:1280,format=yuv420p[blurred];` +
+    `[0:v]fps=${OUTPUT_FPS},scale=720:1280,format=yuv420p[crisp];` +
+      `[1:v]fps=${OUTPUT_FPS},scale=720:1280,format=yuv420p[blurred];` +
       `[crisp][blurred]xfade=transition=fade:duration=${BLUR_RAMP_SEC}:offset=0,format=yuv420p[bg];` +
-      `[2:v]fps=30,format=rgba,fade=t=in:st=${CARD_FADE_START_SEC}:d=${CARD_FADE_DURATION_SEC}:alpha=1[card];` +
+      `[2:v]fps=${OUTPUT_FPS},format=rgba,fade=t=in:st=${CARD_FADE_START_SEC}:d=${CARD_FADE_DURATION_SEC}:alpha=1[card];` +
       `[bg][card]overlay=0:0:format=auto,format=yuv420p[vout]`,
     "-map", "[vout]",
     "-map", "3:a",
     "-c:v", "libx264",
+    "-ar", String(OUTPUT_SAMPLE_RATE),
     "-c:a", "aac",
     "-t", String(TAIL_DURATION_SEC),
     "-pix_fmt", "yuv420p",
