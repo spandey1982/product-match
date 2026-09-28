@@ -43,6 +43,7 @@ export async function POST(req: NextRequest) {
           deliveryMode?: "full_script" | "hook_end_card";
           ctaMode?: "none" | "on_screen" | "spoken";
           ctaText?: string;
+          timingMode?: "smart" | "fixed";
           script?: string;
         }
       | null;
@@ -63,6 +64,7 @@ export async function POST(req: NextRequest) {
       deliveryMode: body.deliveryMode,
       ctaMode: body.ctaMode,
       ctaText: body.ctaText,
+      timingMode: body.timingMode,
       script: body.script,
     });
 

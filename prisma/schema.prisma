@@ -2189,6 +2189,15 @@ model PresenterReelJob {
   // set of facts, since the end card costs no Veo-seconds).
   deliveryMode String @default("full_script")
 
+  // smart | fixed. Only meaningful when deliveryMode is "hook_end_card" —
+  // how the end-card freeze-frame moment is chosen. smart (default):
+  // lib/presenter-reel/freeze-frame.ts analyzes the rendered clip's own
+  // audio to find where speech actually ends. fixed: skips that analysis,
+  // uses a tighter spoken-word budget and a fixed offset from the clip's
+  // nominal end instead — cheaper, blunter. See research/
+  // presenter-reel-content-strategy.html's "End card v2" section.
+  endingTimingMode String @default("smart")
+
   // queued | scripting | rendering | complete | failed
   status String @default("queued")
 

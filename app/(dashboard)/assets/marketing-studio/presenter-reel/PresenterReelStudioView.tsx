@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Loader2, Sparkles, AlertCircle, RotateCcw, CheckCircle2, XCircle, History, ArrowRight, Wand2 } from "lucide-react";
+import { Loader2, Sparkles, AlertCircle, RotateCcw, CheckCircle2, XCircle, History, ArrowRight, Wand2, Repeat } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,6 +13,7 @@ import {
   SPOKEN_CTA_WORD_COST,
   type DeliveryMode,
   type CtaMode,
+  type TimingMode,
 } from "@/lib/presenter-reel/duration-budget";
 
 export interface ProductPreview {
@@ -85,6 +86,7 @@ export function PresenterReelStudioView({
   const [personaId, setPersonaId] = useState(personas[0]?.id ?? "");
   const [durationSec, setDurationSec] = useState<number>(8);
   const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>("full_script");
+  const [timingMode, setTimingMode] = useState<TimingMode>("smart");
   const [ctaMode, setCtaMode] = useState<CtaMode>("on_screen");
   const [ctaText, setCtaText] = useState(DEFAULT_CTA_TEXT);
 
@@ -161,6 +163,7 @@ export function PresenterReelStudioView({
           deliveryMode,
           ctaMode,
           ctaText: ctaMode !== "none" ? ctaText : undefined,
+          timingMode: deliveryMode === "hook_end_card" ? timingMode : undefined,
         }),
       });
       const data = (await res.json()) as { script?: string; charLimit?: number; error?: string };
@@ -197,6 +200,7 @@ export function PresenterReelStudioView({
           deliveryMode,
           ctaMode,
           ctaText: ctaMode !== "none" ? ctaText : undefined,
+          timingMode: deliveryMode === "hook_end_card" ? timingMode : undefined,
           script: scriptPreview,
         }),
       });
@@ -236,16 +240,25 @@ export function PresenterReelStudioView({
   }
 
   const isBusy = job && job.status !== "complete" && job.status !== "failed";
-  const wordBudget = deliveryMode === "hook_end_card" ? hookWordBudget(durationSec) : fullScriptWordBudget(durationSec);
+  const wordBudget = deliveryMode === "hook_end_card" ? hookWordBudget(durationSec, timingMode) : fullScriptWordBudget(durationSec);
   const overLimit = scriptPreview !== null && scriptPreview.length > scriptCharLimit;
 
   return (
     <div className="max-w-lg space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 mb-1">Presenter Reel</h1>
-        <p className="text-sm text-gray-500">
-          An AI presenter introduces <span className="font-medium text-gray-700">{product.title}</span> on camera — a short talking marketing video, not a silent catalogue clip.
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-1">Presenter Reel</h1>
+          <p className="text-sm text-gray-500">
+            An AI presenter introduces <span className="font-medium text-gray-700">{product.title}</span> on camera — a short talking marketing video, not a silent catalogue clip.
+          </p>
+        </div>
+        <Link
+          href="/catalog?pick=presenter-reel"
+          title="Choose a different product"
+          className="shrink-0 inline-flex items-center justify-center h-9 w-9 rounded-lg border border-gray-200 text-gray-500 hover:text-indigo-600 hover:border-indigo-200 hover:bg-indigo-50 transition-colors"
+        >
+          <Repeat className="h-4 w-4" strokeWidth={1.75} />
+        </Link>
       </div>
 
       <Card>
@@ -340,6 +353,44 @@ export function PresenterReelStudioView({
                 <span className="block text-gray-500 mt-0.5">Short spoken hook, then price/details as a static card at the end — costs no extra Veo-seconds.</span>
               </button>
             </div>
+            {deliveryMode === "hook_end_card" && (
+              <div className="mt-2.5 pl-3 border-l-2 border-indigo-100">
+                <label className="block text-[11px] font-medium text-indigo-400 mb-1.5">↳ Ending timing</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    disabled={!!isBusy}
+                    onClick={() => {
+                      setTimingMode("smart");
+                      invalidatePreview();
+                    }}
+                    className={`rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                      timingMode === "smart" ? "border-indigo-500 bg-indigo-50 text-indigo-700" : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                    }`}
+                  >
+                    Smart (recommended)
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!!isBusy}
+                    onClick={() => {
+                      setTimingMode("fixed");
+                      invalidatePreview();
+                    }}
+                    className={`rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                      timingMode === "fixed" ? "border-indigo-500 bg-indigo-50 text-indigo-700" : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                    }`}
+                  >
+                    Fixed short hook
+                  </button>
+                </div>
+                <p className="text-[11px] text-gray-400 mt-1.5">
+                  {timingMode === "smart"
+                    ? "Waits for her to finish speaking before freezing — most reliable."
+                    : "Skips that check and uses a shorter hook with a safety margin instead."}
+                </p>
+              </div>
+            )}
           </div>
 
           <div>
