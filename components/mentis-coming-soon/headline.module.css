@@ -1,0 +1,39 @@
+/* "Coming Soon" neon-flicker headline. Reads --mentis-coming-soon-text. */
+
+.neon {
+  --glow: 0 0 0.02em currentColor, 0 0 0.07em color-mix(in srgb, currentColor 80%, transparent),
+    0 0 0.2em color-mix(in srgb, currentColor 55%, transparent),
+    0 0 0.42em color-mix(in srgb, currentColor 32%, transparent);
+  --glow-dim: 0 0 0.015em currentColor, 0 0 0.05em color-mix(in srgb, currentColor 60%, transparent),
+    0 0 0.14em color-mix(in srgb, currentColor 38%, transparent),
+    0 0 0.3em color-mix(in srgb, currentColor 20%, transparent);
+  margin: 0;
+  font-family: var(--ms-display), system-ui, sans-serif;
+  font-weight: 800;
+  font-size: clamp(2.6rem, min(14.5vw, 13vh), 8rem);
+  line-height: 1.05;
+  letter-spacing: -0.035em;
+  white-space: nowrap;
+  color: var(--mentis-coming-soon-text);
+  text-shadow: var(--glow);
+  animation: hum 3.6s ease-in-out infinite alternate;
+}
+@keyframes hum {
+  from { text-shadow: var(--glow); }
+  to { text-shadow: var(--glow-dim); }
+}
+/* Two letters behave like a faulty tube: irregular, independent dropouts. */
+.flickA { animation: flickA 5.5s linear infinite; }
+.flickB { animation: flickB 8.3s linear infinite; }
+@keyframes flickA {
+  0%, 18%, 22%, 25%, 53%, 57%, 100% { opacity: 1; text-shadow: var(--glow); }
+  20%, 24%, 55% { opacity: 0.25; text-shadow: none; }
+}
+@keyframes flickB {
+  0%, 6%, 9%, 41%, 44%, 71%, 79%, 100% { opacity: 1; text-shadow: var(--glow); }
+  7%, 10%, 42%, 72%, 73.5%, 75%, 76.5% { opacity: 0.25; text-shadow: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .neon, .flickA, .flickB { animation: none !important; }
+}

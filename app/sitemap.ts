@@ -13,6 +13,7 @@ const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://mentishq.com";
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const staticEntries: MetadataRoute.Sitemap = [
     { url: APP_URL, changeFrequency: "weekly", priority: 1 },
+    { url: `${APP_URL}/mentis/fashion`, changeFrequency: "weekly", priority: 0.9 },
     { url: `${APP_URL}/shop`, changeFrequency: "daily", priority: 0.9 },
     { url: `${APP_URL}/rent`, changeFrequency: "daily", priority: 0.8 },
     { url: `${APP_URL}/materials`, changeFrequency: "daily", priority: 0.8 },
