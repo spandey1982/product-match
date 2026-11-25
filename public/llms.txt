@@ -4,7 +4,7 @@
 
 ## Product
 
-- [Homepage](https://mentishq.com/) — overview of all five engines: AI Cataloging, AI Fashion Studio, Virtual Try-On, Smart Matching, In-Store Kiosk.
+- [Homepage](https://mentishq.com/mentis/fashion) — overview of all five engines: AI Cataloging, AI Fashion Studio, Virtual Try-On, Smart Matching, In-Store Kiosk.
 - [Shop](https://mentishq.com/shop) — the live customer-facing storefront: AI-catalogued products from Mentis retailers, virtual try-on, and outfit recommendations.
 - [Rent](https://mentishq.com/rent) — the rental storefront for try-before-you-buy fashion rentals.
 - [Sign up](https://mentishq.com/signup) — retailer self-serve onboarding.

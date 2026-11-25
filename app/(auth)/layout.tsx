@@ -18,7 +18,7 @@ export default async function AuthLayout({
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex flex-col">
       {/* Header */}
       <header className="p-6">
-        <Link href="/" className="inline-flex items-center gap-2">
+        <Link href="/mentis/fashion" className="inline-flex items-center gap-2">
           <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
             <Sparkles className="h-4 w-4 text-white" />
           </div>
